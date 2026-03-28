@@ -56,6 +56,14 @@ function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
     }
     .add-link:hover { text-decoration: underline; }
     .empty { color: #888; padding: 12px 0; font-size: 13px; }
+    .toast {
+      position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%) translateY(10px);
+      background: #252525; border: 1px solid #333; border-radius: 6px;
+      padding: 8px 14px; font-size: 12px; color: #e0e0e0;
+      opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none;
+    }
+    .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast .next { color: #6b9fff; }
   </style>
 </head>
 <body>
@@ -64,10 +72,19 @@ function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
   <div id="tasks">
     ${tasks.length ? taskRows : '<div class="empty">No active tasks</div>'}
   </div>
-  <a class="add-link" id="add-link">+ add to session</a>
+  <div class="add-link">ask Claude to add more tasks</div>
+  <div class="toast" id="toast"></div>
 
   <script>
     const BASE = ${JSON.stringify(baseUrl)};
+
+    // Forward the sig and t params from the iframe URL to all /ui/ requests
+    function sigParams() {
+      const params = new URLSearchParams(location.search);
+      const t = params.get('t') || '';
+      const sig = params.get('sig') || '';
+      return 't=' + encodeURIComponent(t) + '&sig=' + encodeURIComponent(sig);
+    }
 
     // Complete task on checkbox
     document.getElementById('tasks').addEventListener('change', async (e) => {
@@ -76,13 +93,15 @@ function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
       const taskEl = e.target.closest('.task');
 
       try {
-        const res = await fetch(BASE + '/api/tasks/' + id + '/complete', {
+        const res = await fetch(BASE + '/ui/complete/' + id + '?' + sigParams(), {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + getToken() },
         });
         if (res.ok) {
+          const data = await res.json();
           taskEl.classList.add('done');
-          // Notify parent if embedded
+          if (data.next) {
+            showToast('Done! Next: <span class="next">' + escapeHtml(data.next.due_date) + '</span>');
+          }
           window.parent?.postMessage({ type: 'task-completed', taskId: id }, '*');
         }
       } catch (err) {
@@ -91,21 +110,13 @@ function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
       }
     });
 
-    function getToken() {
-      // Token can be passed via query param or postMessage
-      const params = new URLSearchParams(location.search);
-      return params.get('token') || '';
-    }
-
     // Poll for updates every 10s
     setInterval(async () => {
       try {
         const params = new URLSearchParams(location.search);
         const session = params.get('session') || '';
-        const url = BASE + '/api/tasks?status=active' + (session ? '&session=' + session : '');
-        const res = await fetch(url, {
-          headers: { 'Authorization': 'Bearer ' + getToken() },
-        });
+        const url = BASE + '/ui/tasks?' + sigParams() + (session ? '&session=' + session : '');
+        const res = await fetch(url);
         if (res.ok) {
           const tasks = await res.json();
           refreshTasks(tasks);
@@ -135,6 +146,14 @@ function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
       d.textContent = str || '';
       return d.innerHTML;
     }
+
+    function showToast(html) {
+      const el = document.getElementById('toast');
+      el.innerHTML = html;
+      el.classList.add('visible');
+      clearTimeout(el._timer);
+      el._timer = setTimeout(() => el.classList.remove('visible'), 3000);
+    }
   </script>
 </body>
 </html>`;
@@ -157,6 +176,34 @@ export async function handleUiRequest(request: Request, url: URL, db: DB): Promi
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-cache',
       },
+    });
+  }
+
+  // Unauthenticated JSON endpoint for widget polling
+  if (path === '/ui/tasks') {
+    const sessionId = url.searchParams.get('session') || undefined;
+    const tasks = await db.getActiveTasks(sessionId);
+    return new Response(JSON.stringify(tasks), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  }
+
+  // Unauthenticated complete endpoint for the iframe widget
+  const completeMatch = path.match(/^\/ui\/complete\/([^/]+)$/);
+  if (request.method === 'POST' && completeMatch) {
+    const result = await db.completeTask(completeMatch[1]);
+    if (!result) {
+      return new Response(JSON.stringify({ error: 'Not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify(result), {
+      headers: { 'Content-Type': 'application/json' },
     });
   }
 

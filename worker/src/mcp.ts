@@ -1,5 +1,6 @@
 import { DB } from './db';
 import type { Env } from './index';
+import { signUrl } from './sign';
 
 interface McpRequest {
   jsonrpc: '2.0';
@@ -111,7 +112,7 @@ const TOOLS = [
   },
 ];
 
-async function handleToolCall(name: string, args: Record<string, unknown>, db: DB, baseUrl: string) {
+async function handleToolCall(name: string, args: Record<string, unknown>, db: DB, baseUrl: string, secret: string) {
   switch (name) {
     case 'list_tasks': {
       const statuses = (args.statuses as string[]) || ['pending', 'active'];
@@ -121,9 +122,11 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     case 'get_active_tasks': {
       const sessionId = args.session_id as string | undefined;
       const tasks = await db.getActiveTasks(sessionId);
+      const path = `/ui/active${sessionId ? `?session=${sessionId}` : ''}`;
+      const signedUrl = await signUrl(baseUrl, path, secret);
       return {
         tasks,
-        ui: { type: 'iframe', url: `${baseUrl}/ui/active${sessionId ? `?session=${sessionId}` : ''}` },
+        ui: { type: 'iframe', url: signedUrl },
       };
     }
 
@@ -188,7 +191,7 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env): Prom
     case 'tools/call': {
       const params = body.params as { name: string; arguments?: Record<string, unknown> };
       try {
-        const result = await handleToolCall(params.name, params.arguments || {}, db, baseUrl);
+        const result = await handleToolCall(params.name, params.arguments || {}, db, baseUrl, env.AUTH_TOKEN);
         return mcpResponse(body.id, {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         });
@@ -197,6 +200,13 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env): Prom
         return mcpError(body.id, -32000, msg);
       }
     }
+
+    // Notifications have no id and expect no response, but over HTTP we must return something
+    case 'notifications/initialized':
+    case 'notifications/cancelled':
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: {} }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
 
     default:
       return mcpError(body.id, -32601, `Method not found: ${body.method}`);

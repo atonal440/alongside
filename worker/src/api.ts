@@ -17,6 +17,12 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
     return json(tasks);
   }
 
+  // GET /api/tasks/sync — all tasks including done, for full PWA sync
+  if (method === 'GET' && path === '/api/tasks/sync') {
+    const tasks = await db.listTasks(['pending', 'active', 'snoozed', 'done']);
+    return json(tasks);
+  }
+
   // GET /api/tasks/:id — get one task
   const singleMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
   if (method === 'GET' && singleMatch) {

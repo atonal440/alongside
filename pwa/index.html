@@ -207,6 +207,76 @@
       height: 18px;
       margin-top: 2px;
     }
+
+    .settings-banner {
+      background: #2a2020;
+      border: 1px solid #553333;
+      border-radius: var(--radius);
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+
+    .settings-banner summary {
+      cursor: pointer;
+      color: #e57373;
+    }
+
+    .settings-banner .fields { margin-top: 10px; }
+
+    .settings-banner label {
+      display: block;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 8px;
+      margin-bottom: 2px;
+    }
+
+    .settings-banner input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: monospace;
+    }
+
+    .settings-banner button {
+      margin-top: 10px;
+      background: var(--accent-dim);
+      border: none;
+      color: white;
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      font-size: 13px;
+      color: var(--text);
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    .toast.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .toast .next-date { color: var(--accent); }
   </style>
 </head>
 <body>
@@ -221,12 +291,17 @@
 
   <div class="sync-status" id="sync-status">synced</div>
 
+  <div id="settings-banner"></div>
+
   <main id="app"></main>
+  <div class="toast" id="toast"></div>
 
   <script>
     // ── Config ──
-    const API_BASE = localStorage.getItem('alongside_api') || '';
-    const AUTH_TOKEN = localStorage.getItem('alongside_token') || 'dev-token-change-me';
+    // Default to the local worker in dev; empty string means local-only mode
+    const DEFAULT_API = location.hostname === 'localhost' ? 'http://localhost:8787' : '';
+    let API_BASE = localStorage.getItem('alongside_api') ?? DEFAULT_API;
+    let AUTH_TOKEN = localStorage.getItem('alongside_token') || 'dev-token-change-me';
 
     // ── IndexedDB ──
     const IDB_NAME = 'alongside';
@@ -312,30 +387,39 @@
     }
 
     // ── Sync ──
+    // Server is source of truth. IndexedDB is a cache + offline buffer.
+    // 1. Flush pending ops (offline writes) to server
+    // 2. Fetch full state from server
+    // 3. Replace local state, keeping only unsynced offline-created tasks
     async function syncFromServer() {
-      const remote = await apiFetch('/api/tasks');
+      const remote = await apiFetch('/api/tasks/sync');
       if (!remote) {
         updateSyncStatus(false);
         return;
       }
 
-      const local = await idbGetAll('tasks');
-      const localMap = Object.fromEntries(local.map(t => [t.id, t]));
       const remoteMap = Object.fromEntries(remote.map(t => [t.id, t]));
+      const pendingOps = await idbGetAll('pending_ops');
 
-      // Merge: last-write-wins on updated_at
-      for (const rt of remote) {
-        const lt = localMap[rt.id];
-        if (!lt || new Date(rt.updated_at) >= new Date(lt.updated_at)) {
-          await idbPut('tasks', rt);
+      // Collect IDs of tasks created offline that haven't synced yet
+      const offlineCreatedTitles = new Set(
+        pendingOps
+          .filter(op => op.method === 'POST' && op.path === '/api/tasks')
+          .map(op => op.body?.title)
+      );
+
+      // Clear local tasks and replace with server state
+      const local = await idbGetAll('tasks');
+      for (const lt of local) {
+        if (!remoteMap[lt.id] && !offlineCreatedTitles.has(lt.title)) {
+          // Not on server and not an unsynced offline create — remove
+          await idbDelete('tasks', lt.id);
         }
       }
 
-      // Add local-only tasks (created offline)
-      for (const lt of local) {
-        if (!remoteMap[lt.id] && lt.status !== 'done') {
-          await idbPut('tasks', lt);
-        }
+      // Write all server tasks to local (server wins)
+      for (const rt of remote) {
+        await idbPut('tasks', rt);
       }
 
       updateSyncStatus(true);
@@ -404,6 +488,7 @@
     async function completeTask(id) {
       const task = (await idbGetAll('tasks')).find(t => t.id === id);
       if (!task) return;
+      const wasRecurring = !!task.recurrence;
       task.status = 'done';
       task.updated_at = new Date().toISOString();
       await idbPut('tasks', task);
@@ -411,10 +496,21 @@
       const result = await apiFetch(`/api/tasks/${id}/complete`, { method: 'POST' });
       if (result && result.next) {
         await idbPut('tasks', result.next);
+        showToast(`Done! Next: <span class="next-date">${result.next.due_date}</span>`);
+      } else if (wasRecurring && !result) {
+        showToast('Done! Next occurrence will sync when online.');
       } else if (!result) {
         await queueOp('POST', `/api/tasks/${id}/complete`, null);
       }
       render();
+    }
+
+    function showToast(html) {
+      const el = document.getElementById('toast');
+      el.innerHTML = html;
+      el.classList.add('visible');
+      clearTimeout(el._timer);
+      el._timer = setTimeout(() => el.classList.remove('visible'), 3000);
     }
 
     async function updateTask(id, updates) {
@@ -677,11 +773,41 @@
       });
     });
 
+    // ── Settings banner ──
+    function showSettingsBanner(reason) {
+      const el = document.getElementById('settings-banner');
+      el.innerHTML = `
+        <details class="settings-banner" open>
+          <summary>${reason}</summary>
+          <div class="fields">
+            <label>Worker URL</label>
+            <input id="cfg-api" value="${esc(API_BASE)}" placeholder="http://localhost:8787" />
+            <label>Auth token</label>
+            <input id="cfg-token" value="${esc(AUTH_TOKEN)}" placeholder="dev-token-change-me" />
+            <button id="cfg-save">Connect</button>
+          </div>
+        </details>
+      `;
+      document.getElementById('cfg-save').addEventListener('click', () => {
+        API_BASE = document.getElementById('cfg-api').value.replace(/\/$/, '');
+        AUTH_TOKEN = document.getElementById('cfg-token').value;
+        localStorage.setItem('alongside_api', API_BASE);
+        localStorage.setItem('alongside_token', AUTH_TOKEN);
+        el.innerHTML = '';
+        init();
+      });
+    }
+
     // ── Init ──
     async function init() {
       await flushPendingOps();
       await syncFromServer();
       render();
+
+      // If sync failed, show settings so the user can fix the connection
+      if (document.getElementById('sync-status').classList.contains('offline')) {
+        showSettingsBanner('Could not connect to worker');
+      }
 
       // Periodic sync
       setInterval(async () => {
