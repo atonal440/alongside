@@ -1,0 +1,11 @@
+name = "alongside"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[vars]
+AUTH_TOKEN = "dev-token-change-me"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "alongside-db"
+database_id = "local"

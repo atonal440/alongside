@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alongside</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1a1a1a">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #1a1a1a;
+      --surface: #252525;
+      --surface-hover: #2f2f2f;
+      --border: #333;
+      --text: #e0e0e0;
+      --text-dim: #888;
+      --accent: #6b9fff;
+      --accent-dim: #4a7ad4;
+      --done: #4a4a4a;
+      --radius: 8px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 16px;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    header h1 { font-size: 20px; font-weight: 600; }
+
+    nav { display: flex; gap: 8px; }
+
+    nav button {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 6px 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    nav button.active {
+      color: var(--accent);
+      border-color: var(--accent-dim);
+    }
+
+    .sync-status {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-align: right;
+      margin-bottom: 12px;
+    }
+
+    .sync-status.offline { color: #e57373; }
+
+    .task-group { margin-bottom: 24px; }
+
+    .task-group h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+
+    .task {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px;
+      background: var(--surface);
+      border-radius: var(--radius);
+      margin-bottom: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .task:hover { background: var(--surface-hover); }
+
+    .task input[type="checkbox"] {
+      margin-top: 2px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .task-content { flex: 1; min-width: 0; }
+    .task-title { font-size: 15px; line-height: 1.4; }
+    .task-meta { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+    .task.done .task-title { text-decoration: line-through; color: var(--done); }
+
+    .add-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+
+    .add-bar input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: var(--radius);
+      font-size: 15px;
+      outline: none;
+    }
+
+    .add-bar input:focus { border-color: var(--accent-dim); }
+
+    .add-bar button, .session-btn {
+      background: var(--accent-dim);
+      border: none;
+      color: white;
+      padding: 10px 16px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .add-bar button:hover, .session-btn:hover { background: var(--accent); }
+
+    .edit-form {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+
+    .edit-form label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+      margin-top: 12px;
+    }
+
+    .edit-form label:first-child { margin-top: 0; }
+
+    .edit-form input, .edit-form textarea, .edit-form select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .edit-form textarea { resize: vertical; min-height: 60px; }
+    .edit-form input:focus, .edit-form textarea:focus { border-color: var(--accent-dim); }
+
+    .edit-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .edit-actions button {
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 13px;
+      border: 1px solid var(--border);
+    }
+
+    .btn-save { background: var(--accent-dim); color: white; border: none !important; }
+    .btn-cancel { background: transparent; color: var(--text-dim); }
+    .btn-delete { background: transparent; color: #e57373; border-color: #e57373 !important; margin-left: auto; }
+
+    .session-bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .session-bar span { font-size: 13px; color: var(--text-dim); }
+
+    .empty {
+      text-align: center;
+      color: var(--text-dim);
+      padding: 40px 0;
+      font-size: 14px;
+    }
+
+    .task-select {
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Alongside</h1>
+    <nav>
+      <button class="active" data-view="today">Today</button>
+      <button data-view="all">All</button>
+      <button data-view="session">Session</button>
+    </nav>
+  </header>
+
+  <div class="sync-status" id="sync-status">synced</div>
+
+  <main id="app"></main>
+
+  <script>
+    // ── Config ──
+    const API_BASE = localStorage.getItem('alongside_api') || '';
+    const AUTH_TOKEN = localStorage.getItem('alongside_token') || 'dev-token-change-me';
+
+    // ── IndexedDB ──
+    const IDB_NAME = 'alongside';
+    const IDB_VERSION = 1;
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('tasks')) {
+            const store = db.createObjectStore('tasks', { keyPath: 'id' });
+            store.createIndex('status', 'status');
+            store.createIndex('due_date', 'due_date');
+          }
+          if (!db.objectStoreNames.contains('pending_ops')) {
+            db.createObjectStore('pending_ops', { keyPath: 'id', autoIncrement: true });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function idbGetAll(storeName) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readonly');
+        const req = tx.objectStore(storeName).getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function idbPut(storeName, item) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        tx.objectStore(storeName).put(item);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function idbDelete(storeName, key) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        tx.objectStore(storeName).delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function idbClear(storeName) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        tx.objectStore(storeName).clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    // ── API helpers ──
+    async function apiFetch(path, options = {}) {
+      if (!API_BASE) return null;
+      try {
+        const res = await fetch(`${API_BASE}${path}`, {
+          ...options,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${AUTH_TOKEN}`,
+            ...options.headers,
+          },
+        });
+        if (!res.ok) throw new Error(`${res.status}`);
+        return res.json();
+      } catch (e) {
+        console.warn('API fetch failed:', e);
+        return null;
+      }
+    }
+
+    // ── Sync ──
+    async function syncFromServer() {
+      const remote = await apiFetch('/api/tasks');
+      if (!remote) {
+        updateSyncStatus(false);
+        return;
+      }
+
+      const local = await idbGetAll('tasks');
+      const localMap = Object.fromEntries(local.map(t => [t.id, t]));
+      const remoteMap = Object.fromEntries(remote.map(t => [t.id, t]));
+
+      // Merge: last-write-wins on updated_at
+      for (const rt of remote) {
+        const lt = localMap[rt.id];
+        if (!lt || new Date(rt.updated_at) >= new Date(lt.updated_at)) {
+          await idbPut('tasks', rt);
+        }
+      }
+
+      // Add local-only tasks (created offline)
+      for (const lt of local) {
+        if (!remoteMap[lt.id] && lt.status !== 'done') {
+          await idbPut('tasks', lt);
+        }
+      }
+
+      updateSyncStatus(true);
+    }
+
+    async function flushPendingOps() {
+      const ops = await idbGetAll('pending_ops');
+      for (const op of ops) {
+        const result = await apiFetch(op.path, { method: op.method, body: op.body ? JSON.stringify(op.body) : undefined });
+        if (result !== null) {
+          await idbDelete('pending_ops', op.id);
+        }
+      }
+    }
+
+    async function queueOp(method, path, body) {
+      await idbPut('pending_ops', { method, path, body, created_at: new Date().toISOString() });
+    }
+
+    function updateSyncStatus(online) {
+      const el = document.getElementById('sync-status');
+      if (online) {
+        el.textContent = 'synced';
+        el.className = 'sync-status';
+      } else {
+        el.textContent = 'offline - changes saved locally';
+        el.className = 'sync-status offline';
+      }
+    }
+
+    // ── Task operations (local-first) ──
+    function genId() {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
+      let id = 't_';
+      for (let i = 0; i < 5; i++) id += chars[Math.floor(Math.random() * chars.length)];
+      return id;
+    }
+
+    async function createTask(title, opts = {}) {
+      const now = new Date().toISOString();
+      const task = {
+        id: genId(),
+        title,
+        notes: opts.notes || null,
+        status: 'pending',
+        due_date: opts.due_date || null,
+        recurrence: opts.recurrence || null,
+        session_id: null,
+        created_at: now,
+        updated_at: now,
+        snoozed_until: null,
+      };
+      await idbPut('tasks', task);
+
+      const result = await apiFetch('/api/tasks', { method: 'POST', body: JSON.stringify({ title, ...opts }) });
+      if (result) {
+        // Use server-generated ID
+        await idbDelete('tasks', task.id);
+        await idbPut('tasks', result);
+      } else {
+        await queueOp('POST', '/api/tasks', { title, ...opts });
+      }
+      render();
+    }
+
+    async function completeTask(id) {
+      const task = (await idbGetAll('tasks')).find(t => t.id === id);
+      if (!task) return;
+      task.status = 'done';
+      task.updated_at = new Date().toISOString();
+      await idbPut('tasks', task);
+
+      const result = await apiFetch(`/api/tasks/${id}/complete`, { method: 'POST' });
+      if (result && result.next) {
+        await idbPut('tasks', result.next);
+      } else if (!result) {
+        await queueOp('POST', `/api/tasks/${id}/complete`, null);
+      }
+      render();
+    }
+
+    async function updateTask(id, updates) {
+      const task = (await idbGetAll('tasks')).find(t => t.id === id);
+      if (!task) return;
+      Object.assign(task, updates, { updated_at: new Date().toISOString() });
+      await idbPut('tasks', task);
+
+      const result = await apiFetch(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(updates) });
+      if (!result) {
+        await queueOp('PATCH', `/api/tasks/${id}`, updates);
+      }
+      render();
+    }
+
+    async function deleteTask(id) {
+      await idbDelete('tasks', id);
+      const result = await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
+      if (!result) {
+        await queueOp('DELETE', `/api/tasks/${id}`, null);
+      }
+      render();
+    }
+
+    async function activateTask(id, sessionId) {
+      const task = (await idbGetAll('tasks')).find(t => t.id === id);
+      if (!task) return;
+      task.status = 'active';
+      task.session_id = sessionId;
+      task.updated_at = new Date().toISOString();
+      await idbPut('tasks', task);
+      render();
+    }
+
+    // ── State ──
+    let currentView = 'today';
+    let editingTask = null;
+    let sessionId = localStorage.getItem('alongside_session') || null;
+
+    // ── Rendering ──
+    function render() {
+      idbGetAll('tasks').then(tasks => {
+        const app = document.getElementById('app');
+        app.innerHTML = '';
+
+        if (editingTask) {
+          renderEditForm(app, editingTask, tasks);
+          return;
+        }
+
+        switch (currentView) {
+          case 'today': renderToday(app, tasks); break;
+          case 'all': renderAll(app, tasks); break;
+          case 'session': renderSession(app, tasks); break;
+        }
+      });
+    }
+
+    function taskHTML(task, opts = {}) {
+      const meta = [];
+      if (task.due_date) meta.push(task.due_date);
+      if (task.recurrence) meta.push('recurring');
+      if (task.notes) meta.push(task.notes.substring(0, 50));
+
+      const done = task.status === 'done';
+      return `
+        <div class="task ${done ? 'done' : ''}" data-id="${task.id}">
+          ${opts.selectable
+            ? `<input type="checkbox" class="task-select" data-id="${task.id}" ${task.status === 'active' ? 'checked' : ''}>`
+            : `<input type="checkbox" ${done ? 'checked' : ''} data-complete="${task.id}">`
+          }
+          <div class="task-content" data-edit="${task.id}">
+            <div class="task-title">${esc(task.title)}</div>
+            ${meta.length ? `<div class="task-meta">${esc(meta.join(' · '))}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderToday(app, tasks) {
+      const today = new Date().toISOString().split('T')[0];
+      const active = tasks.filter(t => t.status === 'active');
+      const dueToday = tasks.filter(t => t.status === 'pending' && t.due_date && t.due_date <= today);
+      const pending = tasks.filter(t => t.status === 'pending' && (!t.due_date || t.due_date > today));
+
+      app.innerHTML = `
+        <div class="add-bar">
+          <input type="text" id="new-task" placeholder="Add a task..." />
+          <button id="add-btn">Add</button>
+        </div>
+        ${active.length ? `<div class="task-group"><h2>Active</h2>${active.map(t => taskHTML(t)).join('')}</div>` : ''}
+        ${dueToday.length ? `<div class="task-group"><h2>Due Today</h2>${dueToday.map(t => taskHTML(t)).join('')}</div>` : ''}
+        ${pending.length ? `<div class="task-group"><h2>Upcoming</h2>${pending.map(t => taskHTML(t)).join('')}</div>` : ''}
+        ${!active.length && !dueToday.length && !pending.length ? '<div class="empty">No tasks. Add one above.</div>' : ''}
+      `;
+
+      setupAddBar();
+    }
+
+    function renderAll(app, tasks) {
+      const groups = { active: [], pending: [], snoozed: [], done: [] };
+      for (const t of tasks) {
+        if (groups[t.status]) groups[t.status].push(t);
+      }
+
+      app.innerHTML = `
+        <div class="add-bar">
+          <input type="text" id="new-task" placeholder="Add a task..." />
+          <button id="add-btn">Add</button>
+        </div>
+        ${Object.entries(groups)
+          .filter(([, list]) => list.length > 0)
+          .map(([status, list]) => `
+            <div class="task-group">
+              <h2>${status} (${list.length})</h2>
+              ${list.map(t => taskHTML(t)).join('')}
+            </div>
+          `).join('')}
+      `;
+
+      setupAddBar();
+    }
+
+    function renderSession(app, tasks) {
+      if (!sessionId) {
+        // Session start: pick tasks to activate
+        const available = tasks.filter(t => t.status === 'pending');
+        app.innerHTML = `
+          <div style="margin-bottom: 16px;">
+            <h2 style="font-size: 15px; margin-bottom: 8px;">Start a session</h2>
+            <p style="font-size: 13px; color: var(--text-dim); margin-bottom: 16px;">Pick 1-3 tasks to focus on.</p>
+          </div>
+          ${available.length
+            ? available.map(t => taskHTML(t, { selectable: true })).join('')
+            : '<div class="empty">No pending tasks to activate.</div>'
+          }
+          ${available.length ? '<button class="session-btn" id="start-session" style="margin-top: 12px;">Start Session</button>' : ''}
+        `;
+
+        document.getElementById('start-session')?.addEventListener('click', () => {
+          const checked = [...document.querySelectorAll('.task-select:checked')].map(el => el.dataset.id);
+          if (checked.length === 0) return;
+          sessionId = `s_${Date.now()}`;
+          localStorage.setItem('alongside_session', sessionId);
+          checked.forEach(id => activateTask(id, sessionId));
+        });
+      } else {
+        // Active session
+        const active = tasks.filter(t => t.status === 'active' && t.session_id === sessionId);
+        app.innerHTML = `
+          <div class="session-bar">
+            <span>Session active</span>
+            <button class="session-btn" id="end-session" style="font-size: 12px; padding: 4px 12px; background: transparent; border: 1px solid var(--border); color: var(--text-dim);">End</button>
+          </div>
+          ${active.length
+            ? active.map(t => taskHTML(t)).join('')
+            : '<div class="empty">All session tasks completed!</div>'
+          }
+        `;
+
+        document.getElementById('end-session')?.addEventListener('click', () => {
+          sessionId = null;
+          localStorage.removeItem('alongside_session');
+          render();
+        });
+      }
+    }
+
+    function renderEditForm(app, task) {
+      app.innerHTML = `
+        <div class="edit-form">
+          <label>Title</label>
+          <input type="text" id="edit-title" value="${esc(task.title)}" />
+          <label>Notes</label>
+          <textarea id="edit-notes">${esc(task.notes || '')}</textarea>
+          <label>Due date</label>
+          <input type="date" id="edit-due" value="${task.due_date || ''}" />
+          <label>Recurrence</label>
+          <select id="edit-recurrence">
+            <option value="">None</option>
+            <option value="FREQ=DAILY;INTERVAL=1" ${task.recurrence === 'FREQ=DAILY;INTERVAL=1' ? 'selected' : ''}>Daily</option>
+            <option value="FREQ=WEEKLY;INTERVAL=1" ${task.recurrence === 'FREQ=WEEKLY;INTERVAL=1' ? 'selected' : ''}>Weekly</option>
+            <option value="FREQ=MONTHLY;INTERVAL=1" ${task.recurrence === 'FREQ=MONTHLY;INTERVAL=1' ? 'selected' : ''}>Monthly</option>
+          </select>
+          <div class="edit-actions">
+            <button class="btn-save" id="save-edit">Save</button>
+            <button class="btn-cancel" id="cancel-edit">Cancel</button>
+            <button class="btn-delete" id="delete-task">Delete</button>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('save-edit').addEventListener('click', () => {
+        updateTask(task.id, {
+          title: document.getElementById('edit-title').value,
+          notes: document.getElementById('edit-notes').value || null,
+          due_date: document.getElementById('edit-due').value || null,
+          recurrence: document.getElementById('edit-recurrence').value || null,
+        });
+        editingTask = null;
+      });
+
+      document.getElementById('cancel-edit').addEventListener('click', () => {
+        editingTask = null;
+        render();
+      });
+
+      document.getElementById('delete-task').addEventListener('click', () => {
+        if (confirm('Delete this task?')) {
+          deleteTask(task.id);
+          editingTask = null;
+        }
+      });
+    }
+
+    function setupAddBar() {
+      const input = document.getElementById('new-task');
+      const btn = document.getElementById('add-btn');
+      if (!input || !btn) return;
+
+      const add = () => {
+        const title = input.value.trim();
+        if (title) { createTask(title); input.value = ''; }
+      };
+
+      btn.addEventListener('click', add);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
+    }
+
+    function esc(str) {
+      const div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+
+    // ── Event delegation ──
+    document.getElementById('app').addEventListener('click', async (e) => {
+      const completeId = e.target.dataset?.complete;
+      if (completeId) {
+        completeTask(completeId);
+        return;
+      }
+
+      const editId = e.target.closest('[data-edit]')?.dataset.edit;
+      if (editId) {
+        const tasks = await idbGetAll('tasks');
+        editingTask = tasks.find(t => t.id === editId);
+        if (editingTask) render();
+      }
+    });
+
+    // ── Navigation ──
+    document.querySelectorAll('nav button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentView = btn.dataset.view;
+        editingTask = null;
+        render();
+      });
+    });
+
+    // ── Init ──
+    async function init() {
+      await flushPendingOps();
+      await syncFromServer();
+      render();
+
+      // Periodic sync
+      setInterval(async () => {
+        await flushPendingOps();
+        await syncFromServer();
+        render();
+      }, 30000);
+    }
+
+    // Service worker registration
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
+      navigator.serviceWorker.addEventListener('message', (e) => {
+        if (e.data.type === 'sync-requested') {
+          flushPendingOps().then(syncFromServer).then(render);
+        }
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>
