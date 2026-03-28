@@ -4,6 +4,8 @@ import { handleMcpRequest } from './mcp';
 import { handleUiRequest } from './ui';
 import { verifySignature } from './sign';
 import { handleOAuthRequest } from './oauth';
+import { getHarnessHtml } from './dev-harness';
+import { getAppHtml } from './app-ui';
 
 export interface Env {
   DB: D1Database;
@@ -28,6 +30,18 @@ export default {
     // OAuth routes bypass auth (they ARE the auth flow)
     const oauthResponse = await handleOAuthRequest(request, url, env);
     if (oauthResponse) return oauthResponse;
+
+    // Dev harness for testing MCP App widget locally
+    if (url.pathname === '/dev/app') {
+      return new Response(getHarnessHtml(), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
+    if (url.pathname === '/dev/app-html') {
+      return new Response(getAppHtml(), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
 
     // Auth check
     const authHeader = request.headers.get('Authorization');

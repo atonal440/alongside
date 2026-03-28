@@ -155,8 +155,10 @@ export function getAppHtml(): string {
         // Step 3: Confirm initialization
         rpcNotify('ui/notifications/initialized');
 
-        // Report initial size
-        reportSize();
+        // Step 4: Always fetch fresh data on load — the cached tool
+        // result in the conversation may be stale (different device,
+        // tasks completed elsewhere, etc.)
+        await refreshViaToolCall();
       } catch (err) {
         console.error('MCP App init failed:', err);
       }
