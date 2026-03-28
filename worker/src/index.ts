@@ -3,6 +3,7 @@ import { handleApiRequest } from './api';
 import { handleMcpRequest } from './mcp';
 import { handleUiRequest } from './ui';
 import { verifySignature } from './sign';
+import { handleOAuthRequest } from './oauth';
 
 export interface Env {
   DB: D1Database;
@@ -24,6 +25,10 @@ export default {
       });
     }
 
+    // OAuth routes bypass auth (they ARE the auth flow)
+    const oauthResponse = await handleOAuthRequest(request, url, env);
+    if (oauthResponse) return oauthResponse;
+
     // Auth check
     const authHeader = request.headers.get('Authorization');
     const token = authHeader?.replace('Bearer ', '');
@@ -38,9 +43,13 @@ export default {
           });
         }
       } else {
+        const resourceMetadataUrl = `${url.origin}/.well-known/oauth-protected-resource`;
         return new Response(JSON.stringify({ error: 'Unauthorized' }), {
           status: 401,
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'WWW-Authenticate': `Bearer resource_metadata="${resourceMetadataUrl}"`,
+          },
         });
       }
     }

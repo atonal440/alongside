@@ -1,6 +1,7 @@
 import { DB } from './db';
 import type { Env } from './index';
 import { signUrl } from './sign';
+import { getAppHtml } from './app-ui';
 
 interface McpRequest {
   jsonrpc: '2.0';
@@ -21,6 +22,17 @@ function mcpError(id: string | number, code: number, message: string) {
   });
 }
 
+// UI resource URI for the task dashboard
+const TASK_DASHBOARD_URI = 'ui://alongside/task-dashboard';
+
+// Helper: build _meta with both modern and legacy keys (SDK compat)
+function uiMeta(resourceUri: string, extra?: Record<string, unknown>) {
+  return {
+    'ui/resourceUri': resourceUri,
+    ui: { resourceUri, ...extra },
+  };
+}
+
 const TOOLS = [
   {
     name: 'list_tasks',
@@ -35,16 +47,18 @@ const TOOLS = [
         },
       },
     },
+    _meta: uiMeta(TASK_DASHBOARD_URI),
   },
   {
     name: 'get_active_tasks',
-    description: 'Returns only active tasks for the current session.',
+    description: 'Returns only active tasks for the current session, with an interactive dashboard.',
     inputSchema: {
       type: 'object',
       properties: {
         session_id: { type: 'string', description: 'Optional session ID to filter by.' },
       },
     },
+    _meta: uiMeta(TASK_DASHBOARD_URI),
   },
   {
     name: 'add_task',
@@ -59,6 +73,7 @@ const TOOLS = [
       },
       required: ['title'],
     },
+    _meta: uiMeta(TASK_DASHBOARD_URI),
   },
   {
     name: 'activate_task',
@@ -82,6 +97,7 @@ const TOOLS = [
       },
       required: ['task_id'],
     },
+    _meta: uiMeta(TASK_DASHBOARD_URI, { visibility: ['app'] }),
   },
   {
     name: 'snooze_task',
@@ -112,16 +128,28 @@ const TOOLS = [
   },
 ];
 
+// UI resources list
+const UI_RESOURCES = [
+  {
+    uri: TASK_DASHBOARD_URI,
+    name: 'Task Dashboard',
+    description: 'Interactive task list with checkboxes for completing tasks.',
+    mimeType: 'text/html;profile=mcp-app',
+  },
+];
+
 async function handleToolCall(name: string, args: Record<string, unknown>, db: DB, baseUrl: string, secret: string) {
   switch (name) {
     case 'list_tasks': {
       const statuses = (args.statuses as string[]) || ['pending', 'active'];
-      return await db.listTasks(statuses);
+      const tasks = await db.listTasks(statuses);
+      return { tasks };
     }
 
     case 'get_active_tasks': {
       const sessionId = args.session_id as string | undefined;
       const tasks = await db.getActiveTasks(sessionId);
+      // Still include signed URL for non-MCP-Apps clients (Claude Desktop, PWA)
       const path = `/ui/active${sessionId ? `?session=${sessionId}` : ''}`;
       const signedUrl = await signUrl(baseUrl, path, secret);
       return {
@@ -170,6 +198,15 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
 }
 
 export async function handleMcpRequest(request: Request, db: DB, env: Env): Promise<Response> {
+  if (request.method === 'GET') {
+    // Streamable HTTP: GET opens an SSE stream for server-initiated messages.
+    return new Response('event: endpoint\ndata: /mcp\n\n', {
+      headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+    });
+  }
+  if (request.method === 'DELETE') {
+    return new Response(null, { status: 204 });
+  }
   if (request.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
   }
@@ -181,12 +218,42 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env): Prom
     case 'initialize':
       return mcpResponse(body.id, {
         protocolVersion: '2024-11-05',
-        capabilities: { tools: {} },
+        capabilities: {
+          tools: {},
+          resources: {},
+          extensions: {
+            'io.modelcontextprotocol/ui': {
+              mimeTypes: ['text/html;profile=mcp-app'],
+            },
+          },
+        },
         serverInfo: { name: 'alongside', version: '1.0.0' },
       });
 
     case 'tools/list':
       return mcpResponse(body.id, { tools: TOOLS });
+
+    case 'resources/list':
+      return mcpResponse(body.id, { resources: UI_RESOURCES });
+
+    case 'resources/read': {
+      const params = body.params as { uri: string };
+      if (params.uri === TASK_DASHBOARD_URI) {
+        return mcpResponse(body.id, {
+          contents: [{
+            uri: TASK_DASHBOARD_URI,
+            mimeType: 'text/html;profile=mcp-app',
+            text: getAppHtml(),
+            _meta: {
+              ui: {
+                prefersBorder: true,
+              },
+            },
+          }],
+        });
+      }
+      return mcpError(body.id, -32602, `Unknown resource: ${params.uri}`);
+    }
 
     case 'tools/call': {
       const params = body.params as { name: string; arguments?: Record<string, unknown> };
@@ -194,6 +261,7 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env): Prom
         const result = await handleToolCall(params.name, params.arguments || {}, db, baseUrl, env.AUTH_TOKEN);
         return mcpResponse(body.id, {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          structuredContent: result,
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Unknown error';
@@ -201,7 +269,6 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env): Prom
       }
     }
 
-    // Notifications have no id and expect no response, but over HTTP we must return something
     case 'notifications/initialized':
     case 'notifications/cancelled':
       return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: {} }), {

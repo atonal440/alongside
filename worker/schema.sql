@@ -14,3 +14,11 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_session_id ON tasks(session_id);
+
+CREATE TABLE IF NOT EXISTS oauth_codes (
+  code           TEXT PRIMARY KEY,
+  client_id      TEXT NOT NULL,
+  redirect_uri   TEXT NOT NULL,
+  code_challenge TEXT NOT NULL,
+  expires_at     INTEGER NOT NULL
+);
