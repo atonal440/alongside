@@ -67,6 +67,10 @@ export function getAppHtml(): string {
     .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
     .toast .next { color: #6b9fff; }
     .loading { color: light-dark(#666, #888); padding: 12px 0; font-size: 13px; }
+    .filter-banner {
+      font-size: 12px; color: light-dark(#2563eb, #6b9fff); background: light-dark(#e0edff, #1a2a3c);
+      padding: 6px 10px; border-radius: 6px; margin-bottom: 8px;
+    }
   </style>
 </head>
 <body>
@@ -81,6 +85,8 @@ export function getAppHtml(): string {
     const pending = new Map();
     let tasks = [];
     let hostContext = {};
+    let currentFilter = null; // tracks active query/filter from tool-input
+    let refreshGeneration = 0; // incremented on each tool-result to cancel stale refreshes
 
     // Send JSON-RPC request to host and await response
     function rpcRequest(method, params) {
@@ -118,10 +124,12 @@ export function getAppHtml(): string {
       // Notification or request from host
       switch (msg.method) {
         case 'ui/notifications/tool-input':
-          // Tool arguments — could use these to filter by session
+          // Capture the tool arguments so we know what filter is active
+          currentFilter = msg.params?.arguments || null;
           break;
 
         case 'ui/notifications/tool-result':
+          refreshGeneration++; // invalidate any in-flight refresh
           handleToolResult(msg.params);
           break;
 
@@ -155,9 +163,9 @@ export function getAppHtml(): string {
         // Step 3: Confirm initialization
         rpcNotify('ui/notifications/initialized');
 
-        // Step 4: Always fetch fresh data on load — the cached tool
-        // result in the conversation may be stale (different device,
-        // tasks completed elsewhere, etc.)
+        // Step 4: Fetch fresh data. If tool-result arrives first
+        // (live call), refreshGeneration will have incremented and
+        // we discard our stale fetch result.
         await refreshViaToolCall();
       } catch (err) {
         console.error('MCP App init failed:', err);
@@ -191,32 +199,48 @@ export function getAppHtml(): string {
 
       // Handle different tool result shapes
       if (Array.isArray(sc.tasks)) {
+        // list_tasks result — already filtered server-side, use directly
         tasks = sc.tasks;
+        renderTasks();
+        reportSize();
+        return;
       } else if (Array.isArray(sc)) {
         tasks = sc;
-      } else if (sc.id && sc.title) {
-        // Single task result (add_task, etc.) — refresh
-        refreshViaToolCall();
+        renderTasks();
+        reportSize();
         return;
       } else if (sc.completed || sc.next) {
-        // complete_task result
+        // complete_task result — show toast, then refresh with current filter
         if (sc.next) {
           showToast('Done! Next: <span class="next">' + escapeHtml(sc.next.due_date || '') + '</span>');
         }
         refreshViaToolCall();
         return;
+      } else if (sc.deleted) {
+        // delete_task result — refresh with current filter
+        refreshViaToolCall();
+        return;
+      } else if (sc.id && sc.title) {
+        // Single task result (add_task, update_task, snooze_task) — refresh with current filter
+        refreshViaToolCall();
+        return;
       }
-
-      renderTasks();
-      reportSize();
     }
 
     async function refreshViaToolCall() {
       try {
+        var gen = refreshGeneration;
+        var args = { statuses: ['pending', 'active'] };
+        if (currentFilter) {
+          if (currentFilter.statuses) args.statuses = currentFilter.statuses;
+          if (currentFilter.query) args.query = currentFilter.query;
+        }
         const result = await rpcRequest('tools/call', {
           name: 'list_tasks',
-          arguments: { statuses: ['pending', 'active'] },
+          arguments: args,
         });
+        // If a tool-result arrived while we were fetching, it's fresher — discard ours
+        if (gen !== refreshGeneration) return;
         if (result?.structuredContent?.tasks) {
           tasks = result.structuredContent.tasks;
         } else if (result?.content?.[0]?.text) {
@@ -234,11 +258,26 @@ export function getAppHtml(): string {
 
     function renderTasks() {
       const container = document.getElementById('tasks');
+
+      // Show filter banner if a query or non-default statuses are active
+      var filterBanner = '';
+      if (currentFilter) {
+        var parts = [];
+        if (currentFilter.query) parts.push('"' + escapeHtml(currentFilter.query) + '"');
+        if (currentFilter.statuses && JSON.stringify(currentFilter.statuses) !== '["pending","active"]') {
+          parts.push(currentFilter.statuses.join(', '));
+        }
+        if (parts.length) {
+          filterBanner = '<div class="filter-banner">Filtered: ' + parts.join(' \u2022 ') + '</div>';
+        }
+      }
+
       if (!tasks.length) {
-        container.innerHTML = '<div class="empty">No tasks</div>';
+        container.innerHTML = filterBanner + '<div class="empty">No tasks' +
+          (currentFilter?.query ? ' matching "' + escapeHtml(currentFilter.query) + '"' : '') + '</div>';
         return;
       }
-      container.innerHTML = tasks.map(t => {
+      container.innerHTML = filterBanner + tasks.map(t => {
         const statusClass = 'status-' + (t.status || 'pending');
         return '<div class="task" data-id="' + escapeAttr(t.id) + '">' +
           (t.status !== 'done' ? '<input type="checkbox" data-id="' + escapeAttr(t.id) + '" />' : '') +

@@ -1,6 +1,5 @@
 import { DB } from './db';
 import type { Env } from './index';
-import { signUrl } from './sign';
 import { getAppHtml } from './app-ui';
 
 interface McpRequest {
@@ -36,7 +35,7 @@ function uiMeta(resourceUri: string, extra?: Record<string, unknown>) {
 const TOOLS = [
   {
     name: 'list_tasks',
-    description: 'Returns tasks filtered by status. Default: pending + active.',
+    description: 'Lists tasks, optionally filtered by status or search query. Use this to answer questions about the user\'s tasks, find specific tasks, or get an overview. Returns pending and active tasks by default. Pass statuses: ["done"] to see completed tasks, or ["pending","active","snoozed"] to see everything open.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -45,55 +44,36 @@ const TOOLS = [
           items: { type: 'string', enum: ['pending', 'active', 'done', 'snoozed'] },
           description: 'Filter by these statuses. Defaults to ["pending", "active"].',
         },
-      },
-    },
-    _meta: uiMeta(TASK_DASHBOARD_URI),
-  },
-  {
-    name: 'get_active_tasks',
-    description: 'Returns only active tasks for the current session, with an interactive dashboard.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        session_id: { type: 'string', description: 'Optional session ID to filter by.' },
+        query: {
+          type: 'string',
+          description: 'Optional search string. Filters tasks whose title or notes contain this text (case-insensitive).',
+        },
       },
     },
     _meta: uiMeta(TASK_DASHBOARD_URI),
   },
   {
     name: 'add_task',
-    description: 'Creates a new pending task.',
+    description: 'Creates a new task in pending status. Use when the user mentions something they need to do, wants to remember, or asks you to track. For recurring tasks, set both due_date (first occurrence) and recurrence (the pattern). Completing a recurring task automatically creates the next occurrence.',
     inputSchema: {
       type: 'object',
       properties: {
-        title: { type: 'string', description: 'Task title.' },
-        notes: { type: 'string', description: 'Optional notes.' },
-        due_date: { type: 'string', description: 'Optional ISO 8601 date (e.g. 2026-03-28).' },
-        recurrence: { type: 'string', description: 'Optional iCal RRULE (e.g. FREQ=WEEKLY;INTERVAL=1).' },
+        title: { type: 'string', description: 'Short, actionable task title.' },
+        notes: { type: 'string', description: 'Additional context, details, or links.' },
+        due_date: { type: 'string', description: 'When it\'s due, as ISO 8601 date (e.g. 2026-03-28). Omit for undated tasks.' },
+        recurrence: { type: 'string', description: 'iCal RRULE for repeating tasks. Examples: FREQ=DAILY, FREQ=WEEKLY;INTERVAL=2, FREQ=MONTHLY, FREQ=YEARLY. Requires due_date to be set.' },
       },
       required: ['title'],
     },
     _meta: uiMeta(TASK_DASHBOARD_URI),
   },
   {
-    name: 'activate_task',
-    description: 'Sets a task to active status and records the session ID.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        task_id: { type: 'string', description: 'The task ID to activate.' },
-        session_id: { type: 'string', description: 'The current session ID.' },
-      },
-      required: ['task_id', 'session_id'],
-    },
-  },
-  {
     name: 'complete_task',
-    description: 'Marks a task as done. If it has a recurrence rule, creates the next occurrence automatically.',
+    description: 'Marks a task as done. If the task has a recurrence rule, automatically creates the next occurrence with the updated due date. The response includes the completed task and, if recurring, the newly created next task.',
     inputSchema: {
       type: 'object',
       properties: {
-        task_id: { type: 'string', description: 'The task ID to complete.' },
+        task_id: { type: 'string', description: 'The task ID (e.g. t_Ab12x).' },
       },
       required: ['task_id'],
     },
@@ -101,27 +81,38 @@ const TOOLS = [
   },
   {
     name: 'snooze_task',
-    description: 'Snoozes a task until a given date.',
+    description: 'Postpones a task so it disappears from active lists until the given date. Use when the user says "not now", "remind me later", "deal with this next week", etc. The task status changes to snoozed and reappears when the snooze date arrives.',
     inputSchema: {
       type: 'object',
       properties: {
-        task_id: { type: 'string', description: 'The task ID to snooze.' },
-        until: { type: 'string', description: 'ISO 8601 date to snooze until.' },
+        task_id: { type: 'string', description: 'The task ID (e.g. t_Ab12x).' },
+        until: { type: 'string', description: 'ISO 8601 date when the task should reappear (e.g. 2026-04-05).' },
       },
       required: ['task_id', 'until'],
     },
   },
   {
     name: 'update_task',
-    description: 'Edits a task\'s title, notes, due date, or recurrence.',
+    description: 'Edits one or more fields on an existing task. Use to rename, add notes, change the due date, or modify the recurrence pattern. Only the fields you include will be changed; omitted fields stay as-is.',
     inputSchema: {
       type: 'object',
       properties: {
-        task_id: { type: 'string', description: 'The task ID to update.' },
-        title: { type: 'string' },
-        notes: { type: 'string' },
-        due_date: { type: 'string' },
-        recurrence: { type: 'string' },
+        task_id: { type: 'string', description: 'The task ID (e.g. t_Ab12x).' },
+        title: { type: 'string', description: 'New title.' },
+        notes: { type: 'string', description: 'New notes (replaces existing).' },
+        due_date: { type: 'string', description: 'New due date (ISO 8601).' },
+        recurrence: { type: 'string', description: 'New recurrence rule (iCal RRULE).' },
+      },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'delete_task',
+    description: 'Permanently removes a task. Use when the user wants to get rid of a task entirely, not just complete it. Cannot be undone. Prefer complete_task for tasks that were actually done.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'string', description: 'The task ID (e.g. t_Ab12x).' },
       },
       required: ['task_id'],
     },
@@ -138,24 +129,27 @@ const UI_RESOURCES = [
   },
 ];
 
-async function handleToolCall(name: string, args: Record<string, unknown>, db: DB, baseUrl: string, secret: string) {
+async function handleToolCall(name: string, args: Record<string, unknown>, db: DB) {
   switch (name) {
     case 'list_tasks': {
       const statuses = (args.statuses as string[]) || ['pending', 'active'];
-      const tasks = await db.listTasks(statuses);
+      let tasks = await db.listTasks(statuses);
+      const query = args.query as string | undefined;
+      if (query) {
+        const q = query.toLowerCase();
+        tasks = tasks.filter(t =>
+          t.title.toLowerCase().includes(q) ||
+          (t.notes && t.notes.toLowerCase().includes(q))
+        );
+      }
       return { tasks };
     }
 
+    // Legacy: widget may still call get_active_tasks
     case 'get_active_tasks': {
       const sessionId = args.session_id as string | undefined;
       const tasks = await db.getActiveTasks(sessionId);
-      // Still include signed URL for non-MCP-Apps clients (Claude Desktop, PWA)
-      const path = `/ui/active${sessionId ? `?session=${sessionId}` : ''}`;
-      const signedUrl = await signUrl(baseUrl, path, secret);
-      return {
-        tasks,
-        ui: { type: 'iframe', url: signedUrl },
-      };
+      return { tasks };
     }
 
     case 'add_task': {
@@ -167,6 +161,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       });
     }
 
+    // Legacy: widget or older clients may still call activate_task
     case 'activate_task': {
       const task = await db.activateTask(args.task_id as string, args.session_id as string);
       if (!task) throw new Error('Task not found');
@@ -192,6 +187,12 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       return task;
     }
 
+    case 'delete_task': {
+      const deleted = await db.deleteTask(args.task_id as string);
+      if (!deleted) throw new Error('Task not found');
+      return { deleted: true, task_id: args.task_id };
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -212,7 +213,6 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env): Prom
   }
 
   const body = await request.json<McpRequest>();
-  const baseUrl = new URL(request.url).origin;
 
   switch (body.method) {
     case 'initialize':
@@ -258,7 +258,7 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env): Prom
     case 'tools/call': {
       const params = body.params as { name: string; arguments?: Record<string, unknown> };
       try {
-        const result = await handleToolCall(params.name, params.arguments || {}, db, baseUrl, env.AUTH_TOKEN);
+        const result = await handleToolCall(params.name, params.arguments || {}, db);
         return mcpResponse(body.id, {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           structuredContent: result,
