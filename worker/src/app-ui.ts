@@ -69,6 +69,19 @@ export function getAppHtml(): string {
     }
     .task .title { flex: 1; line-height: 1.4; }
     .task .due { font-size: 12px; color: light-dark(#666, #888); flex-shrink: 0; }
+    .task .project-tag {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: light-dark(#e8f0ff, #1a2a4a);
+      color: light-dark(#3b5bdb, #7fa8ff);
+      font-weight: 500;
+      flex-shrink: 0;
+      max-width: 100px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .task .status-badge {
       font-size: 10px;
       padding: 2px 6px;
@@ -103,6 +116,7 @@ export function getAppHtml(): string {
 
     // Widget state
     let tasks = [];
+    let projects = {}; // project_id → title map
     let displayedTaskIds = []; // IDs from the last show_tasks / show_project call
     let currentProject = null; // Project object if in project mode
 
@@ -188,6 +202,7 @@ export function getAppHtml(): string {
       if (sc.project && Array.isArray(sc.tasks)) {
         currentProject = sc.project;
         tasks = sc.tasks;
+        projects = {};
         displayedTaskIds = tasks.map(t => t.id);
         render();
         reportSize();
@@ -198,6 +213,7 @@ export function getAppHtml(): string {
       if (Array.isArray(sc.tasks)) {
         currentProject = null;
         tasks = sc.tasks;
+        projects = sc.projects || {};
         displayedTaskIds = tasks.map(t => t.id);
         render();
         reportSize();
@@ -254,9 +270,11 @@ export function getAppHtml(): string {
       }
       return tasks.map(t => {
         const statusClass = 'status-' + (t.status || 'pending');
+        const projectName = t.project_id ? projects[t.project_id] : null;
         return '<div class="task" data-id="' + escapeAttr(t.id) + '">' +
-          (t.status !== 'done' ? '<input type="checkbox" data-id="' + escapeAttr(t.id) + '" />' : '') +
+          '<input type="checkbox" data-id="' + escapeAttr(t.id) + '"' + (t.status === 'done' ? ' checked' : '') + ' />' +
           '<span class="title">' + escapeHtml(t.title) + '</span>' +
+          (projectName && !currentProject ? '<span class="project-tag">' + escapeHtml(projectName) + '</span>' : '') +
           (t.due_date ? '<span class="due">' + escapeHtml(t.due_date) + '</span>' : '') +
           '<span class="status-badge ' + statusClass + '">' + escapeHtml(t.status || 'pending') + '</span>' +
           '</div>';
@@ -267,29 +285,36 @@ export function getAppHtml(): string {
       if (e.target.type !== 'checkbox') return;
       const id = e.target.dataset.id;
       const taskEl = e.target.closest('.task');
-      taskEl.classList.add('completing');
+      const completing = e.target.checked;
+
       e.target.disabled = true;
+      if (completing) taskEl.classList.add('completing');
 
       try {
-        const result = await rpcRequest('tools/call', {
-          name: 'complete_task',
-          arguments: { task_id: id },
-        });
-
-        let resultData = result?.structuredContent;
-        if (!resultData && result?.content?.[0]?.text) {
-          try { resultData = JSON.parse(result.content[0].text); } catch {}
+        if (completing) {
+          const result = await rpcRequest('tools/call', {
+            name: 'complete_task',
+            arguments: { task_id: id },
+          });
+          let resultData = result?.structuredContent;
+          if (!resultData && result?.content?.[0]?.text) {
+            try { resultData = JSON.parse(result.content[0].text); } catch {}
+          }
+          if (resultData?.next) {
+            showToast('Done! Next: <span class="next">' + escapeHtml(resultData.next.due_date || '') + '</span>');
+          }
+        } else {
+          await rpcRequest('tools/call', {
+            name: 'reopen_task',
+            arguments: { task_id: id },
+          });
         }
-        if (resultData?.next) {
-          showToast('Done! Next: <span class="next">' + escapeHtml(resultData.next.due_date || '') + '</span>');
-        }
-
         await refreshDisplayed();
       } catch (err) {
         taskEl.classList.remove('completing');
         e.target.disabled = false;
-        e.target.checked = false;
-        console.error('Failed to complete task:', err);
+        e.target.checked = completing;
+        console.error('Failed to update task:', err);
       }
     });
 
@@ -318,6 +343,182 @@ export function getAppHtml(): string {
       el.classList.add('visible');
       clearTimeout(el._timer);
       el._timer = setTimeout(() => el.classList.remove('visible'), 3000);
+    }
+
+    init();
+  </script>
+</body>
+</html>`;
+}
+
+export function getActionLogHtml(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
+      background: var(--color-background-primary, light-dark(#ffffff, #1a1a1a));
+      font-size: 13px;
+    }
+    .entry {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      flex-shrink: 0;
+      letter-spacing: 0.04em;
+    }
+    .badge-add_task      { background: light-dark(#d1fae5, #052e16); color: light-dark(#065f46, #6ee7b7); }
+    .badge-complete_task { background: light-dark(#dbeafe, #0c1a3a); color: light-dark(#1e40af, #93c5fd); }
+    .badge-delete_task   { background: light-dark(#fee2e2, #2d0a0a); color: light-dark(#991b1b, #fca5a5); }
+    .badge-snooze_task   { background: light-dark(#fef3c7, #2d1a00); color: light-dark(#92400e, #fcd34d); }
+    .badge-update_task   { background: light-dark(#ede9fe, #1a0a3a); color: light-dark(#5b21b6, #c4b5fd); }
+    .badge-create_project { background: light-dark(#ccfbf1, #022c22); color: light-dark(#065f46, #5eead4); }
+    .badge-link_tasks    { background: light-dark(#e0f2fe, #041626); color: light-dark(#075985, #7dd3fc); }
+    .badge-reopen_task   { background: light-dark(#f0f0f0, #2a2a2a); color: light-dark(#555, #aaa); }
+    .title {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--color-text-primary, light-dark(#1a1a1a, #e0e0e0));
+    }
+    .detail {
+      font-size: 11px;
+      color: light-dark(#888, #666);
+      flex-shrink: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 120px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    // ── MCP App postMessage JSON-RPC (minimal — read-only widget) ──
+    let rpcId = 1;
+    const pending = new Map();
+
+    function rpcNotify(method, params) {
+      window.parent.postMessage({ jsonrpc: '2.0', method, params }, '*');
+    }
+
+    function rpcRespond(id, result) {
+      window.parent.postMessage({ jsonrpc: '2.0', id, result }, '*');
+    }
+
+    function rpcRequest(method, params) {
+      return new Promise((resolve, reject) => {
+        const id = rpcId++;
+        pending.set(id, { resolve, reject });
+        window.parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*');
+      });
+    }
+
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+      if (!msg || msg.jsonrpc !== '2.0') return;
+
+      if ('id' in msg && pending.has(msg.id)) {
+        const { resolve, reject } = pending.get(msg.id);
+        pending.delete(msg.id);
+        if (msg.error) reject(msg.error); else resolve(msg.result);
+        return;
+      }
+
+      switch (msg.method) {
+        case 'ui/notifications/tool-result': {
+          const entry = msg.params?.structuredContent?.action_log_entry;
+          if (entry) { render(entry); reportSize(); }
+          break;
+        }
+        case 'ui/notifications/host-context-changed':
+          applyTheme(msg.params);
+          break;
+        case 'ui/resource-teardown':
+          rpcRespond(msg.id, {});
+          break;
+      }
+    });
+
+    function applyTheme(ctx) {
+      if (ctx.theme) document.documentElement.style.colorScheme = ctx.theme;
+      if (ctx.styles?.variables) {
+        for (const [k, v] of Object.entries(ctx.styles.variables)) {
+          document.documentElement.style.setProperty(k, v);
+        }
+      }
+      if (ctx.styles?.css?.fonts && !document.getElementById('host-fonts')) {
+        const style = document.createElement('style');
+        style.id = 'host-fonts';
+        style.textContent = ctx.styles.css.fonts;
+        document.head.appendChild(style);
+      }
+    }
+
+    const LABELS = {
+      add_task:       'ADDED',
+      complete_task:  'DONE',
+      delete_task:    'DELETED',
+      snooze_task:    'SNOOZED',
+      update_task:    'UPDATED',
+      create_project: 'PROJECT',
+      link_tasks:     'LINKED',
+      reopen_task:    'REOPENED',
+    };
+
+    function render(entry) {
+      const label = LABELS[entry.tool_name] || entry.tool_name.replace(/_/g, ' ').toUpperCase();
+      document.getElementById('root').innerHTML =
+        '<div class="entry">' +
+        '<span class="badge badge-' + entry.tool_name + '">' + label + '</span>' +
+        '<span class="title">' + escapeHtml(entry.title) + '</span>' +
+        (entry.detail ? '<span class="detail">' + escapeHtml(entry.detail) + '</span>' : '') +
+        '</div>';
+    }
+
+    function reportSize() {
+      requestAnimationFrame(() => {
+        rpcNotify('ui/notifications/size-changed', {
+          width: document.body.scrollWidth,
+          height: document.body.scrollHeight,
+        });
+      });
+    }
+
+    function escapeHtml(str) {
+      const d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+
+    async function init() {
+      try {
+        const result = await rpcRequest('ui/initialize', {
+          protocolVersion: '2026-01-26',
+          appCapabilities: {},
+          appInfo: { name: 'alongside-action-log', version: '1.0.0' },
+        });
+        if (result?.hostContext) applyTheme(result.hostContext);
+        rpcNotify('ui/notifications/initialized');
+      } catch (err) {
+        console.error('Action log init failed:', err);
+      }
     }
 
     init();

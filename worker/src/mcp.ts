@@ -1,6 +1,6 @@
 import { DB } from './db';
 import type { Env } from './index';
-import { getAppHtml } from './app-ui';
+import { getAppHtml, getActionLogHtml } from './app-ui';
 
 interface McpRequest {
   jsonrpc: '2.0';
@@ -21,8 +21,8 @@ function mcpError(id: string | number, code: number, message: string) {
   });
 }
 
-// UI resource URI for the task dashboard
 const TASK_DASHBOARD_URI = 'ui://alongside/task-dashboard';
+const ACTION_LOG_URI = 'ui://alongside/action-log';
 
 // Helper: build _meta with both modern and legacy keys (SDK compat)
 function uiMeta(resourceUri: string, extra?: Record<string, unknown>) {
@@ -142,7 +142,7 @@ const TOOLS = [
       },
       required: ['title'],
     },
-    _meta: uiMeta(TASK_DASHBOARD_URI),
+    _meta: uiMeta(ACTION_LOG_URI),
   },
   {
     name: 'complete_task',
@@ -154,6 +154,7 @@ const TOOLS = [
       },
       required: ['task_id'],
     },
+    _meta: uiMeta(ACTION_LOG_URI),
   },
   {
     name: 'snooze_task',
@@ -166,6 +167,7 @@ const TOOLS = [
       },
       required: ['task_id', 'until'],
     },
+    _meta: uiMeta(ACTION_LOG_URI),
   },
   {
     name: 'update_task',
@@ -185,6 +187,19 @@ const TOOLS = [
       },
       required: ['task_id'],
     },
+    _meta: uiMeta(ACTION_LOG_URI),
+  },
+  {
+    name: 'reopen_task',
+    description: 'Sets a completed or snoozed task back to pending. Use when a task was completed by mistake, or when a snoozed task needs to come back immediately. Note: if the task was recurring, completing it already created the next occurrence — reopening does not remove that.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'string', description: 'The task ID (e.g. t_Ab12x).' },
+      },
+      required: ['task_id'],
+    },
+    _meta: uiMeta(ACTION_LOG_URI),
   },
   {
     name: 'delete_task',
@@ -196,6 +211,7 @@ const TOOLS = [
       },
       required: ['task_id'],
     },
+    _meta: uiMeta(ACTION_LOG_URI),
   },
   {
     name: 'create_project',
@@ -213,6 +229,7 @@ const TOOLS = [
       },
       required: ['title'],
     },
+    _meta: uiMeta(ACTION_LOG_URI),
   },
   {
     name: 'get_project_context',
@@ -237,6 +254,7 @@ const TOOLS = [
       },
       required: ['from_task_id', 'to_task_id', 'link_type'],
     },
+    _meta: uiMeta(ACTION_LOG_URI),
   },
   {
     name: 'update_kickoff_note',
@@ -263,14 +281,24 @@ const TOOLS = [
       required: ['key', 'value'],
     },
   },
+  {
+    name: 'get_action_log',
+    description: 'Internal tool used by the action log widget to fetch recent operation history. Not for direct use.',
+    inputSchema: { type: 'object', properties: {} },
+  },
 ];
 
-// UI resources list
 const UI_RESOURCES = [
   {
     uri: TASK_DASHBOARD_URI,
     name: 'Task Dashboard',
     description: 'Interactive task list with checkboxes for completing tasks.',
+    mimeType: 'text/html;profile=mcp-app',
+  },
+  {
+    uri: ACTION_LOG_URI,
+    name: 'Action Log',
+    description: 'Compact one-line feedback for task mutations.',
     mimeType: 'text/html;profile=mcp-app',
   },
 ];
@@ -279,8 +307,14 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
   switch (name) {
     case 'show_tasks': {
       const taskIds = args.task_ids as string[];
-      const tasks = (await Promise.all(taskIds.map(id => db.getTask(id)))).filter(Boolean);
-      return { tasks };
+      const tasks = (await Promise.all(taskIds.map(id => db.getTask(id)))).filter((t): t is NonNullable<typeof t> => t !== null);
+      // Include project names so the widget can show them without extra fetches
+      const projectIds = [...new Set(tasks.filter(t => t.project_id).map(t => t.project_id as string))];
+      const projectEntries = await Promise.all(
+        projectIds.map(async id => [id, (await db.getProject(id))?.title ?? null])
+      );
+      const projects: Record<string, string> = Object.fromEntries(projectEntries.filter(([, v]) => v));
+      return { tasks, projects };
     }
 
     case 'show_project': {
@@ -341,7 +375,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'add_task': {
-      return await db.addTask({
+      const task = await db.addTask({
         title: args.title as string,
         notes: args.notes as string | undefined,
         due_date: args.due_date as string | undefined,
@@ -350,6 +384,8 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
         project_id: args.project_id as string | undefined,
         kickoff_note: args.kickoff_note as string | undefined,
       });
+      const log = await db.logAction({ tool_name: 'add_task', task_id: task.id, title: task.title, detail: task.due_date ?? undefined });
+      return { ...task, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
     }
 
     // Legacy: widget or older clients may still call activate_task
@@ -362,26 +398,43 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     case 'complete_task': {
       const result = await db.completeTask(args.task_id as string);
       if (!result) throw new Error('Task not found');
-      return result;
+      const log = await db.logAction({
+        tool_name: 'complete_task',
+        task_id: result.completed.id,
+        title: result.completed.title,
+        detail: result.next ? `→ recurs ${result.next.due_date}` : undefined,
+      });
+      return { ...result, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
     }
 
     case 'snooze_task': {
       const task = await db.snoozeTask(args.task_id as string, args.until as string);
       if (!task) throw new Error('Task not found');
-      return task;
+      const log = await db.logAction({ tool_name: 'snooze_task', task_id: task.id, title: task.title, detail: args.until as string });
+      return { ...task, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
     }
 
     case 'update_task': {
       const { task_id, ...updates } = args;
       const task = await db.updateTask(task_id as string, updates as Parameters<DB['updateTask']>[1]);
       if (!task) throw new Error('Task not found');
-      return task;
+      const log = await db.logAction({ tool_name: 'update_task', task_id: task.id, title: task.title });
+      return { ...task, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
+    }
+
+    case 'reopen_task': {
+      const task = await db.reopenTask(args.task_id as string);
+      if (!task) throw new Error('Task not found');
+      const log = await db.logAction({ tool_name: 'reopen_task', task_id: task.id, title: task.title });
+      return { ...task, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
     }
 
     case 'delete_task': {
-      const deleted = await db.deleteTask(args.task_id as string);
-      if (!deleted) throw new Error('Task not found');
-      return { deleted: true, task_id: args.task_id };
+      const toDelete = await db.getTask(args.task_id as string);
+      if (!toDelete) throw new Error('Task not found');
+      const log = await db.logAction({ tool_name: 'delete_task', task_id: toDelete.id, title: toDelete.title });
+      await db.deleteTask(toDelete.id);
+      return { deleted: true, task_id: toDelete.id, title: toDelete.title, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
     }
 
     case 'create_project': {
@@ -398,7 +451,8 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
         );
       }
 
-      return { project, linked_task_count: taskIds?.length ?? 0 };
+      const log = await db.logAction({ tool_name: 'create_project', title: project.title, detail: taskIds?.length ? `${taskIds.length} tasks` : undefined });
+      return { project, linked_task_count: taskIds?.length ?? 0, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
     }
 
     case 'get_project_context': {
@@ -409,16 +463,26 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'link_tasks': {
+      const [fromTask, toTask] = await Promise.all([
+        db.getTask(args.from_task_id as string),
+        db.getTask(args.to_task_id as string),
+      ]);
       await db.linkTasks(
         args.from_task_id as string,
         args.to_task_id as string,
         args.link_type as 'blocks' | 'related' | 'supersedes'
       );
+      const fromTitle = fromTask?.title ?? args.from_task_id as string;
+      const toTitle = toTask?.title ?? args.to_task_id as string;
+      const log = await db.logAction({ tool_name: 'link_tasks', title: `${fromTitle} → ${toTitle}`, detail: args.link_type as string });
       return {
         linked: true,
         from_task_id: args.from_task_id,
+        from_task_title: fromTask?.title,
         to_task_id: args.to_task_id,
+        to_task_title: toTask?.title,
         link_type: args.link_type,
+        action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail },
       };
     }
 
@@ -441,6 +505,11 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     case 'update_preference': {
       await db.setPreference(args.key as string, args.value as string);
       return { updated: true, key: args.key, value: args.value };
+    }
+
+    case 'get_action_log': {
+      const entries = await db.getActionLog();
+      return { entries };
     }
 
     default:
@@ -494,11 +563,17 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env): Prom
             uri: TASK_DASHBOARD_URI,
             mimeType: 'text/html;profile=mcp-app',
             text: getAppHtml(),
-            _meta: {
-              ui: {
-                prefersBorder: true,
-              },
-            },
+            _meta: { ui: { prefersBorder: true } },
+          }],
+        });
+      }
+      if (params.uri === ACTION_LOG_URI) {
+        return mcpResponse(body.id, {
+          contents: [{
+            uri: ACTION_LOG_URI,
+            mimeType: 'text/html;profile=mcp-app',
+            text: getActionLogHtml(),
+            _meta: { ui: { prefersBorder: false } },
           }],
         });
       }
@@ -509,9 +584,12 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env): Prom
       const params = body.params as { name: string; arguments?: Record<string, unknown> };
       try {
         const result = await handleToolCall(params.name, params.arguments || {}, db);
+        const toolDef = TOOLS.find(t => t.name === params.name) as { _meta?: Record<string, unknown> } | undefined;
+        const meta = toolDef?._meta ? { _meta: toolDef._meta } : {};
         return mcpResponse(body.id, {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           structuredContent: result,
+          ...meta,
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Unknown error';

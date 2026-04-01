@@ -40,6 +40,15 @@ export type TaskUpdate = Partial<Pick<Task, 'title' | 'notes' | 'due_date' | 're
 export type ProjectCreate = Pick<Project, 'title'> & Partial<Pick<Project, 'kickoff_note'>>;
 export type ProjectUpdate = Partial<Pick<Project, 'title' | 'kickoff_note' | 'status'>>;
 
+export interface ActionLogEntry {
+  id: number;
+  tool_name: string;
+  task_id: string | null;
+  title: string;
+  detail: string | null;
+  created_at: string;
+}
+
 const DEFAULT_PREFERENCES: Record<string, string> = {
   sort_by: 'readiness',
   planning_prompt: 'auto',
@@ -212,6 +221,15 @@ export class DB {
     }
 
     return { completed };
+  }
+
+  async reopenTask(id: string): Promise<Task | null> {
+    const timestamp = now();
+    await this.d1
+      .prepare('UPDATE tasks SET status = ?, snoozed_until = NULL, updated_at = ? WHERE id = ?')
+      .bind('pending', timestamp, id)
+      .run();
+    return this.getTask(id);
   }
 
   async snoozeTask(id: string, until: string): Promise<Task | null> {
@@ -397,6 +415,32 @@ export class DB {
       prefs[row.key] = row.value;
     }
     return prefs;
+  }
+
+  // ── Action Log ─────────────────────────────────────────────────────────────
+
+  async logAction(entry: { tool_name: string; task_id?: string; title: string; detail?: string }): Promise<ActionLogEntry> {
+    const created_at = now();
+    const result = await this.d1
+      .prepare('INSERT INTO action_log (tool_name, task_id, title, detail, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(entry.tool_name, entry.task_id ?? null, entry.title, entry.detail ?? null, created_at)
+      .run();
+    return {
+      id: result.meta.last_row_id as number,
+      tool_name: entry.tool_name,
+      task_id: entry.task_id ?? null,
+      title: entry.title,
+      detail: entry.detail ?? null,
+      created_at,
+    };
+  }
+
+  async getActionLog(limit = 50): Promise<ActionLogEntry[]> {
+    const result = await this.d1
+      .prepare('SELECT * FROM action_log ORDER BY id DESC LIMIT ?')
+      .bind(limit)
+      .all<ActionLogEntry>();
+    return result.results;
   }
 
   // Seed missing default preferences (called by start_session)

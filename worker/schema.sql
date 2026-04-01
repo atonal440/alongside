@@ -47,6 +47,17 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   value TEXT NOT NULL
 );
 
+-- Append-only log of every CRUD operation; title is denormalized at write time
+-- so entries survive task/project deletion and are identical on every device.
+CREATE TABLE IF NOT EXISTS action_log (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  tool_name  TEXT NOT NULL,
+  task_id    TEXT,
+  title      TEXT NOT NULL,
+  detail     TEXT,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS oauth_codes (
   code           TEXT PRIMARY KEY,
   client_id      TEXT NOT NULL,
@@ -63,3 +74,8 @@ CREATE TABLE IF NOT EXISTS oauth_codes (
 -- ALTER TABLE tasks ADD COLUMN project_id   TEXT REFERENCES projects(id);
 -- ALTER TABLE tasks ADD COLUMN kickoff_note TEXT;
 -- ALTER TABLE tasks ADD COLUMN session_log  TEXT;
+--
+-- CREATE TABLE IF NOT EXISTS action_log (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT, tool_name TEXT NOT NULL, task_id TEXT,
+--   title TEXT NOT NULL, detail TEXT, created_at TEXT NOT NULL
+-- );

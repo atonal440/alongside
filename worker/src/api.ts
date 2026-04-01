@@ -62,5 +62,11 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
     return json(result);
   }
 
+  // GET /api/action-log — recent operations, newest first
+  if (method === 'GET' && path === '/api/action-log') {
+    const entries = await db.getActionLog();
+    return json(entries);
+  }
+
   return json({ error: 'Not found' }, 404);
 }
