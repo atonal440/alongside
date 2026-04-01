@@ -68,6 +68,34 @@ const TOOLS = [
     },
   },
   {
+    name: 'show_tasks',
+    description: 'Displays specific tasks in the inline widget. Call this when you want to show the user a visual task list — e.g. after start_session to show suggested tasks, after a planning conversation to show the resulting action items. Pass the task IDs you want shown. Does not affect task state.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'IDs of the tasks to display.',
+        },
+      },
+      required: ['task_ids'],
+    },
+    _meta: uiMeta(TASK_DASHBOARD_URI),
+  },
+  {
+    name: 'show_project',
+    description: 'Displays a project header and all its tasks in the inline widget.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'The project ID (e.g. p_Ab12x).' },
+      },
+      required: ['project_id'],
+    },
+    _meta: uiMeta(TASK_DASHBOARD_URI),
+  },
+  {
     name: 'list_tasks',
     description: 'Lists tasks, optionally filtered by status or search query. Use this to answer questions about the user\'s tasks, find specific tasks, or get an overview. Returns pending and active tasks by default. Pass statuses: ["done"] to see completed tasks, or ["pending","active","snoozed"] to see everything open.',
     inputSchema: {
@@ -84,7 +112,6 @@ const TOOLS = [
         },
       },
     },
-    _meta: uiMeta(TASK_DASHBOARD_URI),
   },
   {
     name: 'get_ready_tasks',
@@ -98,7 +125,6 @@ const TOOLS = [
         },
       },
     },
-    _meta: uiMeta(TASK_DASHBOARD_URI),
   },
   {
     name: 'add_task',
@@ -128,7 +154,6 @@ const TOOLS = [
       },
       required: ['task_id'],
     },
-    _meta: uiMeta(TASK_DASHBOARD_URI, { visibility: ['app'] }),
   },
   {
     name: 'snooze_task',
@@ -252,6 +277,20 @@ const UI_RESOURCES = [
 
 async function handleToolCall(name: string, args: Record<string, unknown>, db: DB) {
   switch (name) {
+    case 'show_tasks': {
+      const taskIds = args.task_ids as string[];
+      const tasks = (await Promise.all(taskIds.map(id => db.getTask(id)))).filter(Boolean);
+      return { tasks };
+    }
+
+    case 'show_project': {
+      const project = await db.getProject(args.project_id as string);
+      if (!project) throw new Error('Project not found');
+      const allTasks = await db.listTasks(['pending', 'active', 'snoozed']);
+      const tasks = allTasks.filter(t => t.project_id === args.project_id);
+      return { project, tasks };
+    }
+
     case 'start_session': {
       await db.seedDefaultPreferences();
       const [readyTasks, preferences, lastSessionAt] = await Promise.all([

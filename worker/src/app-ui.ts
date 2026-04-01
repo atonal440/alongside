@@ -4,6 +4,9 @@
 // Key: the VIEW initiates the handshake by sending ui/initialize,
 // the HOST responds with context/capabilities, then the VIEW
 // confirms with ui/notifications/initialized.
+//
+// The widget renders tasks only when told to via show_tasks or show_project
+// tool results. It never fetches all tasks on its own.
 
 export function getAppHtml(): string {
   return `<!DOCTYPE html>
@@ -21,6 +24,24 @@ export function getAppHtml(): string {
       padding: 16px;
       font-size: 14px;
     }
+    .project-header {
+      margin-bottom: 12px;
+    }
+    .project-title {
+      font-weight: 600;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .project-dot { width: 8px; height: 8px; background: #6b9fff; border-radius: 50%; flex-shrink: 0; }
+    .project-kickoff {
+      margin-top: 6px;
+      font-size: 12px;
+      color: light-dark(#555, #999);
+      line-height: 1.5;
+      padding-left: 16px;
+    }
     .header {
       display: flex;
       align-items: center;
@@ -36,7 +57,9 @@ export function getAppHtml(): string {
       align-items: center;
       gap: 10px;
       padding: 8px 0;
+      border-bottom: 1px solid light-dark(#f0f0f0, #252525);
     }
+    .task:last-child { border-bottom: none; }
     .task input[type="checkbox"] {
       accent-color: #6b9fff;
       cursor: pointer;
@@ -44,14 +67,15 @@ export function getAppHtml(): string {
       height: 16px;
       flex-shrink: 0;
     }
-    .task .title { flex: 1; }
-    .task .due { font-size: 12px; color: light-dark(#666, #888); }
+    .task .title { flex: 1; line-height: 1.4; }
+    .task .due { font-size: 12px; color: light-dark(#666, #888); flex-shrink: 0; }
     .task .status-badge {
       font-size: 10px;
       padding: 2px 6px;
       border-radius: 4px;
       text-transform: uppercase;
       font-weight: 500;
+      flex-shrink: 0;
     }
     .status-pending { background: light-dark(#eee, #333); color: light-dark(#666, #888); }
     .status-active { background: light-dark(#e0edff, #1a3a5c); color: light-dark(#2563eb, #6b9fff); }
@@ -66,29 +90,22 @@ export function getAppHtml(): string {
     }
     .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
     .toast .next { color: #6b9fff; }
-    .loading { color: light-dark(#666, #888); padding: 12px 0; font-size: 13px; }
-    .filter-banner {
-      font-size: 12px; color: light-dark(#2563eb, #6b9fff); background: light-dark(#e0edff, #1a2a3c);
-      padding: 6px 10px; border-radius: 6px; margin-bottom: 8px;
-    }
   </style>
 </head>
 <body>
-  <div class="header"><span class="dot"></span> Tasks</div>
-  <hr class="divider" />
-  <div id="tasks"><div class="loading">Loading tasks...</div></div>
+  <div id="root"></div>
   <div class="toast" id="toast"></div>
 
   <script>
     // ── MCP App postMessage JSON-RPC ──
     let rpcId = 1;
     const pending = new Map();
-    let tasks = [];
-    let hostContext = {};
-    let currentFilter = null; // tracks active query/filter from tool-input
-    let refreshGeneration = 0; // incremented on each tool-result to cancel stale refreshes
 
-    // Send JSON-RPC request to host and await response
+    // Widget state
+    let tasks = [];
+    let displayedTaskIds = []; // IDs from the last show_tasks / show_project call
+    let currentProject = null; // Project object if in project mode
+
     function rpcRequest(method, params) {
       return new Promise((resolve, reject) => {
         const id = rpcId++;
@@ -97,22 +114,18 @@ export function getAppHtml(): string {
       });
     }
 
-    // Send JSON-RPC notification to host (no response expected)
     function rpcNotify(method, params) {
       window.parent.postMessage({ jsonrpc: '2.0', method, params }, '*');
     }
 
-    // Send JSON-RPC response to host
     function rpcRespond(id, result) {
       window.parent.postMessage({ jsonrpc: '2.0', id, result }, '*');
     }
 
-    // Handle incoming messages from host
     window.addEventListener('message', (event) => {
       const msg = event.data;
       if (!msg || msg.jsonrpc !== '2.0') return;
 
-      // Response to one of our requests (ui/initialize, tools/call, etc.)
       if ('id' in msg && pending.has(msg.id)) {
         const { resolve, reject } = pending.get(msg.id);
         pending.delete(msg.id);
@@ -121,21 +134,13 @@ export function getAppHtml(): string {
         return;
       }
 
-      // Notification or request from host
       switch (msg.method) {
-        case 'ui/notifications/tool-input':
-          // Capture the tool arguments so we know what filter is active
-          currentFilter = msg.params?.arguments || null;
-          break;
-
         case 'ui/notifications/tool-result':
-          refreshGeneration++; // invalidate any in-flight refresh
           handleToolResult(msg.params);
           break;
 
         case 'ui/notifications/host-context-changed':
-          hostContext = { ...hostContext, ...msg.params };
-          applyTheme(hostContext);
+          applyTheme(msg.params);
           break;
 
         case 'ui/resource-teardown':
@@ -144,52 +149,34 @@ export function getAppHtml(): string {
       }
     });
 
-    // ── Initialization: VIEW initiates the handshake ──
     async function init() {
       try {
-        // Step 1: Send ui/initialize to the host
         const result = await rpcRequest('ui/initialize', {
           protocolVersion: '2026-01-26',
           appCapabilities: {},
           appInfo: { name: 'alongside-tasks', version: '1.0.0' },
         });
-
-        // Step 2: Process host response
-        if (result?.hostContext) {
-          hostContext = result.hostContext;
-          applyTheme(hostContext);
-        }
-
-        // Step 3: Confirm initialization
+        if (result?.hostContext) applyTheme(result.hostContext);
         rpcNotify('ui/notifications/initialized');
-
-        // Step 4: Fetch fresh data. If tool-result arrives first
-        // (live call), refreshGeneration will have incremented and
-        // we discard our stale fetch result.
-        await refreshViaToolCall();
+        // Don't fetch anything — wait for show_tasks / show_project tool-result
+        render();
       } catch (err) {
         console.error('MCP App init failed:', err);
       }
     }
 
     function applyTheme(ctx) {
-      if (ctx.theme) {
-        // Set color-scheme based on host theme
-        document.documentElement.style.colorScheme = ctx.theme;
-      }
+      if (ctx.theme) document.documentElement.style.colorScheme = ctx.theme;
       if (ctx.styles?.variables) {
-        for (const [key, value] of Object.entries(ctx.styles.variables)) {
-          document.documentElement.style.setProperty(key, value);
+        for (const [k, v] of Object.entries(ctx.styles.variables)) {
+          document.documentElement.style.setProperty(k, v);
         }
       }
-      if (ctx.styles?.css?.fonts) {
-        const existing = document.getElementById('host-fonts');
-        if (!existing) {
-          const style = document.createElement('style');
-          style.id = 'host-fonts';
-          style.textContent = ctx.styles.css.fonts;
-          document.head.appendChild(style);
-        }
+      if (ctx.styles?.css?.fonts && !document.getElementById('host-fonts')) {
+        const style = document.createElement('style');
+        style.id = 'host-fonts';
+        style.textContent = ctx.styles.css.fonts;
+        document.head.appendChild(style);
       }
     }
 
@@ -197,87 +184,75 @@ export function getAppHtml(): string {
       const sc = params?.structuredContent;
       if (!sc) return;
 
-      // Handle different tool result shapes
-      if (Array.isArray(sc.tasks)) {
-        // list_tasks result — already filtered server-side, use directly
+      // show_project result
+      if (sc.project && Array.isArray(sc.tasks)) {
+        currentProject = sc.project;
         tasks = sc.tasks;
-        renderTasks();
+        displayedTaskIds = tasks.map(t => t.id);
+        render();
         reportSize();
-        return;
-      } else if (Array.isArray(sc)) {
-        tasks = sc;
-        renderTasks();
-        reportSize();
-        return;
-      } else if (sc.completed || sc.next) {
-        // complete_task result — show toast, then refresh with current filter
-        if (sc.next) {
-          showToast('Done! Next: <span class="next">' + escapeHtml(sc.next.due_date || '') + '</span>');
-        }
-        refreshViaToolCall();
-        return;
-      } else if (sc.deleted) {
-        // delete_task result — refresh with current filter
-        refreshViaToolCall();
-        return;
-      } else if (sc.id && sc.title) {
-        // Single task result (add_task, update_task, snooze_task) — refresh with current filter
-        refreshViaToolCall();
         return;
       }
+
+      // show_tasks result
+      if (Array.isArray(sc.tasks)) {
+        currentProject = null;
+        tasks = sc.tasks;
+        displayedTaskIds = tasks.map(t => t.id);
+        render();
+        reportSize();
+        return;
+      }
+
+      // Mutation results — refresh only the currently displayed tasks
+      if (displayedTaskIds.length === 0) return;
+
+      if (sc.next) {
+        showToast('Done! Next: <span class="next">' + escapeHtml(sc.next.due_date || '') + '</span>');
+      }
+      refreshDisplayed();
     }
 
-    async function refreshViaToolCall() {
+    async function refreshDisplayed() {
+      if (displayedTaskIds.length === 0) return;
       try {
-        var gen = refreshGeneration;
-        var args = { statuses: ['pending', 'active'] };
-        if (currentFilter) {
-          if (currentFilter.statuses) args.statuses = currentFilter.statuses;
-          if (currentFilter.query) args.query = currentFilter.query;
-        }
         const result = await rpcRequest('tools/call', {
           name: 'list_tasks',
-          arguments: args,
+          arguments: { statuses: ['pending', 'active', 'done', 'snoozed'] },
         });
-        // If a tool-result arrived while we were fetching, it's fresher — discard ours
-        if (gen !== refreshGeneration) return;
-        if (result?.structuredContent?.tasks) {
-          tasks = result.structuredContent.tasks;
-        } else if (result?.content?.[0]?.text) {
-          try {
-            const parsed = JSON.parse(result.content[0].text);
-            tasks = parsed.tasks || parsed;
-          } catch {}
-        }
-        renderTasks();
+        const all = result?.structuredContent?.tasks || [];
+        tasks = all.filter(t => displayedTaskIds.includes(t.id));
+        render();
         reportSize();
       } catch (err) {
         console.error('Failed to refresh tasks:', err);
       }
     }
 
-    function renderTasks() {
-      const container = document.getElementById('tasks');
+    function render() {
+      const root = document.getElementById('root');
 
-      // Show filter banner if a query or non-default statuses are active
-      var filterBanner = '';
-      if (currentFilter) {
-        var parts = [];
-        if (currentFilter.query) parts.push('"' + escapeHtml(currentFilter.query) + '"');
-        if (currentFilter.statuses && JSON.stringify(currentFilter.statuses) !== '["pending","active"]') {
-          parts.push(currentFilter.statuses.join(', '));
+      if (currentProject) {
+        let html = '<div class="project-header">' +
+          '<div class="project-title"><span class="project-dot"></span>' + escapeHtml(currentProject.title) + '</div>';
+        if (currentProject.kickoff_note) {
+          html += '<div class="project-kickoff">' + escapeHtml(currentProject.kickoff_note) + '</div>';
         }
-        if (parts.length) {
-          filterBanner = '<div class="filter-banner">Filtered: ' + parts.join(' \u2022 ') + '</div>';
-        }
+        html += '</div><hr class="divider" />';
+        root.innerHTML = html + renderTaskList();
+      } else if (displayedTaskIds.length > 0) {
+        root.innerHTML = '<div class="header"><span class="dot"></span> Tasks</div>' +
+          '<hr class="divider" />' + renderTaskList();
+      } else {
+        root.innerHTML = '';
       }
+    }
 
+    function renderTaskList() {
       if (!tasks.length) {
-        container.innerHTML = filterBanner + '<div class="empty">No tasks' +
-          (currentFilter?.query ? ' matching "' + escapeHtml(currentFilter.query) + '"' : '') + '</div>';
-        return;
+        return '<div class="empty">No tasks</div>';
       }
-      container.innerHTML = filterBanner + tasks.map(t => {
+      return tasks.map(t => {
         const statusClass = 'status-' + (t.status || 'pending');
         return '<div class="task" data-id="' + escapeAttr(t.id) + '">' +
           (t.status !== 'done' ? '<input type="checkbox" data-id="' + escapeAttr(t.id) + '" />' : '') +
@@ -288,8 +263,7 @@ export function getAppHtml(): string {
       }).join('');
     }
 
-    // Complete task on checkbox click
-    document.getElementById('tasks').addEventListener('change', async (e) => {
+    document.getElementById('root').addEventListener('change', async (e) => {
       if (e.target.type !== 'checkbox') return;
       const id = e.target.dataset.id;
       const taskEl = e.target.closest('.task');
@@ -302,7 +276,6 @@ export function getAppHtml(): string {
           arguments: { task_id: id },
         });
 
-        // Check for recurrence
         let resultData = result?.structuredContent;
         if (!resultData && result?.content?.[0]?.text) {
           try { resultData = JSON.parse(result.content[0].text); } catch {}
@@ -311,8 +284,7 @@ export function getAppHtml(): string {
           showToast('Done! Next: <span class="next">' + escapeHtml(resultData.next.due_date || '') + '</span>');
         }
 
-        // Refresh task list
-        await refreshViaToolCall();
+        await refreshDisplayed();
       } catch (err) {
         taskEl.classList.remove('completing');
         e.target.disabled = false;
@@ -348,7 +320,6 @@ export function getAppHtml(): string {
       el._timer = setTimeout(() => el.classList.remove('visible'), 3000);
     }
 
-    // Start the handshake
     init();
   </script>
 </body>
