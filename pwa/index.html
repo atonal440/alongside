@@ -277,13 +277,112 @@
     }
 
     .toast .next-date { color: var(--accent); }
+
+    /* ── Card / Suggest view ── */
+    .card-view {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .task-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px 24px 20px;
+      margin-bottom: 4px;
+    }
+
+    .card-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 10px;
+    }
+
+    .card-title {
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.35;
+      margin-bottom: 10px;
+    }
+
+    .card-notes {
+      font-size: 13px;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+
+    .card-kickoff {
+      font-size: 13px;
+      color: var(--text);
+      background: var(--bg);
+      border-left: 3px solid var(--accent-dim);
+      padding: 10px 12px;
+      border-radius: 0 4px 4px 0;
+      margin-top: 14px;
+      line-height: 1.5;
+    }
+
+    .card-edit-link {
+      display: inline-block;
+      margin-top: 14px;
+      font-size: 12px;
+      color: var(--text-dim);
+      text-decoration: none;
+    }
+
+    .card-edit-link:hover { color: var(--text); }
+
+    .card-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .btn-skip {
+      flex: 1;
+      padding: 12px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-dim);
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .btn-skip:hover { background: var(--surface-hover); color: var(--text); }
+
+    .btn-act {
+      flex: 2;
+      padding: 12px;
+      border-radius: var(--radius);
+      border: none;
+      background: var(--accent-dim);
+      color: white;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-act:hover { background: var(--accent); }
+
+    .card-counter {
+      font-size: 12px;
+      color: var(--text-dim);
+      text-align: center;
+      padding: 10px 0 4px;
+    }
   </style>
 </head>
 <body>
   <header>
     <h1>Alongside</h1>
     <nav>
-      <button class="active" data-view="today">Today</button>
+      <button class="active" data-view="suggest">Suggest</button>
       <button data-view="all">All</button>
       <button data-view="session">Session</button>
     </nav>
@@ -546,9 +645,10 @@
     }
 
     // ── State ──
-    let currentView = 'today';
+    let currentView = 'suggest';
     let editingTask = null;
     let sessionId = localStorage.getItem('alongside_session') || null;
+    const cardSeen = new Set(); // tasks skipped this session in Suggest view
 
     // ── Rendering ──
     function render() {
@@ -562,7 +662,7 @@
         }
 
         switch (currentView) {
-          case 'today': renderToday(app, tasks); break;
+          case 'suggest': renderSuggest(app, tasks); break;
           case 'all': renderAll(app, tasks); break;
           case 'session': renderSession(app, tasks); break;
         }
@@ -590,24 +690,86 @@
       `;
     }
 
-    function renderToday(app, tasks) {
-      const today = new Date().toISOString().split('T')[0];
-      const active = tasks.filter(t => t.status === 'active');
-      const dueToday = tasks.filter(t => t.status === 'pending' && t.due_date && t.due_date <= today);
-      const pending = tasks.filter(t => t.status === 'pending' && (!t.due_date || t.due_date > today));
+    function suggestQueue(tasks, today) {
+      const now = new Date().toISOString();
+      const candidates = tasks.filter(t =>
+        t.status !== 'done' &&
+        !(t.status === 'snoozed' && t.snoozed_until && t.snoozed_until > now) &&
+        !cardSeen.has(t.id)
+      );
+      const active = candidates.filter(t => t.status === 'active');
+      const overdue = candidates
+        .filter(t => t.status === 'pending' && t.due_date && t.due_date <= today)
+        .sort((a, b) => a.due_date.localeCompare(b.due_date));
+      const ready = candidates.filter(t =>
+        t.status === 'pending' && t.kickoff_note && (!t.due_date || t.due_date > today)
+      );
+      const rest = candidates
+        .filter(t => t.status === 'pending' && !t.kickoff_note && (!t.due_date || t.due_date > today))
+        .sort((a, b) => a.created_at.localeCompare(b.created_at));
+      return [...active, ...overdue, ...ready, ...rest];
+    }
 
-      app.innerHTML = `
+    function renderSuggest(app, tasks) {
+      const today = new Date().toISOString().split('T')[0];
+      const queue = suggestQueue(tasks, today);
+
+      const addBar = `
         <div class="add-bar">
           <input type="text" id="new-task" placeholder="Add a task..." />
           <button id="add-btn">Add</button>
-        </div>
-        ${active.length ? `<div class="task-group"><h2>Active</h2>${active.map(t => taskHTML(t)).join('')}</div>` : ''}
-        ${dueToday.length ? `<div class="task-group"><h2>Due Today</h2>${dueToday.map(t => taskHTML(t)).join('')}</div>` : ''}
-        ${pending.length ? `<div class="task-group"><h2>Upcoming</h2>${pending.map(t => taskHTML(t)).join('')}</div>` : ''}
-        ${!active.length && !dueToday.length && !pending.length ? '<div class="empty">No tasks. Add one above.</div>' : ''}
-      `;
+        </div>`;
+
+      if (queue.length === 0) {
+        app.innerHTML = addBar + '<div class="empty">All clear! Add something above.</div>';
+        setupAddBar();
+        return;
+      }
+
+      const task = queue[0];
+      const rest = queue.length - 1;
+      const isActive = task.status === 'active';
+      const isOverdue = task.due_date && task.due_date < today;
+      const isDueToday = task.due_date === today;
+
+      let label = '';
+      if (isActive) label = 'In progress';
+      else if (isOverdue) label = `Overdue · ${task.due_date}`;
+      else if (isDueToday) label = 'Due today';
+      else if (task.due_date) label = `Due ${task.due_date}`;
+      if (task.recurrence) label += (label ? ' · ' : '') + 'Recurring';
+
+      app.innerHTML = `
+        ${addBar}
+        <div class="card-view">
+          <div class="task-card">
+            ${label ? `<div class="card-label">${esc(label)}</div>` : ''}
+            <div class="card-title">${esc(task.title)}</div>
+            ${task.notes ? `<div class="card-notes">${esc(task.notes)}</div>` : ''}
+            ${task.kickoff_note ? `<div class="card-kickoff">${esc(task.kickoff_note)}</div>` : ''}
+            <a class="card-edit-link" href="#" data-edit="${task.id}">Edit ›</a>
+          </div>
+          <div class="card-actions">
+            ${isActive
+              ? `<button class="btn-skip" id="card-done">Mark done</button>
+                 <button class="btn-act" id="card-next">Next ›</button>`
+              : `<button class="btn-skip" id="card-skip">Skip →</button>
+                 <button class="btn-act" id="card-start">Start this</button>`
+            }
+          </div>
+          <div class="card-counter">${rest > 0 ? `${rest} more` : 'Last one'}</div>
+        </div>`;
 
       setupAddBar();
+
+      document.getElementById('card-skip')?.addEventListener('click', () => {
+        cardSeen.add(task.id); render();
+      });
+      document.getElementById('card-start')?.addEventListener('click', () => activateTask(task.id, null));
+      document.getElementById('card-next')?.addEventListener('click', () => {
+        cardSeen.add(task.id); render();
+      });
+      document.getElementById('card-done')?.addEventListener('click', () => completeTask(task.id));
     }
 
     function renderAll(app, tasks) {
@@ -686,6 +848,8 @@
           <input type="text" id="edit-title" value="${esc(task.title)}" />
           <label>Notes</label>
           <textarea id="edit-notes">${esc(task.notes || '')}</textarea>
+          <label>Kickoff note <span style="font-weight:normal;color:var(--text-dim)">(what do you need to start?)</span></label>
+          <textarea id="edit-kickoff">${esc(task.kickoff_note || '')}</textarea>
           <label>Due date</label>
           <input type="date" id="edit-due" value="${task.due_date || ''}" />
           <label>Recurrence</label>
@@ -707,6 +871,7 @@
         updateTask(task.id, {
           title: document.getElementById('edit-title').value,
           notes: document.getElementById('edit-notes').value || null,
+          kickoff_note: document.getElementById('edit-kickoff').value || null,
           due_date: document.getElementById('edit-due').value || null,
           recurrence: document.getElementById('edit-recurrence').value || null,
         });
