@@ -634,13 +634,15 @@
       render();
     }
 
-    async function activateTask(id, sessionId) {
+    async function activateTask(id, sid) {
       const task = (await idbGetAll('tasks')).find(t => t.id === id);
       if (!task) return;
       task.status = 'active';
-      task.session_id = sessionId;
+      task.session_id = sid;
       task.updated_at = new Date().toISOString();
       await idbPut('tasks', task);
+      const result = await apiFetch(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'active' }) });
+      if (!result) await queueOp('PATCH', `/api/tasks/${id}`, { status: 'active' });
       render();
     }
 
