@@ -40,10 +40,18 @@ export async function flushPendingOps(config: ApiConfig): Promise<void> {
         await idbPutTask(serverTask);
         const remaining = await idbGetPendingOps();
         for (const pending of remaining) {
+          let changed = false;
           if (typeof pending.path === 'string' && pending.path.includes(oldId)) {
             pending.path = pending.path.replace(oldId, newId);
-            await idbPutPendingOp(pending);
+            changed = true;
           }
+          if (pending.body && typeof pending.body === 'object') {
+            const body = pending.body as Record<string, unknown>;
+            if (body.from_task_id === oldId) { body.from_task_id = newId; changed = true; }
+            if (body.to_task_id === oldId) { body.to_task_id = newId; changed = true; }
+            if (body.task_id === oldId) { body.task_id = newId; changed = true; }
+          }
+          if (changed) await idbPutPendingOp(pending);
         }
       }
     }

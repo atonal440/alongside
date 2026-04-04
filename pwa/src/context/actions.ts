@@ -97,8 +97,8 @@ export async function completeTaskAction(
       return `Done! Next: <span class="next-date">${res.next.due_date}</span>`;
     }
   } else {
-    if (wasRecurring) return 'Done! Next occurrence will sync when online.';
     await idbQueueOp('POST', `/api/tasks/${id}/complete`, null);
+    if (wasRecurring) return 'Done! Next occurrence will sync when online.';
   }
   return null;
 }
