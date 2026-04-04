@@ -1,0 +1,124 @@
+import { useAppState } from '../../hooks/useAppState';
+import { completeTaskAction, activateTaskAction } from '../../context/actions';
+import { pushNav } from '../../hooks/useHistory';
+import type { Task } from '../../types';
+
+export function DetailView() {
+  const { state, dispatch } = useAppState();
+  const config = { apiBase: state.apiBase, authToken: state.authToken };
+  const today = new Date().toISOString().split('T')[0];
+
+  const taskOrUndef = state.tasks.find(t => t.id === state.detailTaskId);
+  if (!taskOrUndef) return null;
+  const task = taskOrUndef;
+
+  const taskMap = Object.fromEntries(state.tasks.map(t => [t.id, t]));
+  const projectMap = Object.fromEntries(state.projects.map(p => [p.id, p]));
+
+  const blockedBy = state.links
+    .filter(l => l.link_type === 'blocks' && l.to_task_id === task.id)
+    .map(l => taskMap[l.from_task_id])
+    .filter(Boolean) as Task[];
+
+  const blocking = state.links
+    .filter(l => l.link_type === 'blocks' && l.from_task_id === task.id)
+    .map(l => taskMap[l.to_task_id])
+    .filter(Boolean) as Task[];
+
+  const related = state.links
+    .filter(l => l.link_type === 'related' &&
+      (l.from_task_id === task.id || l.to_task_id === task.id))
+    .map(l => l.from_task_id === task.id ? taskMap[l.to_task_id] : taskMap[l.from_task_id])
+    .filter(Boolean) as Task[];
+
+  const projectName = task.project_id ? (projectMap[task.project_id]?.title ?? '') : '';
+
+  let statusLabel = '';
+  if (task.status === 'active') statusLabel = 'In progress';
+  else if (task.status === 'snoozed' && task.snoozed_until)
+    statusLabel = `Snoozed until ${task.snoozed_until.split('T')[0]}`;
+  else if (task.due_date && task.due_date < today) statusLabel = `Overdue · ${task.due_date}`;
+
+  async function handleDone() {
+    const msg = await completeTaskAction(task.id, config, dispatch);
+    if (msg) dispatch({ type: 'SET_TOAST', message: msg });
+    dispatch({ type: 'SET_DETAIL', id: null });
+  }
+
+  async function handleStart() {
+    await activateTaskAction(task.id, config, dispatch);
+    dispatch({ type: 'SET_DETAIL', id: null });
+  }
+
+  function handleEdit() {
+    dispatch({ type: 'SET_EDITING', id: task.id });
+    pushNav({ view: state.currentView, detailId: task.id, editId: task.id });
+  }
+
+  function handleDetailLink(id: string) {
+    dispatch({ type: 'SET_DETAIL', id });
+    pushNav({ view: state.currentView, detailId: id, editId: null });
+  }
+
+  const hasLinks = blockedBy.length > 0 || blocking.length > 0 || related.length > 0;
+
+  return (
+    <div className="detail-view">
+      <button className="btn-back" onClick={() => history.back()}>← Back</button>
+      <div className="detail-title">{task.title}</div>
+      {statusLabel && <div className="detail-status">{statusLabel}</div>}
+      {(task.due_date || task.recurrence) && (
+        <div className="detail-meta">
+          {task.due_date ? `Due ${task.due_date}` : ''}
+          {task.due_date && task.recurrence ? ' · ' : ''}
+          {task.recurrence ? 'Recurring' : ''}
+        </div>
+      )}
+      {projectName && <div className="detail-meta">Project: {projectName}</div>}
+      {task.notes && <div className="detail-notes">{task.notes}</div>}
+      {task.kickoff_note && <div className="card-kickoff">{task.kickoff_note}</div>}
+      {hasLinks && (
+        <div className="detail-links">
+          {blockedBy.length > 0 && (
+            <LinkGroup label="Blocked by" tasks={blockedBy} onDetailLink={handleDetailLink} />
+          )}
+          {blocking.length > 0 && (
+            <LinkGroup label="Blocking" tasks={blocking} onDetailLink={handleDetailLink} />
+          )}
+          {related.length > 0 && (
+            <LinkGroup label="Related" tasks={related} onDetailLink={handleDetailLink} />
+          )}
+        </div>
+      )}
+      <div className="card-actions">
+        {task.status === 'pending' && (
+          <>
+            <button className="btn-act" style={{ flex: 2 }} onClick={handleStart}>Start</button>
+            <button className="btn-skip" style={{ flex: 1 }} onClick={handleDone}>Mark done</button>
+          </>
+        )}
+        {task.status === 'active' && (
+          <button className="btn-act" onClick={handleDone}>Mark done</button>
+        )}
+      </div>
+      <button className="card-edit-link" onClick={handleEdit}>Edit ›</button>
+    </div>
+  );
+}
+
+function LinkGroup({ label, tasks, onDetailLink }: {
+  label: string;
+  tasks: Task[];
+  onDetailLink: (id: string) => void;
+}) {
+  return (
+    <div className="detail-link-group">
+      <div className="detail-link-label">{label}</div>
+      {tasks.map(t => (
+        <div key={t.id} className="detail-link-item" onClick={() => onDetailLink(t.id)}>
+          {t.title}
+        </div>
+      ))}
+    </div>
+  );
+}
