@@ -981,7 +981,7 @@
       setInterval(async () => {
         await flushPendingOps();
         await syncFromServer();
-        render();
+        if (!editingTask) render();
       }, 30000);
     }
 
@@ -990,7 +990,7 @@
       navigator.serviceWorker.register('/sw.js');
       navigator.serviceWorker.addEventListener('message', (e) => {
         if (e.data.type === 'sync-requested') {
-          flushPendingOps().then(syncFromServer).then(render);
+          flushPendingOps().then(syncFromServer).then(() => { if (!editingTask) render(); });
         }
       });
     }
