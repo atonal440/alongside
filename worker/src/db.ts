@@ -384,6 +384,13 @@ export class DB {
       .run();
   }
 
+  async unlinkTasks(fromTaskId: string, toTaskId: string, linkType: TaskLink['link_type']): Promise<void> {
+    await this.d1
+      .prepare('DELETE FROM task_links WHERE from_task_id = ? AND to_task_id = ? AND link_type = ?')
+      .bind(fromTaskId, toTaskId, linkType)
+      .run();
+  }
+
   async getTaskLinks(taskId: string): Promise<TaskLink[]> {
     const result = await this.d1
       .prepare(

@@ -538,6 +538,59 @@
     }
 
     .detail-link-item:hover { text-decoration: underline; }
+
+    /* ── Edit form link management ── */
+    .link-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      padding: 4px 0;
+      color: var(--text-dim);
+    }
+
+    .link-remove {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 12px;
+      padding: 2px 6px;
+    }
+
+    .link-remove:hover { color: #e57373; }
+
+    .link-add-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+      flex-wrap: wrap;
+    }
+
+    .link-add-row select {
+      flex: 1;
+      min-width: 0;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: inherit;
+    }
+
+    .link-add-row button {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .link-add-row button:hover { color: var(--text); background: var(--surface-hover); }
   </style>
 </head>
 <body>
@@ -844,6 +897,28 @@
       render();
     }
 
+    async function createLink(fromId, toId, linkType) {
+      await idbPut('links', { from_task_id: fromId, to_task_id: toId, link_type: linkType });
+      const result = await apiFetch('/api/tasks/links', {
+        method: 'POST',
+        body: JSON.stringify({ from_task_id: fromId, to_task_id: toId, link_type: linkType }),
+      });
+      if (!result) {
+        await queueOp('POST', '/api/tasks/links', { from_task_id: fromId, to_task_id: toId, link_type: linkType });
+      }
+    }
+
+    async function deleteLink(fromId, toId, linkType) {
+      await idbDelete('links', [fromId, toId, linkType]);
+      const result = await apiFetch('/api/tasks/links', {
+        method: 'DELETE',
+        body: JSON.stringify({ from_task_id: fromId, to_task_id: toId, link_type: linkType }),
+      });
+      if (!result) {
+        await queueOp('DELETE', '/api/tasks/links', { from_task_id: fromId, to_task_id: toId, link_type: linkType });
+      }
+    }
+
     // ── State ──
     let currentView = 'suggest';
     let editingTask = null;
@@ -859,7 +934,7 @@
 
       if (currentView === 'all') {
         if (editingTask) {
-          idbGetAll('tasks').then(tasks => renderEditForm(app, editingTask, tasks));
+          renderEditForm(app, editingTask);
         } else if (detailTask) {
           renderDetailView(app, detailTask);
         } else {
@@ -872,7 +947,7 @@
         app.innerHTML = '';
 
         if (editingTask) {
-          renderEditForm(app, editingTask, tasks);
+          renderEditForm(app, editingTask);
           return;
         }
         if (detailTask) {
@@ -1084,11 +1159,20 @@
     }
 
     async function renderAll(app) {
-      const [tasks, projects, links] = await Promise.all([
-        idbGetAll('tasks'),
-        idbGetAll('projects'),
-        idbGetAll('links'),
-      ]);
+      let tasks = [], projects = [], links = [];
+      try {
+        [tasks, projects, links] = await Promise.all([
+          idbGetAll('tasks'), idbGetAll('projects'), idbGetAll('links'),
+        ]);
+      } catch (e) {
+        console.warn('renderAll: IDB fetch failed, retrying without links:', e);
+        try {
+          [tasks, projects] = await Promise.all([idbGetAll('tasks'), idbGetAll('projects')]);
+        } catch (e2) {
+          app.innerHTML = '<div class="empty">Could not load tasks.</div>';
+          return;
+        }
+      }
 
       const today = new Date().toISOString().split('T')[0];
 
@@ -1254,7 +1338,30 @@
       });
     }
 
-    function renderEditForm(app, task) {
+    async function renderEditForm(app, task) {
+      let allTasks = [], allLinks = [];
+      try {
+        [allTasks, allLinks] = await Promise.all([idbGetAll('tasks'), idbGetAll('links')]);
+      } catch (e) {
+        console.warn('renderEditForm: IDB fetch failed:', e);
+        try { allTasks = await idbGetAll('tasks'); } catch (_) {}
+      }
+
+      const taskLinks = allLinks.filter(l => l.from_task_id === task.id || l.to_task_id === task.id);
+      const otherTasks = allTasks.filter(t => t.id !== task.id && t.status !== 'done');
+
+      const linkItemHTML = (l) => {
+        const otherId = l.from_task_id === task.id ? l.to_task_id : l.from_task_id;
+        const other = allTasks.find(t => t.id === otherId);
+        const desc = l.from_task_id === task.id
+          ? `Blocks: ${other ? other.title : otherId}`
+          : `Blocked by: ${other ? other.title : otherId}`;
+        return `<div class="link-item">
+          <span>${esc(desc)}</span>
+          <button class="link-remove" data-from="${l.from_task_id}" data-to="${l.to_task_id}" data-type="${l.link_type}">✕</button>
+        </div>`;
+      };
+
       app.innerHTML = `
         <div class="edit-form">
           <label>Title</label>
@@ -1272,6 +1379,22 @@
             <option value="FREQ=WEEKLY;INTERVAL=1" ${task.recurrence === 'FREQ=WEEKLY;INTERVAL=1' ? 'selected' : ''}>Weekly</option>
             <option value="FREQ=MONTHLY;INTERVAL=1" ${task.recurrence === 'FREQ=MONTHLY;INTERVAL=1' ? 'selected' : ''}>Monthly</option>
           </select>
+          <label>Relationships</label>
+          <div id="link-list">
+            ${taskLinks.length ? taskLinks.map(linkItemHTML).join('') : '<div style="font-size:12px;color:var(--text-dim);margin-bottom:6px;">None</div>'}
+          </div>
+          ${otherTasks.length > 0 ? `
+          <div class="link-add-row">
+            <select id="link-task">
+              <option value="">— add relationship —</option>
+              ${otherTasks.map(t => `<option value="${t.id}">${esc(t.title)}</option>`).join('')}
+            </select>
+            <select id="link-type">
+              <option value="blocks">Blocks it</option>
+              <option value="related">Related</option>
+            </select>
+            <button id="link-add-btn">Add</button>
+          </div>` : ''}
           <div class="edit-actions">
             <button class="btn-save" id="save-edit">Save</button>
             <button class="btn-cancel" id="cancel-edit">Cancel</button>
@@ -1279,6 +1402,21 @@
           </div>
         </div>
       `;
+
+      app.querySelectorAll('.link-remove').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          await deleteLink(btn.dataset.from, btn.dataset.to, btn.dataset.type);
+          renderEditForm(app, task);
+        });
+      });
+
+      document.getElementById('link-add-btn')?.addEventListener('click', async () => {
+        const toId = document.getElementById('link-task').value;
+        const linkType = document.getElementById('link-type').value;
+        if (!toId) return;
+        await createLink(task.id, toId, linkType);
+        renderEditForm(app, task);
+      });
 
       document.getElementById('save-edit').addEventListener('click', () => {
         updateTask(task.id, {
