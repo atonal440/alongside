@@ -62,6 +62,12 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
     return json(result);
   }
 
+  // GET /api/projects — list active projects
+  if (method === 'GET' && path === '/api/projects') {
+    const projects = await db.listProjects('active');
+    return json(projects);
+  }
+
   // GET /api/action-log — recent operations, newest first
   if (method === 'GET' && path === '/api/action-log') {
     const entries = await db.getActionLog();

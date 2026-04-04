@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-Alongside exposes 17 tools via the MCP endpoint at `/mcp` (JSON-RPC POST). All calls require a `Authorization: Bearer {AUTH_TOKEN}` header.
+Alongside exposes 18 tools via the MCP endpoint at `/mcp` (JSON-RPC POST). All calls require a `Authorization: Bearer {AUTH_TOKEN}` header.
 
 ---
 
@@ -21,6 +21,20 @@ Call this at the beginning of every work session. Seeds default preferences if t
   instructions: string              // behavioral instructions for Claude
 }
 ```
+
+---
+
+### `list_projects`
+
+List projects filtered by status.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `status` | `'active'\|'archived'` | no | Filter by status. Defaults to `"active"`. |
+
+**Returns:** `{ projects: Project[] }`
 
 ---
 

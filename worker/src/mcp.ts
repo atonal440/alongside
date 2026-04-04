@@ -96,6 +96,20 @@ const TOOLS = [
     _meta: uiMeta(TASK_DASHBOARD_URI),
   },
   {
+    name: 'list_projects',
+    description: 'Lists projects, optionally filtered by status. Defaults to active projects.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['active', 'archived'],
+          description: 'Filter by project status. Defaults to "active".',
+        },
+      },
+    },
+  },
+  {
     name: 'list_tasks',
     description: 'Lists tasks, optionally filtered by status or search query. Use this to answer questions about the user\'s tasks, find specific tasks, or get an overview. Returns pending and active tasks by default. Pass statuses: ["done"] to see completed tasks, or ["pending","active","snoozed"] to see everything open.',
     inputSchema: {
@@ -345,6 +359,12 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
         returning_after_gap: returningAfterGap,
         instructions: SESSION_INSTRUCTIONS,
       };
+    }
+
+    case 'list_projects': {
+      const status = (args.status as string) || 'active';
+      const projects = await db.listProjects(status);
+      return { projects };
     }
 
     case 'list_tasks': {
