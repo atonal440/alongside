@@ -394,6 +394,13 @@ export class DB {
     return result.results;
   }
 
+  async listAllLinks(): Promise<TaskLink[]> {
+    const result = await this.d1
+      .prepare('SELECT * FROM task_links')
+      .all<TaskLink>();
+    return result.results;
+  }
+
   // ── Preferences ───────────────────────────────────────────────────────────
 
   async getPreference(key: string): Promise<string | null> {
