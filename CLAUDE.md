@@ -5,37 +5,56 @@ A lightweight task manager built around conversational workflow with Claude. See
 ## Project structure
 
 ```
-worker/          Cloudflare Worker (D1 + MCP + REST API + iframe widget)
-  src/index.ts   Entry point, routing, CORS, auth
-  src/db.ts      All D1 operations, recurrence logic
-  src/api.ts     REST endpoints for PWA
-  src/mcp.ts     MCP protocol handler (JSON-RPC)
-  src/ui.ts      Serves the iframe widget at /ui/active
-  schema.sql     D1 schema
-pwa/             Standalone PWA (offline-first, IndexedDB)
-  index.html     Single-file app — all views, sync, service worker reg
-  sw.js          Service worker (cache shell, background sync)
-  manifest.json  PWA manifest
+shared/
+  types.ts         Shared TypeScript types (Task, Project, TaskLink, PendingOp, etc.)
+worker/            Cloudflare Worker (D1 + MCP + REST API + iframe widget)
+  src/index.ts     Entry point, routing, CORS, auth
+  src/db.ts        All D1 operations, recurrence logic
+  src/api.ts       REST endpoints for PWA
+  src/mcp.ts       MCP protocol handler (JSON-RPC)
+  src/ui.ts        Serves the iframe widget at /ui/active
+  schema.sql       D1 schema
+pwa/               React + Vite + TypeScript PWA (offline-first, IndexedDB)
+  src/
+    App.tsx        Top-level shell: header, nav, view switcher, SW registration
+    context/       AppContext (useReducer), reducer, async action creators
+    idb/           IndexedDB modules (tasks, projects, links, pendingOps)
+    api/           apiFetch client, sync (flushPendingOps, syncFromServer)
+    hooks/         useAppState, useSync, useHistory
+    components/    layout/, common/, task/, views/
+    utils/         suggestQueue, linkMaps, genId
+    sw.ts          Workbox service worker (injectManifest)
+  vite.config.ts   Vite config with vite-plugin-pwa and @shared alias
 ```
 
 ## Running locally
 
 ```sh
+# Worker
 cd worker
 npm install
 npm run db:init    # creates local D1 database from schema.sql
 npm run dev        # starts wrangler dev on :8787
+
+# PWA
+cd pwa
+npm install
+npm run dev        # Vite dev server (hot reload)
 ```
 
-The PWA needs to be served separately (e.g. `npx serve pwa/`) or via Cloudflare Pages. Set `localStorage` keys `alongside_api` (worker URL) and `alongside_token` (bearer token) to connect it to the worker.
+The PWA dev server proxies nothing — set `localStorage` keys `alongside_api` (worker URL) and `alongside_token` (bearer token) in the browser console to connect it to the worker.
 
 ## Key decisions
 
-- **nanoid v3** is used (not v4+) because v3 supports CommonJS which wrangler bundles more reliably.
+- **nanoid v3** is used in the worker (not v4+) because v3 supports CommonJS which wrangler bundles more reliably.
 - **Auth** is a single static bearer token in `wrangler.toml` vars (`AUTH_TOKEN`). The `/ui/*` routes skip auth so the iframe can be embedded.
 - **Recurrence** uses a minimal RRULE parser in `db.ts` (DAILY/WEEKLY/MONTHLY/YEARLY + INTERVAL). No BYDAY support yet.
-- **MCP endpoint** is at `/mcp` and expects JSON-RPC POST requests. The `get_active_tasks` tool returns a `ui` field with the iframe URL for MCP App rendering.
+- **MCP endpoint** is at `/mcp` and expects JSON-RPC POST requests.
 - **PWA sync** is local-first: writes go to IndexedDB immediately, then flush to the worker. Merge is last-write-wins on `updated_at`.
+- **State management** is `useReducer` + React context. No external state library. Async ops are plain async functions in `context/actions.ts` that take `dispatch` as a parameter.
+- **IDB is a module layer, not hooks** — pure async I/O functions, no React dependency. Called from action creators and the sync hook.
+- **Service worker** uses Workbox via `vite-plugin-pwa` with `injectManifest` strategy so we keep full control of the SW logic (background sync message pattern).
+- **Shared types** live in `shared/types.ts` and are imported in both worker and pwa via `@shared/*` path alias.
 
 ## Commands
 
@@ -44,7 +63,10 @@ The PWA needs to be served separately (e.g. `npx serve pwa/`) or via Cloudflare 
 | `npm run dev` | Start local worker (port 8787) |
 | `npm run db:init` | Apply schema.sql to local D1 |
 | `npm run deploy` | Deploy worker to Cloudflare |
-| `npx tsc --noEmit` | Typecheck (from worker/) |
+| `npx tsc --noEmit` | Typecheck worker (from worker/) |
+| `npm run dev` | Start PWA dev server (from pwa/) |
+| `npm run build` | Production build (from pwa/) |
+| `npm run typecheck` | Typecheck PWA (from pwa/) |
 
 ## Testing
 
@@ -66,3 +88,8 @@ curl -X POST http://localhost:8787/mcp \
 # Widget
 open http://localhost:8787/ui/active
 ```
+
+## Cloudflare Pages deployment
+
+Build command: `npm run build` (run from `pwa/`)
+Output directory: `pwa/dist`
