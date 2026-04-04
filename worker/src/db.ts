@@ -408,6 +408,7 @@ export class DB {
       .run();
   }
 
+
   // ── Preferences ───────────────────────────────────────────────────────────
 
   async getPreference(key: string): Promise<string | null> {

@@ -376,6 +376,86 @@
       text-align: center;
       padding: 10px 0 4px;
     }
+
+    /* ── Compact card (All view) ── */
+    .compact-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-bottom: 6px;
+    }
+
+    .compact-card:hover { background: var(--surface-hover); }
+
+    .compact-card .cc-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+
+    .compact-card .cc-title {
+      font-size: 15px;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+
+    .compact-card .cc-meta {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 3px;
+    }
+
+    .compact-card.done .cc-title { text-decoration: line-through; color: var(--done); }
+
+    /* ── Task stacking (for blocking relationships) ── */
+    .task-stack { margin-bottom: 12px; }
+
+    .task-stack .compact-card { position: relative; z-index: 3; margin-bottom: 0; }
+
+    .task-stack .compact-card.blocked-1 {
+      margin-top: -6px;
+      margin-left: 8px;
+      margin-right: 8px;
+      z-index: 2;
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .task-stack .compact-card.blocked-2 {
+      margin-top: -6px;
+      margin-left: 16px;
+      margin-right: 16px;
+      z-index: 1;
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    /* ── Project sections (All view) ── */
+    .project-section { margin-bottom: 28px; }
+
+    .project-section h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      margin-bottom: 10px;
+    }
+
+    .done-toggle {
+      font-size: 12px;
+      color: var(--text-dim);
+      cursor: pointer;
+      margin-top: 8px;
+      display: inline-block;
+      user-select: none;
+    }
+
+    .done-toggle:hover { color: var(--text); }
   </style>
 </head>
 <body>
@@ -404,7 +484,7 @@
 
     // ── IndexedDB ──
     const IDB_NAME = 'alongside';
-    const IDB_VERSION = 1;
+    const IDB_VERSION = 2;
 
     function openDB() {
       return new Promise((resolve, reject) => {
@@ -418,6 +498,12 @@
           }
           if (!db.objectStoreNames.contains('pending_ops')) {
             db.createObjectStore('pending_ops', { keyPath: 'id', autoIncrement: true });
+          }
+          if (!db.objectStoreNames.contains('projects')) {
+            db.createObjectStore('projects', { keyPath: 'id' });
+          }
+          if (!db.objectStoreNames.contains('links')) {
+            db.createObjectStore('links', { keyPath: ['from_task_id', 'to_task_id', 'link_type'] });
           }
         };
         req.onsuccess = () => resolve(req.result);
@@ -519,6 +605,20 @@
       // Write all server tasks to local (server wins)
       for (const rt of remote) {
         await idbPut('tasks', rt);
+      }
+
+      // Sync projects and links in parallel
+      const [projects, links] = await Promise.all([
+        apiFetch('/api/projects'),
+        apiFetch('/api/tasks/links'),
+      ]);
+      if (projects) {
+        await idbClear('projects');
+        for (const p of projects) await idbPut('projects', p);
+      }
+      if (links) {
+        await idbClear('links');
+        for (const l of links) await idbPut('links', l);
       }
 
       updateSyncStatus(true);
@@ -667,11 +767,23 @@
     let editingTask = null;
     let sessionId = localStorage.getItem('alongside_session') || null;
     const cardSeen = new Set(); // tasks skipped this session in Suggest view
+    let showDone = false; // toggle for done tasks in All view
 
     // ── Rendering ──
     function render() {
+      const app = document.getElementById('app');
+      app.innerHTML = '';
+
+      if (currentView === 'all') {
+        if (editingTask) {
+          idbGetAll('tasks').then(tasks => renderEditForm(app, editingTask, tasks));
+        } else {
+          renderAll(app);
+        }
+        return;
+      }
+
       idbGetAll('tasks').then(tasks => {
-        const app = document.getElementById('app');
         app.innerHTML = '';
 
         if (editingTask) {
@@ -681,7 +793,6 @@
 
         switch (currentView) {
           case 'suggest': renderSuggest(app, tasks); break;
-          case 'all': renderAll(app, tasks); break;
           case 'session': renderSession(app, tasks); break;
         }
       });
@@ -790,28 +901,165 @@
       document.getElementById('card-done')?.addEventListener('click', () => completeTask(task.id));
     }
 
-    function renderAll(app, tasks) {
-      const groups = { active: [], pending: [], snoozed: [], done: [] };
-      for (const t of tasks) {
-        if (groups[t.status]) groups[t.status].push(t);
+    function compactCardHTML(task, today, cssClass = '') {
+      const meta = [];
+      if (task.due_date) {
+        if (task.due_date < today) meta.push(`Overdue · ${task.due_date}`);
+        else if (task.due_date === today) meta.push('Due today');
+        else meta.push(task.due_date);
       }
+      if (task.recurrence) meta.push('Recurring');
+      if (task.notes) meta.push(task.notes.substring(0, 40));
+      const done = task.status === 'done';
+      const label = task.status === 'active' ? 'In progress' : '';
+      return `
+        <div class="compact-card ${done ? 'done' : ''} ${cssClass}" data-edit="${task.id}">
+          ${label ? `<div class="cc-label">${esc(label)}</div>` : ''}
+          <div class="cc-title">${esc(task.title)}</div>
+          ${meta.length ? `<div class="cc-meta">${esc(meta.join(' · '))}</div>` : ''}
+        </div>`;
+    }
+
+    function renderSectionTasks(sectionTasks, today, taskMap, blocksMap, blockedByMap) {
+      const nonDone = sectionTasks.filter(t => t.status !== 'done');
+      const done = sectionTasks.filter(t => t.status === 'done');
+      const sectionIds = new Set(nonDone.map(t => t.id));
+
+      // Tasks that are blocked by something else in this section (non-done)
+      const blockedInSection = new Set(
+        nonDone
+          .filter(t => {
+            const blockers = blockedByMap[t.id];
+            return blockers && [...blockers].some(bid => sectionIds.has(bid));
+          })
+          .map(t => t.id)
+      );
+
+      // Roots: non-done tasks NOT blocked by anything in this section
+      const roots = nonDone.filter(t => !blockedInSection.has(t.id));
+
+      // Track which tasks have been rendered (to avoid duplicates)
+      const rendered = new Set();
+
+      const parts = roots.map(root => {
+        if (rendered.has(root.id)) return '';
+        rendered.add(root.id);
+
+        // Find tasks immediately blocked by this root (within section, non-done)
+        const immediateBlocked = (blocksMap[root.id]
+          ? [...blocksMap[root.id]].filter(id => sectionIds.has(id)).map(id => taskMap[id]).filter(Boolean)
+          : []);
+
+        // Find second-level blocked (blocked by immediateBlocked)
+        const level2Blocked = immediateBlocked.flatMap(t =>
+          blocksMap[t.id]
+            ? [...blocksMap[t.id]].filter(id => sectionIds.has(id) && !rendered.has(id)).map(id => taskMap[id]).filter(Boolean)
+            : []
+        );
+
+        immediateBlocked.forEach(t => rendered.add(t.id));
+        level2Blocked.forEach(t => rendered.add(t.id));
+
+        if (immediateBlocked.length === 0) {
+          return compactCardHTML(root, today);
+        }
+
+        const stackCards = [
+          compactCardHTML(root, today),
+          ...immediateBlocked.slice(0, 1).map(t => compactCardHTML(t, today, 'blocked-1')),
+          ...level2Blocked.slice(0, 1).map(t => compactCardHTML(t, today, 'blocked-2')),
+        ];
+        return `<div class="task-stack">${stackCards.join('')}</div>`;
+      });
+
+      // Any non-done tasks not yet rendered (e.g. cross-section blocks)
+      nonDone.filter(t => !rendered.has(t.id)).forEach(t => {
+        parts.push(compactCardHTML(t, today));
+      });
+
+      // Done tasks
+      let doneHtml = '';
+      if (done.length > 0) {
+        if (showDone) {
+          doneHtml = done.map(t => compactCardHTML(t, today)).join('') +
+            `<span class="done-toggle" data-hide-done="1">Hide done</span>`;
+        } else {
+          doneHtml = `<span class="done-toggle" data-show-done="1">${done.length} done</span>`;
+        }
+      }
+
+      return parts.join('') + doneHtml;
+    }
+
+    async function renderAll(app) {
+      const [tasks, projects, links] = await Promise.all([
+        idbGetAll('tasks'),
+        idbGetAll('projects'),
+        idbGetAll('links'),
+      ]);
+
+      const today = new Date().toISOString().split('T')[0];
+
+      // Build lookup maps
+      const taskMap = Object.fromEntries(tasks.map(t => [t.id, t]));
+
+      // Only 'blocks' links matter for stacking
+      const blocksMap = {}; // from_task_id → Set of to_task_ids
+      const blockedByMap = {}; // to_task_id → Set of from_task_ids
+      for (const link of links) {
+        if (link.link_type !== 'blocks') continue;
+        if (!blocksMap[link.from_task_id]) blocksMap[link.from_task_id] = new Set();
+        blocksMap[link.from_task_id].add(link.to_task_id);
+        if (!blockedByMap[link.to_task_id]) blockedByMap[link.to_task_id] = new Set();
+        blockedByMap[link.to_task_id].add(link.from_task_id);
+      }
+
+      // Group tasks by project_id
+      const byProject = {}; // project_id (or '__none__') → Task[]
+      for (const t of tasks) {
+        const key = t.project_id || '__none__';
+        if (!byProject[key]) byProject[key] = [];
+        byProject[key].push(t);
+      }
+
+      // Build sections: named projects first (in creation order), then "No project"
+      const sections = [];
+      for (const project of projects) {
+        if (byProject[project.id]?.length) {
+          sections.push({ title: project.title, tasks: byProject[project.id] });
+        }
+      }
+      if (byProject['__none__']?.length) {
+        sections.push({ title: 'No project', tasks: byProject['__none__'] });
+      }
+
+      const sectionsHtml = sections.map(({ title, tasks: st }) => {
+        const nonDoneCount = st.filter(t => t.status !== 'done').length;
+        const label = nonDoneCount > 0 ? `${title} (${nonDoneCount})` : title;
+        return `
+          <div class="project-section">
+            <h2>${esc(label)}</h2>
+            ${renderSectionTasks(st, today, taskMap, blocksMap, blockedByMap)}
+          </div>`;
+      }).join('');
 
       app.innerHTML = `
         <div class="add-bar">
           <input type="text" id="new-task" placeholder="Add a task..." />
           <button id="add-btn">Add</button>
         </div>
-        ${Object.entries(groups)
-          .filter(([, list]) => list.length > 0)
-          .map(([status, list]) => `
-            <div class="task-group">
-              <h2>${status} (${list.length})</h2>
-              ${list.map(t => taskHTML(t)).join('')}
-            </div>
-          `).join('')}
+        ${sections.length === 0 ? '<div class="empty">No tasks yet. Add one above.</div>' : sectionsHtml}
       `;
 
       setupAddBar();
+
+      // Done toggle handlers
+      app.querySelectorAll('[data-show-done]').forEach(el => {
+        el.addEventListener('click', () => { showDone = true; renderAll(app); });
+      });
+      app.querySelectorAll('[data-hide-done]').forEach(el => {
+        el.addEventListener('click', () => { showDone = false; renderAll(app); });
+      });
     }
 
     function renderSession(app, tasks) {
