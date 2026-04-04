@@ -112,26 +112,24 @@ function ProjectSection({
     if (rendered.has(root.id)) return null;
     rendered.add(root.id);
 
-    const immediateBlocked = blocksMap[root.id]
+    const firstBlocked = blocksMap[root.id]
       ? [...blocksMap[root.id]]
-          .filter(id => sectionIds.has(id))
+          .filter(id => sectionIds.has(id) && !rendered.has(id))
           .map(id => taskMap[id])
-          .filter(Boolean)
-      : [];
+          .filter((t): t is Task => Boolean(t))[0]
+      : undefined;
 
-    const level2Blocked = immediateBlocked.flatMap(t =>
-      blocksMap[t.id]
-        ? [...blocksMap[t.id]]
-            .filter(id => sectionIds.has(id) && !rendered.has(id))
-            .map(id => taskMap[id])
-            .filter(Boolean)
-        : [],
-    );
+    const secondBlocked = firstBlocked && blocksMap[firstBlocked.id]
+      ? [...blocksMap[firstBlocked.id]]
+          .filter(id => sectionIds.has(id) && !rendered.has(id))
+          .map(id => taskMap[id])
+          .filter((t): t is Task => Boolean(t))[0]
+      : undefined;
 
-    immediateBlocked.forEach(t => rendered.add(t.id));
-    level2Blocked.forEach(t => rendered.add(t.id));
+    if (firstBlocked) rendered.add(firstBlocked.id);
+    if (secondBlocked) rendered.add(secondBlocked.id);
 
-    if (immediateBlocked.length === 0) {
+    if (!firstBlocked) {
       return (
         <CompactCard
           key={root.id}
@@ -147,7 +145,7 @@ function ProjectSection({
       <TaskStack
         key={root.id}
         root={root}
-        blocked={[...immediateBlocked.slice(0, 1), ...level2Blocked.slice(0, 1)]}
+        blocked={[firstBlocked, secondBlocked].filter((t): t is Task => Boolean(t))}
         today={today}
         onComplete={onComplete}
         onDetail={onDetail}
