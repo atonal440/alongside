@@ -3,15 +3,15 @@
   "configurations": [
     {
       "name": "worker",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "/opt/homebrew/bin/node",
+      "runtimeArgs": ["node_modules/.bin/wrangler", "dev"],
       "port": 8787,
       "cwd": "worker"
     },
     {
       "name": "pwa",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["serve", "pwa"],
+      "runtimeExecutable": "/opt/homebrew/bin/node",
+      "runtimeArgs": ["/tmp/serve-tool/node_modules/.bin/serve", "pwa"],
       "port": 3000
     }
   ]
