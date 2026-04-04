@@ -1,4 +1,4 @@
-import { DB, Task } from './db';
+import { DB, TaskLink } from './db';
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -21,6 +21,30 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   if (method === 'GET' && path === '/api/tasks/sync') {
     const tasks = await db.listTasks(['pending', 'active', 'snoozed', 'done']);
     return json(tasks);
+  }
+
+  // GET /api/tasks/links — must come before the /:id wildcard match
+  if (method === 'GET' && path === '/api/tasks/links') {
+    const links = await db.listAllLinks();
+    return json(links);
+  }
+
+  // POST /api/tasks/links — create a link
+  if (method === 'POST' && path === '/api/tasks/links') {
+    const body = await request.json<{ from_task_id: string; to_task_id: string; link_type: string }>();
+    if (!body.from_task_id || !body.to_task_id || !body.link_type)
+      return json({ error: 'from_task_id, to_task_id, link_type are required' }, 400);
+    await db.linkTasks(body.from_task_id, body.to_task_id, body.link_type as TaskLink['link_type']);
+    return json({ ok: true }, 201);
+  }
+
+  // DELETE /api/tasks/links — remove a link
+  if (method === 'DELETE' && path === '/api/tasks/links') {
+    const body = await request.json<{ from_task_id: string; to_task_id: string; link_type: string }>();
+    if (!body.from_task_id || !body.to_task_id || !body.link_type)
+      return json({ error: 'from_task_id, to_task_id, link_type are required' }, 400);
+    await db.unlinkTasks(body.from_task_id, body.to_task_id, body.link_type as TaskLink['link_type']);
+    return json({ ok: true });
   }
 
   // GET /api/tasks/:id — get one task
