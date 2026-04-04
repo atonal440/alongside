@@ -1,4 +1,4 @@
-import { DB } from './db';
+import { DB, Task } from './db';
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -41,7 +41,7 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
 
   // PATCH /api/tasks/:id — update task
   if (method === 'PATCH' && singleMatch) {
-    const body = await request.json<{ title?: string; notes?: string; due_date?: string; recurrence?: string; kickoff_note?: string }>();
+    const body = await request.json<{ title?: string; notes?: string; due_date?: string; recurrence?: string; kickoff_note?: string; status?: 'pending' | 'active' | 'snoozed'; snoozed_until?: string }>();
     const task = await db.updateTask(singleMatch[1], body);
     if (!task) return json({ error: 'Not found' }, 404);
     return json(task);
