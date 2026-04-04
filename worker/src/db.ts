@@ -253,7 +253,10 @@ export class DB {
     if (updates.project_id !== undefined) { fields.push('project_id = ?'); values.push(updates.project_id); }
     if (updates.kickoff_note !== undefined) { fields.push('kickoff_note = ?'); values.push(updates.kickoff_note); }
     if (updates.session_log !== undefined) { fields.push('session_log = ?'); values.push(updates.session_log); }
-    if (updates.status !== undefined) { fields.push('status = ?'); values.push(updates.status); }
+    if (updates.status !== undefined) {
+      if (updates.status === 'done') throw new Error('Use completeTask() to mark a task done');
+      fields.push('status = ?'); values.push(updates.status);
+    }
     if (updates.snoozed_until !== undefined) { fields.push('snoozed_until = ?'); values.push(updates.snoozed_until); }
 
     if (fields.length === 0) return this.getTask(id);

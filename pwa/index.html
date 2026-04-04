@@ -530,12 +530,28 @@
         const result = await apiFetch(op.path, { method: op.method, body: op.body ? JSON.stringify(op.body) : undefined });
         if (result !== null) {
           await idbDelete('pending_ops', op.id);
+
+          // If an offline-created task just synced, rewrite any queued ops
+          // that still reference the old local temp ID with the server ID
+          if (op.method === 'POST' && op.path === '/api/tasks' && op.local_id && result.id) {
+            const oldId = op.local_id;
+            const newId = result.id;
+            await idbDelete('tasks', oldId);
+            await idbPut('tasks', result);
+            const remaining = await idbGetAll('pending_ops');
+            for (const pending of remaining) {
+              if (pending.path.includes(oldId)) {
+                pending.path = pending.path.replace(oldId, newId);
+                await idbPut('pending_ops', pending);
+              }
+            }
+          }
         }
       }
     }
 
-    async function queueOp(method, path, body) {
-      await idbPut('pending_ops', { method, path, body, created_at: new Date().toISOString() });
+    async function queueOp(method, path, body, localId) {
+      await idbPut('pending_ops', { method, path, body, local_id: localId || null, created_at: new Date().toISOString() });
     }
 
     function updateSyncStatus(online) {
@@ -579,7 +595,7 @@
         await idbDelete('tasks', task.id);
         await idbPut('tasks', result);
       } else {
-        await queueOp('POST', '/api/tasks', { title, ...opts });
+        await queueOp('POST', '/api/tasks', { title, ...opts }, task.id);
       }
       render();
     }
