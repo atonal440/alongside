@@ -797,48 +797,33 @@
     }
 
     function renderSession(app, tasks) {
-      if (!sessionId) {
-        // Session start: pick tasks to activate
-        const available = tasks.filter(t => t.status === 'pending');
-        app.innerHTML = `
-          <div style="margin-bottom: 16px;">
-            <h2 style="font-size: 15px; margin-bottom: 8px;">Start a session</h2>
-            <p style="font-size: 13px; color: var(--text-dim); margin-bottom: 16px;">Pick 1-3 tasks to focus on.</p>
-          </div>
-          ${available.length
-            ? available.map(t => taskHTML(t, { selectable: true })).join('')
-            : '<div class="empty">No pending tasks to activate.</div>'
-          }
-          ${available.length ? '<button class="session-btn" id="start-session" style="margin-top: 12px;">Start Session</button>' : ''}
-        `;
+      const active = tasks.filter(t => t.status === 'active');
 
-        document.getElementById('start-session')?.addEventListener('click', () => {
-          const checked = [...document.querySelectorAll('.task-select:checked')].map(el => el.dataset.id);
-          if (checked.length === 0) return;
-          sessionId = `s_${Date.now()}`;
-          localStorage.setItem('alongside_session', sessionId);
-          checked.forEach(id => activateTask(id, sessionId));
-        });
-      } else {
-        // Active session
-        const active = tasks.filter(t => t.status === 'active' && t.session_id === sessionId);
-        app.innerHTML = `
-          <div class="session-bar">
-            <span>Session active</span>
-            <button class="session-btn" id="end-session" style="font-size: 12px; padding: 4px 12px; background: transparent; border: 1px solid var(--border); color: var(--text-dim);">End</button>
-          </div>
-          ${active.length
-            ? active.map(t => taskHTML(t)).join('')
-            : '<div class="empty">All session tasks completed!</div>'
-          }
-        `;
-
-        document.getElementById('end-session')?.addEventListener('click', () => {
-          sessionId = null;
-          localStorage.removeItem('alongside_session');
-          render();
-        });
+      if (active.length === 0) {
+        app.innerHTML = '<div class="empty">Nothing in progress. Start a task from Suggest.</div>';
+        return;
       }
+
+      app.innerHTML = active.map(t => {
+        const meta = [];
+        const today = new Date().toISOString().split('T')[0];
+        if (t.due_date && t.due_date < today) meta.push(`Overdue · ${t.due_date}`);
+        else if (t.due_date === today) meta.push('Due today');
+        else if (t.due_date) meta.push(`Due ${t.due_date}`);
+        if (t.recurrence) meta.push('Recurring');
+
+        return `
+          <div class="task-card" style="margin-bottom:12px;">
+            ${meta.length ? `<div class="card-label">${esc(meta.join(' · '))}</div>` : ''}
+            <div class="card-title">${esc(t.title)}</div>
+            ${t.notes ? `<div class="card-notes">${esc(t.notes)}</div>` : ''}
+            ${t.kickoff_note ? `<div class="card-kickoff">${esc(t.kickoff_note)}</div>` : ''}
+            <div class="card-actions">
+              <a class="card-edit-link" href="#" data-edit="${t.id}" style="margin-top:0;align-self:center;">Edit ›</a>
+              <button class="btn-act" style="flex:1;" data-complete="${t.id}">Mark done</button>
+            </div>
+          </div>`;
+      }).join('');
     }
 
     function renderEditForm(app, task) {
