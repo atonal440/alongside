@@ -423,40 +423,25 @@ nav button.active {
 
 /* ── Task stacking (for blocking relationships) ── */
 .task-stack {
-  position: relative;
-  margin-bottom: 28px;
-  padding-bottom: 20px;
+  margin-bottom: 6px;
 }
 
 .task-stack > .compact-card:first-child {
-  position: relative;
-  z-index: 3;
-  margin-bottom: 0;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  margin-bottom: 2px;
 }
 
 .task-stack .compact-card.blocked-1 {
-  position: absolute;
-  bottom: 8px;
-  left: 8px;
-  right: 8px;
-  height: 44px;
-  overflow: hidden;
-  z-index: 2;
-  opacity: 0.5;
-  pointer-events: none;
+  margin-left: 20px;
+  margin-bottom: 2px;
+  opacity: 0.85;
+  border-left: 2px solid var(--accent);
 }
 
 .task-stack .compact-card.blocked-2 {
-  position: absolute;
-  bottom: 0;
-  left: 16px;
-  right: 16px;
-  height: 44px;
-  overflow: hidden;
-  z-index: 1;
-  opacity: 0.3;
-  pointer-events: none;
+  margin-left: 40px;
+  margin-bottom: 2px;
+  opacity: 0.7;
+  border-left: 2px solid var(--accent);
 }
 
 /* ── Project sections (All view) ── */
