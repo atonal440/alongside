@@ -1,5 +1,6 @@
 .claude/launch.json
 node_modules/
+pwa/.vite/
 .wrangler/
 dist/
 .dev.vars
