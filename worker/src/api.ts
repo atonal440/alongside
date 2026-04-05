@@ -1,4 +1,5 @@
-import { DB, TaskLink } from './db';
+import { DB } from './db';
+import type { TaskLink } from '@shared/types';
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {

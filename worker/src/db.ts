@@ -1,7 +1,6 @@
 import { nanoid } from 'nanoid';
 import type { Task, Project, TaskLink, TaskCreate, TaskUpdate, ProjectCreate, ProjectUpdate } from '@shared/types';
 
-export type { Task, Project, TaskLink, TaskCreate, TaskUpdate, ProjectCreate, ProjectUpdate };
 
 export interface ActionLogEntry {
   id: number;

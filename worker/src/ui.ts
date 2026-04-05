@@ -1,4 +1,5 @@
-import { DB, Task } from './db';
+import { DB } from './db';
+import type { Task } from '@shared/types';
 
 function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
   const taskRows = tasks.map(t => `
