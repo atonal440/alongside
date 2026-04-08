@@ -421,28 +421,52 @@ nav button.active {
 
 .compact-card.done .cc-title { text-decoration: line-through; color: var(--done); }
 
-/* ── Task stacking (for blocking relationships) ── */
-.task-stack {
+/* ── Task stack (unified card with inline accordion) ── */
+.stack-card {
+  background: var(--surface);
+  border-radius: var(--radius);
   margin-bottom: 6px;
+  overflow: hidden;
 }
 
-.task-stack > .compact-card:first-child {
-  margin-bottom: 2px;
+.stack-root {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
 }
 
-.task-stack .compact-card.blocked-1 {
-  margin-left: 20px;
-  margin-bottom: 2px;
-  opacity: 0.85;
-  border-left: 2px solid var(--accent);
-}
+.stack-root-body { flex: 1; min-width: 0; cursor: pointer; }
+.stack-root-body:hover .stack-root-title { color: var(--accent); }
+.stack-root-title { font-size: 15px; line-height: 1.4; }
 
-.task-stack .compact-card.blocked-2 {
-  margin-left: 40px;
-  margin-bottom: 2px;
-  opacity: 0.7;
-  border-left: 2px solid var(--accent);
+.stack-linked { border-top: 1px solid var(--border); }
+
+.stack-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px 7px 40px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text);
 }
+.stack-link-row:hover { background: var(--surface-hover); }
+.stack-link-arrow { color: var(--text-dim); font-size: 16px; }
+
+.stack-footer {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border);
+  padding: 6px 12px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.stack-footer:hover { color: var(--text); }
 
 /* ── Project sections (All view) ── */
 .project-section { margin-bottom: 28px; }
