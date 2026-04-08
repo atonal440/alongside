@@ -13,6 +13,13 @@
       "runtimeExecutable": "/opt/homebrew/bin/node",
       "runtimeArgs": ["/tmp/serve-tool/node_modules/.bin/serve", "pwa"],
       "port": 3000
+    },
+    {
+      "name": "pwa-dev",
+      "runtimeExecutable": "/opt/homebrew/bin/node",
+      "runtimeArgs": ["node_modules/.bin/vite", "--port", "5173"],
+      "port": 5173,
+      "cwd": "pwa"
     }
   ]
 }

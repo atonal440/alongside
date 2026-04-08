@@ -1,7 +1,13 @@
+import { marked } from 'marked';
 import { useAppState } from '../../hooks/useAppState';
 import { completeTaskAction, activateTaskAction } from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
 import type { Task } from '../../types';
+
+function Markdown({ src }: { src: string }) {
+  const html = marked(src, { breaks: true }) as string;
+  return <div className="detail-markdown" dangerouslySetInnerHTML={{ __html: html }} />;
+}
 
 export function DetailView() {
   const { state, dispatch } = useAppState();
@@ -61,10 +67,12 @@ export function DetailView() {
   }
 
   const hasLinks = blockedBy.length > 0 || blocking.length > 0 || related.length > 0;
+  const hasActions = task.status === 'pending' || task.status === 'active';
 
   return (
     <div className="detail-view">
       <button className="btn-back" onClick={() => history.back()}>← Back</button>
+
       <div className="detail-title">{task.title}</div>
       {statusLabel && <div className="detail-status">{statusLabel}</div>}
       {(task.due_date || task.recurrence) && (
@@ -75,8 +83,35 @@ export function DetailView() {
         </div>
       )}
       {projectName && <div className="detail-meta">Project: {projectName}</div>}
-      {task.notes && <div className="detail-notes">{task.notes}</div>}
-      {task.kickoff_note && <div className="card-kickoff">{task.kickoff_note}</div>}
+
+      {hasActions && (
+        <div className="card-actions">
+          {task.status === 'pending' && (
+            <>
+              <button className="btn-act" style={{ flex: 2 }} onClick={handleStart}>Start</button>
+              <button className="btn-skip" style={{ flex: 1 }} onClick={handleDone}>Mark done</button>
+            </>
+          )}
+          {task.status === 'active' && (
+            <button className="btn-act" onClick={handleDone}>Mark done</button>
+          )}
+        </div>
+      )}
+
+      {task.kickoff_note && (
+        <div className="detail-section">
+          <div className="detail-section-label">Kickoff note</div>
+          <Markdown src={task.kickoff_note} />
+        </div>
+      )}
+
+      {task.notes && (
+        <div className="detail-section">
+          <div className="detail-section-label">Notes</div>
+          <Markdown src={task.notes} />
+        </div>
+      )}
+
       {hasLinks && (
         <div className="detail-links">
           {blockedBy.length > 0 && (
@@ -90,17 +125,7 @@ export function DetailView() {
           )}
         </div>
       )}
-      <div className="card-actions">
-        {task.status === 'pending' && (
-          <>
-            <button className="btn-act" style={{ flex: 2 }} onClick={handleStart}>Start</button>
-            <button className="btn-skip" style={{ flex: 1 }} onClick={handleDone}>Mark done</button>
-          </>
-        )}
-        {task.status === 'active' && (
-          <button className="btn-act" onClick={handleDone}>Mark done</button>
-        )}
-      </div>
+
       <button className="card-edit-link" onClick={handleEdit}>Edit ›</button>
     </div>
   );
