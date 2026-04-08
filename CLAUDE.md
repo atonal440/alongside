@@ -93,3 +93,19 @@ open http://localhost:8787/ui/active
 
 Build command: `npm run build` (run from `pwa/`)
 Output directory: `pwa/dist`
+
+## Documentation
+
+Per-file documentation lives in `docs/`. The structure mirrors the source tree:
+
+```
+docs/
+  overview.md          High-level architecture and data flow
+  shared/              → shared/
+  worker/              → worker/src/
+  pwa/                 → pwa/src/ (context/, idb/, api/, hooks/, utils/, components/)
+```
+
+Every TypeScript source file has a corresponding `.md` in `docs/`. Each doc contains a short paragraph on what the file is for and a one-sentence description of every exported function, class, hook, or component.
+
+**Agents: when you add, remove, or significantly change a function in any `.ts` or `.tsx` file, update the corresponding doc in `docs/` to match.** If you add a new source file, create its doc file at the mirrored path. The doc for `worker/src/foo.ts` lives at `docs/worker/foo.md`; for `pwa/src/bar/baz.tsx` it lives at `docs/pwa/bar/baz.md`. Keep `docs/overview.md` up to date if the directory structure changes.
