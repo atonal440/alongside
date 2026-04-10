@@ -114,9 +114,7 @@ function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
     // Poll for updates every 10s
     setInterval(async () => {
       try {
-        const params = new URLSearchParams(location.search);
-        const session = params.get('session') || '';
-        const url = BASE + '/ui/tasks?' + sigParams() + (session ? '&session=' + session : '');
+        const url = BASE + '/ui/tasks?' + sigParams();
         const res = await fetch(url);
         if (res.ok) {
           const tasks = await res.json();

@@ -166,13 +166,14 @@ const TOOLS = [
   },
   {
     name: 'update_task',
-    description: 'Updates fields on an existing task. Only included fields change.',
+    description: 'Updates fields on an existing task. Only included fields change. Set status to "active" to start working on a task.',
     inputSchema: {
       type: 'object',
       properties: {
         task_id: { type: 'string' },
         title: { type: 'string' },
         notes: { type: 'string', description: 'Replaces existing notes.' },
+        status: { type: 'string', enum: ['pending', 'active', 'snoozed'], description: 'Set to "active" to start a task. Use complete_task for "done".' },
         due_date: { type: 'string', description: 'ISO 8601 date.' },
         recurrence: { type: 'string', description: 'iCal RRULE.' },
         task_type: { type: 'string', enum: ['action', 'plan'] },

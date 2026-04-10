@@ -84,7 +84,7 @@ export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
   }
 
   const [projectsRaw, linksRaw] = await Promise.all([
-    apiFetch('/api/projects', {}, config),
+    apiFetch('/api/projects/sync', {}, config),
     apiFetch('/api/tasks/links', {}, config),
   ]);
 

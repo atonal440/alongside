@@ -25,7 +25,7 @@ Model Context Protocol (MCP) handler. Exposes Alongside task data and operations
 | `add_task` | Creates a task in pending status |
 | `complete_task` | Marks a task done, handles recurrence |
 | `snooze_task` | Hides a task until a given date |
-| `update_task` | Updates fields on a task |
+| `update_task` | Updates fields on a task (including `status`: pending, active, snoozed — set status to "active" to start working on a task) |
 | `reopen_task` | Moves a task back to pending |
 | `delete_task` | Permanently deletes a task |
 | `create_project` | Creates a project, optionally assigns tasks |
