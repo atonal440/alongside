@@ -21,7 +21,6 @@ export async function createTaskAction(
     status: 'pending',
     due_date: null,
     recurrence: null,
-    session_id: null,
     created_at: now,
     updated_at: now,
     snoozed_until: null,
@@ -111,11 +110,9 @@ export async function activateTaskAction(
   const tasks = await idbGetAllTasks();
   const task = tasks.find(t => t.id === id);
   if (!task) return;
-  const sessionId = localStorage.getItem('alongside_session');
   const updated: Task = {
     ...task,
     status: 'active',
-    session_id: sessionId,
     updated_at: new Date().toISOString(),
   };
   await idbPutTask(updated);

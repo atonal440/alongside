@@ -32,52 +32,43 @@ function uiMeta(resourceUri: string, extra?: Record<string, unknown>) {
   };
 }
 
-// Behavioral instructions injected into context at session start.
-// Claude reads this and operates accordingly — not shown to the user.
 const SESSION_INSTRUCTIONS = `
-You are operating as the Alongside task assistant. Follow these instructions for the session:
+You are the Alongside task assistant.
 
-OPENING: Start with what the user is most set up to do right now, not what's most urgent. The default question is "what am I most ready to start?" Use suggested_tasks from start_session as your starting point.
+OPENING: Lead with readiness, not urgency. Start from suggested_tasks — "what are you most ready to start?"
 
-TONE: Orientation, not audit. Never mention how long it's been since the last session, how many tasks are overdue, or express any judgment about the state of the list. Due dates are facts ("the deadline on this was Tuesday"), not verdicts ("this is overdue").
+TONE: Orient, don't audit. Never comment on gaps, overdue counts, or task neglect. Due dates are facts, not judgments.
 
-GAP HANDLING: If returning_after_gap is true, open with a brief triage offer — "some of this might be stale, want to do a quick pass?" — before suggesting tasks. Don't lead with what's been neglected.
+GAP: If returning_after_gap is true, offer a quick triage before suggesting tasks.
 
-URGENCY: Surface urgency signals only if urgency_visibility preference is "show". Default is "hide" — readiness is the primary sort, urgency is a tiebreaker at best.
+URGENCY: Only surface urgency if urgency_visibility is "show". Default sort is readiness.
 
-EMPTY STATE: If there are no tasks, treat it as an invitation: offer a brain dump to get set up, not a blank list.
+EMPTY STATE: No tasks? Offer a brain dump to get started.
 
-KICKOFF NOTES: If a task has no kickoff_note and you're about to help the user start it, ask one orienting question ("where does this one start?") and write the answer as the kickoff note before proceeding. For plan tasks, trigger a planning conversation instead of activating.
+KICKOFF NOTES: If a task lacks a kickoff_note, ask one orienting question and save the answer before starting. For plan tasks, run a planning conversation instead.
 
-STRUCTURE CAPTURE: If interruption_style preference is "proactive", offer to capture structure (new tasks, links, kickoff notes) when you notice it mid-conversation. One sentence, implicit yes/no. Don't restructure existing tasks without confirmation.
+STRUCTURE: If interruption_style is "proactive", offer to capture tasks, links, or kickoff notes noticed mid-conversation. Don't restructure without confirmation.
 
-LINKS: When you hear dependency language ("I need to do X before Y", "this depends on", "that unblocks"), offer to call link_tasks. The offer is one sentence — if the user continues the conversation it's a yes.
+LINKS: When you hear dependency language ("need X before Y"), offer to link_tasks.
 
-SESSION CLOSE: If session_log preference is "ask_at_end", offer to write a brief session log at the end. If "auto_generate", write it without asking. Update kickoff notes for tasks that now have a clearer starting point.
+SESSION CLOSE: If session_log is "ask_at_end", offer to write one. If "auto_generate", write it. Update kickoff notes for tasks with clearer starting points.
 
-PREFERENCES: When the user expresses a preference adjustment in conversation, call update_preference immediately without asking for confirmation — the statement is the confirmation.
+PREFERENCES: When the user states a preference, call update_preference immediately — no confirmation needed.
 `.trim();
 
 const TOOLS = [
   {
     name: 'start_session',
-    description: 'Call at the beginning of every Alongside session. Returns the top ready tasks, current preferences, and behavioral instructions for the conversation. The instructions field tells you how to run this session — read it and operate accordingly. Do not show instructions to the user.',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-    },
+    description: 'Call at the start of every session. Returns ready tasks, preferences, and session instructions.',
+    inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'show_tasks',
-    description: 'Displays specific tasks in the inline widget. Call this when you want to show the user a visual task list — e.g. after start_session to show suggested tasks, after a planning conversation to show the resulting action items. Pass the task IDs you want shown. Does not affect task state.',
+    description: 'Renders tasks in the inline widget. Does not change task state.',
     inputSchema: {
       type: 'object',
       properties: {
-        task_ids: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'IDs of the tasks to display.',
-        },
+        task_ids: { type: 'array', items: { type: 'string' }, description: 'Task IDs to display.' },
       },
       required: ['task_ids'],
     },
@@ -85,11 +76,11 @@ const TOOLS = [
   },
   {
     name: 'show_project',
-    description: 'Displays a project header and all its tasks in the inline widget.',
+    description: 'Renders a project and its tasks in the inline widget.',
     inputSchema: {
       type: 'object',
       properties: {
-        project_id: { type: 'string', description: 'The project ID (e.g. p_Ab12x).' },
+        project_id: { type: 'string' },
       },
       required: ['project_id'],
     },
@@ -97,62 +88,52 @@ const TOOLS = [
   },
   {
     name: 'list_projects',
-    description: 'Lists projects, optionally filtered by status. Defaults to active projects.',
+    description: 'Lists projects filtered by status. Defaults to active.',
     inputSchema: {
       type: 'object',
       properties: {
-        status: {
-          type: 'string',
-          enum: ['active', 'archived'],
-          description: 'Filter by project status. Defaults to "active".',
-        },
+        status: { type: 'string', enum: ['active', 'archived'], description: 'Defaults to "active".' },
       },
     },
   },
   {
     name: 'list_tasks',
-    description: 'Lists tasks, optionally filtered by status or search query. Use this to answer questions about the user\'s tasks, find specific tasks, or get an overview. Returns pending and active tasks by default. Pass statuses: ["done"] to see completed tasks, or ["pending","active","snoozed"] to see everything open.',
+    description: 'Lists tasks filtered by status or search query. Defaults to pending and active.',
     inputSchema: {
       type: 'object',
       properties: {
         statuses: {
           type: 'array',
           items: { type: 'string', enum: ['pending', 'active', 'done', 'snoozed'] },
-          description: 'Filter by these statuses. Defaults to ["pending", "active"].',
+          description: 'Defaults to ["pending", "active"].',
         },
-        query: {
-          type: 'string',
-          description: 'Optional search string. Filters tasks whose title or notes contain this text (case-insensitive).',
-        },
+        query: { type: 'string', description: 'Search title and notes (case-insensitive).' },
       },
     },
   },
   {
     name: 'get_ready_tasks',
-    description: 'Returns tasks that can be started right now: no unresolved "blocks" dependencies, sorted by readiness score (kickoff note, session log, recency). Use this as the primary answer to "what should I work on?" Prefer this over list_tasks at session start.',
+    description: 'Returns unblocked tasks sorted by readiness score. Prefer over list_tasks when asked what to work on.',
     inputSchema: {
       type: 'object',
       properties: {
-        project_id: {
-          type: 'string',
-          description: 'Filter to ready tasks within a specific project.',
-        },
+        project_id: { type: 'string', description: 'Filter to a specific project.' },
       },
     },
   },
   {
     name: 'add_task',
-    description: 'Creates a new task in pending status. Use when the user mentions something they need to do, wants to remember, or asks you to track. For recurring tasks, set both due_date (first occurrence) and recurrence (the pattern). For plan tasks, set task_type to "plan" — activating a plan task triggers a planning conversation rather than adding it to the checklist.',
+    description: 'Creates a task in pending status. Set due_date + recurrence for repeating tasks. Set task_type "plan" for tasks needing a planning conversation.',
     inputSchema: {
       type: 'object',
       properties: {
-        title: { type: 'string', description: 'Short, actionable task title.' },
-        notes: { type: 'string', description: 'Additional context, details, or links.' },
-        due_date: { type: 'string', description: 'When it\'s due, as ISO 8601 date (e.g. 2026-03-28). Omit for undated tasks.' },
-        recurrence: { type: 'string', description: 'iCal RRULE for repeating tasks. Examples: FREQ=DAILY, FREQ=WEEKLY;INTERVAL=2, FREQ=MONTHLY, FREQ=YEARLY. Requires due_date to be set.' },
-        task_type: { type: 'string', enum: ['action', 'plan', 'recurring'], description: 'Task type. "action" is the default. "plan" triggers a planning conversation on activation. "recurring" is a hint for recurring tasks.' },
-        project_id: { type: 'string', description: 'Associate this task with a project.' },
-        kickoff_note: { type: 'string', description: 'Re-entry ramp written prospectively: what to do first next time, not a summary of what happened.' },
+        title: { type: 'string', description: 'Short, actionable title.' },
+        notes: { type: 'string', description: 'Additional context or links.' },
+        due_date: { type: 'string', description: 'ISO 8601 date. Omit for undated.' },
+        recurrence: { type: 'string', description: 'iCal RRULE (e.g. FREQ=WEEKLY;INTERVAL=2). Requires due_date.' },
+        task_type: { type: 'string', enum: ['action', 'plan'], description: '"action" (default) or "plan".' },
+        project_id: { type: 'string', description: 'Associate with a project.' },
+        kickoff_note: { type: 'string', description: 'Where to start next time.' },
       },
       required: ['title'],
     },
@@ -160,11 +141,11 @@ const TOOLS = [
   },
   {
     name: 'complete_task',
-    description: 'Marks a task as done. If the task has a recurrence rule, automatically creates the next occurrence with the updated due date and carries the session log forward as the kickoff note.',
+    description: 'Marks a task done. Recurring tasks automatically get their next occurrence created.',
     inputSchema: {
       type: 'object',
       properties: {
-        task_id: { type: 'string', description: 'The task ID (e.g. t_Ab12x).' },
+        task_id: { type: 'string' },
       },
       required: ['task_id'],
     },
@@ -172,12 +153,12 @@ const TOOLS = [
   },
   {
     name: 'snooze_task',
-    description: 'Postpones a task so it disappears from active lists until the given date. Use when the user says "not now", "remind me later", "deal with this next week", etc.',
+    description: 'Hides a task until a given date.',
     inputSchema: {
       type: 'object',
       properties: {
-        task_id: { type: 'string', description: 'The task ID (e.g. t_Ab12x).' },
-        until: { type: 'string', description: 'ISO 8601 date when the task should reappear (e.g. 2026-04-05).' },
+        task_id: { type: 'string' },
+        until: { type: 'string', description: 'ISO 8601 date when the task reappears.' },
       },
       required: ['task_id', 'until'],
     },
@@ -185,19 +166,19 @@ const TOOLS = [
   },
   {
     name: 'update_task',
-    description: 'Edits one or more fields on an existing task. Only fields you include will be changed. Use kickoff_note to write or update the re-entry ramp for a task. Use session_log to record what happened this session.',
+    description: 'Updates fields on an existing task. Only included fields change.',
     inputSchema: {
       type: 'object',
       properties: {
-        task_id: { type: 'string', description: 'The task ID (e.g. t_Ab12x).' },
-        title: { type: 'string', description: 'New title.' },
-        notes: { type: 'string', description: 'New notes (replaces existing).' },
-        due_date: { type: 'string', description: 'New due date (ISO 8601).' },
-        recurrence: { type: 'string', description: 'New recurrence rule (iCal RRULE).' },
-        task_type: { type: 'string', enum: ['action', 'plan', 'recurring'], description: 'New task type.' },
-        project_id: { type: 'string', description: 'Move task to a different project (or null to remove).' },
-        kickoff_note: { type: 'string', description: 'Re-entry ramp: what to do first next time. Written prospectively, not retrospectively.' },
-        session_log: { type: 'string', description: 'What happened this session: decisions made, progress, blockers. Appended context for next time.' },
+        task_id: { type: 'string' },
+        title: { type: 'string' },
+        notes: { type: 'string', description: 'Replaces existing notes.' },
+        due_date: { type: 'string', description: 'ISO 8601 date.' },
+        recurrence: { type: 'string', description: 'iCal RRULE.' },
+        task_type: { type: 'string', enum: ['action', 'plan'] },
+        project_id: { type: 'string', description: 'Move to project, or null to remove.' },
+        kickoff_note: { type: 'string', description: 'Where to start next time.' },
+        session_log: { type: 'string', description: 'What happened this session.' },
       },
       required: ['task_id'],
     },
@@ -205,11 +186,11 @@ const TOOLS = [
   },
   {
     name: 'reopen_task',
-    description: 'Sets a completed or snoozed task back to pending. Use when a task was completed by mistake, or when a snoozed task needs to come back immediately. Note: if the task was recurring, completing it already created the next occurrence — reopening does not remove that.',
+    description: 'Moves a completed or snoozed task back to pending.',
     inputSchema: {
       type: 'object',
       properties: {
-        task_id: { type: 'string', description: 'The task ID (e.g. t_Ab12x).' },
+        task_id: { type: 'string' },
       },
       required: ['task_id'],
     },
@@ -217,11 +198,11 @@ const TOOLS = [
   },
   {
     name: 'delete_task',
-    description: 'Permanently removes a task. Cannot be undone. Prefer complete_task for tasks that were actually done.',
+    description: 'Permanently deletes a task. Prefer complete_task for finished work.',
     inputSchema: {
       type: 'object',
       properties: {
-        task_id: { type: 'string', description: 'The task ID (e.g. t_Ab12x).' },
+        task_id: { type: 'string' },
       },
       required: ['task_id'],
     },
@@ -229,75 +210,101 @@ const TOOLS = [
   },
   {
     name: 'create_project',
-    description: 'Creates a project to group related tasks. Call this when conversation surfaces a cluster of related tasks with a natural starting point. Always offer before calling — never silently restructure. Optionally links existing tasks to the new project.',
+    description: 'Creates a project and optionally assigns existing tasks to it.',
     inputSchema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Project name.' },
-        kickoff_note: { type: 'string', description: 'Where to start and why — the re-entry ramp for the whole project.' },
-        task_ids: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'IDs of existing tasks to associate with this project.',
-        },
+        notes: { type: 'string', description: 'General project notes.' },
+        kickoff_note: { type: 'string', description: 'Where to start and why.' },
+        task_ids: { type: 'array', items: { type: 'string' }, description: 'Existing tasks to assign.' },
       },
       required: ['title'],
     },
     _meta: uiMeta(ACTION_LOG_URI),
   },
   {
-    name: 'get_project_context',
-    description: 'Returns a project\'s kickoff note, status, and all its ready tasks in one call. Use at session start when the user references a project by name.',
+    name: 'update_project',
+    description: 'Updates a project\'s title, notes, kickoff note, or status. Use status "archived" to archive.',
     inputSchema: {
       type: 'object',
       properties: {
-        project_id: { type: 'string', description: 'The project ID (e.g. p_Ab12x).' },
+        project_id: { type: 'string' },
+        title: { type: 'string' },
+        notes: { type: 'string', description: 'General project notes.' },
+        kickoff_note: { type: 'string', description: 'Where to start and why.' },
+        status: { type: 'string', enum: ['active', 'archived'] },
+      },
+      required: ['project_id'],
+    },
+    _meta: uiMeta(ACTION_LOG_URI),
+  },
+  {
+    name: 'delete_project',
+    description: 'Permanently deletes a project. Its tasks are kept but unlinked.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string' },
+      },
+      required: ['project_id'],
+    },
+    _meta: uiMeta(ACTION_LOG_URI),
+  },
+  {
+    name: 'get_project_context',
+    description: 'Returns a project\'s details and its ready tasks in one call.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string' },
       },
       required: ['project_id'],
     },
   },
   {
     name: 'link_tasks',
-    description: 'Creates a dependency or relationship between two tasks. Use "blocks" when one task must complete before the other can start. Use "related" for informational connections. Use "supersedes" when one task replaces another. Call this when you detect dependency language in conversation ("I need to do X before Y", "this depends on", "that unblocks").',
+    description: 'Creates a dependency between two tasks. Defaults to "blocks" (from must complete before to).',
     inputSchema: {
       type: 'object',
       properties: {
-        from_task_id: { type: 'string', description: 'The task that blocks, relates to, or supersedes the other.' },
-        to_task_id: { type: 'string', description: 'The task being blocked, related to, or superseded.' },
-        link_type: { type: 'string', enum: ['blocks', 'related', 'supersedes'], description: '"blocks": from_task must complete first. "related": informational. "supersedes": from_task replaces to_task.' },
+        from_task_id: { type: 'string', description: 'The blocking or related task.' },
+        to_task_id: { type: 'string', description: 'The blocked or related task.' },
+        link_type: { type: 'string', enum: ['blocks', 'related'], description: 'Defaults to "blocks".' },
       },
-      required: ['from_task_id', 'to_task_id', 'link_type'],
+      required: ['from_task_id', 'to_task_id'],
     },
     _meta: uiMeta(ACTION_LOG_URI),
   },
   {
-    name: 'update_kickoff_note',
-    description: 'Rewrites the kickoff note on a task or project. Call at session close, or mid-session when a planning conversation produces a clear starting point. Write prospectively ("next time, start by...") not retrospectively ("this session we...").',
+    name: 'unlink_tasks',
+    description: 'Removes a dependency between two tasks.',
     inputSchema: {
       type: 'object',
       properties: {
-        entity_type: { type: 'string', enum: ['task', 'project'], description: 'Whether to update a task or a project.' },
-        entity_id: { type: 'string', description: 'The task or project ID.' },
-        kickoff_note: { type: 'string', description: 'The new kickoff note. Written for someone with zero context who needs to start in 30 seconds.' },
+        from_task_id: { type: 'string' },
+        to_task_id: { type: 'string' },
+        link_type: { type: 'string', enum: ['blocks', 'related'], description: 'Defaults to "blocks".' },
       },
-      required: ['entity_type', 'entity_id', 'kickoff_note'],
+      required: ['from_task_id', 'to_task_id'],
     },
+    _meta: uiMeta(ACTION_LOG_URI),
   },
   {
     name: 'update_preference',
-    description: 'Writes a preference value. Call this immediately when the user expresses a preference adjustment in conversation — no confirmation needed, the statement is the confirmation. Keys: sort_by (readiness|urgency|manual), urgency_visibility (show|hide), kickoff_nudge (always|never), session_log (auto_generate|ask_at_end|manual), interruption_style (proactive|minimal), planning_prompt (auto|manual).',
+    description: 'Sets a user preference. Call immediately when the user states one.',
     inputSchema: {
       type: 'object',
       properties: {
-        key: { type: 'string', description: 'Preference key.' },
-        value: { type: 'string', description: 'New value.' },
+        key: { type: 'string', enum: ['sort_by', 'urgency_visibility', 'kickoff_nudge', 'session_log', 'interruption_style', 'planning_prompt'] },
+        value: { type: 'string' },
       },
       required: ['key', 'value'],
     },
   },
   {
     name: 'get_action_log',
-    description: 'Internal tool used by the action log widget to fetch recent operation history. Not for direct use.',
+    description: 'Returns recent operation history. Used by the action log widget.',
     inputSchema: { type: 'object', properties: {} },
   },
 ];
@@ -387,32 +394,18 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       return { tasks };
     }
 
-    // Legacy: widget may still call get_active_tasks
-    case 'get_active_tasks': {
-      const sessionId = args.session_id as string | undefined;
-      const tasks = await db.getActiveTasks(sessionId);
-      return { tasks };
-    }
-
     case 'add_task': {
       const task = await db.addTask({
         title: args.title as string,
         notes: args.notes as string | undefined,
         due_date: args.due_date as string | undefined,
         recurrence: args.recurrence as string | undefined,
-        task_type: args.task_type as 'action' | 'plan' | 'recurring' | undefined,
+        task_type: args.task_type as 'action' | 'plan' | undefined,
         project_id: args.project_id as string | undefined,
         kickoff_note: args.kickoff_note as string | undefined,
       });
       const log = await db.logAction({ tool_name: 'add_task', task_id: task.id, title: task.title, detail: task.due_date ?? undefined });
       return { ...task, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
-    }
-
-    // Legacy: widget or older clients may still call activate_task
-    case 'activate_task': {
-      const task = await db.activateTask(args.task_id as string, args.session_id as string);
-      if (!task) throw new Error('Task not found');
-      return task;
     }
 
     case 'complete_task': {
@@ -460,6 +453,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     case 'create_project': {
       const project = await db.createProject({
         title: args.title as string,
+        notes: args.notes as string | undefined,
         kickoff_note: args.kickoff_note as string | undefined,
       });
 
@@ -482,7 +476,24 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       return { project, ready_tasks };
     }
 
+    case 'update_project': {
+      const { project_id, ...updates } = args;
+      const project = await db.updateProject(project_id as string, updates as Parameters<DB['updateProject']>[1]);
+      if (!project) throw new Error('Project not found');
+      const log = await db.logAction({ tool_name: 'update_project', title: project.title });
+      return { ...project, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
+    }
+
+    case 'delete_project': {
+      const toDelete = await db.getProject(args.project_id as string);
+      if (!toDelete) throw new Error('Project not found');
+      const log = await db.logAction({ tool_name: 'delete_project', title: toDelete.title });
+      await db.deleteProject(toDelete.id);
+      return { deleted: true, project_id: toDelete.id, title: toDelete.title, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
+    }
+
     case 'link_tasks': {
+      const linkType = (args.link_type as string) || 'blocks';
       const [fromTask, toTask] = await Promise.all([
         db.getTask(args.from_task_id as string),
         db.getTask(args.to_task_id as string),
@@ -490,36 +501,27 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       await db.linkTasks(
         args.from_task_id as string,
         args.to_task_id as string,
-        args.link_type as 'blocks' | 'related' | 'supersedes'
+        linkType as 'blocks' | 'related'
       );
       const fromTitle = fromTask?.title ?? args.from_task_id as string;
       const toTitle = toTask?.title ?? args.to_task_id as string;
-      const log = await db.logAction({ tool_name: 'link_tasks', title: `${fromTitle} → ${toTitle}`, detail: args.link_type as string });
+      const log = await db.logAction({ tool_name: 'link_tasks', title: `${fromTitle} → ${toTitle}`, detail: linkType });
       return {
         linked: true,
         from_task_id: args.from_task_id,
         from_task_title: fromTask?.title,
         to_task_id: args.to_task_id,
         to_task_title: toTask?.title,
-        link_type: args.link_type,
+        link_type: linkType,
         action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail },
       };
     }
 
-    case 'update_kickoff_note': {
-      const entityType = args.entity_type as 'task' | 'project';
-      const entityId = args.entity_id as string;
-      const kickoffNote = args.kickoff_note as string;
-
-      if (entityType === 'task') {
-        const task = await db.updateTask(entityId, { kickoff_note: kickoffNote });
-        if (!task) throw new Error('Task not found');
-        return { updated: true, entity_type: 'task', entity_id: entityId };
-      } else {
-        const project = await db.updateProject(entityId, { kickoff_note: kickoffNote });
-        if (!project) throw new Error('Project not found');
-        return { updated: true, entity_type: 'project', entity_id: entityId };
-      }
+    case 'unlink_tasks': {
+      const unlinkType = (args.link_type as string) || 'blocks';
+      await db.unlinkTasks(args.from_task_id as string, args.to_task_id as string, unlinkType as 'blocks' | 'related');
+      const log = await db.logAction({ tool_name: 'unlink_tasks', title: 'Unlinked', detail: `${args.from_task_id} → ${args.to_task_id}` });
+      return { unlinked: true, from_task_id: args.from_task_id, to_task_id: args.to_task_id, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
     }
 
     case 'update_preference': {

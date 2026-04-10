@@ -1,5 +1,5 @@
 import { DB } from './db';
-import type { TaskLink } from '@shared/types';
+import type { TaskLink, ProjectUpdate } from '@shared/types';
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -91,6 +91,45 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   if (method === 'GET' && path === '/api/projects') {
     const projects = await db.listProjects('active');
     return json(projects);
+  }
+
+  // GET /api/projects/sync — all projects including archived, for PWA sync
+  if (method === 'GET' && path === '/api/projects/sync') {
+    const projects = await db.listProjects();
+    return json(projects);
+  }
+
+  // POST /api/projects — create project
+  if (method === 'POST' && path === '/api/projects') {
+    const body = await request.json<{ title: string; kickoff_note?: string; notes?: string }>();
+    if (!body.title) return json({ error: 'title is required' }, 400);
+    const project = await db.createProject(body);
+    return json(project, 201);
+  }
+
+  // Project single-item routes
+  const projectMatch = path.match(/^\/api\/projects\/([^/]+)$/);
+
+  // GET /api/projects/:id
+  if (method === 'GET' && projectMatch) {
+    const project = await db.getProject(projectMatch[1]);
+    if (!project) return json({ error: 'Not found' }, 404);
+    return json(project);
+  }
+
+  // PATCH /api/projects/:id
+  if (method === 'PATCH' && projectMatch) {
+    const body = await request.json<ProjectUpdate>();
+    const project = await db.updateProject(projectMatch[1], body);
+    if (!project) return json({ error: 'Not found' }, 404);
+    return json(project);
+  }
+
+  // DELETE /api/projects/:id
+  if (method === 'DELETE' && projectMatch) {
+    const deleted = await db.deleteProject(projectMatch[1]);
+    if (!deleted) return json({ error: 'Not found' }, 404);
+    return json({ ok: true });
   }
 
   // GET /api/action-log — recent operations, newest first

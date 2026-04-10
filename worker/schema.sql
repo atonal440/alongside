@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS projects (
   id           TEXT PRIMARY KEY,   -- nanoid, e.g. "p_x7k2m"
   title        TEXT NOT NULL,
+  notes        TEXT,
   kickoff_note TEXT,
   status       TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'archived'
   created_at   TEXT NOT NULL,
@@ -15,11 +16,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   status        TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'active' | 'done' | 'snoozed'
   due_date      TEXT,               -- ISO 8601 date string, nullable
   recurrence    TEXT,               -- iCal RRULE string, nullable
-  session_id    TEXT,               -- set when activated in a session
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL,
   snoozed_until TEXT,               -- nullable, ISO 8601
-  task_type     TEXT NOT NULL DEFAULT 'action',  -- 'action' | 'plan' | 'recurring'
+  task_type     TEXT NOT NULL DEFAULT 'action',  -- 'action' | 'plan'
   project_id    TEXT REFERENCES projects(id),
   kickoff_note  TEXT,               -- re-entry ramp: what to do next, not a summary
   session_log   TEXT                -- appended at session close: what happened, decisions made
@@ -27,7 +27,6 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
-CREATE INDEX IF NOT EXISTS idx_tasks_session_id ON tasks(session_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id);
 
 -- Horizontal dependency graph between tasks
@@ -35,9 +34,8 @@ CREATE TABLE IF NOT EXISTS task_links (
   from_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   to_task_id   TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   link_type    TEXT NOT NULL,
-  -- 'blocks'    : from_task must complete before to_task can start
-  -- 'related'   : informational, no scheduling implication
-  -- 'supersedes': from_task replaces to_task (to_task effectively archived)
+  -- 'blocks'  : from_task must complete before to_task can start
+  -- 'related' : informational, no scheduling implication
   PRIMARY KEY (from_task_id, to_task_id, link_type)
 );
 
@@ -67,9 +65,17 @@ CREATE TABLE IF NOT EXISTS oauth_codes (
 );
 
 -- ── Migrations for existing databases ─────────────────────────────────────────
--- Run these manually if upgrading from a schema without the new columns/tables.
+-- Run these manually if upgrading from a previous schema version.
 -- Safe to ignore errors on fresh installs (columns already present).
 --
+-- v2: streamline schema
+-- ALTER TABLE projects ADD COLUMN notes TEXT;
+-- UPDATE tasks SET task_type = 'action' WHERE task_type = 'recurring';
+-- DELETE FROM task_links WHERE link_type = 'supersedes';
+-- UPDATE tasks SET session_id = NULL;
+-- DROP INDEX IF EXISTS idx_tasks_session_id;
+--
+-- v1: add task metadata
 -- ALTER TABLE tasks ADD COLUMN task_type    TEXT NOT NULL DEFAULT 'action';
 -- ALTER TABLE tasks ADD COLUMN project_id   TEXT REFERENCES projects(id);
 -- ALTER TABLE tasks ADD COLUMN kickoff_note TEXT;

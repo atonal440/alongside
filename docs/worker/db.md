@@ -12,43 +12,41 @@ Constructed with a `D1Database` instance. Every method is `async` and returns ty
 
 ### Task methods
 
-**`listTasks(status?)`** — Returns tasks filtered by status, ordered by `due_date` then `created_at`. Omitting `status` returns all tasks.
-
-**`getActiveTasks(sessionId?)`** — Returns tasks with `status = 'active'`, optionally filtered to a specific `session_id`.
+**`listTasks(statuses?)`** — Returns tasks filtered by status array, ordered by `due_date` then `created_at`. Defaults to `['pending', 'active']`.
 
 **`getTask(id)`** — Fetches a single task row by primary key.
 
-**`addTask(data)`** — Inserts a new task. Generates a nanoid if no `id` is provided. Returns the created `Task`.
+**`addTask(data)`** — Inserts a new task with a generated nanoid. Returns the created `Task`.
 
-**`activateTask(id, sessionId?)`** — Sets a task's status to `active` and optionally assigns it to a session.
+**`completeTask(id)`** — Marks a task `done`. If the task has a `recurrence` rule, creates the next occurrence with a computed `due_date` and carries `session_log` forward as `kickoff_note`.
 
-**`completeTask(id)`** — Marks a task `done`. If the task has a `recurrence` rule, creates the next occurrence with a computed `due_date` before marking the original done.
+**`reopenTask(id)`** — Sets status back to `pending` and clears `snoozed_until`.
 
-**`reopenTask(id)`** — Sets status back to `pending` and clears `session_id`.
-
-**`snoozeTask(id, until)`** — Sets status to `snoozed` with a `due_date` of `until`.
+**`snoozeTask(id, until)`** — Sets status to `snoozed` with `snoozed_until` set to the given date.
 
 **`updateTask(id, data)`** — Partial update: only columns present in `data` are written. Updates `updated_at` automatically.
 
-**`deleteTask(id)`** — Hard-deletes a task row and its associated links.
+**`deleteTask(id)`** — Hard-deletes a task row (cascade removes links).
 
-**`listReadyTasks()`** — Returns unblocked `pending` tasks sorted by a readiness score (overdue tasks rank highest, then by `created_at`).
+**`listReadyTasks(projectId?)`** — Returns unblocked tasks (pending/active, no incomplete blockers) sorted by readiness score. Optionally filtered to a project.
 
 ### Project methods
 
-**`createProject(data)`** — Inserts a new project row and returns it.
+**`createProject(data)`** — Inserts a new project row (with `notes` and `kickoff_note`) and returns it.
 
 **`getProject(id)`** — Fetches a single project by primary key.
 
 **`listProjects(status?)`** — Lists projects, optionally filtered by status.
 
-**`updateProject(id, data)`** — Partial update of project fields.
+**`updateProject(id, data)`** — Partial update of project fields (`title`, `notes`, `kickoff_note`, `status`).
+
+**`deleteProject(id)`** — Unlinks all tasks from the project (sets `project_id = NULL`), then deletes the project row.
 
 ### Link methods
 
-**`linkTasks(fromId, toId, linkType)`** — Creates a `blocks` dependency edge between two tasks.
+**`linkTasks(fromId, toId, linkType)`** — Creates a dependency edge between two tasks. `linkType` is `'blocks'` or `'related'`.
 
-**`unlinkTasks(fromId, toId)`** — Removes the link between two tasks.
+**`unlinkTasks(fromId, toId, linkType)`** — Removes a specific link between two tasks.
 
 **`getTaskLinks(taskId)`** — Returns all links where the task is either the source or target.
 
@@ -62,10 +60,10 @@ Constructed with a `D1Database` instance. Every method is `async` and returns ty
 
 **`getAllPreferences()`** — Returns all preference rows merged with built-in defaults.
 
-**`seedDefaultPreferences()`** — Inserts default preference rows if they don't already exist (called on first run).
+**`seedDefaultPreferences()`** — Inserts default preference rows if they don't already exist.
 
 ### Action log methods
 
-**`logAction(entry)`** — Appends a row to `action_log` recording which MCP tool ran and on which task.
+**`logAction(entry)`** — Appends a row to `action_log` recording which tool ran and on which entity.
 
-**`getActionLog(limit?)`** — Returns the most recent action log entries (default 20).
+**`getActionLog(limit?)`** — Returns the most recent action log entries (default 50).

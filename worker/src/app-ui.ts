@@ -390,6 +390,9 @@ export function getActionLogHtml(): string {
     .badge-create_project { background: light-dark(#ccfbf1, #022c22); color: light-dark(#065f46, #5eead4); }
     .badge-link_tasks    { background: light-dark(#e0f2fe, #041626); color: light-dark(#075985, #7dd3fc); }
     .badge-reopen_task   { background: light-dark(#f0f0f0, #2a2a2a); color: light-dark(#555, #aaa); }
+    .badge-update_project { background: light-dark(#ccfbf1, #022c22); color: light-dark(#065f46, #5eead4); }
+    .badge-delete_project { background: light-dark(#fee2e2, #2d0a0a); color: light-dark(#991b1b, #fca5a5); }
+    .badge-unlink_tasks  { background: light-dark(#e0f2fe, #041626); color: light-dark(#075985, #7dd3fc); }
     .title {
       flex: 1;
       overflow: hidden;
@@ -472,14 +475,17 @@ export function getActionLogHtml(): string {
     }
 
     const LABELS = {
-      add_task:       'ADDED',
-      complete_task:  'DONE',
-      delete_task:    'DELETED',
-      snooze_task:    'SNOOZED',
-      update_task:    'UPDATED',
-      create_project: 'PROJECT',
-      link_tasks:     'LINKED',
-      reopen_task:    'REOPENED',
+      add_task:        'ADDED',
+      complete_task:   'DONE',
+      delete_task:     'DELETED',
+      snooze_task:     'SNOOZED',
+      update_task:     'UPDATED',
+      create_project:  'PROJECT',
+      update_project:  'UPDATED',
+      delete_project:  'DELETED',
+      link_tasks:      'LINKED',
+      unlink_tasks:    'UNLINKED',
+      reopen_task:     'REOPENED',
     };
 
     function render(entry) {

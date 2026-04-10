@@ -169,8 +169,7 @@ export async function handleUiRequest(request: Request, url: URL, db: DB): Promi
   const baseUrl = url.origin;
 
   if (path === '/ui/active') {
-    const sessionId = url.searchParams.get('session') || undefined;
-    const tasks = await db.getActiveTasks(sessionId);
+    const tasks = await db.listTasks(['active']);
     const html = renderActiveTasksHTML(tasks, baseUrl);
     return new Response(html, {
       headers: {
@@ -182,8 +181,7 @@ export async function handleUiRequest(request: Request, url: URL, db: DB): Promi
 
   // Unauthenticated JSON endpoint for widget polling
   if (path === '/ui/tasks') {
-    const sessionId = url.searchParams.get('session') || undefined;
-    const tasks = await db.getActiveTasks(sessionId);
+    const tasks = await db.listTasks(['active']);
     return new Response(JSON.stringify(tasks), {
       headers: {
         'Content-Type': 'application/json',
