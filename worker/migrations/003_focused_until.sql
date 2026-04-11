@@ -5,4 +5,4 @@
 ALTER TABLE tasks ADD COLUMN focused_until TEXT;
 
 -- Migrate any currently-active tasks to focused (3h window) and revert to pending
-UPDATE tasks SET focused_until = datetime('now', '+3 hours'), status = 'pending' WHERE status = 'active';
+UPDATE tasks SET focused_until = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+3 hours'), status = 'pending' WHERE status = 'active';

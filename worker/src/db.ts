@@ -140,7 +140,7 @@ export class DB {
 
     const timestamp = now();
     await this.d1
-      .prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?')
+      .prepare('UPDATE tasks SET status = ?, focused_until = NULL, updated_at = ? WHERE id = ?')
       .bind('done', timestamp, id)
       .run();
 
@@ -179,7 +179,7 @@ export class DB {
   async snoozeTask(id: string, until: string): Promise<Task | null> {
     const timestamp = now();
     await this.d1
-      .prepare('UPDATE tasks SET status = ?, snoozed_until = ?, updated_at = ? WHERE id = ?')
+      .prepare('UPDATE tasks SET status = ?, snoozed_until = ?, focused_until = NULL, updated_at = ? WHERE id = ?')
       .bind('snoozed', until, timestamp, id)
       .run();
     return this.getTask(id);
@@ -253,7 +253,7 @@ export class DB {
   // Returns tasks whose focused_until is still in the future.
   async listFocusedTasks(): Promise<Task[]> {
     const result = await this.d1
-      .prepare(`SELECT * FROM tasks WHERE focused_until > ? AND status != 'done' ORDER BY focused_until ASC`)
+      .prepare(`SELECT * FROM tasks WHERE focused_until > ? AND status NOT IN ('done', 'snoozed') ORDER BY focused_until ASC`)
       .bind(new Date().toISOString())
       .all<Task>();
     return result.results;

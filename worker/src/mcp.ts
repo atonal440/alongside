@@ -175,7 +175,7 @@ const TOOLS = [
         task_id: { type: 'string' },
         title: { type: 'string' },
         notes: { type: 'string', description: 'Replaces existing notes.' },
-        status: { type: 'string', enum: ['pending', 'active', 'snoozed'], description: 'Use complete_task for "done".' },
+        status: { type: 'string', enum: ['pending', 'snoozed'], description: 'Use complete_task for "done". Use focus_task to put a task front-of-mind.' },
         due_date: { type: 'string', description: 'ISO 8601 date.' },
         recurrence: { type: 'string', description: 'iCal RRULE.' },
         task_type: { type: 'string', enum: ['action', 'plan'] },
