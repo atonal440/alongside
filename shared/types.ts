@@ -2,7 +2,7 @@ export interface Task {
   id: string;
   title: string;
   notes: string | null;
-  status: 'pending' | 'active' | 'done';
+  status: 'pending' | 'done';
   due_date: string | null;
   recurrence: string | null;
   created_at: string;

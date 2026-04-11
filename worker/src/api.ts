@@ -14,7 +14,7 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
 
   // GET /api/tasks — list all non-done tasks
   if (method === 'GET' && path === '/api/tasks') {
-    const tasks = await db.listTasks(['pending', 'active']);
+    const tasks = await db.listTasks();
     return json(tasks);
   }
 

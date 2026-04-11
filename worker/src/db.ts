@@ -82,7 +82,7 @@ export class DB {
   // ── Tasks ──────────────────────────────────────────────────────────────────
 
   // Returns actionable tasks — excludes tasks that are currently snoozed.
-  async listTasks(statuses: string[] = ['pending', 'active']): Promise<Task[]> {
+  async listTasks(statuses: string[] = ['pending']): Promise<Task[]> {
     const placeholders = statuses.map(() => '?').join(', ');
     const result = await this.d1
       .prepare(`SELECT * FROM tasks WHERE status IN (${placeholders}) AND (snoozed_until IS NULL OR snoozed_until <= ?) ORDER BY due_date ASC, created_at ASC`)
@@ -92,7 +92,7 @@ export class DB {
   }
 
   // Returns all tasks including currently-snoozed ones. Used for PWA full sync.
-  async listAllTasks(statuses: string[] = ['pending', 'active', 'done']): Promise<Task[]> {
+  async listAllTasks(statuses: string[] = ['pending', 'done']): Promise<Task[]> {
     const placeholders = statuses.map(() => '?').join(', ');
     const result = await this.d1
       .prepare(`SELECT * FROM tasks WHERE status IN (${placeholders}) ORDER BY due_date ASC, created_at ASC`)
@@ -242,7 +242,7 @@ export class DB {
   async listReadyTasks(projectId?: string): Promise<Task[]> {
     let sql = `
       SELECT t.* FROM tasks t
-      WHERE t.status IN ('pending', 'active')
+      WHERE t.status = 'pending'
       AND (t.snoozed_until IS NULL OR t.snoozed_until <= ?)
       AND NOT EXISTS (
         SELECT 1 FROM task_links tl

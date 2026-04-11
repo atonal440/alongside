@@ -100,14 +100,14 @@ const TOOLS = [
   },
   {
     name: 'list_tasks',
-    description: 'Lists tasks filtered by status or search query. Defaults to pending and active.',
+    description: 'Lists tasks filtered by status or search query. Defaults to pending.',
     inputSchema: {
       type: 'object',
       properties: {
         statuses: {
           type: 'array',
-          items: { type: 'string', enum: ['pending', 'active', 'done'] },
-          description: 'Defaults to ["pending", "active"].',
+          items: { type: 'string', enum: ['pending', 'done'] },
+          description: 'Defaults to ["pending"].',
         },
         query: { type: 'string', description: 'Search title and notes (case-insensitive).' },
       },
@@ -175,7 +175,7 @@ const TOOLS = [
         task_id: { type: 'string' },
         title: { type: 'string' },
         notes: { type: 'string', description: 'Replaces existing notes.' },
-        status: { type: 'string', enum: ['pending'], description: 'Use complete_task for "done", snooze_task to snooze, focus_task to put front-of-mind.' },
+        status: { type: 'string', enum: ['pending'], description: 'Use complete_task for "done", snooze_task to snooze, focus_task to put front-of-mind. Only valid value is "pending" (to reset a task).' },
         due_date: { type: 'string', description: 'ISO 8601 date.' },
         recurrence: { type: 'string', description: 'iCal RRULE.' },
         task_type: { type: 'string', enum: ['action', 'plan'] },
@@ -358,7 +358,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     case 'show_project': {
       const project = await db.getProject(args.project_id as string);
       if (!project) throw new Error('Project not found');
-      const allTasks = await db.listAllTasks(['pending', 'active']);
+      const allTasks = await db.listAllTasks(['pending']);
       const tasks = allTasks.filter(t => t.project_id === args.project_id);
       return { project, tasks };
     }
@@ -394,7 +394,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'list_tasks': {
-      const statuses = (args.statuses as string[]) || ['pending', 'active'];
+      const statuses = (args.statuses as string[]) || ['pending'];
       let tasks = await db.listTasks(statuses);
       const query = args.query as string | undefined;
       if (query) {
