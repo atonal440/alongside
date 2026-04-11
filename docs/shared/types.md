@@ -4,7 +4,7 @@ Shared TypeScript types imported by both the worker and the PWA via the `@shared
 
 ## Types
 
-**`Task`** — Core task entity. Fields: `id`, `title`, `notes`, `status` (`pending | active | done | snoozed`), `due_date`, `recurrence`, `created_at`, `updated_at`, `snoozed_until`, `focused_until`, `task_type` (`action | plan`), `project_id`, `kickoff_note`, `session_log`.
+**`Task`** — Core task entity. Fields: `id`, `title`, `notes`, `status` (`pending | done`), `due_date`, `recurrence`, `created_at`, `updated_at`, `snoozed_until` (ISO timestamp; task is hidden while `> now`), `focused_until` (ISO timestamp; task is front-of-mind while `> now`), `task_type` (`action | plan`), `project_id`, `kickoff_note`, `session_log`.
 
 **`Project`** — Project entity grouping related tasks. Fields: `id`, `title`, `notes`, `kickoff_note`, `status` (`active | archived`), `created_at`, `updated_at`.
 

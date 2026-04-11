@@ -18,25 +18,27 @@ Constructed with a `D1Database` instance. Every method is `async` and returns ty
 
 ### Task methods
 
-**`listTasks(statuses?)`** — Returns tasks filtered by status array, ordered by `due_date` then `created_at`. Defaults to `['pending', 'active']`.
+**`listTasks(statuses?)`** — Returns actionable tasks: filtered by status (defaults to `['pending']`), excluding currently-snoozed tasks, ordered by `due_date` then `created_at`.
+
+**`listAllTasks(statuses?)`** — Returns all tasks including currently-snoozed ones (defaults to `['pending', 'done']`). Used by the PWA sync endpoint so the client gets the full picture.
 
 **`getTask(id)`** — Fetches a single task row by primary key.
 
-**`addTask(data)`** — Inserts a new task with a generated nanoid. Handles `focused_until`. Returns the created `Task`.
+**`addTask(data)`** — Inserts a new task with a generated nanoid. Returns the created `Task`.
 
-**`completeTask(id)`** — Marks a task `done`. If the task has a `recurrence` rule, creates the next occurrence with a computed `due_date` and carries `session_log` forward as `kickoff_note`.
+**`completeTask(id)`** — Marks a task `done` and clears `focused_until`. If the task has a `recurrence` rule, creates the next occurrence with a computed `due_date` and carries `session_log` forward as `kickoff_note`.
 
-**`reopenTask(id)`** — Sets status back to `pending` and clears `snoozed_until`.
+**`reopenTask(id)`** — Clears `snoozed_until`, making the task immediately actionable again. Does not modify `status`.
 
-**`snoozeTask(id, until)`** — Sets status to `snoozed` with `snoozed_until` set to the given date.
+**`snoozeTask(id, until)`** — Sets `snoozed_until` to the given ISO timestamp and clears `focused_until`. Does not modify `status` — the task remains `pending`.
 
-**`updateTask(id, data)`** — Partial update: only columns present in `data` are written (including `focused_until`). Updates `updated_at` automatically.
+**`updateTask(id, data)`** — Partial update: only columns present in `data` are written (including `focused_until` and `snoozed_until`). Updates `updated_at` automatically.
 
 **`deleteTask(id)`** — Hard-deletes a task row (cascade removes links).
 
-**`listReadyTasks(projectId?)`** — Returns unblocked tasks (pending/active, no incomplete blockers) sorted by readiness score. Optionally filtered to a project.
+**`listReadyTasks(projectId?)`** — Returns unblocked pending tasks (not currently snoozed, no incomplete blockers) sorted by readiness score. Optionally filtered to a project.
 
-**`listFocusedTasks()`** — Returns tasks where `focused_until` is in the future.
+**`listFocusedTasks()`** — Returns tasks where `focused_until` is in the future and the task is not currently snoozed or done.
 
 ### Project methods
 
