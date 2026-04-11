@@ -4,7 +4,7 @@ Requires `marked` (runtime dependency).
 
 ## Components
 
-**`DetailView`** — Read-only detail screen for a single task. Layout order: back button, title, status/meta, action buttons (Start / Mark done), kickoff note section, notes section, task link groups (blocked by / blocking / related), edit link. Both `kickoff_note` and `notes` are rendered as markdown via the internal `Markdown` helper. The page scrolls naturally — no internal scroll box.
+**`DetailView`** — Read-only detail screen for a single task. Layout order: back button, title, status/meta, action buttons (Focus / Mark done), kickoff note section, notes section, task link groups (blocked by / blocking / related), edit link. Uses `focusTaskAction` to focus a task. Shows a "Focused" label when the task is focused. Both `kickoff_note` and `notes` are rendered as markdown via the internal `Markdown` helper. The page scrolls naturally — no internal scroll box.
 
 **`Markdown`** — Internal helper that renders a markdown string to HTML using `marked` (with `breaks: true`) and injects it via `dangerouslySetInnerHTML`. Styled with the `.detail-markdown` CSS class.
 

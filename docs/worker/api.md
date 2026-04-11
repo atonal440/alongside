@@ -13,7 +13,7 @@ REST API handler for the PWA. Exposes CRUD endpoints for tasks, projects, and li
 - `DELETE /api/tasks/links` — remove a link (body: `{from_task_id, to_task_id, link_type}`)
 - `GET /api/tasks/:id` — get single task
 - `POST /api/tasks` — create task
-- `PATCH /api/tasks/:id` — update task fields
+- `PATCH /api/tasks/:id` — update task fields (including `focused_until`)
 - `DELETE /api/tasks/:id` — delete task
 - `POST /api/tasks/:id/complete` — complete task (handles recurrence)
 - `GET /api/projects` — list active projects
