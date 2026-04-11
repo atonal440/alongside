@@ -28,6 +28,7 @@ export async function createTaskAction(
     project_id: null,
     kickoff_note: null,
     session_log: null,
+    focused_until: null,
   };
   await idbPutTask(task);
   dispatch({ type: 'UPSERT_TASK', task });
@@ -102,24 +103,26 @@ export async function completeTaskAction(
   return null;
 }
 
-export async function activateTaskAction(
+export async function focusTaskAction(
   id: string,
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
+  hours = 3,
 ): Promise<void> {
   const tasks = await idbGetAllTasks();
   const task = tasks.find(t => t.id === id);
   if (!task) return;
+  const focusedUntil = new Date(Date.now() + hours * 3600000).toISOString();
   const updated: Task = {
     ...task,
-    status: 'active',
+    focused_until: focusedUntil,
     updated_at: new Date().toISOString(),
   };
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
-  const result = await apiFetch(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'active' }) }, config);
-  if (!result) await idbQueueOp('PATCH', `/api/tasks/${id}`, { status: 'active' });
+  const result = await apiFetch(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify({ focused_until: focusedUntil }) }, config);
+  if (!result) await idbQueueOp('PATCH', `/api/tasks/${id}`, { focused_until: focusedUntil });
 }
 
 export async function createLinkAction(

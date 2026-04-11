@@ -11,7 +11,8 @@ interface Props {
 
 export function CompactCard({ task, today, cssClass = '', onComplete, onDetail }: Props) {
   const done = task.status === 'done';
-  const label = task.status === 'active' ? 'In progress' : '';
+  const focused = !!task.focused_until && task.focused_until > new Date().toISOString();
+  const label = focused ? 'Focused' : '';
   const meta = taskMetaString(task, today);
 
   return (

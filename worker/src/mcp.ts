@@ -35,7 +35,9 @@ function uiMeta(resourceUri: string, extra?: Record<string, unknown>) {
 const SESSION_INSTRUCTIONS = `
 You are the Alongside task assistant.
 
-OPENING: Lead with readiness, not urgency. Start from suggested_tasks — "what are you most ready to start?"
+OPENING: Lead with readiness, not urgency. If focused_tasks is non-empty, those are already front-of-mind — start there. Otherwise start from suggested_tasks — "what are you most ready to start?"
+
+FOCUS: Use focus_task to put 1-2 tasks front-of-mind. Focus decays automatically (default 3 hours) so there's nothing to clean up. Offer to focus tasks at session start if none are focused.
 
 TONE: Orient, don't audit. Never comment on gaps, overdue counts, or task neglect. Due dates are facts, not judgments.
 
@@ -166,20 +168,21 @@ const TOOLS = [
   },
   {
     name: 'update_task',
-    description: 'Updates fields on an existing task. Only included fields change. Set status to "active" to start working on a task.',
+    description: 'Updates fields on an existing task. Only included fields change.',
     inputSchema: {
       type: 'object',
       properties: {
         task_id: { type: 'string' },
         title: { type: 'string' },
         notes: { type: 'string', description: 'Replaces existing notes.' },
-        status: { type: 'string', enum: ['pending', 'active', 'snoozed'], description: 'Set to "active" to start a task. Use complete_task for "done".' },
+        status: { type: 'string', enum: ['pending', 'active', 'snoozed'], description: 'Use complete_task for "done".' },
         due_date: { type: 'string', description: 'ISO 8601 date.' },
         recurrence: { type: 'string', description: 'iCal RRULE.' },
         task_type: { type: 'string', enum: ['action', 'plan'] },
         project_id: { type: 'string', description: 'Move to project, or null to remove.' },
         kickoff_note: { type: 'string', description: 'Where to start next time.' },
         session_log: { type: 'string', description: 'What happened this session.' },
+        focused_until: { type: 'string', description: 'ISO 8601 timestamp. Set to null to clear focus.' },
       },
       required: ['task_id'],
     },
@@ -192,6 +195,19 @@ const TOOLS = [
       type: 'object',
       properties: {
         task_id: { type: 'string' },
+      },
+      required: ['task_id'],
+    },
+    _meta: uiMeta(ACTION_LOG_URI),
+  },
+  {
+    name: 'focus_task',
+    description: 'Puts a task front-of-mind for a time window (default 3 hours). Focus decays automatically — no cleanup needed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'string' },
+        hours: { type: 'number', description: 'How long to keep focus. Defaults to 3.' },
       },
       required: ['task_id'],
     },
@@ -349,8 +365,9 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
 
     case 'start_session': {
       await db.seedDefaultPreferences();
-      const [readyTasks, preferences, lastSessionAt] = await Promise.all([
+      const [readyTasks, focusedTasks, preferences, lastSessionAt] = await Promise.all([
         db.listReadyTasks(),
+        db.listFocusedTasks(),
         db.getAllPreferences(),
         db.getPreference('last_session_at'),
       ]);
@@ -362,6 +379,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       await db.setPreference('last_session_at', new Date().toISOString());
 
       return {
+        focused_tasks: focusedTasks,
         suggested_tasks: readyTasks.slice(0, 3),
         preferences,
         returning_after_gap: returningAfterGap,
@@ -440,6 +458,15 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       const task = await db.reopenTask(args.task_id as string);
       if (!task) throw new Error('Task not found');
       const log = await db.logAction({ tool_name: 'reopen_task', task_id: task.id, title: task.title });
+      return { ...task, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
+    }
+
+    case 'focus_task': {
+      const hours = (args.hours as number) || 3;
+      const focusedUntil = new Date(Date.now() + hours * 3600000).toISOString();
+      const task = await db.updateTask(args.task_id as string, { focused_until: focusedUntil });
+      if (!task) throw new Error('Task not found');
+      const log = await db.logAction({ tool_name: 'focus_task', task_id: task.id, title: task.title, detail: `${hours}h` });
       return { ...task, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
     }
 

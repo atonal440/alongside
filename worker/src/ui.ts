@@ -68,10 +68,10 @@ function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
   </style>
 </head>
 <body>
-  <div class="header"><span class="dot"></span> Active Tasks</div>
+  <div class="header"><span class="dot"></span> Focused Tasks</div>
   <hr class="divider" />
   <div id="tasks">
-    ${tasks.length ? taskRows : '<div class="empty">No active tasks</div>'}
+    ${tasks.length ? taskRows : '<div class="empty">No focused tasks</div>'}
   </div>
   <div class="add-link">ask Claude to add more tasks</div>
   <div class="toast" id="toast"></div>
@@ -167,7 +167,7 @@ export async function handleUiRequest(request: Request, url: URL, db: DB): Promi
   const baseUrl = url.origin;
 
   if (path === '/ui/active') {
-    const tasks = await db.listTasks(['active']);
+    const tasks = await db.listFocusedTasks();
     const html = renderActiveTasksHTML(tasks, baseUrl);
     return new Response(html, {
       headers: {
@@ -179,7 +179,7 @@ export async function handleUiRequest(request: Request, url: URL, db: DB): Promi
 
   // Unauthenticated JSON endpoint for widget polling
   if (path === '/ui/tasks') {
-    const tasks = await db.listTasks(['active']);
+    const tasks = await db.listFocusedTasks();
     return new Response(JSON.stringify(tasks), {
       headers: {
         'Content-Type': 'application/json',
