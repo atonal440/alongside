@@ -100,7 +100,7 @@ const TOOLS = [
   },
   {
     name: 'list_tasks',
-    description: 'Lists tasks filtered by status or search query. Defaults to pending.',
+    description: 'Lists tasks filtered by status or search query. Includes snoozed tasks (check snoozed_until to see if active). Defaults to pending.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -395,7 +395,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
 
     case 'list_tasks': {
       const statuses = (args.statuses as string[]) || ['pending'];
-      let tasks = await db.listTasks(statuses);
+      let tasks = await db.listAllTasks(statuses);
       const query = args.query as string | undefined;
       if (query) {
         const q = query.toLowerCase();

@@ -155,7 +155,7 @@ export class DB {
       .bind('done', timestamp, id)
       .run();
 
-    const completed = { ...task, status: 'done' as const, updated_at: timestamp };
+    const completed = { ...task, status: 'done' as const, focused_until: null, updated_at: timestamp };
 
     if (task.recurrence && task.due_date) {
       const nextDue = parseNextOccurrence(task.recurrence, task.due_date);
@@ -181,8 +181,8 @@ export class DB {
   async reopenTask(id: string): Promise<Task | null> {
     const timestamp = now();
     await this.d1
-      .prepare('UPDATE tasks SET snoozed_until = NULL, updated_at = ? WHERE id = ?')
-      .bind(timestamp, id)
+      .prepare('UPDATE tasks SET status = ?, snoozed_until = NULL, updated_at = ? WHERE id = ?')
+      .bind('pending', timestamp, id)
       .run();
     return this.getTask(id);
   }
