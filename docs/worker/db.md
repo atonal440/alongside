@@ -10,13 +10,19 @@ Database abstraction layer over Cloudflare D1 (SQLite). All SQL lives here; no o
 
 Constructed with a `D1Database` instance. Every method is `async` and returns typed results.
 
+## Helper functions
+
+**`isFocused(task)`** — Returns `true` if the task's `focused_until` is set and in the future.
+
+**`readinessScore(task)`** — Scores a task for priority ordering; gives +5 to focused tasks.
+
 ### Task methods
 
 **`listTasks(statuses?)`** — Returns tasks filtered by status array, ordered by `due_date` then `created_at`. Defaults to `['pending', 'active']`.
 
 **`getTask(id)`** — Fetches a single task row by primary key.
 
-**`addTask(data)`** — Inserts a new task with a generated nanoid. Returns the created `Task`.
+**`addTask(data)`** — Inserts a new task with a generated nanoid. Handles `focused_until`. Returns the created `Task`.
 
 **`completeTask(id)`** — Marks a task `done`. If the task has a `recurrence` rule, creates the next occurrence with a computed `due_date` and carries `session_log` forward as `kickoff_note`.
 
@@ -24,11 +30,13 @@ Constructed with a `D1Database` instance. Every method is `async` and returns ty
 
 **`snoozeTask(id, until)`** — Sets status to `snoozed` with `snoozed_until` set to the given date.
 
-**`updateTask(id, data)`** — Partial update: only columns present in `data` are written. Updates `updated_at` automatically.
+**`updateTask(id, data)`** — Partial update: only columns present in `data` are written (including `focused_until`). Updates `updated_at` automatically.
 
 **`deleteTask(id)`** — Hard-deletes a task row (cascade removes links).
 
 **`listReadyTasks(projectId?)`** — Returns unblocked tasks (pending/active, no incomplete blockers) sorted by readiness score. Optionally filtered to a project.
+
+**`listFocusedTasks()`** — Returns tasks where `focused_until` is in the future.
 
 ### Project methods
 
