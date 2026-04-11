@@ -1,25 +1,25 @@
 # worker/src/api.ts
 
-REST API handler for the PWA. Exposes CRUD endpoints for tasks, projects, links, and pending-op flushing. All routes are under `/api/*` and require bearer-token auth (enforced by the router in `index.ts`).
+REST API handler for the PWA. Exposes CRUD endpoints for tasks, projects, and links. All routes are under `/api/*` and require bearer-token auth (enforced by the router in `index.ts`).
 
 ## Functions
 
-**`handleApiRequest(request, db)`** — Main dispatcher. Parses the URL path and HTTP method, then calls the appropriate `DB` method and returns a JSON `Response`. Covers:
+**`handleApiRequest(request, url, db)`** — Main dispatcher. Parses the URL path and HTTP method, then calls the appropriate `DB` method and returns a JSON `Response`. Covers:
 
-- `GET /api/tasks` — list tasks (optional `?status=` filter)
-- `POST /api/tasks` — create task
+- `GET /api/tasks` — list non-done tasks (pending, active, snoozed)
+- `GET /api/tasks/sync` — list all tasks including done (for PWA sync)
+- `GET /api/tasks/links` — list all task links
+- `POST /api/tasks/links` — create a link
+- `DELETE /api/tasks/links` — remove a link (body: `{from_task_id, to_task_id, link_type}`)
 - `GET /api/tasks/:id` — get single task
+- `POST /api/tasks` — create task
 - `PATCH /api/tasks/:id` — update task fields
 - `DELETE /api/tasks/:id` — delete task
-- `POST /api/tasks/:id/activate` — activate task
-- `POST /api/tasks/:id/complete` — complete task
-- `POST /api/tasks/:id/reopen` — reopen task
-- `POST /api/tasks/:id/snooze` — snooze task
-- `GET /api/projects` — list projects
+- `POST /api/tasks/:id/complete` — complete task (handles recurrence)
+- `GET /api/projects` — list active projects
+- `GET /api/projects/sync` — list all projects including archived (for PWA sync)
 - `POST /api/projects` — create project
 - `GET /api/projects/:id` — get single project
-- `PATCH /api/projects/:id` — update project
-- `GET /api/links` — list all links
-- `POST /api/links` — create link
-- `DELETE /api/links` — delete link (body: `{from_task_id, to_task_id}`)
-- `GET /api/ops` — list pending ops (debug/admin)
+- `PATCH /api/projects/:id` — update project (title, notes, kickoff_note, status)
+- `DELETE /api/projects/:id` — delete project (unlinks tasks first)
+- `GET /api/action-log` — recent action log entries

@@ -65,7 +65,7 @@ function readinessScore(task: Task): number {
     const daysUntilDue = (new Date(task.due_date).getTime() - Date.now()) / 86400000;
     if (daysUntilDue >= 0 && daysUntilDue <= 7) score += 1;
   }
-  if (task.session_id && (Date.now() - new Date(task.updated_at).getTime()) < 14 * 86400000) {
+  if ((Date.now() - new Date(task.updated_at).getTime()) < 14 * 86400000) {
     score += 1;
   }
   return score;
@@ -81,21 +81,6 @@ export class DB {
     const result = await this.d1
       .prepare(`SELECT * FROM tasks WHERE status IN (${placeholders}) ORDER BY due_date ASC, created_at ASC`)
       .bind(...statuses)
-      .all<Task>();
-    return result.results;
-  }
-
-  async getActiveTasks(sessionId?: string): Promise<Task[]> {
-    if (sessionId) {
-      const result = await this.d1
-        .prepare('SELECT * FROM tasks WHERE status = ? AND session_id = ? ORDER BY created_at ASC')
-        .bind('active', sessionId)
-        .all<Task>();
-      return result.results;
-    }
-    const result = await this.d1
-      .prepare('SELECT * FROM tasks WHERE status = ? ORDER BY created_at ASC')
-      .bind('active')
       .all<Task>();
     return result.results;
   }
@@ -116,7 +101,6 @@ export class DB {
       status: 'pending',
       due_date: input.due_date ?? null,
       recurrence: input.recurrence ?? null,
-      session_id: null,
       created_at: now(),
       updated_at: now(),
       snoozed_until: null,
@@ -129,27 +113,18 @@ export class DB {
     await this.d1
       .prepare(
         `INSERT INTO tasks
-           (id, title, notes, status, due_date, recurrence, session_id,
+           (id, title, notes, status, due_date, recurrence,
             created_at, updated_at, snoozed_until, task_type, project_id, kickoff_note, session_log)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
         task.id, task.title, task.notes, task.status, task.due_date,
-        task.recurrence, task.session_id, task.created_at, task.updated_at,
+        task.recurrence, task.created_at, task.updated_at,
         task.snoozed_until, task.task_type, task.project_id, task.kickoff_note, task.session_log
       )
       .run();
 
     return task;
-  }
-
-  async activateTask(id: string, sessionId: string): Promise<Task | null> {
-    const timestamp = now();
-    await this.d1
-      .prepare('UPDATE tasks SET status = ?, session_id = ?, updated_at = ? WHERE id = ?')
-      .bind('active', sessionId, timestamp, id)
-      .run();
-    return this.getTask(id);
   }
 
   async completeTask(id: string): Promise<{ completed: Task; next?: Task } | null> {
@@ -273,6 +248,7 @@ export class DB {
     const project: Project = {
       id: `p_${nanoid(5)}`,
       title: input.title,
+      notes: input.notes ?? null,
       kickoff_note: input.kickoff_note ?? null,
       status: 'active',
       created_at: now(),
@@ -281,10 +257,10 @@ export class DB {
 
     await this.d1
       .prepare(
-        `INSERT INTO projects (id, title, kickoff_note, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO projects (id, title, notes, kickoff_note, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
-      .bind(project.id, project.title, project.kickoff_note, project.status, project.created_at, project.updated_at)
+      .bind(project.id, project.title, project.notes, project.kickoff_note, project.status, project.created_at, project.updated_at)
       .run();
 
     return project;
@@ -317,6 +293,7 @@ export class DB {
     const values: (string | null)[] = [];
 
     if (updates.title !== undefined) { fields.push('title = ?'); values.push(updates.title); }
+    if (updates.notes !== undefined) { fields.push('notes = ?'); values.push(updates.notes); }
     if (updates.kickoff_note !== undefined) { fields.push('kickoff_note = ?'); values.push(updates.kickoff_note); }
     if (updates.status !== undefined) { fields.push('status = ?'); values.push(updates.status); }
 
@@ -335,9 +312,21 @@ export class DB {
     return this.getProject(id);
   }
 
+  async deleteProject(id: string): Promise<boolean> {
+    await this.d1
+      .prepare('UPDATE tasks SET project_id = NULL, updated_at = ? WHERE project_id = ?')
+      .bind(now(), id)
+      .run();
+    const result = await this.d1
+      .prepare('DELETE FROM projects WHERE id = ?')
+      .bind(id)
+      .run();
+    return result.meta.changes > 0;
+  }
+
   // ── Task Links ─────────────────────────────────────────────────────────────
 
-  async linkTasks(fromTaskId: string, toTaskId: string, linkType: TaskLink['link_type']): Promise<void> {
+  async linkTasks(fromTaskId: string, toTaskId: string, linkType: 'blocks' | 'related'): Promise<void> {
     await this.d1
       .prepare(
         `INSERT OR REPLACE INTO task_links (from_task_id, to_task_id, link_type) VALUES (?, ?, ?)`
@@ -346,7 +335,7 @@ export class DB {
       .run();
   }
 
-  async unlinkTasks(fromTaskId: string, toTaskId: string, linkType: TaskLink['link_type']): Promise<void> {
+  async unlinkTasks(fromTaskId: string, toTaskId: string, linkType: 'blocks' | 'related'): Promise<void> {
     await this.d1
       .prepare('DELETE FROM task_links WHERE from_task_id = ? AND to_task_id = ? AND link_type = ?')
       .bind(fromTaskId, toTaskId, linkType)

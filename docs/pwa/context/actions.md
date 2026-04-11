@@ -1,9 +1,19 @@
 # pwa/src/context/actions.ts
 
-Async action creators — the bridge between UI events and IndexedDB + server writes. Each function takes `dispatch` (and sometimes `state`) and performs the full write path: update IndexedDB, dispatch to React state, and queue a `PendingOp` for server sync.
+Async action creators — the bridge between UI events and IndexedDB + server writes. Each function takes `dispatch` (and sometimes `config`) and performs the full write path: update IndexedDB, dispatch to React state, and attempt a server write (falling back to queuing a `PendingOp` for later sync).
 
 ## Functions
 
-**`createTaskAction(dispatch, data, apiConfig?)`** — Creates a new task: generates a temp nanoid, writes to IndexedDB, dispatches `ADD_TASK`, and queues a `POST /api/tasks` pending op. If `apiConfig` is available and online, attempts an immediate server write and remaps the temp ID to the server's ID.
+**`createTaskAction(title, config, dispatch)`** — Creates a new task: generates a temp nanoid, writes to IndexedDB, dispatches `UPSERT_TASK`, and attempts `POST /api/tasks`. On success, remaps temp ID to the server's ID.
 
-**`updateTaskAction(dispatch, id, data, apiConfig?)`** — Updates task fields: writes the partial update to IndexedDB, dispatches `UPDATE_TASK`, and queues a `PATCH /api/tasks/:id` pending op. Handles status transitions (complete, reopen, snooze) as well as field edits.
+**`updateTaskAction(id, updates, config, dispatch)`** — Updates task fields locally and attempts `PATCH /api/tasks/:id`. Falls back to a pending op if offline.
+
+**`deleteTaskAction(id, config, dispatch)`** — Deletes from IndexedDB, dispatches `DELETE_TASK`, and attempts `DELETE /api/tasks/:id`.
+
+**`completeTaskAction(id, config, dispatch)`** — Marks task done locally, attempts `POST /api/tasks/:id/complete`. If recurring, surfaces the next occurrence. Returns toast HTML or null.
+
+**`activateTaskAction(id, config, dispatch)`** — Sets task status to `active` locally and attempts `PATCH /api/tasks/:id` with `{ status: 'active' }`.
+
+**`createLinkAction(fromId, toId, linkType, config, dispatch)`** — Creates a task link locally and attempts `POST /api/tasks/links`.
+
+**`deleteLinkAction(fromId, toId, linkType, config, dispatch)`** — Removes a task link locally and attempts `DELETE /api/tasks/links`.

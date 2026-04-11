@@ -114,9 +114,7 @@ function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
     // Poll for updates every 10s
     setInterval(async () => {
       try {
-        const params = new URLSearchParams(location.search);
-        const session = params.get('session') || '';
-        const url = BASE + '/ui/tasks?' + sigParams() + (session ? '&session=' + session : '');
+        const url = BASE + '/ui/tasks?' + sigParams();
         const res = await fetch(url);
         if (res.ok) {
           const tasks = await res.json();
@@ -169,8 +167,7 @@ export async function handleUiRequest(request: Request, url: URL, db: DB): Promi
   const baseUrl = url.origin;
 
   if (path === '/ui/active') {
-    const sessionId = url.searchParams.get('session') || undefined;
-    const tasks = await db.getActiveTasks(sessionId);
+    const tasks = await db.listTasks(['active']);
     const html = renderActiveTasksHTML(tasks, baseUrl);
     return new Response(html, {
       headers: {
@@ -182,8 +179,7 @@ export async function handleUiRequest(request: Request, url: URL, db: DB): Promi
 
   // Unauthenticated JSON endpoint for widget polling
   if (path === '/ui/tasks') {
-    const sessionId = url.searchParams.get('session') || undefined;
-    const tasks = await db.getActiveTasks(sessionId);
+    const tasks = await db.listTasks(['active']);
     return new Response(JSON.stringify(tasks), {
       headers: {
         'Content-Type': 'application/json',
