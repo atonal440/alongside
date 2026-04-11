@@ -92,7 +92,7 @@ export function getAppHtml(): string {
     }
     .status-pending { background: light-dark(#eee, #333); color: light-dark(#666, #888); }
     .status-active { background: light-dark(#e0edff, #1a3a5c); color: light-dark(#2563eb, #6b9fff); }
-    .status-snoozed { background: light-dark(#fef3e0, #3a2a1a); color: light-dark(#b8860b, #d4a06a); }
+
     .task.completing .title { text-decoration: line-through; color: light-dark(#999, #4a4a4a); }
     .empty { color: light-dark(#666, #888); padding: 12px 0; font-size: 13px; }
     .toast {
@@ -234,7 +234,7 @@ export function getAppHtml(): string {
       try {
         const result = await rpcRequest('tools/call', {
           name: 'list_tasks',
-          arguments: { statuses: ['pending', 'active', 'done', 'snoozed'] },
+          arguments: { statuses: ['pending', 'active', 'done'] },
         });
         const all = result?.structuredContent?.tasks || [];
         tasks = all.filter(t => displayedTaskIds.includes(t.id));

@@ -8,7 +8,7 @@ export function suggestQueue(tasks: Task[], today: string, cardSeen: Set<string>
   const now = new Date().toISOString();
   const candidates = tasks.filter(t =>
     t.status !== 'done' &&
-    !(t.status === 'snoozed' && t.snoozed_until && t.snoozed_until > now) &&
+    !(t.snoozed_until && t.snoozed_until > now) &&
     !cardSeen.has(t.id),
   );
 

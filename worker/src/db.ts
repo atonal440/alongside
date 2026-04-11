@@ -81,7 +81,18 @@ export class DB {
 
   // ── Tasks ──────────────────────────────────────────────────────────────────
 
+  // Returns actionable tasks — excludes tasks that are currently snoozed.
   async listTasks(statuses: string[] = ['pending', 'active']): Promise<Task[]> {
+    const placeholders = statuses.map(() => '?').join(', ');
+    const result = await this.d1
+      .prepare(`SELECT * FROM tasks WHERE status IN (${placeholders}) AND (snoozed_until IS NULL OR snoozed_until <= ?) ORDER BY due_date ASC, created_at ASC`)
+      .bind(...statuses, new Date().toISOString())
+      .all<Task>();
+    return result.results;
+  }
+
+  // Returns all tasks including currently-snoozed ones. Used for PWA full sync.
+  async listAllTasks(statuses: string[] = ['pending', 'active', 'done']): Promise<Task[]> {
     const placeholders = statuses.map(() => '?').join(', ');
     const result = await this.d1
       .prepare(`SELECT * FROM tasks WHERE status IN (${placeholders}) ORDER BY due_date ASC, created_at ASC`)
@@ -170,8 +181,8 @@ export class DB {
   async reopenTask(id: string): Promise<Task | null> {
     const timestamp = now();
     await this.d1
-      .prepare('UPDATE tasks SET status = ?, snoozed_until = NULL, updated_at = ? WHERE id = ?')
-      .bind('pending', timestamp, id)
+      .prepare('UPDATE tasks SET snoozed_until = NULL, updated_at = ? WHERE id = ?')
+      .bind(timestamp, id)
       .run();
     return this.getTask(id);
   }
@@ -179,8 +190,8 @@ export class DB {
   async snoozeTask(id: string, until: string): Promise<Task | null> {
     const timestamp = now();
     await this.d1
-      .prepare('UPDATE tasks SET status = ?, snoozed_until = ?, focused_until = NULL, updated_at = ? WHERE id = ?')
-      .bind('snoozed', until, timestamp, id)
+      .prepare('UPDATE tasks SET snoozed_until = ?, focused_until = NULL, updated_at = ? WHERE id = ?')
+      .bind(until, timestamp, id)
       .run();
     return this.getTask(id);
   }
@@ -232,6 +243,7 @@ export class DB {
     let sql = `
       SELECT t.* FROM tasks t
       WHERE t.status IN ('pending', 'active')
+      AND (t.snoozed_until IS NULL OR t.snoozed_until <= ?)
       AND NOT EXISTS (
         SELECT 1 FROM task_links tl
         JOIN tasks blocker ON tl.from_task_id = blocker.id
@@ -240,7 +252,7 @@ export class DB {
           AND blocker.status != 'done'
       )
     `;
-    const bindings: (string)[] = [];
+    const bindings: (string)[] = [new Date().toISOString()];
     if (projectId) {
       sql += ' AND t.project_id = ?';
       bindings.push(projectId);
@@ -253,8 +265,8 @@ export class DB {
   // Returns tasks whose focused_until is still in the future.
   async listFocusedTasks(): Promise<Task[]> {
     const result = await this.d1
-      .prepare(`SELECT * FROM tasks WHERE focused_until > ? AND status NOT IN ('done', 'snoozed') ORDER BY focused_until ASC`)
-      .bind(new Date().toISOString())
+      .prepare(`SELECT * FROM tasks WHERE focused_until > ? AND status != 'done' AND (snoozed_until IS NULL OR snoozed_until <= ?) ORDER BY focused_until ASC`)
+      .bind(new Date().toISOString(), new Date().toISOString())
       .all<Task>();
     return result.results;
   }

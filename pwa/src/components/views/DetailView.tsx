@@ -43,7 +43,7 @@ export function DetailView() {
 
   let statusLabel = '';
   if (focused) statusLabel = 'Focused';
-  else if (task.status === 'snoozed' && task.snoozed_until)
+  else if (task.snoozed_until && task.snoozed_until > new Date().toISOString())
     statusLabel = `Snoozed until ${task.snoozed_until.split('T')[0]}`;
   else if (task.due_date && task.due_date < today) statusLabel = `Overdue · ${task.due_date}`;
 

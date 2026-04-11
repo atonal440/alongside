@@ -106,7 +106,7 @@ const TOOLS = [
       properties: {
         statuses: {
           type: 'array',
-          items: { type: 'string', enum: ['pending', 'active', 'done', 'snoozed'] },
+          items: { type: 'string', enum: ['pending', 'active', 'done'] },
           description: 'Defaults to ["pending", "active"].',
         },
         query: { type: 'string', description: 'Search title and notes (case-insensitive).' },
@@ -175,7 +175,7 @@ const TOOLS = [
         task_id: { type: 'string' },
         title: { type: 'string' },
         notes: { type: 'string', description: 'Replaces existing notes.' },
-        status: { type: 'string', enum: ['pending', 'snoozed'], description: 'Use complete_task for "done". Use focus_task to put a task front-of-mind.' },
+        status: { type: 'string', enum: ['pending'], description: 'Use complete_task for "done", snooze_task to snooze, focus_task to put front-of-mind.' },
         due_date: { type: 'string', description: 'ISO 8601 date.' },
         recurrence: { type: 'string', description: 'iCal RRULE.' },
         task_type: { type: 'string', enum: ['action', 'plan'] },
@@ -190,7 +190,7 @@ const TOOLS = [
   },
   {
     name: 'reopen_task',
-    description: 'Moves a completed or snoozed task back to pending.',
+    description: 'Clears a snooze or re-opens a completed task.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -358,7 +358,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     case 'show_project': {
       const project = await db.getProject(args.project_id as string);
       if (!project) throw new Error('Project not found');
-      const allTasks = await db.listTasks(['pending', 'active', 'snoozed']);
+      const allTasks = await db.listAllTasks(['pending', 'active']);
       const tasks = allTasks.filter(t => t.project_id === args.project_id);
       return { project, tasks };
     }

@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   id            TEXT PRIMARY KEY,   -- nanoid, e.g. "t_x7k2m"
   title         TEXT NOT NULL,
   notes         TEXT,
-  status        TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'active' | 'done' | 'snoozed'
+  status        TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'active' | 'done'
   due_date      TEXT,               -- ISO 8601 date string, nullable
   recurrence    TEXT,               -- iCal RRULE string, nullable
   created_at    TEXT NOT NULL,
