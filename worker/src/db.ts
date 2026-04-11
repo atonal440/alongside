@@ -55,10 +55,15 @@ function parseNextOccurrence(rrule: string, fromDate: string): string | null {
   return date.toISOString().split('T')[0];
 }
 
+function isFocused(task: Task): boolean {
+  return !!task.focused_until && task.focused_until > new Date().toISOString();
+}
+
 // Readiness score: higher = more ready to start right now.
 // All tasks passed here are assumed unblocked (get_ready_tasks pre-filters).
 function readinessScore(task: Task): number {
   let score = 3; // base: no unresolved blocks (pre-filtered)
+  if (isFocused(task)) score += 5;
   if (task.kickoff_note) score += 3;
   if (task.session_log) score += 2;
   if (task.due_date) {
@@ -76,7 +81,18 @@ export class DB {
 
   // ── Tasks ──────────────────────────────────────────────────────────────────
 
-  async listTasks(statuses: string[] = ['pending', 'active']): Promise<Task[]> {
+  // Returns actionable tasks — excludes tasks that are currently snoozed.
+  async listTasks(statuses: string[] = ['pending']): Promise<Task[]> {
+    const placeholders = statuses.map(() => '?').join(', ');
+    const result = await this.d1
+      .prepare(`SELECT * FROM tasks WHERE status IN (${placeholders}) AND (snoozed_until IS NULL OR snoozed_until <= ?) ORDER BY due_date ASC, created_at ASC`)
+      .bind(...statuses, new Date().toISOString())
+      .all<Task>();
+    return result.results;
+  }
+
+  // Returns all tasks including currently-snoozed ones. Used for PWA full sync.
+  async listAllTasks(statuses: string[] = ['pending', 'done']): Promise<Task[]> {
     const placeholders = statuses.map(() => '?').join(', ');
     const result = await this.d1
       .prepare(`SELECT * FROM tasks WHERE status IN (${placeholders}) ORDER BY due_date ASC, created_at ASC`)
@@ -108,19 +124,21 @@ export class DB {
       project_id: input.project_id ?? null,
       kickoff_note: input.kickoff_note ?? null,
       session_log: null,
+      focused_until: null,
     };
 
     await this.d1
       .prepare(
         `INSERT INTO tasks
            (id, title, notes, status, due_date, recurrence,
-            created_at, updated_at, snoozed_until, task_type, project_id, kickoff_note, session_log)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            created_at, updated_at, snoozed_until, task_type, project_id, kickoff_note, session_log, focused_until)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
         task.id, task.title, task.notes, task.status, task.due_date,
         task.recurrence, task.created_at, task.updated_at,
-        task.snoozed_until, task.task_type, task.project_id, task.kickoff_note, task.session_log
+        task.snoozed_until, task.task_type, task.project_id, task.kickoff_note, task.session_log,
+        task.focused_until
       )
       .run();
 
@@ -133,11 +151,11 @@ export class DB {
 
     const timestamp = now();
     await this.d1
-      .prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?')
+      .prepare('UPDATE tasks SET status = ?, focused_until = NULL, updated_at = ? WHERE id = ?')
       .bind('done', timestamp, id)
       .run();
 
-    const completed = { ...task, status: 'done' as const, updated_at: timestamp };
+    const completed = { ...task, status: 'done' as const, focused_until: null, updated_at: timestamp };
 
     if (task.recurrence && task.due_date) {
       const nextDue = parseNextOccurrence(task.recurrence, task.due_date);
@@ -172,8 +190,8 @@ export class DB {
   async snoozeTask(id: string, until: string): Promise<Task | null> {
     const timestamp = now();
     await this.d1
-      .prepare('UPDATE tasks SET status = ?, snoozed_until = ?, updated_at = ? WHERE id = ?')
-      .bind('snoozed', until, timestamp, id)
+      .prepare('UPDATE tasks SET snoozed_until = ?, focused_until = NULL, updated_at = ? WHERE id = ?')
+      .bind(until, timestamp, id)
       .run();
     return this.getTask(id);
   }
@@ -195,6 +213,7 @@ export class DB {
       fields.push('status = ?'); values.push(updates.status);
     }
     if (updates.snoozed_until !== undefined) { fields.push('snoozed_until = ?'); values.push(updates.snoozed_until); }
+    if (updates.focused_until !== undefined) { fields.push('focused_until = ?'); values.push(updates.focused_until); }
 
     if (fields.length === 0) return this.getTask(id);
 
@@ -223,7 +242,8 @@ export class DB {
   async listReadyTasks(projectId?: string): Promise<Task[]> {
     let sql = `
       SELECT t.* FROM tasks t
-      WHERE t.status IN ('pending', 'active')
+      WHERE t.status = 'pending'
+      AND (t.snoozed_until IS NULL OR t.snoozed_until <= ?)
       AND NOT EXISTS (
         SELECT 1 FROM task_links tl
         JOIN tasks blocker ON tl.from_task_id = blocker.id
@@ -232,7 +252,7 @@ export class DB {
           AND blocker.status != 'done'
       )
     `;
-    const bindings: (string)[] = [];
+    const bindings: (string)[] = [new Date().toISOString()];
     if (projectId) {
       sql += ' AND t.project_id = ?';
       bindings.push(projectId);
@@ -240,6 +260,15 @@ export class DB {
 
     const result = await this.d1.prepare(sql).bind(...bindings).all<Task>();
     return result.results.sort((a, b) => readinessScore(b) - readinessScore(a));
+  }
+
+  // Returns tasks whose focused_until is still in the future.
+  async listFocusedTasks(): Promise<Task[]> {
+    const result = await this.d1
+      .prepare(`SELECT * FROM tasks WHERE focused_until > ? AND status != 'done' AND (snoozed_until IS NULL OR snoozed_until <= ?) ORDER BY focused_until ASC`)
+      .bind(new Date().toISOString(), new Date().toISOString())
+      .all<Task>();
+    return result.results;
   }
 
   // ── Projects ───────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ Async action creators — the bridge between UI events and IndexedDB + server wr
 
 **`completeTaskAction(id, config, dispatch)`** — Marks task done locally, attempts `POST /api/tasks/:id/complete`. If recurring, surfaces the next occurrence. Returns toast HTML or null.
 
-**`activateTaskAction(id, config, dispatch)`** — Sets task status to `active` locally and attempts `PATCH /api/tasks/:id` with `{ status: 'active' }`.
+**`focusTaskAction(id, config, dispatch)`** — Sets `focused_until` on a task locally and attempts `PATCH /api/tasks/:id` with the `focused_until` value.
 
 **`createLinkAction(fromId, toId, linkType, config, dispatch)`** — Creates a task link locally and attempts `POST /api/tasks/links`.
 

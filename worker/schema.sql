@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   id            TEXT PRIMARY KEY,   -- nanoid, e.g. "t_x7k2m"
   title         TEXT NOT NULL,
   notes         TEXT,
-  status        TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'active' | 'done' | 'snoozed'
+  status        TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'done'
   due_date      TEXT,               -- ISO 8601 date string, nullable
   recurrence    TEXT,               -- iCal RRULE string, nullable
   created_at    TEXT NOT NULL,
@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   task_type     TEXT NOT NULL DEFAULT 'action',  -- 'action' | 'plan'
   project_id    TEXT REFERENCES projects(id),
   kickoff_note  TEXT,               -- re-entry ramp: what to do next, not a summary
-  session_log   TEXT                -- appended at session close: what happened, decisions made
+  session_log   TEXT,               -- appended at session close: what happened, decisions made
+  focused_until TEXT                -- ISO 8601 timestamp; task is "focused" while now < this value
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
@@ -67,6 +68,10 @@ CREATE TABLE IF NOT EXISTS oauth_codes (
 -- ── Migrations for existing databases ─────────────────────────────────────────
 -- Run these manually if upgrading from a previous schema version.
 -- Safe to ignore errors on fresh installs (columns already present).
+--
+-- v3: add focused_until for time-decaying task focus
+-- ALTER TABLE tasks ADD COLUMN focused_until TEXT;
+-- UPDATE tasks SET focused_until = datetime('now', '+3 hours'), status = 'pending' WHERE status = 'active';
 --
 -- v2: streamline schema
 -- ALTER TABLE projects ADD COLUMN notes TEXT;

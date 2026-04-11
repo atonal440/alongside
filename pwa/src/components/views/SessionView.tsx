@@ -4,11 +4,15 @@ import { TaskCard } from '../task/TaskCard';
 import { completeTaskAction } from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
 
+function isFocused(task: { focused_until: string | null }): boolean {
+  return !!task.focused_until && task.focused_until > new Date().toISOString();
+}
+
 export function SessionView() {
   const { state, dispatch } = useAppState();
   const today = new Date().toISOString().split('T')[0];
   const config = { apiBase: state.apiBase, authToken: state.authToken };
-  const active = state.tasks.filter(t => t.status === 'active');
+  const focused = state.tasks.filter(isFocused);
 
   async function handleDone(id: string) {
     const msg = await completeTaskAction(id, config, dispatch);
@@ -20,13 +24,13 @@ export function SessionView() {
     pushNav({ view: state.currentView, detailId: null, editId: id });
   }
 
-  if (active.length === 0) {
-    return <EmptyState message="Nothing in progress. Start a task from Suggest." />;
+  if (focused.length === 0) {
+    return <EmptyState message="Nothing focused. Start a task from Suggest." />;
   }
 
   return (
     <>
-      {active.map(t => (
+      {focused.map(t => (
         <TaskCard
           key={t.id}
           task={t}

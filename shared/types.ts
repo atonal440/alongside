@@ -2,7 +2,7 @@ export interface Task {
   id: string;
   title: string;
   notes: string | null;
-  status: 'pending' | 'active' | 'done' | 'snoozed';
+  status: 'pending' | 'done';
   due_date: string | null;
   recurrence: string | null;
   created_at: string;
@@ -12,6 +12,7 @@ export interface Task {
   project_id: string | null;
   kickoff_note: string | null;
   session_log: string | null;
+  focused_until: string | null;
 }
 
 export interface Project {
@@ -44,7 +45,7 @@ export type TaskCreate = Pick<Task, 'title'> &
 
 export type TaskUpdate = Partial<Pick<Task,
   'title' | 'notes' | 'due_date' | 'recurrence' | 'task_type' | 'project_id' |
-  'kickoff_note' | 'session_log' | 'status' | 'snoozed_until'>>;
+  'kickoff_note' | 'session_log' | 'status' | 'snoozed_until' | 'focused_until'>>;
 
 export type ProjectCreate = Pick<Project, 'title'> & Partial<Pick<Project, 'kickoff_note' | 'notes'>>;
 export type ProjectUpdate = Partial<Pick<Project, 'title' | 'kickoff_note' | 'notes' | 'status'>>;

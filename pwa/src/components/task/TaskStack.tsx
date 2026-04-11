@@ -25,7 +25,7 @@ export function TaskStack({ root, blocked, today, onComplete, onDetail }: Props)
           onClick={e => e.stopPropagation()}
         />
         <div className="stack-root-body" onClick={() => onDetail(root.id)}>
-          {root.status === 'active' && <div className="cc-label">In progress</div>}
+          {root.focused_until && root.focused_until > new Date().toISOString() && <div className="cc-label">Focused</div>}
           <div className="stack-root-title">{root.title}</div>
           {meta && <div className="cc-meta">{meta}</div>}
         </div>

@@ -1,6 +1,6 @@
 import { marked } from 'marked';
 import { useAppState } from '../../hooks/useAppState';
-import { completeTaskAction, activateTaskAction } from '../../context/actions';
+import { completeTaskAction, focusTaskAction } from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
 import type { Task } from '../../types';
 
@@ -39,9 +39,11 @@ export function DetailView() {
 
   const projectName = task.project_id ? (projectMap[task.project_id]?.title ?? '') : '';
 
+  const focused = !!task.focused_until && task.focused_until > new Date().toISOString();
+
   let statusLabel = '';
-  if (task.status === 'active') statusLabel = 'In progress';
-  else if (task.status === 'snoozed' && task.snoozed_until)
+  if (focused) statusLabel = 'Focused';
+  else if (task.snoozed_until && task.snoozed_until > new Date().toISOString())
     statusLabel = `Snoozed until ${task.snoozed_until.split('T')[0]}`;
   else if (task.due_date && task.due_date < today) statusLabel = `Overdue · ${task.due_date}`;
 
@@ -52,7 +54,7 @@ export function DetailView() {
   }
 
   async function handleStart() {
-    await activateTaskAction(task.id, config, dispatch);
+    await focusTaskAction(task.id, config, dispatch);
     dispatch({ type: 'SET_DETAIL', id: null });
   }
 
@@ -67,7 +69,7 @@ export function DetailView() {
   }
 
   const hasLinks = blockedBy.length > 0 || blocking.length > 0 || related.length > 0;
-  const hasActions = task.status === 'pending' || task.status === 'active';
+  const hasActions = task.status === 'pending' || focused;
 
   return (
     <div className="detail-view">
@@ -86,13 +88,13 @@ export function DetailView() {
 
       {hasActions && (
         <div className="card-actions">
-          {task.status === 'pending' && (
+          {!focused && task.status === 'pending' && (
             <>
-              <button className="btn-act" style={{ flex: 2 }} onClick={handleStart}>Start</button>
+              <button className="btn-act" style={{ flex: 2 }} onClick={handleStart}>Focus</button>
               <button className="btn-skip" style={{ flex: 1 }} onClick={handleDone}>Mark done</button>
             </>
           )}
-          {task.status === 'active' && (
+          {focused && (
             <button className="btn-act" onClick={handleDone}>Mark done</button>
           )}
         </div>

@@ -3,8 +3,12 @@ import { suggestQueue } from '../../utils/suggestQueue';
 import { AddBar } from '../common/AddBar';
 import { EmptyState } from '../common/EmptyState';
 import { TaskCard } from '../task/TaskCard';
-import { createTaskAction, completeTaskAction, activateTaskAction } from '../../context/actions';
+import { createTaskAction, completeTaskAction, focusTaskAction } from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
+
+function isFocused(task: { focused_until: string | null }): boolean {
+  return !!task.focused_until && task.focused_until > new Date().toISOString();
+}
 
 export function SuggestView() {
   const { state, dispatch } = useAppState();
@@ -22,7 +26,7 @@ export function SuggestView() {
   }
 
   async function handleStart(id: string) {
-    await activateTaskAction(id, config, dispatch);
+    await focusTaskAction(id, config, dispatch);
   }
 
   function handleEdit(id: string) {
@@ -41,7 +45,7 @@ export function SuggestView() {
 
   const task = queue[0];
   const rest = queue.length - 1;
-  const isActive = task.status === 'active';
+  const focused = isFocused(task);
 
   return (
     <>
@@ -50,11 +54,11 @@ export function SuggestView() {
         <TaskCard
           task={task}
           today={today}
-          isActive={isActive}
-          onSkip={isActive ? undefined : () => dispatch({ type: 'CARD_SEEN', id: task.id })}
-          onStart={isActive ? undefined : () => handleStart(task.id)}
+          isActive={focused}
+          onSkip={focused ? undefined : () => dispatch({ type: 'CARD_SEEN', id: task.id })}
+          onStart={focused ? undefined : () => handleStart(task.id)}
           onDone={() => handleDone(task.id)}
-          onNext={isActive ? () => dispatch({ type: 'CARD_SEEN', id: task.id }) : undefined}
+          onNext={focused ? () => dispatch({ type: 'CARD_SEEN', id: task.id }) : undefined}
           onEdit={handleEdit}
         />
         <div className="card-actions" />

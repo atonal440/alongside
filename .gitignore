@@ -1,4 +1,3 @@
-.claude/launch.json
 node_modules/
 pwa/.vite/
 .wrangler/
@@ -10,3 +9,5 @@ dist/
 .env*
 !.env.example
 .DS_Store
+.obsidian/
+.claude/

@@ -91,8 +91,8 @@ export function getAppHtml(): string {
       flex-shrink: 0;
     }
     .status-pending { background: light-dark(#eee, #333); color: light-dark(#666, #888); }
-    .status-active { background: light-dark(#e0edff, #1a3a5c); color: light-dark(#2563eb, #6b9fff); }
-    .status-snoozed { background: light-dark(#fef3e0, #3a2a1a); color: light-dark(#b8860b, #d4a06a); }
+
+
     .task.completing .title { text-decoration: line-through; color: light-dark(#999, #4a4a4a); }
     .empty { color: light-dark(#666, #888); padding: 12px 0; font-size: 13px; }
     .toast {
@@ -234,7 +234,7 @@ export function getAppHtml(): string {
       try {
         const result = await rpcRequest('tools/call', {
           name: 'list_tasks',
-          arguments: { statuses: ['pending', 'active', 'done', 'snoozed'] },
+          arguments: { statuses: ['pending', 'done'] },
         });
         const all = result?.structuredContent?.tasks || [];
         tasks = all.filter(t => displayedTaskIds.includes(t.id));
@@ -390,6 +390,7 @@ export function getActionLogHtml(): string {
     .badge-create_project { background: light-dark(#ccfbf1, #022c22); color: light-dark(#065f46, #5eead4); }
     .badge-link_tasks    { background: light-dark(#e0f2fe, #041626); color: light-dark(#075985, #7dd3fc); }
     .badge-reopen_task   { background: light-dark(#f0f0f0, #2a2a2a); color: light-dark(#555, #aaa); }
+    .badge-focus_task    { background: light-dark(#fff7ed, #2d1a00); color: light-dark(#9a3412, #fb923c); }
     .badge-update_project { background: light-dark(#ccfbf1, #022c22); color: light-dark(#065f46, #5eead4); }
     .badge-delete_project { background: light-dark(#fee2e2, #2d0a0a); color: light-dark(#991b1b, #fca5a5); }
     .badge-unlink_tasks  { background: light-dark(#e0f2fe, #041626); color: light-dark(#075985, #7dd3fc); }
@@ -486,6 +487,7 @@ export function getActionLogHtml(): string {
       link_tasks:      'LINKED',
       unlink_tasks:    'UNLINKED',
       reopen_task:     'REOPENED',
+      focus_task:      'FOCUSED',
     };
 
     function render(entry) {

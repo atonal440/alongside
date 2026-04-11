@@ -14,13 +14,13 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
 
   // GET /api/tasks — list all non-done tasks
   if (method === 'GET' && path === '/api/tasks') {
-    const tasks = await db.listTasks(['pending', 'active', 'snoozed']);
+    const tasks = await db.listTasks();
     return json(tasks);
   }
 
-  // GET /api/tasks/sync — all tasks including done, for full PWA sync
+  // GET /api/tasks/sync — all tasks including done and snoozed, for full PWA sync
   if (method === 'GET' && path === '/api/tasks/sync') {
-    const tasks = await db.listTasks(['pending', 'active', 'snoozed', 'done']);
+    const tasks = await db.listAllTasks();
     return json(tasks);
   }
 
@@ -66,7 +66,7 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
 
   // PATCH /api/tasks/:id — update task
   if (method === 'PATCH' && singleMatch) {
-    const body = await request.json<{ title?: string; notes?: string; due_date?: string; recurrence?: string; kickoff_note?: string; status?: 'pending' | 'active' | 'snoozed'; snoozed_until?: string }>();
+    const body = await request.json<{ title?: string; notes?: string; due_date?: string; recurrence?: string; kickoff_note?: string; status?: 'pending'; snoozed_until?: string; focused_until?: string }>();
     const task = await db.updateTask(singleMatch[1], body);
     if (!task) return json({ error: 'Not found' }, 404);
     return json(task);
