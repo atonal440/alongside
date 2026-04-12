@@ -524,6 +524,7 @@ export function getActionLogHtml(): string {
         });
         if (result?.hostContext) applyTheme(result.hostContext);
         rpcNotify('ui/notifications/initialized');
+        reportSize();
       } catch (err) {
         console.error('Action log init failed:', err);
       }
