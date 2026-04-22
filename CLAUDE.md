@@ -73,6 +73,8 @@ The PWA dev server proxies nothing — set `localStorage` keys `alongside_api` (
 
 ## Testing
 
+Run `wrangler deploy --dry-run` from `worker/` before merging PRs that touch `wrangler.toml`, `shared/schema.ts`, or any new dependencies. It runs the full bundling step without publishing, catching resolver issues that typechecks miss.
+
 No test framework yet. To smoke test locally:
 
 ```sh
