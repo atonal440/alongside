@@ -1,21 +1,23 @@
 # shared/types.ts
 
-Shared TypeScript types imported by both the worker and the PWA via the `@shared/*` path alias. This is the single source of truth for core data shapes.
+Thin re-export layer consumed by both the worker and the PWA via the `@shared/types` path alias. Core entity types (`Task`, `Project`, `TaskLink`, `ActionLog`) are derived from the Drizzle schema in `shared/schema.ts` using `$inferSelect`, so they stay automatically in sync with the database schema.
 
 ## Types
 
-**`Task`** — Core task entity. Fields: `id`, `title`, `notes`, `status` (`pending | done`), `due_date`, `recurrence`, `created_at`, `updated_at`, `snoozed_until` (ISO timestamp; task is hidden while `> now`), `focused_until` (ISO timestamp; task is front-of-mind while `> now`), `task_type` (`action | plan`), `project_id`, `kickoff_note`, `session_log`.
+**`Task`** — Re-exported from `shared/schema.ts`. Core task entity; see schema doc for fields.
 
-**`Project`** — Project entity grouping related tasks. Fields: `id`, `title`, `notes`, `kickoff_note`, `status` (`active | archived`), `created_at`, `updated_at`.
+**`Project`** — Re-exported from `shared/schema.ts`. Project entity grouping related tasks.
 
-**`TaskLink`** — Directed relationship edge between two tasks. Fields: `from_task_id`, `to_task_id`, `link_type` (`blocks | related`).
+**`TaskLink`** — Re-exported from `shared/schema.ts`. Directed dependency edge between two tasks.
 
-**`PendingOp`** — A write operation queued in IndexedDB for later sync when the app is offline. Holds `id`, `method` (HTTP verb), `path`, `body`, `local_id`, `created_at`.
+**`ActionLog`** — Re-exported from `shared/schema.ts`. A single action log row.
 
-**`TaskCreate`** — Subset of `Task` fields accepted when creating a task. `title` is required; everything else is optional.
+**`PendingOp`** — PWA-only concept (no DB table). A write operation queued in IndexedDB for later sync when the app is offline. Fields: `id`, `method` (HTTP verb), `path`, `body`, `local_id`, `created_at`.
 
-**`TaskUpdate`** — Subset of `Task` fields accepted when updating a task. All fields optional. Includes `focused_until`.
+**`TaskCreate`** — Input shape for creating a task. `title` required; `notes`, `due_date`, `recurrence`, `task_type`, `project_id`, `kickoff_note` optional.
 
-**`ProjectCreate`** — Subset of `Project` fields accepted when creating a project. `title` required; `kickoff_note` and `notes` optional.
+**`TaskUpdate`** — Input shape for updating a task. All fields optional. Includes `focused_until` and `snoozed_until`.
 
-**`ProjectUpdate`** — Subset of `Project` fields accepted when updating a project. All fields optional (`title`, `notes`, `kickoff_note`, `status`).
+**`ProjectCreate`** — Input shape for creating a project. `title` required; `kickoff_note` and `notes` optional.
+
+**`ProjectUpdate`** — Input shape for updating a project. All fields optional (`title`, `notes`, `kickoff_note`, `status`).

@@ -1,4 +1,5 @@
 import { DB } from './db';
+import type { ExportPayload } from './db';
 import type { TaskLink, ProjectUpdate } from '@shared/types';
 
 function json(data: unknown, status = 200): Response {
@@ -136,6 +137,36 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   if (method === 'GET' && path === '/api/action-log') {
     const entries = await db.getActionLog();
     return json(entries);
+  }
+
+  // GET /api/export — full data dump as JSON
+  if (method === 'GET' && path === '/api/export') {
+    const includeLog = url.searchParams.get('include_log') === 'true';
+    const payload = await db.exportAll(includeLog);
+    const date = new Date().toISOString().split('T')[0];
+    return new Response(JSON.stringify(payload), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Disposition': `attachment; filename="alongside-export-${date}.json"`,
+      },
+    });
+  }
+
+  // POST /api/import — wipe and restore from export JSON
+  if (method === 'POST' && path === '/api/import') {
+    const dryRun = url.searchParams.get('dry_run') === 'true';
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: 'Invalid JSON body' }, 400);
+    }
+    try {
+      const result = await db.importAll(body as ExportPayload, dryRun);
+      return json(result, dryRun ? 200 : 201);
+    } catch (e) {
+      return json({ error: e instanceof Error ? e.message : 'Import failed' }, 400);
+    }
   }
 
   return json({ error: 'Not found' }, 404);

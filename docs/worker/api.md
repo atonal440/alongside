@@ -23,3 +23,5 @@ REST API handler for the PWA. Exposes CRUD endpoints for tasks, projects, and li
 - `PATCH /api/projects/:id` — update project (title, notes, kickoff_note, status)
 - `DELETE /api/projects/:id` — delete project (unlinks tasks first)
 - `GET /api/action-log` — recent action log entries
+- `GET /api/export` — full data export as a dated JSON file (`?include_log=true` to also export action log)
+- `POST /api/import` — restore data from an export payload; `?dry_run=true` returns row counts without writing
