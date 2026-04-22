@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, inArray, isNull, lte, or, asc, desc, gt, and, sql } from 'drizzle-orm';
+import { eq, ne, inArray, isNull, lte, or, asc, desc, gt, and, sql } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import {
   tasks as tasksTable,
@@ -272,6 +272,7 @@ export class DB {
       .from(tasksTable)
       .where(and(
         gt(tasksTable.focused_until, ts),
+        ne(tasksTable.status, 'done'),
         or(isNull(tasksTable.snoozed_until), lte(tasksTable.snoozed_until, ts)),
       ))
       .orderBy(asc(tasksTable.focused_until));
@@ -526,13 +527,18 @@ export class DB {
       );
     }
 
-    // Execute atomically when possible; chunk when the batch is too large
+    // Execute atomically when possible; chunk when the batch is too large.
+    // D1 has no cross-batch transaction primitive, so the chunked path is not
+    // fully atomic. We validate payload integrity first to eliminate the most
+    // likely mid-import failure cause (bad references / duplicates). A D1
+    // network error mid-chunk would still leave the DB partially restored —
+    // callers should keep their export file as a backup.
     const CHUNK = 100;
     if (stmts.length <= CHUNK) {
       await this.d1.batch(stmts);
     } else {
-      // Wipe atomically first, then insert in chunks
-      await this.d1.batch(stmts.slice(0, 5));
+      validatePayloadIntegrity(payload);
+      await this.d1.batch(stmts.slice(0, 5)); // wipe
       for (let i = 5; i < stmts.length; i += CHUNK) {
         await this.d1.batch(stmts.slice(i, i + CHUNK));
       }
@@ -548,6 +554,35 @@ export class DB {
         action_log: logEntries.length,
       },
     };
+  }
+}
+
+// Deep integrity check run before the chunked (non-atomic) import path.
+// Catches bad references and duplicates so the wipe-then-insert sequence
+// is unlikely to fail partway through.
+function validatePayloadIntegrity(payload: ExportPayload): void {
+  const projectIds = new Set(payload.projects.map(p => p.id));
+  const taskIds = new Set(payload.tasks.map(t => t.id));
+
+  const dupProjects = payload.projects.length - projectIds.size;
+  if (dupProjects > 0) throw new Error(`Payload contains ${dupProjects} duplicate project id(s)`);
+
+  const dupTasks = payload.tasks.length - taskIds.size;
+  if (dupTasks > 0) throw new Error(`Payload contains ${dupTasks} duplicate task id(s)`);
+
+  for (const task of payload.tasks) {
+    if (task.project_id !== null && !projectIds.has(task.project_id)) {
+      throw new Error(`Task ${task.id} references unknown project ${task.project_id}`);
+    }
+  }
+
+  for (const link of payload.links) {
+    if (!taskIds.has(link.from_task_id)) {
+      throw new Error(`Link references unknown task ${link.from_task_id}`);
+    }
+    if (!taskIds.has(link.to_task_id)) {
+      throw new Error(`Link references unknown task ${link.to_task_id}`);
+    }
   }
 }
 
