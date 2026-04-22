@@ -8,6 +8,7 @@ Alongside is a lightweight, offline-first task manager built around conversation
 docs/
   overview.md          ← this file
   shared/
+    schema.md          ← shared/schema.ts
     types.md           ← shared/types.ts
   worker/
     index.md           ← worker/src/index.ts

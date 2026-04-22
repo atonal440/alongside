@@ -1,14 +1,18 @@
 # worker/src/db.ts
 
-Database abstraction layer over Cloudflare D1 (SQLite). All SQL lives here; no other file issues queries directly.
+Database abstraction layer over Cloudflare D1 (SQLite). Uses the Drizzle ORM query builder for all reads and most writes; raw D1 batch API is used for import and for operations that need `last_row_id`. No other file issues queries directly.
 
 ## Types
 
-**`ActionLogEntry`** — Shape of a row from the `action_log` table: `id`, `tool_name`, `task_id`, `title`, `detail`, `created_at`.
+**`ActionLogEntry`** — Type alias for `ActionLog` from `shared/schema.ts` (`typeof actionLog.$inferSelect`).
+
+**`ExportPayload`** — Full-data JSON export format. Fields: `version` (always `1`), `exported_at`, `projects`, `tasks`, `links`, `preferences` (key/value map), optional `action_log`.
+
+**`ImportResult`** — Response shape for `POST /api/import`. In dry-run mode: `would_delete` and `would_insert` counts. On commit: `inserted` counts per table.
 
 ## Class: `DB`
 
-Constructed with a `D1Database` instance. Every method is `async` and returns typed results.
+Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle(d1)`) alongside the raw `d1` reference. Every method is `async` and returns typed results.
 
 ## Helper functions
 
@@ -74,6 +78,12 @@ Constructed with a `D1Database` instance. Every method is `async` and returns ty
 
 ### Action log methods
 
-**`logAction(entry)`** — Appends a row to `action_log` recording which tool ran and on which entity.
+**`logAction(entry)`** — Appends a row to `action_log` recording which tool ran and on which entity. Uses raw D1 to capture `last_row_id` for the returned row.
 
 **`getActionLog(limit?)`** — Returns the most recent action log entries (default 50).
+
+### Archive / Restore methods
+
+**`exportAll(includeLog?)`** — Reads all tables in parallel and returns an `ExportPayload`. Action log is excluded by default (`includeLog = false`) since it can be large.
+
+**`importAll(payload, dryRun?)`** — Validates the payload, then either returns a preview of what would change (`dryRun = true`) or wipes all data and restores from the payload. Uses D1 `batch()` for atomic execution when statement count ≤ 100; falls back to chunked batches of 100 for larger datasets.

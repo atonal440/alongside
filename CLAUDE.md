@@ -6,14 +6,16 @@ A lightweight task manager built around conversational workflow with Claude. See
 
 ```
 shared/
-  types.ts         Shared TypeScript types (Task, Project, TaskLink, PendingOp, etc.)
+  schema.ts        Drizzle ORM table definitions (single source of truth for DB schema + types)
+  types.ts         Re-exports Task, Project, TaskLink, ActionLog from schema; adds PendingOp + input types
 worker/            Cloudflare Worker (D1 + MCP + REST API + iframe widget)
   src/index.ts     Entry point, routing, CORS, auth
-  src/db.ts        All D1 operations, recurrence logic
-  src/api.ts       REST endpoints for PWA
+  src/db.ts        All D1 operations via Drizzle; exportAll/importAll for archive/restore
+  src/api.ts       REST endpoints for PWA (incl. /api/export and /api/import)
   src/mcp.ts       MCP protocol handler (JSON-RPC)
   src/ui.ts        Serves the iframe widget at /ui/active
-  schema.sql       D1 schema
+  schema.sql       D1 schema (reference; Drizzle schema.ts is authoritative going forward)
+  drizzle.config.ts  Drizzle-kit config for generating migrations
 pwa/               React + Vite + TypeScript PWA (offline-first, IndexedDB)
   src/
     App.tsx        Top-level shell: header, nav, view switcher, SW registration
@@ -62,6 +64,7 @@ The PWA dev server proxies nothing — set `localStorage` keys `alongside_api` (
 |---------|-------------|
 | `npm run dev` | Start local worker (port 8787) |
 | `npm run db:init` | Apply schema.sql to local D1 |
+| `npm run db:generate` | Generate Drizzle migration from schema diff (from worker/) |
 | `npm run deploy` | Deploy worker to Cloudflare |
 | `npx tsc --noEmit` | Typecheck worker (from worker/) |
 | `npm run dev` | Start PWA dev server (from pwa/) |

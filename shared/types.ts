@@ -1,35 +1,4 @@
-export interface Task {
-  id: string;
-  title: string;
-  notes: string | null;
-  status: 'pending' | 'done';
-  due_date: string | null;
-  recurrence: string | null;
-  created_at: string;
-  updated_at: string;
-  snoozed_until: string | null;
-  task_type: 'action' | 'plan';
-  project_id: string | null;
-  kickoff_note: string | null;
-  session_log: string | null;
-  focused_until: string | null;
-}
-
-export interface Project {
-  id: string;
-  title: string;
-  notes: string | null;
-  kickoff_note: string | null;
-  status: 'active' | 'archived';
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TaskLink {
-  from_task_id: string;
-  to_task_id: string;
-  link_type: 'blocks' | 'related';
-}
+export type { Task, Project, TaskLink, ActionLog } from './schema';
 
 export interface PendingOp {
   id?: number;
@@ -39,6 +8,8 @@ export interface PendingOp {
   local_id: string | null;
   created_at: string;
 }
+
+import type { Task, Project } from './schema';
 
 export type TaskCreate = Pick<Task, 'title'> &
   Partial<Pick<Task, 'notes' | 'due_date' | 'recurrence' | 'task_type' | 'project_id' | 'kickoff_note'>>;

@@ -18,7 +18,9 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
     "paths": {
-      "@shared/*": ["../shared/*"]
+      "@shared/*": ["../shared/*"],
+      "drizzle-orm": ["../worker/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../worker/node_modules/drizzle-orm/*"]
     }
   },
   "include": ["src"],

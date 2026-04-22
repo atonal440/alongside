@@ -7,18 +7,23 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "db:init": "wrangler d1 execute alongside-db --local --file=schema.sql",
+    "db:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "dependencies": {
+    "drizzle-orm": "^0.43.1",
+    "nanoid": "^3.3.11"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260317.1",
     "@typescript-eslint/eslint-plugin": "^8.58.0",
     "@typescript-eslint/parser": "^8.58.0",
+    "drizzle-kit": "^0.31.1",
     "eslint": "^10.2.0",
-    "nanoid": "^3.3.11",
     "typescript": "^6.0.2",
     "wrangler": "^4.80.0"
   }

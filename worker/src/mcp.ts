@@ -1,4 +1,5 @@
 import { DB } from './db';
+import type { Task, Project } from '@shared/types';
 import type { Env } from './index';
 import { getAppHtml, getActionLogHtml } from './app-ui';
 
@@ -388,13 +389,13 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'list_projects': {
-      const status = (args.status as string) || 'active';
+      const status = ((args.status as string) || 'active') as Project['status'];
       const projects = await db.listProjects(status);
       return { projects };
     }
 
     case 'list_tasks': {
-      const statuses = (args.statuses as string[]) || ['pending'];
+      const statuses = ((args.statuses as string[]) || ['pending']) as Task['status'][];
       let tasks = await db.listAllTasks(statuses);
       const query = args.query as string | undefined;
       if (query) {

@@ -1,0 +1,63 @@
+import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core';
+
+export const projects = sqliteTable('projects', {
+  id:           text('id').primaryKey(),
+  title:        text('title').notNull(),
+  notes:        text('notes'),
+  kickoff_note: text('kickoff_note'),
+  status:       text('status', { enum: ['active', 'archived'] }).notNull().default('active'),
+  created_at:   text('created_at').notNull(),
+  updated_at:   text('updated_at').notNull(),
+});
+
+export const tasks = sqliteTable('tasks', {
+  id:            text('id').primaryKey(),
+  title:         text('title').notNull(),
+  notes:         text('notes'),
+  status:        text('status', { enum: ['pending', 'done'] }).notNull().default('pending'),
+  due_date:      text('due_date'),
+  recurrence:    text('recurrence'),
+  created_at:    text('created_at').notNull(),
+  updated_at:    text('updated_at').notNull(),
+  snoozed_until: text('snoozed_until'),
+  task_type:     text('task_type', { enum: ['action', 'plan'] }).notNull().default('action'),
+  project_id:    text('project_id').references(() => projects.id),
+  kickoff_note:  text('kickoff_note'),
+  session_log:   text('session_log'),
+  focused_until: text('focused_until'),
+});
+
+export const taskLinks = sqliteTable('task_links', {
+  from_task_id: text('from_task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+  to_task_id:   text('to_task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+  link_type:    text('link_type', { enum: ['blocks', 'related'] }).notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.from_task_id, t.to_task_id, t.link_type] }),
+]);
+
+export const userPreferences = sqliteTable('user_preferences', {
+  key:   text('key').primaryKey(),
+  value: text('value').notNull(),
+});
+
+export const actionLog = sqliteTable('action_log', {
+  id:         integer('id').primaryKey({ autoIncrement: true }),
+  tool_name:  text('tool_name').notNull(),
+  task_id:    text('task_id'),
+  title:      text('title').notNull(),
+  detail:     text('detail'),
+  created_at: text('created_at').notNull(),
+});
+
+export const oauthCodes = sqliteTable('oauth_codes', {
+  code:           text('code').primaryKey(),
+  client_id:      text('client_id').notNull(),
+  redirect_uri:   text('redirect_uri').notNull(),
+  code_challenge: text('code_challenge').notNull(),
+  expires_at:     integer('expires_at').notNull(),
+});
+
+export type Task      = typeof tasks.$inferSelect;
+export type Project   = typeof projects.$inferSelect;
+export type TaskLink  = typeof taskLinks.$inferSelect;
+export type ActionLog = typeof actionLog.$inferSelect;
