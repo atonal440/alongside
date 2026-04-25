@@ -2,6 +2,7 @@ import { marked } from 'marked';
 import { useAppState } from '../../hooks/useAppState';
 import { completeTaskAction, focusTaskAction } from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
+import { projectColor } from '../../utils/design';
 import type { Task } from '../../types';
 
 function Markdown({ src }: { src: string }) {
@@ -68,83 +69,92 @@ export function DetailView() {
     pushNav({ view: state.currentView, detailId: id, editId: null });
   }
 
-  const hasLinks = blockedBy.length > 0 || blocking.length > 0 || related.length > 0;
-  const hasActions = task.status === 'pending' || focused;
+  const projectLabel = projectName || 'No project';
 
   return (
-    <div className="detail-view">
-      <button className="btn-back" onClick={() => history.back()}>← Back</button>
+    <section className="detail-panel detail-standalone">
+      <div className="detail-breadcrumb">
+        <button className="breadcrumb-button" onClick={() => history.back()}>Back</button>
+        <span className="breadcrumb-sep">&gt;</span>
+        <span className="breadcrumb-item current">{task.title}</span>
+      </div>
 
-      <div className="detail-title">{task.title}</div>
-      {statusLabel && <div className="detail-status">{statusLabel}</div>}
-      {(task.due_date || task.recurrence) && (
-        <div className="detail-meta">
-          {task.due_date ? `Due ${task.due_date}` : ''}
-          {task.due_date && task.recurrence ? ' · ' : ''}
-          {task.recurrence ? 'Recurring' : ''}
+      <div className="detail-scroll">
+        {blockedBy.length > 0 && (
+          <DependencySection label="Waiting on" tasks={blockedBy} onDetailLink={handleDetailLink} />
+        )}
+
+        <div className="detail-heading">
+          <div className="detail-meta">
+            <span className="list-item-dot" style={{ background: projectColor(task.project_id) }} />
+            {projectLabel}
+            {statusLabel && <span>- {statusLabel}</span>}
+            {task.due_date && <span>- Due {task.due_date}</span>}
+            {task.recurrence && <span>- Recurring</span>}
+          </div>
+          <h1 className="detail-title">{task.title}</h1>
         </div>
-      )}
-      {projectName && <div className="detail-meta">Project: {projectName}</div>}
 
-      {hasActions && (
-        <div className="card-actions">
-          {!focused && task.status === 'pending' && (
+        <div className="notes-card">
+          {task.kickoff_note ? (
+            <div className="notes-kickoff">{task.kickoff_note}</div>
+          ) : (
+            <button className="notes-placeholder" onClick={handleEdit}>+ Add a starting point...</button>
+          )}
+
+          <div className="notes-rule" />
+
+          {task.notes ? (
+            <Markdown src={task.notes} />
+          ) : (
+            <div className="notes-empty">No notes yet.</div>
+          )}
+
+          {task.session_log && (
             <>
-              <button className="btn-act" style={{ flex: 2 }} onClick={handleStart}>Focus</button>
-              <button className="btn-skip" style={{ flex: 1 }} onClick={handleDone}>Mark done</button>
+              <div className="notes-rule" />
+              <div className="detail-section-label">Carry-forward note</div>
+              <Markdown src={task.session_log} />
             </>
           )}
-          {focused && (
-            <button className="btn-act" onClick={handleDone}>Mark done</button>
-          )}
         </div>
-      )}
 
-      {task.kickoff_note && (
-        <div className="detail-section">
-          <div className="detail-section-label">Kickoff note</div>
-          <Markdown src={task.kickoff_note} />
-        </div>
-      )}
+        {blocking.length > 0 && (
+          <DependencySection label="Unlocks" tasks={blocking} onDetailLink={handleDetailLink} />
+        )}
 
-      {task.notes && (
-        <div className="detail-section">
-          <div className="detail-section-label">Notes</div>
-          <Markdown src={task.notes} />
-        </div>
-      )}
+        {related.length > 0 && (
+          <DependencySection label="Related" tasks={related} onDetailLink={handleDetailLink} />
+        )}
+      </div>
 
-      {hasLinks && (
-        <div className="detail-links">
-          {blockedBy.length > 0 && (
-            <LinkGroup label="Blocked by" tasks={blockedBy} onDetailLink={handleDetailLink} />
-          )}
-          {blocking.length > 0 && (
-            <LinkGroup label="Blocking" tasks={blocking} onDetailLink={handleDetailLink} />
-          )}
-          {related.length > 0 && (
-            <LinkGroup label="Related" tasks={related} onDetailLink={handleDetailLink} />
-          )}
-        </div>
-      )}
-
-      <button className="card-edit-link" onClick={handleEdit}>Edit ›</button>
-    </div>
+      <div className="detail-action-bar">
+        {!focused && task.status === 'pending' && (
+          <>
+            <button className="btn-act" onClick={handleStart}>Focus</button>
+            <button className="btn-skip" onClick={handleDone}>Mark done</button>
+          </>
+        )}
+        {focused && <button className="btn-act" onClick={handleDone}>Mark done</button>}
+        <button className="btn-skip" onClick={handleEdit}>Edit notes</button>
+      </div>
+    </section>
   );
 }
 
-function LinkGroup({ label, tasks, onDetailLink }: {
+function DependencySection({ label, tasks, onDetailLink }: {
   label: string;
   tasks: Task[];
   onDetailLink: (id: string) => void;
 }) {
   return (
-    <div className="detail-link-group">
-      <div className="detail-link-label">{label}</div>
+    <div className="dependency-section">
+      <div className="dep-section-label">{label}</div>
       {tasks.map(t => (
-        <div key={t.id} className="detail-link-item" onClick={() => onDetailLink(t.id)}>
-          {t.title}
-        </div>
+        <button key={t.id} className="dependency-card" onClick={() => onDetailLink(t.id)}>
+          <span>{t.title}</span>
+          <span>-&gt;</span>
+        </button>
       ))}
     </div>
   );

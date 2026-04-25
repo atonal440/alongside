@@ -4,7 +4,8 @@ export interface AppState {
   tasks: Task[];
   projects: Project[];
   links: TaskLink[];
-  currentView: 'suggest' | 'all' | 'session';
+  currentView: 'suggest' | 'all' | 'review';
+  selectedProjectId: string | null;
   editingTaskId: string | null;
   detailTaskId: string | null;
   cardSeen: Set<string>;
@@ -22,7 +23,8 @@ export type AppAction =
   | { type: 'UPSERT_PROJECT'; project: Project }
   | { type: 'UPSERT_LINK'; link: TaskLink }
   | { type: 'DELETE_LINK'; from: string; to: string; linkType: string }
-  | { type: 'SET_VIEW'; view: AppState['currentView'] }
+  | { type: 'SET_VIEW'; view: AppState['currentView'] | 'session' }
+  | { type: 'SET_PROJECT_FILTER'; id: string | null }
   | { type: 'SET_EDITING'; id: string | null }
   | { type: 'SET_DETAIL'; id: string | null }
   | { type: 'CARD_SEEN'; id: string }
@@ -47,6 +49,7 @@ export function getInitialState(): AppState {
     projects: [],
     links: [],
     currentView: 'suggest',
+    selectedProjectId: null,
     editingTaskId: null,
     detailTaskId: null,
     cardSeen: new Set(),
@@ -105,7 +108,10 @@ export function reducer(state: AppState, action: AppAction): AppState {
       };
 
     case 'SET_VIEW':
-      return { ...state, currentView: action.view, editingTaskId: null, detailTaskId: null };
+      return { ...state, currentView: action.view === 'session' ? 'review' : action.view, editingTaskId: null, detailTaskId: null };
+
+    case 'SET_PROJECT_FILTER':
+      return { ...state, selectedProjectId: action.id, detailTaskId: null };
 
     case 'SET_EDITING':
       return { ...state, editingTaskId: action.id };

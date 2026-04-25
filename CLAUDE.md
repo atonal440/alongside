@@ -1,6 +1,8 @@
 # Alongside
 
-A lightweight task manager built around conversational workflow with Claude. See `alongside-design.md` for the full design doc.
+A lightweight task manager built around conversational workflow with assistant clients. See `alongside-design.md` for the full design doc.
+
+Codex-specific agent instructions live in `AGENTS.md`. Keep `CLAUDE.md` and `AGENTS.md` aligned when project conventions or local-dev commands change.
 
 ## Project structure
 
