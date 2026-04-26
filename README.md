@@ -23,7 +23,15 @@ Assistant client / MCP        PWA / browser
 
 ## Quick Start
 
-Run the worker and the PWA in separate terminals.
+From the repo root:
+
+```sh
+npm run dev        # starts worker (:8787) and PWA (:5173); Ctrl-C stops both
+npm run dev:status # optional: show tracked dev process status
+npm run dev:stop   # optional: stop tracked detached dev processes
+```
+
+Run the worker and the PWA manually only when you need isolated logs or custom flags.
 
 ### Worker Backend
 

@@ -2,6 +2,7 @@ node_modules/
 pwa/.vite/
 .wrangler/
 dist/
+.dev/
 .dev.vars
 
 .dev.vars*

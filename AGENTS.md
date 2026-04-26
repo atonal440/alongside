@@ -41,9 +41,26 @@ pwa/
 
 ## Local Dev
 
-Run the backend and the PWA in separate terminals.
+From the repo root, use the combined dev runner for day-to-day work:
 
-### 1. Start the Worker Backend
+```sh
+npm run dev
+```
+
+This starts the worker at `http://127.0.0.1:8787` and the PWA at `http://127.0.0.1:5173`, prefixes both logs in one terminal, and shuts both processes down with `Ctrl-C`.
+
+If a dev process gets detached, use:
+
+```sh
+npm run dev:status
+npm run dev:stop
+```
+
+The runner keeps only transient process state in `.dev/`.
+
+Run the backend and PWA separately only when you need isolated logs or flags.
+
+### Manual Worker Backend
 
 ```sh
 cd worker
@@ -60,7 +77,7 @@ Local auth comes from `worker/.dev.vars`. The expected development token is usua
 dev-token-change-me
 ```
 
-### 2. Start the PWA
+### Manual PWA
 
 ```sh
 cd pwa
