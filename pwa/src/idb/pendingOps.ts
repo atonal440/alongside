@@ -51,3 +51,13 @@ export async function idbDeletePendingOp(id: number): Promise<void> {
     tx.onerror = () => reject(tx.error);
   });
 }
+
+export async function idbClearPendingOps(): Promise<void> {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('pending_ops', 'readwrite');
+    tx.objectStore('pending_ops').clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}

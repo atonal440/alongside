@@ -2,12 +2,32 @@ import { useAppState } from '../../hooks/useAppState';
 import { pushNav } from '../../hooks/useHistory';
 import { projectColor } from '../../utils/design';
 import type { AppState } from '../../context/reducer';
+import { idbClearLinks } from '../../idb/links';
+import { idbClearPendingOps } from '../../idb/pendingOps';
+import { idbClearProjects } from '../../idb/projects';
+import { idbClearTasks } from '../../idb/tasks';
 
 const VIEWS: { id: AppState['currentView']; label: string }[] = [
   { id: 'suggest', label: 'Today' },
   { id: 'all', label: 'All Tasks' },
   { id: 'review', label: 'Review' },
 ];
+
+async function clearLocalAppData(): Promise<void> {
+  await Promise.all([
+    idbClearPendingOps(),
+    idbClearLinks(),
+    idbClearProjects(),
+    idbClearTasks(),
+  ]);
+}
+
+function clearCredentials() {
+  localStorage.removeItem('alongside_api');
+  localStorage.removeItem('alongside_token');
+  localStorage.removeItem('alongside_session');
+  localStorage.setItem('alongside_logged_out', 'true');
+}
 
 export function Sidebar() {
   const { state, dispatch } = useAppState();
@@ -43,11 +63,14 @@ export function Sidebar() {
     }
   }
 
-  function handleLogout() {
-    localStorage.removeItem('alongside_api');
-    localStorage.removeItem('alongside_token');
-    localStorage.removeItem('alongside_session');
-    localStorage.setItem('alongside_logged_out', 'true');
+  async function handleLogout() {
+    try {
+      await clearLocalAppData();
+    } catch {
+      dispatch({ type: 'SET_TOAST', message: 'Could not clear local data. Log out was cancelled.' });
+      return;
+    }
+    clearCredentials();
     dispatch({ type: 'LOG_OUT' });
     pushNav({ view: 'suggest', detailId: null, editId: null });
   }
@@ -116,11 +139,14 @@ export function CompactNavigation() {
     pushNav({ view, detailId: null, editId: null });
   }
 
-  function handleLogout() {
-    localStorage.removeItem('alongside_api');
-    localStorage.removeItem('alongside_token');
-    localStorage.removeItem('alongside_session');
-    localStorage.setItem('alongside_logged_out', 'true');
+  async function handleLogout() {
+    try {
+      await clearLocalAppData();
+    } catch {
+      dispatch({ type: 'SET_TOAST', message: 'Could not clear local data. Log out was cancelled.' });
+      return;
+    }
+    clearCredentials();
     dispatch({ type: 'LOG_OUT' });
     pushNav({ view: 'suggest', detailId: null, editId: null });
   }

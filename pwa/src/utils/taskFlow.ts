@@ -59,6 +59,7 @@ export interface TaskFlowContext {
   today: string;
   projects: Project[];
   links: TaskLink[];
+  tasks?: Task[];
   surface?: TaskFlowSurface;
   selected?: boolean;
 }
@@ -143,7 +144,8 @@ export function deriveTaskFlow(task: Task, context: TaskFlowContext): TaskFlow {
   const dueLabel = formatDue(task, context.today);
   const focused = isFocused(task);
   const snoozed = !!task.snoozed_until && task.snoozed_until > new Date().toISOString();
-  const blocked = isBlocked(task, context.links);
+  const allTasks = context.tasks ?? [];
+  const blocked = isBlocked(task, context.links, allTasks);
   const done = task.status === 'done';
   const predicates: Record<TaskFlowPredicateId, boolean> = {
     done,
@@ -168,7 +170,7 @@ export function deriveTaskFlow(task: Task, context: TaskFlowContext): TaskFlow {
     projectLabel: projectTitle(task, context.projects),
     projectColor: projectColor(task.project_id),
     dueLabel,
-    readiness: readinessScore(task, context.today, context.links),
+    readiness: readinessScore(task, context.today, context.links, allTasks),
     title: task.title,
     kickoff: task.kickoff_note ?? '',
     notePreview: firstNoteEntry(task.notes),

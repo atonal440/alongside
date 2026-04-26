@@ -44,17 +44,19 @@ export function AllView() {
     const tasks = state.showDone ? matchingTasks : matchingTasks.filter(t => t.status !== 'done');
     return [...tasks].sort((a, b) => {
       if (sort === 'due') {
-        return (a.due_date ?? '9999-99-99').localeCompare(b.due_date ?? '9999-99-99') || taskSort(a, b, today, state.links);
+        return (a.due_date ?? '9999-99-99').localeCompare(b.due_date ?? '9999-99-99')
+          || taskSort(a, b, today, state.links, state.tasks);
       }
       if (sort === 'project') {
-        return projectTitle(a, state.projects).localeCompare(projectTitle(b, state.projects)) || taskSort(a, b, today, state.links);
+        return projectTitle(a, state.projects).localeCompare(projectTitle(b, state.projects))
+          || taskSort(a, b, today, state.links, state.tasks);
       }
-      return taskSort(a, b, today, state.links);
+      return taskSort(a, b, today, state.links, state.tasks);
     });
-  }, [matchingTasks, sort, state.links, state.projects, state.showDone, today]);
+  }, [matchingTasks, sort, state.links, state.projects, state.showDone, state.tasks, today]);
 
-  const readyTasks = sortedTasks.filter(t => !isBlocked(t, state.links) && t.status !== 'done');
-  const blockedTasks = sortedTasks.filter(t => isBlocked(t, state.links) && t.status !== 'done');
+  const readyTasks = sortedTasks.filter(t => !isBlocked(t, state.links, state.tasks) && t.status !== 'done');
+  const blockedTasks = sortedTasks.filter(t => isBlocked(t, state.links, state.tasks) && t.status !== 'done');
   const doneTasks = sortedTasks.filter(t => t.status === 'done');
   const hiddenDoneCount = matchingTasks.filter(t => t.status === 'done').length;
   const selectedTask = state.detailTaskId ? taskMap[state.detailTaskId] : (readyTasks[0] ?? blockedTasks[0] ?? doneTasks[0]);
@@ -140,8 +142,8 @@ export function AllView() {
             selectedId={selectedTask?.id}
             projects={state.projects}
             links={state.links}
+            allTasks={state.tasks}
             blocksMap={blocksMap}
-            blockedByMap={blockedByMap}
             onSelect={handleSelect}
           />
           <TaskGroup
@@ -151,8 +153,8 @@ export function AllView() {
             selectedId={selectedTask?.id}
             projects={state.projects}
             links={state.links}
+            allTasks={state.tasks}
             blocksMap={blocksMap}
-            blockedByMap={blockedByMap}
             onSelect={handleSelect}
           />
           {hiddenDoneCount > 0 && (
@@ -168,8 +170,8 @@ export function AllView() {
                   selectedId={selectedTask?.id}
                   projects={state.projects}
                   links={state.links}
+                  allTasks={state.tasks}
                   blocksMap={blocksMap}
-                  blockedByMap={blockedByMap}
                   onSelect={handleSelect}
                 />
               )}
@@ -183,6 +185,7 @@ export function AllView() {
         today={today}
         projects={state.projects}
         links={state.links}
+        allTasks={state.tasks}
         taskMap={taskMap}
         blocksMap={blocksMap}
         blockedByMap={blockedByMap}
@@ -198,15 +201,15 @@ export function AllView() {
   );
 }
 
-function TaskGroup({ label, tasks, today, selectedId, projects, links, blocksMap, blockedByMap, onSelect }: {
+function TaskGroup({ label, tasks, today, selectedId, projects, links, allTasks, blocksMap, onSelect }: {
   label: string;
   tasks: Task[];
   today: string;
   selectedId?: string;
   projects: Project[];
   links: TaskLink[];
+  allTasks: Task[];
   blocksMap: Record<string, Set<string>>;
-  blockedByMap: Record<string, Set<string>>;
   onSelect: (id: string) => void;
 }) {
   if (tasks.length === 0) return null;
@@ -219,11 +222,12 @@ function TaskGroup({ label, tasks, today, selectedId, projects, links, blocksMap
           today,
           projects,
           links,
+          tasks: allTasks,
           surface: 'list',
           selected: selectedId === task.id,
         });
         const blocks = blocksMap[task.id]?.size ?? 0;
-        const blocked = (blockedByMap[task.id]?.size ?? 0) > 0;
+        const blocked = isBlocked(task, links, allTasks);
         return (
           <button
             key={task.id}
@@ -253,11 +257,12 @@ function TaskGroup({ label, tasks, today, selectedId, projects, links, blocksMap
   );
 }
 
-function DetailPanel({ task, today, projects, links, taskMap, blocksMap, blockedByMap, onSelect, onFocus, onComplete, onUnfocus, onSnooze, onEdit, onDelete }: {
+function DetailPanel({ task, today, projects, links, allTasks, taskMap, blocksMap, blockedByMap, onSelect, onFocus, onComplete, onUnfocus, onSnooze, onEdit, onDelete }: {
   task?: Task;
   today: string;
   projects: Project[];
   links: TaskLink[];
+  allTasks: Task[];
   taskMap: Record<string, Task>;
   blocksMap: Record<string, Set<string>>;
   blockedByMap: Record<string, Set<string>>;
@@ -280,9 +285,11 @@ function DetailPanel({ task, today, projects, links, taskMap, blocksMap, blocked
   }
 
   const currentTask = task;
-  const blockedBy = [...(blockedByMap[currentTask.id] ?? [])].map(id => taskMap[id]).filter(Boolean);
+  const blockedBy = [...(blockedByMap[currentTask.id] ?? [])]
+    .map(id => taskMap[id])
+    .filter((blocker): blocker is Task => !!blocker && blocker.status !== 'done');
   const blocking = [...(blocksMap[currentTask.id] ?? [])].map(id => taskMap[id]).filter(Boolean);
-  const flow = deriveTaskFlow(currentTask, { today, projects, links, surface: 'detail', selected: true });
+  const flow = deriveTaskFlow(currentTask, { today, projects, links, tasks: allTasks, surface: 'detail', selected: true });
 
   function handleAction(action: TaskFlowActionId) {
     switch (action) {

@@ -27,9 +27,9 @@ export function formatDue(task: Pick<Task, 'due_date'>, today: string): string {
   return `Due ${task.due_date}`;
 }
 
-export function readinessScore(task: Task, today: string, links: TaskLink[] = []): number {
+export function readinessScore(task: Task, today: string, links: TaskLink[] = [], tasks: Task[] = []): number {
   if (task.status === 'done') return 0;
-  if (links.some(l => l.link_type === 'blocks' && l.to_task_id === task.id)) return 24;
+  if (isBlocked(task, links, tasks)) return 24;
 
   let score = 48;
   if (task.kickoff_note) score += 18;
@@ -43,12 +43,24 @@ export function readinessScore(task: Task, today: string, links: TaskLink[] = []
   return Math.max(1, Math.min(99, score));
 }
 
-export function isBlocked(task: Task, links: TaskLink[]): boolean {
-  return links.some(l => l.link_type === 'blocks' && l.to_task_id === task.id);
+export function isBlocked(task: Task, links: TaskLink[], tasks: Task[] = []): boolean {
+  if (tasks.length === 0) {
+    return links.some(l => l.link_type === 'blocks' && l.to_task_id === task.id);
+  }
+  return hasActiveBlocker(task, links, tasks);
 }
 
-export function taskSort(a: Task, b: Task, today: string, links: TaskLink[]): number {
-  return readinessScore(b, today, links) - readinessScore(a, today, links)
+export function hasActiveBlocker(task: Task, links: TaskLink[], tasks: Task[]): boolean {
+  const taskById = new Map(tasks.map(candidate => [candidate.id, candidate]));
+  return links.some(link => {
+    if (link.link_type !== 'blocks' || link.to_task_id !== task.id) return false;
+    const blocker = taskById.get(link.from_task_id);
+    return !!blocker && blocker.status !== 'done';
+  });
+}
+
+export function taskSort(a: Task, b: Task, today: string, links: TaskLink[], tasks: Task[] = []): number {
+  return readinessScore(b, today, links, tasks) - readinessScore(a, today, links, tasks)
     || (a.due_date ?? '9999-99-99').localeCompare(b.due_date ?? '9999-99-99')
     || a.title.localeCompare(b.title);
 }

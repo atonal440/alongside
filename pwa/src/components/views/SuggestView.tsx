@@ -13,7 +13,7 @@ export function SuggestView() {
   const { state, dispatch } = useAppState();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const today = new Date().toISOString().split('T')[0];
-  const queue = suggestQueue(state.tasks, today, state.cardSeen);
+  const queue = suggestQueue(state.tasks, today, state.cardSeen, state.links);
   const config = { apiBase: state.apiBase, authToken: state.authToken };
   const selectedTask = selectedTaskId ? queue.find(t => t.id === selectedTaskId) : null;
   const task = selectedTask ?? queue[0];
@@ -21,6 +21,7 @@ export function SuggestView() {
     today,
     projects: state.projects,
     links: state.links,
+    tasks: state.tasks,
     surface: 'focus',
     selected: true,
   }) : null;
@@ -136,7 +137,7 @@ export function SuggestView() {
           />
           <EmptyState message="All clear. Add something with search." />
         </section>
-        <QueuePanel queue={[]} currentId={null} today={today} projects={state.projects} links={state.links} doneToday={0} onPick={handleSelectTask} />
+        <QueuePanel queue={[]} currentId={null} today={today} projects={state.projects} links={state.links} tasks={state.tasks} doneToday={0} onPick={handleSelectTask} />
       </div>
     );
   }
@@ -172,6 +173,7 @@ export function SuggestView() {
         today={today}
         projects={state.projects}
         links={state.links}
+        tasks={state.tasks}
         doneToday={state.tasks.filter(t => t.status === 'done' && t.updated_at.startsWith(today)).length}
         focused={focused}
         onPick={handleSelectTask}
@@ -210,12 +212,13 @@ function CardContextStrip({ focused, queueCount, dueTodayCount }: {
   );
 }
 
-function QueuePanel({ queue, currentId, today, projects, links, doneToday, focused, onPick }: {
+function QueuePanel({ queue, currentId, today, projects, links, tasks, doneToday, focused, onPick }: {
   queue: Task[];
   currentId: string | null;
   today: string;
   projects: Project[];
   links: TaskLink[];
+  tasks: Task[];
   doneToday: number;
   focused?: boolean;
   onPick: (id: string) => void;
@@ -232,6 +235,7 @@ function QueuePanel({ queue, currentId, today, projects, links, doneToday, focus
             today,
             projects,
             links,
+            tasks,
             surface: 'queue',
             selected: task.id === currentId,
           });
