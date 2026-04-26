@@ -1,25 +1,47 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppState } from '../../hooks/useAppState';
+import { verifyApiConfig } from '../../api/client';
 
 export function SettingsBanner() {
   const { state, dispatch } = useAppState();
   const [apiBase, setApiBase] = useState(state.apiBase);
   const [authToken, setAuthToken] = useState(state.authToken);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const isConfigured = Boolean(state.apiBase && state.authToken);
+  const canConnect = Boolean(apiBase.trim() && authToken.trim()) && !isConnecting;
 
-  if (state.syncStatus !== 'offline' && state.syncStatus !== 'idle') return null;
-  // Only show banner when we've tried to sync and failed (offline after first attempt)
-  if (state.syncStatus !== 'offline') return null;
+  useEffect(() => {
+    setApiBase(state.apiBase);
+    setAuthToken(state.authToken);
+  }, [state.apiBase, state.authToken]);
 
-  function handleConnect() {
+  if (isConfigured) return null;
+
+  async function handleConnect() {
     const trimmed = apiBase.replace(/\/$/, '');
+    const token = authToken.trim();
+    if (!trimmed || !token) return;
+
+    setIsConnecting(true);
+    setConnectError(null);
+    const verified = await verifyApiConfig({ apiBase: trimmed, authToken: token });
+    setIsConnecting(false);
+
+    if (!verified) {
+      setConnectError('Could not verify that worker URL and token.');
+      return;
+    }
+
     localStorage.setItem('alongside_api', trimmed);
-    localStorage.setItem('alongside_token', authToken);
-    dispatch({ type: 'SET_CONFIG', apiBase: trimmed, authToken });
+    localStorage.setItem('alongside_token', token);
+    localStorage.removeItem('alongside_logged_out');
+    dispatch({ type: 'SET_CONFIG', apiBase: trimmed, authToken: token });
   }
 
   return (
     <details className="settings-banner" open>
-      <summary>Could not connect to worker</summary>
+      <summary>Logged out</summary>
       <div className="fields">
         <label>Worker URL</label>
         <input
@@ -33,7 +55,10 @@ export function SettingsBanner() {
           onChange={e => setAuthToken(e.target.value)}
           placeholder="dev-token-change-me"
         />
-        <button onClick={handleConnect}>Connect</button>
+        {connectError && <p className="settings-error">{connectError}</p>}
+        <button onClick={handleConnect} disabled={!canConnect}>
+          {isConnecting ? 'Checking...' : 'Connect'}
+        </button>
       </div>
     </details>
   );

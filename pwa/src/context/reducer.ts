@@ -31,7 +31,10 @@ export type AppAction =
   | { type: 'SET_SHOW_DONE'; value: boolean }
   | { type: 'SET_SYNC_STATUS'; status: AppState['syncStatus'] }
   | { type: 'SET_TOAST'; message: string | null }
-  | { type: 'SET_CONFIG'; apiBase: string; authToken: string };
+  | { type: 'SET_CONFIG'; apiBase: string; authToken: string }
+  | { type: 'LOG_OUT' };
+
+const LOGGED_OUT_KEY = 'alongside_logged_out';
 
 function getDefaultApiBase(): string {
   if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
@@ -41,8 +44,9 @@ function getDefaultApiBase(): string {
 }
 
 export function getInitialState(): AppState {
-  const apiBase = localStorage.getItem('alongside_api') ?? getDefaultApiBase();
-  const authToken = localStorage.getItem('alongside_token') || 'dev-token-change-me';
+  const loggedOut = localStorage.getItem(LOGGED_OUT_KEY) === 'true';
+  const apiBase = loggedOut ? '' : (localStorage.getItem('alongside_api') ?? getDefaultApiBase());
+  const authToken = loggedOut ? '' : (localStorage.getItem('alongside_token') || 'dev-token-change-me');
   const sessionId = localStorage.getItem('alongside_session') || null;
   return {
     tasks: [],
@@ -136,5 +140,23 @@ export function reducer(state: AppState, action: AppAction): AppState {
 
     case 'SET_CONFIG':
       return { ...state, apiBase: action.apiBase, authToken: action.authToken };
+
+    case 'LOG_OUT':
+      return {
+        ...state,
+        tasks: [],
+        projects: [],
+        links: [],
+        currentView: 'suggest',
+        selectedProjectId: null,
+        editingTaskId: null,
+        detailTaskId: null,
+        cardSeen: new Set(),
+        showDone: false,
+        syncStatus: 'idle',
+        toastMessage: 'Logged out',
+        apiBase: '',
+        authToken: '',
+      };
   }
 }

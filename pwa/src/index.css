@@ -30,7 +30,7 @@
   --queue-width: 220px;
 }
 
-html, body, #root { min-height: 100%; }
+html, body, #root { height: 100%; min-height: 100%; }
 
 body {
   background: var(--bg);
@@ -50,15 +50,18 @@ button {
 }
 
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   background: var(--bg);
+  overflow: hidden;
 }
 
 #app {
+  height: 100vh;
   min-width: 0;
-  min-height: 100vh;
+  min-height: 0;
   overflow: hidden;
   position: relative;
 }
@@ -68,6 +71,8 @@ button {
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  height: 100vh;
+  min-height: 0;
   overflow: hidden;
   padding: 22px 0;
 }
@@ -88,7 +93,16 @@ button {
   display: none;
 }
 
-.sidebar-section { padding: 16px 12px 8px; }
+.sidebar-section {
+  flex-shrink: 0;
+  padding: 16px 12px 8px;
+}
+
+.sidebar-projects {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 
 .sidebar-label,
 .sdrop-group-label,
@@ -152,11 +166,11 @@ button {
 }
 
 .sidebar-footer {
-  align-items: center;
   border-top: 1px solid var(--border);
   color: var(--ink-3);
   display: flex;
-  gap: 6px;
+  flex-direction: column;
+  gap: 10px;
   margin-top: auto;
   padding: 14px 20px;
 }
@@ -164,6 +178,26 @@ button {
 .sidebar-footer.offline { color: #9C3B30; }
 .sidebar-footer.offline .session-dot { background: #9C3B30; animation: none; }
 .sidebar-footer.syncing .session-dot { background: var(--accent); }
+.sidebar-footer.logged-out .session-dot { background: var(--ink-4); animation: none; }
+
+.sidebar-footer-status {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.sidebar-logout {
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+}
+
+.sidebar-logout:hover { color: var(--ink); }
 
 .session-dot {
   animation: pulse 2.5s infinite;
@@ -216,6 +250,12 @@ button {
   width: 100%;
 }
 
+.settings-error {
+  color: #9C3B30;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
 .settings-banner button {
   background: var(--accent);
   border: 0;
@@ -226,16 +266,24 @@ button {
   padding: 7px 12px;
 }
 
+.settings-banner button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .focus-view {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--queue-width);
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .main-column {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   min-width: 0;
   overflow: hidden;
 }
@@ -458,8 +506,9 @@ button {
   flex-direction: column;
   justify-content: flex-end;
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
   padding: 0;
+  position: relative;
   transition: padding 0.35s ease;
 }
 
@@ -646,7 +695,8 @@ button {
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   overflow: hidden;
   padding: 18px 12px;
 }
@@ -763,7 +813,9 @@ button {
   display: grid;
   flex: 1;
   grid-template-columns: 280px minmax(0, 1fr);
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
   width: 100%;
 }
 
@@ -772,6 +824,7 @@ button {
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -938,6 +991,8 @@ button {
   background: var(--bg);
   display: flex;
   flex-direction: column;
+  height: 100vh;
+  min-height: 0;
   min-width: 0;
   overflow: hidden;
 }
@@ -1255,8 +1310,10 @@ button {
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-md);
-  margin: 64px auto 24px;
+  margin: 24px auto;
   max-width: 720px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
   padding: 22px;
 }
 
@@ -1323,7 +1380,9 @@ button {
   .app-shell {
     display: flex;
     flex-direction: column;
+    height: auto;
     min-height: 100svh;
+    overflow: visible;
   }
   .sidebar { display: none; }
   .compact-nav {
@@ -1363,7 +1422,12 @@ button {
     color: var(--ink);
     font-weight: 600;
   }
+  .compact-logout {
+    color: var(--ink-3);
+    margin-left: auto;
+  }
   #app {
+    height: auto;
     flex: 1;
     min-height: 0;
     overflow: visible;
@@ -1376,11 +1440,13 @@ button {
   .focus-view {
     display: flex;
     flex: 1;
+    height: auto;
     min-height: 0;
   }
-  .all-view { display: block; min-height: auto; }
+  .all-view { display: block; height: auto; min-height: auto; overflow: visible; }
   .main-column {
     flex: 1;
+    height: auto;
     min-height: 0;
     overflow: hidden;
   }
@@ -1436,12 +1502,18 @@ button {
   .focus-card-top { padding: 22px 24px 18px; }
   .focus-card-body { padding: 22px 24px; }
   .card-title { font-size: 28px; }
+
   .task-list-col { min-height: 50vh; }
-  .detail-panel { min-height: 60vh; }
+  .detail-panel { height: auto; min-height: 60vh; }
   .detail-standalone {
     height: auto;
     min-height: 60vh;
     overflow: visible;
+  }
+  .edit-form {
+    margin: 22px 18px;
+    max-height: none;
+    overflow-y: visible;
   }
   .detail-scroll { padding: 22px 18px; }
   .detail-action-bar { flex-wrap: wrap; padding: 12px 18px; }

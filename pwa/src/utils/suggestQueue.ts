@@ -1,14 +1,19 @@
-import type { Task } from '@shared/types';
+import type { Task, TaskLink } from '@shared/types';
 
 function isFocused(task: Task): boolean {
   return !!task.focused_until && task.focused_until > new Date().toISOString();
 }
 
-export function suggestQueue(tasks: Task[], today: string, cardSeen: Set<string>): Task[] {
+function isBlocked(task: Task, links: TaskLink[]): boolean {
+  return links.some(l => l.link_type === 'blocks' && l.to_task_id === task.id);
+}
+
+export function suggestQueue(tasks: Task[], today: string, cardSeen: Set<string>, links: TaskLink[] = []): Task[] {
   const now = new Date().toISOString();
   const candidates = tasks.filter(t =>
     t.status !== 'done' &&
     !(t.snoozed_until && t.snoozed_until > now) &&
+    !isBlocked(t, links) &&
     !cardSeen.has(t.id),
   );
 

@@ -154,16 +154,16 @@ export function SuggestView() {
         />
         <div className={`today-stage ${focused ? 'focused' : 'idle'}`}>
           <div className={`focus-card-wrap ${focused ? 'promoted' : 'docked'}`}>
-            <CardContextStrip
-              focused={focused}
-              queueCount={queue.length}
-              dueTodayCount={state.tasks.filter(t => t.status !== 'done' && t.due_date === today).length}
-            />
-            <TaskCard
-              flow={flow}
-              onAction={handleTaskAction}
-            />
-          </div>
+                <CardContextStrip
+                  focused={focused}
+                  queueCount={queue.length}
+                  dueTodayCount={state.tasks.filter(t => t.status !== 'done' && t.due_date === today).length}
+                />
+                    <TaskCard
+                      flow={flow}
+                      onAction={handleTaskAction}
+                    />
+                  </div>
         </div>
       </section>
       <QueuePanel

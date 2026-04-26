@@ -14,14 +14,25 @@ export const AppContext = createContext<AppContextValue | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, getInitialState);
 
-  // Load data from IDB on mount so the UI is populated before the first network sync
+  // Load local data only while a worker config is available.
   useEffect(() => {
+    if (!state.apiBase || !state.authToken) {
+      dispatch({ type: 'SET_DATA', tasks: [], projects: [], links: [] });
+      return;
+    }
+
+    let cancelled = false;
     Promise.all([idbGetAllTasks(), idbGetAllProjects(), idbGetAllLinks()])
       .then(([tasks, projects, links]) => {
+        if (cancelled) return;
         dispatch({ type: 'SET_DATA', tasks, projects, links });
       })
       .catch(err => console.warn('Initial IDB load failed:', err));
-  }, []);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [state.apiBase, state.authToken]);
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>

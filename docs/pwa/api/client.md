@@ -9,3 +9,5 @@ Minimal HTTP client for talking to the Cloudflare Worker REST API.
 ## Functions
 
 **`apiFetch(config, method, path, body?)`** — Makes an authenticated `fetch` call to `config.apiBase + path` with the `Authorization: Bearer` header set. Returns the parsed JSON response, or `null` if the request fails or returns a non-2xx status. All sync and action modules use this as their sole HTTP primitive.
+
+**`verifyApiConfig(config)`** — Performs a lightweight authenticated request to the worker root and returns `true` only when the worker URL and token produce a successful response. Used by the reconnect/login panel before credentials are persisted.

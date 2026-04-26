@@ -14,6 +14,7 @@ export function Sidebar() {
   const activeTasks = state.tasks.filter(t => t.status !== 'done');
   const readyCount = activeTasks.length;
   const projectCounts = new Map<string, number>();
+  const isConfigured = Boolean(state.apiBase && state.authToken);
 
   for (const task of activeTasks) {
     if (task.project_id) projectCounts.set(task.project_id, (projectCounts.get(task.project_id) ?? 0) + 1);
@@ -32,12 +33,23 @@ export function Sidebar() {
   }
 
   function footerText(): string {
+    if (!isConfigured) return 'Logged out';
+
     switch (state.syncStatus) {
-      case 'offline': return 'Offline - changes saved locally';
+      case 'offline': return 'Worker unreachable - changes saved locally';
       case 'syncing': return 'Syncing...';
       case 'online': return 'Synced';
       case 'idle': return 'Ready to sync';
     }
+  }
+
+  function handleLogout() {
+    localStorage.removeItem('alongside_api');
+    localStorage.removeItem('alongside_token');
+    localStorage.removeItem('alongside_session');
+    localStorage.setItem('alongside_logged_out', 'true');
+    dispatch({ type: 'LOG_OUT' });
+    pushNav({ view: 'suggest', detailId: null, editId: null });
   }
 
   return (
@@ -78,9 +90,16 @@ export function Sidebar() {
         )}
       </div>
 
-      <div className={`sidebar-footer ${state.syncStatus}`}>
-        <span className="session-dot" />
-        <span>{footerText()}</span>
+      <div className={`sidebar-footer ${isConfigured ? state.syncStatus : 'logged-out'}`}>
+        <div className="sidebar-footer-status">
+          <span className="session-dot" />
+          <span>{footerText()}</span>
+        </div>
+        {isConfigured && (
+          <button className="sidebar-logout" onClick={handleLogout}>
+            Log out
+          </button>
+        )}
       </div>
     </aside>
   );
@@ -89,11 +108,21 @@ export function Sidebar() {
 export function CompactNavigation() {
   const { state, dispatch } = useAppState();
   const readyCount = state.tasks.filter(t => t.status !== 'done').length;
+  const isConfigured = Boolean(state.apiBase && state.authToken);
 
   function navigate(view: AppState['currentView']) {
     dispatch({ type: 'SET_PROJECT_FILTER', id: null });
     dispatch({ type: 'SET_VIEW', view });
     pushNav({ view, detailId: null, editId: null });
+  }
+
+  function handleLogout() {
+    localStorage.removeItem('alongside_api');
+    localStorage.removeItem('alongside_token');
+    localStorage.removeItem('alongside_session');
+    localStorage.setItem('alongside_logged_out', 'true');
+    dispatch({ type: 'LOG_OUT' });
+    pushNav({ view: 'suggest', detailId: null, editId: null });
   }
 
   return (
@@ -111,6 +140,11 @@ export function CompactNavigation() {
             {view.id === 'suggest' && <span className="sidebar-count">{readyCount}</span>}
           </button>
         ))}
+        {isConfigured && (
+          <button className="compact-nav-item compact-logout" onClick={handleLogout}>
+            <span>Log out</span>
+          </button>
+        )}
       </div>
     </nav>
   );
