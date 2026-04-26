@@ -1,12 +1,11 @@
 import { useEffect } from 'react';
 import { AppProvider } from './context/AppContext';
-import { Header } from './components/layout/Header';
-import { SyncStatus } from './components/layout/SyncStatus';
 import { SettingsBanner } from './components/common/SettingsBanner';
 import { Toast } from './components/common/Toast';
+import { CompactNavigation, Sidebar } from './components/layout/Sidebar';
 import { SuggestView } from './components/views/SuggestView';
 import { AllView } from './components/views/AllView';
-import { SessionView } from './components/views/SessionView';
+import { ReviewView } from './components/views/ReviewView';
 import { DetailView } from './components/views/DetailView';
 import { EditView } from './components/views/EditView';
 import { useAppState } from './hooks/useAppState';
@@ -31,24 +30,24 @@ function AppShell() {
 
   function renderMain() {
     if (editingTaskId) return <EditView />;
-    if (detailTaskId) return <DetailView />;
+    if (detailTaskId && currentView !== 'all') return <DetailView />;
     switch (currentView) {
       case 'suggest': return <SuggestView />;
       case 'all': return <AllView />;
-      case 'session': return <SessionView />;
+      case 'review': return <ReviewView />;
     }
   }
 
   return (
-    <>
-      <Header />
-      <SyncStatus />
-      <SettingsBanner />
+    <div className={`app-shell app-shell-${currentView}`}>
+      <Sidebar />
+      <CompactNavigation />
       <main id="app">
+        <SettingsBanner />
         {renderMain()}
       </main>
       <Toast />
-    </>
+    </div>
   );
 }
 

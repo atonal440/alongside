@@ -4,17 +4,22 @@ import type { AppState } from '../context/reducer';
 import { idbGetAllTasks } from '../idb/tasks';
 
 interface HistoryState {
-  view: AppState['currentView'];
+  view: AppState['currentView'] | 'session';
   detailId: string | null;
   editId: string | null;
 }
 
 export function pushNav(state: HistoryState) {
-  history.pushState(state, '');
+  history.pushState({ ...state, view: normalizeView(state.view) }, '');
 }
 
 export function replaceNav(state: HistoryState) {
-  history.replaceState(state, '');
+  history.replaceState({ ...state, view: normalizeView(state.view) }, '');
+}
+
+function normalizeView(view: HistoryState['view'] | undefined): AppState['currentView'] {
+  if (view === 'session') return 'review';
+  return view ?? 'suggest';
 }
 
 export function useHistory() {
@@ -35,7 +40,7 @@ export function useHistory() {
     async function handlePopState(e: PopStateEvent) {
       const s = e.state as HistoryState | null;
       if (!s) return;
-      dispatch({ type: 'SET_VIEW', view: s.view || 'suggest' });
+      dispatch({ type: 'SET_VIEW', view: normalizeView(s.view) });
       if (s.editId || s.detailId) {
         const tasks = await idbGetAllTasks();
         const taskMap = Object.fromEntries(tasks.map(t => [t.id, t]));

@@ -1,126 +1,153 @@
 # Alongside
 
-A lightweight task manager built around conversational workflow with Claude. Tasks live in a Cloudflare Worker (D1 database), exposed via MCP tools for Claude and a REST API for an offline-first PWA.
+A lightweight task manager built around conversational workflow. Tasks live in a Cloudflare Worker backed by D1, exposed through MCP tools for assistant clients and through a REST API for an offline-first PWA.
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────┐
-│  Claude (MCP client)          PWA (browser)         │
-│   - start_session              - IndexedDB           │
-│   - add_task, complete_task    - background sync     │
-│   - show_tasks widget          - offline-first       │
-└────────────┬───────────────────────┬────────────────┘
-             │ /mcp (JSON-RPC)       │ /api/* (REST)
-             ▼                       ▼
-┌─────────────────────────────────────────────────────┐
-│              Cloudflare Worker                      │
-│   src/index.ts  — routing, auth, CORS               │
-│   src/mcp.ts    — 17 MCP tools                      │
-│   src/api.ts    — REST endpoints                    │
-│   src/db.ts     — D1 operations                     │
-│   src/ui.ts     — iframe widget                     │
-│   src/app-ui.ts — MCP App widgets                   │
-└────────────────────────┬────────────────────────────┘
-                         │
-                    ┌────▼────┐
-                    │  D1 DB  │
-                    │ (SQLite)│
-                    └─────────┘
+```text
+Assistant client / MCP        PWA / browser
+        |                         |
+        | /mcp JSON-RPC           | /api/* REST
+        v                         v
+              Cloudflare Worker
+        src/index.ts  routing/auth/CORS
+        src/mcp.ts    MCP tools
+        src/api.ts    REST API
+        src/db.ts     D1 operations
+        src/ui.ts     iframe widget
+        src/app-ui.ts MCP App widgets
+                      |
+                      v
+                    D1 DB
 ```
 
 ## Quick Start
 
+From the repo root:
+
+```sh
+npm run dev        # starts worker (:8787) and PWA (:5173); Ctrl-C stops both
+npm run dev:status # optional: show tracked dev process status
+npm run dev:stop   # optional: stop tracked detached dev processes
+```
+
+Run the worker and the PWA manually only when you need isolated logs or custom flags.
+
+### Worker Backend
+
 ```sh
 cd worker
 npm install
-npm run db:init    # creates local D1 database from schema.sql
-npm run dev        # starts wrangler dev on :8787
+npm run db:init
+npm run dev
 ```
 
-To use the PWA, serve the `pwa/` directory separately (e.g. `npx serve pwa/`) and set these keys in `localStorage`:
+The worker runs at `http://127.0.0.1:8787` by default.
+
+For local auth, `worker/.dev.vars` should provide:
+
+```text
+AUTH_TOKEN=dev-token-change-me
+```
+
+### PWA
+
+```sh
+cd pwa
+npm install
+npm run dev
+```
+
+Vite usually serves the app at `http://127.0.0.1:5173`.
+
+The PWA does not proxy API requests. In the browser console for the PWA origin, set:
 
 ```js
-localStorage.setItem('alongside_api', 'http://localhost:8787')
-localStorage.setItem('alongside_token', 'dev-token-change-me')
+localStorage.setItem('alongside_api', 'http://127.0.0.1:8787');
+localStorage.setItem('alongside_token', 'dev-token-change-me');
 ```
 
-To connect Claude Desktop or another MCP client, point it at `http://localhost:8787/mcp` with a bearer token header.
+Reload the PWA after setting those keys.
 
 ## Project Structure
 
-```
+```text
+shared/
+  schema.ts        Drizzle ORM table definitions
+  types.ts         Shared row and input types
+
 worker/
-  src/
-    index.ts     Entry point: routing, CORS, auth dispatch
-    mcp.ts       MCP protocol handler — all 17 tool definitions
-    api.ts       REST endpoints for the PWA
-    db.ts        All D1 operations, recurrence logic, readiness scoring
-    ui.ts        Iframe widget served at /ui/active (signature auth)
-    app-ui.ts    MCP App widgets: task dashboard + action log badge
-  schema.sql     D1 schema (tasks, projects, task_links, preferences, action_log)
-  wrangler.toml  Worker config and env vars
+  src/index.ts     Entry point: routing, auth, CORS dispatch
+  src/mcp.ts       MCP protocol handler and tools
+  src/api.ts       REST endpoints for the PWA
+  src/db.ts        D1 operations, recurrence, readiness scoring
+  src/ui.ts        Iframe widget served at /ui/active
+  src/app-ui.ts    MCP App widgets
+  schema.sql       Reference/local D1 schema
+  wrangler.toml    Cloudflare Worker config
 
 pwa/
-  index.html     Single-file app — all views, sync logic, service worker reg
-  sw.js          Service worker (cache shell, background sync queue)
-  manifest.json  PWA manifest
+  src/App.tsx      App shell and view switcher
+  src/context/     App reducer and async action creators
+  src/idb/         IndexedDB modules
+  src/api/         REST client and sync
+  src/hooks/       App state, sync, history hooks
+  src/components/  Layout, common UI, task cards, views
+  src/utils/       Queueing, task-flow, design helpers, link maps
+  src/sw.ts        Workbox service worker
 
-alongside-design.md   Philosophy, design decisions, and behavioral spec
-docs/
-  mcp-tools.md  Full reference for all 17 MCP tools
-  api.md        REST API reference
+docs/              Per-file and architecture docs
 ```
-
-## Auth
-
-| Route prefix | Auth method |
-|---|---|
-| `/api/*`, `/mcp` | `Authorization: Bearer {AUTH_TOKEN}` header |
-| `/ui/*` | URL signature params (`?t=<timestamp>&sig=<hmac>`) |
-| OAuth routes | Public (OAuth 2.1 w/ PKCE flow) |
-
-`AUTH_TOKEN` is set in `wrangler.toml` under `[vars]`. Change it before deploying.
-
-## Configuration
-
-All config lives in `worker/wrangler.toml`:
-
-| Key | Description |
-|---|---|
-| `AUTH_TOKEN` | Bearer token for API and MCP access |
-| `DB` | D1 database binding |
 
 ## Commands
 
-| Command | What it does |
-|---|---|
-| `npm run dev` | Start local worker on port 8787 |
-| `npm run db:init` | Apply schema.sql to local D1 |
-| `npm run deploy` | Deploy worker to Cloudflare |
-| `npx tsc --noEmit` | Type-check (run from `worker/`) |
+| Where | Command | What it does |
+|---|---|---|
+| `worker/` | `npm run dev` | Start local worker on port 8787 |
+| `worker/` | `npm run db:init` | Apply `schema.sql` to the local D1 database |
+| `worker/` | `npm run db:generate` | Generate a Drizzle migration from schema diff |
+| `worker/` | `npm run typecheck` | Type-check the worker |
+| `worker/` | `wrangler deploy --dry-run` | Bundle-check worker without publishing |
+| `worker/` | `npm run deploy` | Deploy worker to Cloudflare |
+| `pwa/` | `npm run dev` | Start Vite dev server |
+| `pwa/` | `npm run typecheck` | Type-check the PWA |
+| `pwa/` | `npm run build` | Production PWA build |
+| `pwa/` | `npm run preview` | Preview built PWA |
 
 ## Smoke Testing
 
+With the worker running:
+
 ```sh
-# REST — create a task
-curl -X POST http://localhost:8787/api/tasks \
+curl -X POST http://127.0.0.1:8787/api/tasks \
   -H "Authorization: Bearer dev-token-change-me" \
   -H "Content-Type: application/json" \
   -d '{"title":"Test task"}'
 
-# MCP — list available tools
-curl -X POST http://localhost:8787/mcp \
+curl -X POST http://127.0.0.1:8787/mcp \
   -H "Authorization: Bearer dev-token-change-me" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-
-# Widget
-open http://localhost:8787/ui/active
 ```
+
+Widget route:
+
+```text
+http://127.0.0.1:8787/ui/active
+```
+
+## Agent Notes
+
+- Claude Code reads `CLAUDE.md`.
+- Codex reads `AGENTS.md`.
+- Keep both files aligned when project conventions or local-dev commands change.
+
+Per-file documentation lives in `docs/`. When adding, removing, or significantly changing exported TypeScript functions, hooks, components, classes, or module contracts, update the mirrored doc file under `docs/`.
 
 ## Further Reading
 
-- [`docs/mcp-tools.md`](docs/mcp-tools.md) — full reference for all 17 MCP tools
-- [`docs/api.md`](docs/api.md) — REST API and UI route reference
-- [`alongside-design.md`](alongside-design.md) — design philosophy and behavioral spec
+- `CLAUDE.md` and `AGENTS.md` for assistant-specific working instructions
+- `docs/overview.md` for architecture and data flow
+- `docs/mcp-tools.md` for MCP tool reference
+- `docs/api.md` for REST API reference
+- `alongside-design.md` for design philosophy and behavioral spec

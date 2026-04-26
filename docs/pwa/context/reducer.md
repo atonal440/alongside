@@ -4,10 +4,10 @@ Pure state management logic. No side effects, no async — just types and the re
 
 ## Exports
 
-**`AppState`** (interface) — Complete global UI state: `tasks`, `projects`, `links` (arrays from IndexedDB), `currentView` (which view is active), `selectedTaskId`, `syncStatus` (`'synced' | 'syncing' | 'offline'`), `toast` (optional message string), and `apiConfig` (base URL + auth token).
+**`AppState`** (interface) — Complete global UI state: `tasks`, `projects`, `links` (arrays from IndexedDB), `currentView` (which view is active), detail/edit selection, project filtering, `syncStatus` (`'idle' | 'syncing' | 'online' | 'offline'`), `toastMessage`, and worker config (`apiBase` + `authToken`).
 
-**`AppAction`** (type) — Discriminated union of every action the reducer handles. Includes `LOAD_INITIAL`, `SET_TASKS`, `SET_PROJECTS`, `SET_LINKS`, `ADD_TASK`, `UPDATE_TASK`, `DELETE_TASK`, `SET_VIEW`, `SET_SYNC_STATUS`, `SET_TOAST`, `SET_API_CONFIG`, and others.
+**`AppAction`** (type) — Discriminated union of every action the reducer handles. Includes data replacement, task/project/link upserts and deletes, view/filter/detail/edit state, card tracking, done visibility, sync status, toast messages, worker config, and `LOG_OUT`.
 
-**`getInitialState()`** — Reads `apiConfig` from `localStorage` and returns the default `AppState` with empty arrays and `currentView: 'suggest'`.
+**`getInitialState()`** — Reads worker config from `localStorage` and returns the default `AppState` with empty arrays and `currentView: 'suggest'`. The `alongside_logged_out` marker suppresses dev defaults so an explicit logout stays logged out after refresh.
 
-**`reducer(state, action)`** — Processes each `AppAction` and returns a new `AppState`. Handles all task/project/link list mutations and UI state transitions. Used exclusively in `AppContext.tsx`.
+**`reducer(state, action)`** — Processes each `AppAction` and returns a new `AppState`. Handles all task/project/link list mutations and UI state transitions. `LOG_OUT` clears in-memory task data and worker credentials; the Sidebar logout handler clears IndexedDB before dispatching it so cached tasks, projects, links, and pending ops do not survive across credentials. Used exclusively in `AppContext.tsx`.

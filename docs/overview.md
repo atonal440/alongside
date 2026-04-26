@@ -44,10 +44,13 @@ docs/
       useHistory.md    ← pwa/src/hooks/useHistory.ts
     utils/
       genId.md         ← pwa/src/utils/genId.ts
+      design.md        ← pwa/src/utils/design.ts
       linkMaps.md      ← pwa/src/utils/linkMaps.ts
       suggestQueue.md  ← pwa/src/utils/suggestQueue.ts
+      taskFlow.md      ← pwa/src/utils/taskFlow.ts
     components/
       layout/
+        Sidebar.md     ← pwa/src/components/layout/Sidebar.tsx
         Header.md      ← pwa/src/components/layout/Header.tsx
         NavBar.md      ← pwa/src/components/layout/NavBar.tsx
         SyncStatus.md  ← pwa/src/components/layout/SyncStatus.tsx

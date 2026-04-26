@@ -7,6 +7,11 @@ export function useSync() {
   const { apiBase, authToken } = state;
 
   useEffect(() => {
+    if (!apiBase || !authToken) {
+      dispatch({ type: 'SET_SYNC_STATUS', status: 'idle' });
+      return;
+    }
+
     const config = { apiBase, authToken };
 
     async function doSync() {

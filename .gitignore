@@ -2,6 +2,7 @@ node_modules/
 pwa/.vite/
 .wrangler/
 dist/
+.dev/
 .dev.vars
 
 .dev.vars*
@@ -11,3 +12,4 @@ dist/
 .DS_Store
 .obsidian/
 .claude/
+design_update/

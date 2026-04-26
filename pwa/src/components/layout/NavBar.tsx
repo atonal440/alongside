@@ -5,7 +5,7 @@ import type { AppState } from '../../context/reducer';
 const VIEWS: { id: AppState['currentView']; label: string }[] = [
   { id: 'suggest', label: 'Suggest' },
   { id: 'all', label: 'All' },
-  { id: 'session', label: 'Session' },
+  { id: 'review', label: 'Review' },
 ];
 
 export function NavBar() {

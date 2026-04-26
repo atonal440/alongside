@@ -25,3 +25,19 @@ export async function apiFetch(
     return null;
   }
 }
+
+export async function verifyApiConfig(config: ApiConfig): Promise<boolean> {
+  if (!config.apiBase || !config.authToken) return false;
+
+  try {
+    const res = await fetch(`${config.apiBase}/`, {
+      headers: {
+        Authorization: `Bearer ${config.authToken}`,
+      },
+    });
+    return res.ok;
+  } catch (e) {
+    console.warn('API verification failed:', e);
+    return false;
+  }
+}

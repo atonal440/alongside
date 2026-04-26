@@ -19,7 +19,7 @@ export function EditView() {
   return (
     <EditForm
       key={task.id}
-      task={{ id: task.id, title: task.title, notes: task.notes, kickoff_note: task.kickoff_note, due_date: task.due_date, recurrence: task.recurrence }}
+      task={{ id: task.id, title: task.title, notes: task.notes, kickoff_note: task.kickoff_note, due_date: task.due_date, recurrence: task.recurrence, session_log: task.session_log }}
       taskLinks={taskLinks}
       otherTasks={otherTasks}
       taskMap={taskMap}
@@ -53,6 +53,7 @@ interface EditFormProps {
     kickoff_note: string | null;
     due_date: string | null;
     recurrence: string | null;
+    session_log: string | null;
   };
   taskLinks: TaskLink[];
   otherTasks: { id: string; title: string }[];
@@ -63,6 +64,7 @@ interface EditFormProps {
     kickoff_note: string | null;
     due_date: string | null;
     recurrence: string | null;
+    session_log: string | null;
   }) => Promise<void>;
   onCancel: () => void;
   onDelete: () => Promise<void>;
@@ -76,6 +78,7 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
   const [kickoff, setKickoff] = useState(task.kickoff_note ?? '');
   const [dueDate, setDueDate] = useState(task.due_date ?? '');
   const [recurrence, setRecurrence] = useState(task.recurrence ?? '');
+  const [sessionLog, setSessionLog] = useState(task.session_log ?? '');
   const [linkToId, setLinkToId] = useState('');
   const [linkType, setLinkType] = useState<TaskLink['link_type']>('blocks');
 
@@ -99,6 +102,8 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
         <option value="FREQ=WEEKLY;INTERVAL=1">Weekly</option>
         <option value="FREQ=MONTHLY;INTERVAL=1">Monthly</option>
       </select>
+      <label>Session note</label>
+      <textarea value={sessionLog} onChange={e => setSessionLog(e.target.value)} />
       <label>Relationships</label>
       <div id="link-list">
         {taskLinks.length === 0 ? (
@@ -157,6 +162,7 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
             kickoff_note: kickoff || null,
             due_date: dueDate || null,
             recurrence: recurrence || null,
+            session_log: sessionLog || null,
           })}
         >
           Save

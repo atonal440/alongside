@@ -1,48 +1,64 @@
-import type { Task } from '../../types';
-import { taskMetaString } from './TaskMeta';
+import type { TaskFlow, TaskFlowAction, TaskFlowActionId } from '../../utils/taskFlow';
 
 interface Props {
-  task: Task;
-  today: string;
-  /** Show "Mark done" + "Next" buttons (active task in suggest view) */
-  isActive?: boolean;
-  onSkip?: () => void;
-  onStart?: () => void;
-  onDone?: () => void;
-  onNext?: () => void;
-  onEdit?: (id: string) => void;
+  flow: TaskFlow;
+  onAction: (action: TaskFlowActionId) => void;
   /** Extra style for session view stacking */
   style?: React.CSSProperties;
 }
 
-export function TaskCard({
-  task, today, isActive, onSkip, onStart, onDone, onNext, onEdit, style,
-}: Props) {
-  const meta = taskMetaString(task, today);
-
+export function TaskCard({ flow, onAction, style }: Props) {
   return (
-    <div className="task-card" style={style}>
-      {meta && <div className="card-label">{meta}</div>}
-      <div className="card-title">{task.title}</div>
-      {task.notes && <div className="card-notes">{task.notes}</div>}
-      {task.kickoff_note && <div className="card-kickoff">{task.kickoff_note}</div>}
-      {onEdit && (
-        <button className="card-edit-link" onClick={() => onEdit(task.id)}>Edit ›</button>
-      )}
-      <div className="card-actions">
-        {isActive ? (
-          <>
-            <button className="btn-skip" onClick={onDone}>Mark done</button>
-            <button className="btn-act" onClick={onNext}>Next ›</button>
-          </>
+    <article className={`task-card ${flow.mode} ${flow.emphasis}`} style={style}>
+      <div className="focus-card-top">
+        <div className="card-label">
+          {flow.mode === 'focused' && <span className="focus-pulse" />}
+          {flow.statusLabel}
+        </div>
+        <div className="card-title">{flow.title}</div>
+        {flow.mode === 'focused' && <div className="focus-timer">In focus - now</div>}
+      </div>
+      <div className="focus-card-body">
+        {flow.kickoff ? (
+          <div className="card-kickoff">{flow.kickoff}</div>
         ) : (
-          <>
-            {onSkip && <button className="btn-skip" onClick={onSkip}>Skip →</button>}
-            {onStart && <button className="btn-act" onClick={onStart}>Start this</button>}
-            {onDone && !onStart && <button className="btn-act" onClick={onDone}>Mark done</button>}
-          </>
+          <div className="card-kickoff muted">Add a starting point...</div>
+        )}
+        {flow.mode === 'focused' && flow.notePreview && (
+          <div className="card-notes">
+            <div className="detail-section-label">Notes</div>
+            {flow.notePreview}
+          </div>
         )}
       </div>
-    </div>
+      {flow.secondaryActions.some(action => action.id === 'edit') && (
+        <button className="card-edit-link" onClick={() => onAction('edit')}>Edit &gt;</button>
+      )}
+      <div className="card-actions">
+        {flow.secondaryActions
+          .filter(action => action.id !== 'edit')
+          .map(action => (
+            <ActionButton key={action.id} action={action} onAction={onAction} />
+          ))}
+        {flow.primaryAction && <ActionButton action={flow.primaryAction} onAction={onAction} />}
+      </div>
+    </article>
+  );
+}
+
+function ActionButton({ action, onAction }: {
+  action: TaskFlowAction;
+  onAction: (action: TaskFlowActionId) => void;
+}) {
+  const className = action.tone === 'primary'
+    ? 'btn-act'
+    : action.tone === 'danger'
+      ? 'btn-delete'
+      : 'btn-skip';
+
+  return (
+    <button className={className} onClick={() => onAction(action.id)}>
+      {action.label}
+    </button>
   );
 }

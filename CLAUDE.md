@@ -1,6 +1,8 @@
 # Alongside
 
-A lightweight task manager built around conversational workflow with Claude. See `alongside-design.md` for the full design doc.
+A lightweight task manager built around conversational workflow with assistant clients. See `alongside-design.md` for the full design doc.
+
+Codex-specific agent instructions live in `AGENTS.md`. Keep `CLAUDE.md` and `AGENTS.md` aligned when project conventions or local-dev commands change.
 
 ## Project structure
 
@@ -30,6 +32,25 @@ pwa/               React + Vite + TypeScript PWA (offline-first, IndexedDB)
 ```
 
 ## Running locally
+
+For day-to-day local development, use the repo-level runner:
+
+```sh
+npm run dev
+```
+
+This starts the worker at `http://127.0.0.1:8787` and the PWA at `http://127.0.0.1:5173`, prefixes both logs in one terminal, and shuts both processes down with `Ctrl-C`.
+
+If a dev process gets detached, use:
+
+```sh
+npm run dev:status
+npm run dev:stop
+```
+
+The runner keeps only transient process state in `.dev/`.
+
+Run services manually only when you need isolated logs or flags:
 
 ```sh
 # Worker
