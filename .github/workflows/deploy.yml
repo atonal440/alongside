@@ -43,7 +43,11 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: pwa/package-lock.json
+          cache-dependency-path: |
+            pwa/package-lock.json
+            worker/package-lock.json
+      - name: Install Worker dependencies for shared type resolution
+        run: npm ci --prefix ../worker
       - run: npm ci
       - run: npm run build
       - name: Deploy to Cloudflare Pages
