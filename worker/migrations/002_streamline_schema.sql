@@ -10,8 +10,5 @@ UPDATE tasks SET task_type = 'action' WHERE task_type = 'recurring';
 -- 3. Delete any 'supersedes' links (unused)
 DELETE FROM task_links WHERE link_type = 'supersedes';
 
--- 4. Clear legacy session_id values
-UPDATE tasks SET session_id = NULL;
-
--- 5. Drop unused session_id index
+-- 4. Drop unused session_id index
 DROP INDEX IF EXISTS idx_tasks_session_id;

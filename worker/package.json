@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "db:init": "wrangler d1 execute alongside-db --local --file=schema.sql",
+    "db:init": "wrangler d1 execute alongside-db --local --file=schema.sql && node scripts/seed-migrations.mjs --local",
+    "db:seed-migrations:remote": "node scripts/seed-migrations.mjs --remote",
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit"
   },
