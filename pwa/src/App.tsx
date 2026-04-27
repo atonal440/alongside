@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AppProvider } from './context/AppContext';
 import { SettingsBanner } from './components/common/SettingsBanner';
 import { Toast } from './components/common/Toast';
@@ -15,6 +15,9 @@ import { useHistory } from './hooks/useHistory';
 function AppShell() {
   useSync();
   useHistory();
+  const [isSingleColumn, setIsSingleColumn] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 680px)').matches : false,
+  );
 
   const { state } = useAppState();
   const { currentView, editingTaskId, detailTaskId } = state;
@@ -28,9 +31,31 @@ function AppShell() {
     }
   }, []);
 
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 680px)');
+    const legacyMedia = media as MediaQueryList & {
+      addListener?: (listener: (this: MediaQueryList, ev: MediaQueryListEvent) => unknown) => void;
+      removeListener?: (listener: (this: MediaQueryList, ev: MediaQueryListEvent) => unknown) => void;
+    };
+    const updateLayout = () => setIsSingleColumn(media.matches);
+    updateLayout();
+
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', updateLayout);
+      return () => media.removeEventListener('change', updateLayout);
+    }
+
+    if (typeof legacyMedia.addListener === 'function') {
+      legacyMedia.addListener(updateLayout);
+      return () => legacyMedia.removeListener?.(updateLayout);
+    }
+
+    return undefined;
+  }, []);
+
   function renderMain() {
     if (editingTaskId) return <EditView />;
-    if (detailTaskId && currentView !== 'all') return <DetailView />;
+    if (detailTaskId && (currentView !== 'all' || isSingleColumn)) return <DetailView />;
     switch (currentView) {
       case 'suggest': return <SuggestView />;
       case 'all': return <AllView />;
