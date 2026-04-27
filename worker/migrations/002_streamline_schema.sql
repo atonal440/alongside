@@ -1,9 +1,8 @@
 -- Migration: Streamline schema
 -- Adds notes column to projects, removes unused complexity.
 
--- 1. Add notes column to projects (idempotent for environments that already
--- include this column from a schema bootstrap)
-ALTER TABLE projects ADD COLUMN IF NOT EXISTS notes TEXT;
+-- 1. Add notes column to projects
+ALTER TABLE projects ADD COLUMN notes TEXT;
 
 -- 2. Migrate task_type 'recurring' to 'action' (recurrence field already handles behavior)
 UPDATE tasks SET task_type = 'action' WHERE task_type = 'recurring';

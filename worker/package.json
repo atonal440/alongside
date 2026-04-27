@@ -7,6 +7,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "db:init": "wrangler d1 execute alongside-db --local --file=schema.sql",
+    "db:reconcile-legacy-migrations:remote": "node scripts/reconcile-legacy-migrations.mjs alongside-db --remote",
+    "db:reconcile-legacy-migrations:local": "node scripts/reconcile-legacy-migrations.mjs alongside-db --local",
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit"
   },
