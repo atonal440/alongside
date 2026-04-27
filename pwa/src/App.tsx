@@ -33,10 +33,24 @@ function AppShell() {
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 680px)');
+    const legacyMedia = media as MediaQueryList & {
+      addListener?: (listener: (this: MediaQueryList, ev: MediaQueryListEvent) => unknown) => void;
+      removeListener?: (listener: (this: MediaQueryList, ev: MediaQueryListEvent) => unknown) => void;
+    };
     const updateLayout = () => setIsSingleColumn(media.matches);
     updateLayout();
-    media.addEventListener('change', updateLayout);
-    return () => media.removeEventListener('change', updateLayout);
+
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', updateLayout);
+      return () => media.removeEventListener('change', updateLayout);
+    }
+
+    if (typeof legacyMedia.addListener === 'function') {
+      legacyMedia.addListener(updateLayout);
+      return () => legacyMedia.removeListener?.(updateLayout);
+    }
+
+    return undefined;
   }, []);
 
   function renderMain() {
