@@ -8,6 +8,40 @@ if (!['--remote', '--local', '--preview'].includes(mode)) {
   process.exit(1);
 }
 
+const hasMigrationsTableSql = `
+SELECT EXISTS(
+  SELECT 1
+  FROM sqlite_master
+  WHERE type = 'table' AND name = 'd1_migrations'
+) AS has_migrations_table;
+`;
+
+const hasMigrationsTableArgs = [
+  'wrangler',
+  'd1',
+  'execute',
+  database,
+  mode,
+  '--json',
+  '--command',
+  hasMigrationsTableSql
+];
+
+const hasMigrationsTableOutput = execFileSync('npx', hasMigrationsTableArgs, {
+  encoding: 'utf8'
+});
+
+const parsedOutput = JSON.parse(hasMigrationsTableOutput);
+const queryResult = parsedOutput?.[0]?.results?.[0];
+const hasMigrationsTable = queryResult?.has_migrations_table === 1;
+
+if (!hasMigrationsTable) {
+  console.log(
+    'Skipping legacy migration reconciliation: d1_migrations table is not present yet.'
+  );
+  process.exit(0);
+}
+
 const sql = `
 INSERT OR IGNORE INTO d1_migrations (name, applied_at)
 SELECT '002_streamline_schema.sql', CURRENT_TIMESTAMP
