@@ -20,6 +20,7 @@ if (!['--remote', '--local', '--preview'].includes(mode)) {
 // wrangler migration tracking was in place. Keep this list in sync with the
 // files in worker/migrations/ any time a migration is added.
 const applied = [
+  '001_initial_schema.sql',
   '002_streamline_schema.sql',
   '003_focused_until.sql',
   '004_remove_snoozed_status.sql',
