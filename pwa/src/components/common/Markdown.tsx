@@ -74,6 +74,6 @@ function sanitizeHtml(html: string): string {
 }
 
 export function Markdown({ src }: { src: string }) {
-  const html = sanitizeHtml(marked(escapeRawHtml(src), { breaks: true }) as string);
+  const html = sanitizeHtml(marked.parse(escapeRawHtml(src), { breaks: true, async: false }));
   return <div className="detail-markdown" dangerouslySetInnerHTML={{ __html: html }} />;
 }
