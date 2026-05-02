@@ -57,6 +57,7 @@ docs/
       common/
         AddBar.md      ← pwa/src/components/common/AddBar.tsx
         EmptyState.md  ← pwa/src/components/common/EmptyState.tsx
+        Markdown.md    ← pwa/src/components/common/Markdown.tsx
         SettingsBanner.md ← pwa/src/components/common/SettingsBanner.tsx
         Toast.md       ← pwa/src/components/common/Toast.tsx
       task/
