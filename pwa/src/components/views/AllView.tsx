@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { marked } from 'marked';
 import { useAppState } from '../../hooks/useAppState';
 import { buildBlocksMap, buildBlockedByMap } from '../../utils/linkMaps';
 import { createTaskAction, completeTaskAction, deleteTaskAction, focusTaskAction, updateTaskAction } from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
+import { Markdown } from '../common/Markdown';
 import {
   isBlocked,
   projectTitle,
@@ -13,11 +13,6 @@ import { deriveTaskFlow, type TaskFlowAction, type TaskFlowActionId } from '../.
 import type { Project, Task, TaskLink } from '../../types';
 
 type SortMode = 'readiness' | 'due' | 'project';
-
-function Markdown({ src }: { src: string }) {
-  const html = marked(src, { breaks: true }) as string;
-  return <div className="detail-markdown" dangerouslySetInnerHTML={{ __html: html }} />;
-}
 
 export function AllView() {
   const { state, dispatch } = useAppState();

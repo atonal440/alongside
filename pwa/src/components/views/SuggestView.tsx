@@ -62,8 +62,13 @@ export function SuggestView() {
     pushNav({ view: state.currentView, detailId: null, editId: id });
   }
 
-  function handleSelectTask(id: string) {
+  function handlePickQueueTask(id: string) {
     setSelectedTaskId(id);
+  }
+
+  function handleOpenTask(id: string) {
+    dispatch({ type: 'SET_DETAIL', id });
+    pushNav({ view: state.currentView, detailId: id, editId: null });
   }
 
   function handleOpenProject(id: string) {
@@ -131,13 +136,13 @@ export function SuggestView() {
             tasks={state.tasks}
             projects={state.projects}
             onCreateTask={handleAdd}
-            onOpenTask={handleSelectTask}
+            onOpenTask={handleOpenTask}
             onOpenProject={handleOpenProject}
             onTaskAction={handleCommandAction}
           />
           <EmptyState message="All clear. Add something with search." />
         </section>
-        <QueuePanel queue={[]} currentId={null} today={today} projects={state.projects} links={state.links} tasks={state.tasks} doneToday={0} onPick={handleSelectTask} />
+        <QueuePanel queue={[]} currentId={null} today={today} projects={state.projects} links={state.links} tasks={state.tasks} doneToday={0} onPick={handlePickQueueTask} />
       </div>
     );
   }
@@ -149,7 +154,7 @@ export function SuggestView() {
           tasks={state.tasks}
           projects={state.projects}
           onCreateTask={handleAdd}
-          onOpenTask={handleSelectTask}
+          onOpenTask={handleOpenTask}
           onOpenProject={handleOpenProject}
           onTaskAction={handleCommandAction}
         />
@@ -176,7 +181,7 @@ export function SuggestView() {
         tasks={state.tasks}
         doneToday={state.tasks.filter(t => t.status === 'done' && t.updated_at.startsWith(today)).length}
         focused={focused}
-        onPick={handleSelectTask}
+        onPick={handlePickQueueTask}
       />
     </div>
   );

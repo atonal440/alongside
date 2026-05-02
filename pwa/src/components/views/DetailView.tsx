@@ -1,14 +1,9 @@
-import { marked } from 'marked';
 import { useAppState } from '../../hooks/useAppState';
 import { completeTaskAction, focusTaskAction } from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
+import { Markdown } from '../common/Markdown';
 import { projectColor } from '../../utils/design';
 import type { Task } from '../../types';
-
-function Markdown({ src }: { src: string }) {
-  const html = marked(src, { breaks: true }) as string;
-  return <div className="detail-markdown" dangerouslySetInnerHTML={{ __html: html }} />;
-}
 
 export function DetailView() {
   const { state, dispatch } = useAppState();
