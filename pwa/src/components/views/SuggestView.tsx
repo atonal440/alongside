@@ -96,6 +96,12 @@ export function SuggestView() {
         void handleDone(id);
         break;
       case 'defer':
+        // The DeferMenu is rendered alongside the focused card and only
+        // appears when deferOpenForTaskId === task.id (the displayed task).
+        // When defer is triggered for a different queue task via the
+        // command palette, switch the focused card to that task first so
+        // the menu has somewhere to render.
+        setSelectedTaskId(id);
         setDeferOpenForTaskId(id);
         break;
       case 'reopen':

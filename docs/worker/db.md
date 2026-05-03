@@ -90,4 +90,4 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`exportAll(includeLog?)`** — Reads all tables in parallel and returns an `ExportPayload`. Action log is excluded by default (`includeLog = false`) since it can be large.
 
-**`importAll(payload, dryRun?)`** — Validates the payload, then either returns a preview of what would change (`dryRun = true`) or wipes all data and restores from the payload. Uses D1 `batch()` for atomic execution when statement count ≤ 100; falls back to chunked batches of 100 for larger datasets.
+**`importAll(payload, dryRun?)`** — Validates the payload, then either returns a preview of what would change (`dryRun = true`) or wipes all data and restores from the payload. Translates legacy `snoozed_until` (from pre-006 exports, which still claim `version: 1`) into `defer_kind = 'until'` so previously-snoozed tasks remain hidden after restore. Uses D1 `batch()` for atomic execution when statement count ≤ 100; falls back to chunked batches of 100 for larger datasets.

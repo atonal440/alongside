@@ -526,10 +526,25 @@ export class DB {
     }
 
     for (const t of payload.tasks) {
+      // Legacy translation: exports created before migration 006 carry
+      // `snoozed_until` instead of `defer_kind`/`defer_until`. Both shapes
+      // claim `version: 1`, so we detect the old shape by the absence of
+      // `defer_kind` and rewrite a non-null `snoozed_until` as a timed
+      // defer. Without this, restoring an old backup silently un-snoozes
+      // every previously-snoozed task.
+      const legacy = t as Task & { snoozed_until?: string | null };
+      const hasNewFields = legacy.defer_kind !== undefined;
+      const deferKind: 'none' | 'until' | 'someday' = hasNewFields
+        ? (legacy.defer_kind ?? 'none')
+        : (legacy.snoozed_until ? 'until' : 'none');
+      const deferUntil: string | null = hasNewFields
+        ? (legacy.defer_until ?? null)
+        : (legacy.snoozed_until ?? null);
+
       stmts.push(
         this.d1
           .prepare('INSERT INTO tasks (id,title,notes,status,due_date,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-          .bind(t.id, t.title, t.notes, t.status, t.due_date, t.recurrence, t.created_at, t.updated_at, t.defer_until, t.defer_kind ?? 'none', t.task_type, t.project_id, t.kickoff_note, t.session_log, t.focused_until)
+          .bind(t.id, t.title, t.notes, t.status, t.due_date, t.recurrence, t.created_at, t.updated_at, deferUntil, deferKind, t.task_type, t.project_id, t.kickoff_note, t.session_log, t.focused_until)
       );
     }
 
