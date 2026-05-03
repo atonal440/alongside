@@ -6,14 +6,14 @@ REST API handler for the PWA. Exposes CRUD endpoints for tasks, projects, and li
 
 **`handleApiRequest(request, url, db)`** — Main dispatcher. Parses the URL path and HTTP method, then calls the appropriate `DB` method and returns a JSON `Response`. Covers:
 
-- `GET /api/tasks` — list actionable pending tasks (excludes currently-snoozed)
-- `GET /api/tasks/sync` — list all tasks including done and snoozed-pending (for full PWA sync)
+- `GET /api/tasks` — list actionable pending tasks (excludes currently-deferred)
+- `GET /api/tasks/sync` — list all tasks including done and deferred-pending (for full PWA sync)
 - `GET /api/tasks/links` — list all task links
 - `POST /api/tasks/links` — create a link
 - `DELETE /api/tasks/links` — remove a link (body: `{from_task_id, to_task_id, link_type}`)
 - `GET /api/tasks/:id` — get single task
 - `POST /api/tasks` — create task
-- `PATCH /api/tasks/:id` — update task fields (including `focused_until`)
+- `PATCH /api/tasks/:id` — update task fields (including `focused_until`, `defer_until`, `defer_kind`)
 - `DELETE /api/tasks/:id` — delete task
 - `POST /api/tasks/:id/complete` — complete task (handles recurrence)
 - `GET /api/projects` — list active projects

@@ -1,5 +1,7 @@
 import type { Task, Project, TaskLink } from '../types';
 
+export type StatusFilter = 'ready' | 'deferred' | 'someday' | 'done';
+
 export interface AppState {
   tasks: Task[];
   projects: Project[];
@@ -8,7 +10,7 @@ export interface AppState {
   selectedProjectId: string | null;
   editingTaskId: string | null;
   detailTaskId: string | null;
-  cardSeen: Set<string>;
+  statusFilter: StatusFilter;
   showDone: boolean;
   syncStatus: 'idle' | 'syncing' | 'online' | 'offline';
   toastMessage: string | null;
@@ -27,7 +29,7 @@ export type AppAction =
   | { type: 'SET_PROJECT_FILTER'; id: string | null }
   | { type: 'SET_EDITING'; id: string | null }
   | { type: 'SET_DETAIL'; id: string | null }
-  | { type: 'CARD_SEEN'; id: string }
+  | { type: 'SET_STATUS_FILTER'; filter: StatusFilter }
   | { type: 'SET_SHOW_DONE'; value: boolean }
   | { type: 'SET_SYNC_STATUS'; status: AppState['syncStatus'] }
   | { type: 'SET_TOAST'; message: string | null }
@@ -56,7 +58,7 @@ export function getInitialState(): AppState {
     selectedProjectId: null,
     editingTaskId: null,
     detailTaskId: null,
-    cardSeen: new Set(),
+    statusFilter: 'ready',
     showDone: false,
     syncStatus: 'idle',
     toastMessage: null,
@@ -123,11 +125,8 @@ export function reducer(state: AppState, action: AppAction): AppState {
     case 'SET_DETAIL':
       return { ...state, detailTaskId: action.id };
 
-    case 'CARD_SEEN': {
-      const cardSeen = new Set(state.cardSeen);
-      cardSeen.add(action.id);
-      return { ...state, cardSeen };
-    }
+    case 'SET_STATUS_FILTER':
+      return { ...state, statusFilter: action.filter };
 
     case 'SET_SHOW_DONE':
       return { ...state, showDone: action.value };
@@ -151,7 +150,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
         selectedProjectId: null,
         editingTaskId: null,
         detailTaskId: null,
-        cardSeen: new Set(),
+        statusFilter: 'ready',
         showDone: false,
         syncStatus: 'idle',
         toastMessage: 'Logged out',

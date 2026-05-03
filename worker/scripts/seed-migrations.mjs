@@ -25,6 +25,7 @@ const applied = [
   '003_focused_until.sql',
   '004_remove_snoozed_status.sql',
   '005_remove_active_status.sql',
+  '006_defer.sql',
 ];
 
 const inserts = applied

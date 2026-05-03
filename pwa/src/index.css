@@ -690,6 +690,80 @@ button {
   text-align: center;
 }
 
+.defer-menu {
+  background: var(--bg-card, white);
+  border: 1px solid var(--ink-4, rgba(120,80,40,0.18));
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(0,0,0,0.12));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 14px 16px;
+}
+
+.defer-menu-title {
+  color: var(--ink-3);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.defer-menu-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.defer-option {
+  background: rgba(120,80,40,0.06);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px 12px;
+}
+
+.defer-option:hover { background: rgba(120,80,40,0.12); }
+
+.defer-option.ghost {
+  background: transparent;
+  border: 1px dashed var(--ink-4, rgba(120,80,40,0.25));
+  color: var(--ink-3);
+}
+
+.defer-option:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.defer-date-row {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.defer-date-input {
+  border: 1px solid var(--ink-4, rgba(120,80,40,0.25));
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  padding: 5px 8px;
+}
+
+.defer-menu-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.defer-cancel {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.defer-cancel:hover { color: var(--ink); }
+
 .queue-panel {
   background: var(--bg-deep);
   border-left: 1px solid var(--border);
@@ -862,6 +936,47 @@ button {
   font-size: 12px;
   min-width: 0;
   outline: 0;
+}
+
+.list-status-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.status-chip {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 6px;
+  letter-spacing: 0.04em;
+  padding: 4px 9px;
+  text-transform: uppercase;
+}
+
+.status-chip:hover { color: var(--ink); }
+
+.status-chip.active {
+  background: var(--card);
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+  color: var(--ink);
+}
+
+.status-chip-count {
+  background: rgba(120,80,40,0.08);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+  padding: 1px 6px;
 }
 
 .list-sort {

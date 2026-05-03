@@ -16,7 +16,7 @@ export type TaskCreate = Pick<Task, 'title'> &
 
 export type TaskUpdate = Partial<Pick<Task,
   'title' | 'notes' | 'due_date' | 'recurrence' | 'task_type' | 'project_id' |
-  'kickoff_note' | 'session_log' | 'status' | 'snoozed_until' | 'focused_until'>>;
+  'kickoff_note' | 'session_log' | 'status' | 'defer_until' | 'defer_kind' | 'focused_until'>>;
 
 export type ProjectCreate = Pick<Project, 'title'> & Partial<Pick<Project, 'kickoff_note' | 'notes'>>;
 export type ProjectUpdate = Partial<Pick<Project, 'title' | 'kickoff_note' | 'notes' | 'status'>>;

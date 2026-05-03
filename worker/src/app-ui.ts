@@ -385,7 +385,7 @@ export function getActionLogHtml(): string {
     .badge-add_task      { background: light-dark(#d1fae5, #052e16); color: light-dark(#065f46, #6ee7b7); }
     .badge-complete_task { background: light-dark(#dbeafe, #0c1a3a); color: light-dark(#1e40af, #93c5fd); }
     .badge-delete_task   { background: light-dark(#fee2e2, #2d0a0a); color: light-dark(#991b1b, #fca5a5); }
-    .badge-snooze_task   { background: light-dark(#fef3c7, #2d1a00); color: light-dark(#92400e, #fcd34d); }
+    .badge-defer_task    { background: light-dark(#fef3c7, #2d1a00); color: light-dark(#92400e, #fcd34d); }
     .badge-update_task   { background: light-dark(#ede9fe, #1a0a3a); color: light-dark(#5b21b6, #c4b5fd); }
     .badge-create_project { background: light-dark(#ccfbf1, #022c22); color: light-dark(#065f46, #5eead4); }
     .badge-link_tasks    { background: light-dark(#e0f2fe, #041626); color: light-dark(#075985, #7dd3fc); }
@@ -479,7 +479,7 @@ export function getActionLogHtml(): string {
       add_task:        'ADDED',
       complete_task:   'DONE',
       delete_task:     'DELETED',
-      snooze_task:     'SNOOZED',
+      defer_task:      'DEFERRED',
       update_task:     'UPDATED',
       create_project:  'PROJECT',
       update_project:  'UPDATED',

@@ -24,7 +24,7 @@ Model Context Protocol (MCP) handler. Exposes Alongside task data and operations
 | `get_ready_tasks` | Returns unblocked tasks sorted by readiness score |
 | `add_task` | Creates a task in pending status |
 | `complete_task` | Marks a task done, handles recurrence |
-| `snooze_task` | Hides a task until a given date |
+| `defer_task` | Hides a task. `kind: 'until'` (with `until` ISO date) or `kind: 'someday'` (indefinite) |
 | `update_task` | Updates fields on a task (including `status` and `focused_until`) |
 | `focus_task` | Sets `focused_until` on a task (task_id required, hours optional defaulting to 3) |
 | `reopen_task` | Moves a task back to pending |

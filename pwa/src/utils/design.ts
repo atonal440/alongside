@@ -1,9 +1,18 @@
 import type { Project, Task, TaskLink } from '../types';
+import { isDeferred as sharedIsDeferred } from '@shared/readiness';
 
 const PROJECT_COLORS = ['#3A6280', '#4A7C5A', '#8B6BAE', '#9C8472', '#C0622A'];
 
 export function isFocused(task: Pick<Task, 'focused_until'>): boolean {
   return !!task.focused_until && task.focused_until > new Date().toISOString();
+}
+
+export function isDeferred(task: Pick<Task, 'defer_kind' | 'defer_until'>, nowIso = new Date().toISOString()): boolean {
+  return sharedIsDeferred(task, nowIso);
+}
+
+export function isSomeday(task: Pick<Task, 'defer_kind'>): boolean {
+  return task.defer_kind === 'someday';
 }
 
 export function projectTitle(task: Task, projects: Project[]): string {

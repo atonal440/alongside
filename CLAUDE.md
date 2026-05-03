@@ -67,6 +67,8 @@ npm run dev        # Vite dev server (hot reload)
 
 The PWA dev server proxies nothing — set `localStorage` keys `alongside_api` (worker URL) and `alongside_token` (bearer token) in the browser console to connect it to the worker.
 
+Fresh worker checkouts need `worker/.dev.vars`; copy `worker/.dev.vars.example` so `AUTH_TOKEN=dev-token-change-me` is available locally and the PWA/API calls do not 401.
+
 ## Key decisions
 
 - **nanoid v3** is used in the worker (not v4+) because v3 supports CommonJS which wrangler bundles more reliably.
