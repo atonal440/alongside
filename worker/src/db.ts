@@ -78,6 +78,18 @@ function isFocused(task: Task): boolean {
   return !!task.focused_until && task.focused_until > new Date().toISOString();
 }
 
+// Mirrors shared/readiness.ts isDeferred for SQL: a task is "not currently
+// deferred" if its kind is 'none', or kind = 'until' with a non-future date.
+function notDeferredCondition(nowIso: string) {
+  return or(
+    eq(tasksTable.defer_kind, 'none'),
+    and(
+      eq(tasksTable.defer_kind, 'until'),
+      or(isNull(tasksTable.defer_until), lte(tasksTable.defer_until, nowIso)),
+    ),
+  );
+}
+
 // Readiness score: higher = more ready to start right now.
 // All tasks passed here are assumed unblocked (get_ready_tasks pre-filters).
 function readinessScore(task: Task): number {
@@ -104,7 +116,8 @@ export class DB {
 
   // ── Tasks ──────────────────────────────────────────────────────────────────
 
-  // Returns actionable tasks — excludes tasks that are currently snoozed.
+  // Returns actionable tasks — excludes tasks that are currently deferred
+  // (either kind = 'someday' or kind = 'until' with a future date).
   async listTasks(statuses: Task['status'][] = ['pending']): Promise<Task[]> {
     const ts = now();
     return this.drizzle
@@ -112,12 +125,12 @@ export class DB {
       .from(tasksTable)
       .where(and(
         inArray(tasksTable.status, statuses),
-        or(isNull(tasksTable.snoozed_until), lte(tasksTable.snoozed_until, ts)),
+        notDeferredCondition(ts),
       ))
       .orderBy(asc(tasksTable.due_date), asc(tasksTable.created_at));
   }
 
-  // Returns all tasks including currently-snoozed ones. Used for PWA full sync.
+  // Returns all tasks including currently-deferred ones. Used for PWA full sync.
   async listAllTasks(statuses: Task['status'][] = ['pending', 'done']): Promise<Task[]> {
     return this.drizzle
       .select()
@@ -145,7 +158,8 @@ export class DB {
       recurrence: input.recurrence ?? null,
       created_at: now(),
       updated_at: now(),
-      snoozed_until: null,
+      defer_until: null,
+      defer_kind: 'none',
       task_type: input.task_type ?? 'action',
       project_id: input.project_id ?? null,
       kickoff_note: input.kickoff_note ?? null,
@@ -194,16 +208,30 @@ export class DB {
     const timestamp = now();
     await this.drizzle
       .update(tasksTable)
-      .set({ status: 'pending', snoozed_until: null, updated_at: timestamp })
+      .set({ status: 'pending', defer_kind: 'none', defer_until: null, updated_at: timestamp })
       .where(eq(tasksTable.id, id));
     return this.getTask(id);
   }
 
-  async snoozeTask(id: string, until: string): Promise<Task | null> {
+  async deferTask(id: string, kind: 'until' | 'someday', until?: string | null): Promise<Task | null> {
     const timestamp = now();
     await this.drizzle
       .update(tasksTable)
-      .set({ snoozed_until: until, focused_until: null, updated_at: timestamp })
+      .set({
+        defer_kind: kind,
+        defer_until: kind === 'until' ? (until ?? null) : null,
+        focused_until: null,
+        updated_at: timestamp,
+      })
+      .where(eq(tasksTable.id, id));
+    return this.getTask(id);
+  }
+
+  async clearDeferTask(id: string): Promise<Task | null> {
+    const timestamp = now();
+    await this.drizzle
+      .update(tasksTable)
+      .set({ defer_kind: 'none', defer_until: null, updated_at: timestamp })
       .where(eq(tasksTable.id, id));
     return this.getTask(id);
   }
@@ -221,7 +249,8 @@ export class DB {
     if (updates.kickoff_note !== undefined) patch.kickoff_note = updates.kickoff_note;
     if (updates.session_log !== undefined)  patch.session_log = updates.session_log;
     if (updates.status !== undefined)       patch.status = updates.status;
-    if (updates.snoozed_until !== undefined) patch.snoozed_until = updates.snoozed_until;
+    if (updates.defer_until !== undefined)  patch.defer_until = updates.defer_until;
+    if (updates.defer_kind !== undefined)   patch.defer_kind = updates.defer_kind;
     if (updates.focused_until !== undefined) patch.focused_until = updates.focused_until;
 
     if (Object.keys(patch).length === 0) return this.getTask(id);
@@ -244,7 +273,7 @@ export class DB {
     const ts = now();
     const conditions = [
       eq(tasksTable.status, 'pending'),
-      or(isNull(tasksTable.snoozed_until), lte(tasksTable.snoozed_until, ts)),
+      notDeferredCondition(ts),
       // Correlated NOT EXISTS — kept in raw SQL; Drizzle has no first-class support for it
       sql`NOT EXISTS (
         SELECT 1 FROM task_links tl
@@ -273,7 +302,7 @@ export class DB {
       .where(and(
         gt(tasksTable.focused_until, ts),
         ne(tasksTable.status, 'done'),
-        or(isNull(tasksTable.snoozed_until), lte(tasksTable.snoozed_until, ts)),
+        notDeferredCondition(ts),
       ))
       .orderBy(asc(tasksTable.focused_until));
   }
@@ -499,8 +528,8 @@ export class DB {
     for (const t of payload.tasks) {
       stmts.push(
         this.d1
-          .prepare('INSERT INTO tasks (id,title,notes,status,due_date,recurrence,created_at,updated_at,snoozed_until,task_type,project_id,kickoff_note,session_log,focused_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-          .bind(t.id, t.title, t.notes, t.status, t.due_date, t.recurrence, t.created_at, t.updated_at, t.snoozed_until, t.task_type, t.project_id, t.kickoff_note, t.session_log, t.focused_until)
+          .prepare('INSERT INTO tasks (id,title,notes,status,due_date,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .bind(t.id, t.title, t.notes, t.status, t.due_date, t.recurrence, t.created_at, t.updated_at, t.defer_until, t.defer_kind ?? 'none', t.task_type, t.project_id, t.kickoff_note, t.session_log, t.focused_until)
       );
     }
 

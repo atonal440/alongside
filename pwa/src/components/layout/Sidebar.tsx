@@ -1,6 +1,7 @@
 import { useAppState } from '../../hooks/useAppState';
 import { pushNav } from '../../hooks/useHistory';
 import { projectColor } from '../../utils/design';
+import { isReady } from '@shared/readiness';
 import type { AppState } from '../../context/reducer';
 import { idbClearLinks } from '../../idb/links';
 import { idbClearPendingOps } from '../../idb/pendingOps';
@@ -31,12 +32,13 @@ function clearCredentials() {
 
 export function Sidebar() {
   const { state, dispatch } = useAppState();
-  const activeTasks = state.tasks.filter(t => t.status !== 'done');
-  const readyCount = activeTasks.length;
+  const now = new Date().toISOString();
+  const readyTasks = state.tasks.filter(t => isReady(t, state.links, state.tasks, now));
+  const readyCount = readyTasks.length;
   const projectCounts = new Map<string, number>();
   const isConfigured = Boolean(state.apiBase && state.authToken);
 
-  for (const task of activeTasks) {
+  for (const task of readyTasks) {
     if (task.project_id) projectCounts.set(task.project_id, (projectCounts.get(task.project_id) ?? 0) + 1);
   }
 
@@ -130,7 +132,8 @@ export function Sidebar() {
 
 export function CompactNavigation() {
   const { state, dispatch } = useAppState();
-  const readyCount = state.tasks.filter(t => t.status !== 'done').length;
+  const now = new Date().toISOString();
+  const readyCount = state.tasks.filter(t => isReady(t, state.links, state.tasks, now)).length;
   const isConfigured = Boolean(state.apiBase && state.authToken);
 
   function navigate(view: AppState['currentView']) {

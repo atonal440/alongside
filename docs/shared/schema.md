@@ -8,7 +8,7 @@ Imported in the worker via the `@shared/schema` path alias. The PWA never import
 
 **`projects`** — Project rows. Columns: `id` (text PK, nanoid prefixed `p_`), `title`, `notes`, `kickoff_note`, `status` (`active | archived`), `created_at`, `updated_at`.
 
-**`tasks`** — Task rows. Columns: `id` (text PK, nanoid prefixed `t_`), `title`, `notes`, `status` (`pending | done`), `due_date`, `recurrence` (iCal RRULE), `created_at`, `updated_at`, `snoozed_until`, `task_type` (`action | plan`), `project_id` (FK → projects), `kickoff_note`, `session_log`, `focused_until`.
+**`tasks`** — Task rows. Columns: `id` (text PK, nanoid prefixed `t_`), `title`, `notes`, `status` (`pending | done`), `due_date`, `recurrence` (iCal RRULE), `created_at`, `updated_at`, `defer_until`, `defer_kind` (`none | until | someday`), `task_type` (`action | plan`), `project_id` (FK → projects), `kickoff_note`, `session_log`, `focused_until`. A task is "deferred" when `defer_kind = 'someday'` (indefinitely), or `defer_kind = 'until'` with a future `defer_until` (timed). Expired `until` deferrals are treated as ready in queries without writing back.
 
 **`taskLinks`** — Directed dependency edges. Columns: `from_task_id` (FK → tasks, cascade), `to_task_id` (FK → tasks, cascade), `link_type` (`blocks | related`). Composite primary key on all three columns.
 

@@ -14,6 +14,10 @@ Async action creators — the bridge between UI events and IndexedDB + server wr
 
 **`focusTaskAction(id, config, dispatch)`** — Sets `focused_until` on a task locally and attempts `PATCH /api/tasks/:id` with the `focused_until` value.
 
+**`deferTaskAction(id, kind, untilIso, config, dispatch)`** — Sets `defer_kind` to `'until'` (with `defer_until = untilIso`) or `'someday'` (with `defer_until = null`), and clears `focused_until`. Local-first; falls back to a pending op when offline.
+
+**`clearDeferAction(id, config, dispatch)`** — Resets `defer_kind` to `'none'` and `defer_until` to `null`, putting the task back into the ready queue.
+
 **`createLinkAction(fromId, toId, linkType, config, dispatch)`** — Creates a task link locally and attempts `POST /api/tasks/links`.
 
 **`deleteLinkAction(fromId, toId, linkType, config, dispatch)`** — Removes a task link locally and attempts `DELETE /api/tasks/links`.

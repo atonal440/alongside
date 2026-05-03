@@ -1,6 +1,6 @@
 # pwa/src/components/layout/Sidebar.tsx
 
-Primary navigation for desktop (`Sidebar`) and compact widths (`CompactNavigation`). Both variants expose Today, All Tasks, Review, project filters, sync status, and logout when worker credentials are configured.
+Primary navigation for desktop (`Sidebar`) and compact widths (`CompactNavigation`). Both variants expose Today, All Tasks, Review, project filters, sync status, and logout when worker credentials are configured. The Today badge and per-project task counts now use the shared `isReady` predicate from `shared/readiness.ts` — they exclude done, deferred, and blocked tasks instead of counting every non-done task.
 
 ## Logout
 

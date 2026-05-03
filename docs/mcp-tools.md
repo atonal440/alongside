@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-Alongside exposes 18 tools via the MCP endpoint at `/mcp` (JSON-RPC POST). All calls require a `Authorization: Bearer {AUTH_TOKEN}` header.
+Alongside exposes 18 tools via the MCP endpoint at `/mcp` (JSON-RPC POST). All calls require an `Authorization: Bearer {AUTH_TOKEN}` header.
 
 ---
 
@@ -46,7 +46,7 @@ List tasks filtered by status and/or a text search query.
 
 | Name | Type | Required | Description |
 |---|---|---|---|
-| `statuses` | `('pending'\|'active'\|'done'\|'snoozed')[]` | no | Filter to these statuses. Defaults to all. |
+| `statuses` | `('pending'\|'done')[]` | no | Filter to these statuses. Defaults to `['pending']`. |
 | `query` | `string` | no | Text search across title and notes. |
 
 **Returns:** `{ tasks: Task[] }`
@@ -150,16 +150,17 @@ Mark a task done. If the task has both `recurrence` and `due_date`, a new task i
 
 ---
 
-### `snooze_task`
+### `defer_task`
 
-Hide a task until a future date. The task will not appear in `get_ready_tasks` or active lists until `until` is reached.
+Hide a task. Use `kind: 'until'` (with a future ISO date in `until`) to defer temporarily; use `kind: 'someday'` to defer indefinitely with no specific date. Deferred tasks do not appear in `get_ready_tasks` or active lists.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |---|---|---|---|
 | `task_id` | `string` | yes | |
-| `until` | `string` | yes | ISO 8601 date when task should resurface. |
+| `kind` | `'until'\|'someday'` | yes | `'until'` requires `until`; `'someday'` ignores it. |
+| `until` | `string` | when `kind='until'` | ISO 8601 date when task should resurface. |
 
 **Returns:** `{ ...Task, action_log_entry }`
 
@@ -167,7 +168,7 @@ Hide a task until a future date. The task will not appear in `get_ready_tasks` o
 
 ### `reopen_task`
 
-Revert a completed or snoozed task back to `pending`. Clears `snoozed_until`.
+Revert a completed or deferred task back to `pending`. Clears `defer_kind`/`defer_until`.
 
 **Parameters:**
 
@@ -334,15 +335,16 @@ Update the kickoff note on a task or project. A kickoff note is a forward-lookin
   id:            string,   // "t_xxxxx"
   title:         string,
   notes:         string | null,
-  status:        'pending' | 'active' | 'done' | 'snoozed',
+  status:        'pending' | 'done',
   due_date:      string | null,   // ISO 8601 date
   recurrence:    string | null,   // iCal RRULE
-  task_type:     'action' | 'plan' | 'recurring',
+  task_type:     'action' | 'plan',
   project_id:    string | null,
   kickoff_note:  string | null,
   session_log:   string | null,
-  snoozed_until: string | null,
-  session_id:    string | null,
+  defer_until:   string | null,
+  defer_kind:    'none' | 'until' | 'someday',
+  focused_until: string | null,
   created_at:    string,          // ISO 8601 datetime
   updated_at:    string
 }

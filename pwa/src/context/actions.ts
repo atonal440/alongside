@@ -23,7 +23,8 @@ export async function createTaskAction(
     recurrence: null,
     created_at: now,
     updated_at: now,
-    snoozed_until: null,
+    defer_until: null,
+    defer_kind: 'none',
     task_type: 'action',
     project_id: null,
     kickoff_note: null,
@@ -101,6 +102,45 @@ export async function completeTaskAction(
     if (wasRecurring) return 'Done! Next occurrence will sync when online.';
   }
   return null;
+}
+
+export async function deferTaskAction(
+  id: string,
+  kind: 'until' | 'someday',
+  untilIso: string | null,
+  config: ApiConfig,
+  dispatch: Dispatch<AppAction>,
+): Promise<void> {
+  const tasks = await idbGetAllTasks();
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  const updates: TaskUpdate = {
+    defer_kind: kind,
+    defer_until: kind === 'until' ? untilIso : null,
+    focused_until: null,
+  };
+  const updated: Task = { ...task, ...updates, updated_at: new Date().toISOString() };
+  await idbPutTask(updated);
+  dispatch({ type: 'UPSERT_TASK', task: updated });
+
+  const result = await apiFetch(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(updates) }, config);
+  if (!result) await idbQueueOp('PATCH', `/api/tasks/${id}`, updates);
+}
+
+export async function clearDeferAction(
+  id: string,
+  config: ApiConfig,
+  dispatch: Dispatch<AppAction>,
+): Promise<void> {
+  const tasks = await idbGetAllTasks();
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  const updates: TaskUpdate = { defer_kind: 'none', defer_until: null };
+  const updated: Task = { ...task, ...updates, updated_at: new Date().toISOString() };
+  await idbPutTask(updated);
+  dispatch({ type: 'UPSERT_TASK', task: updated });
+  const result = await apiFetch(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(updates) }, config);
+  if (!result) await idbQueueOp('PATCH', `/api/tasks/${id}`, updates);
 }
 
 export async function focusTaskAction(

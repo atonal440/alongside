@@ -55,7 +55,7 @@ export function SearchBar({ tasks, projects, onCreateTask, onOpenTask, onOpenPro
     const actionResults: CommandResult[] = actionTask ? [
       { id: `action:${actionTask.id}:focus`, kind: 'action', group: 'Actions', task: actionTask, action: 'focus', title: 'Focus', meta: actionTask.title },
       { id: `action:${actionTask.id}:complete`, kind: 'action', group: 'Actions', task: actionTask, action: 'complete', title: 'Done', meta: actionTask.title },
-      { id: `action:${actionTask.id}:snooze`, kind: 'action', group: 'Actions', task: actionTask, action: 'snooze', title: 'Snooze', meta: actionTask.title },
+      { id: `action:${actionTask.id}:defer`, kind: 'action', group: 'Actions', task: actionTask, action: 'defer', title: 'Defer', meta: actionTask.title },
       { id: `action:${actionTask.id}:edit`, kind: 'action', group: 'Actions', task: actionTask, action: 'edit', title: 'Edit', meta: actionTask.title },
     ] : [];
 

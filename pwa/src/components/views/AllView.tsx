@@ -1,15 +1,27 @@
 import { useMemo, useState } from 'react';
 import { useAppState } from '../../hooks/useAppState';
 import { buildBlocksMap, buildBlockedByMap } from '../../utils/linkMaps';
-import { createTaskAction, completeTaskAction, deleteTaskAction, focusTaskAction, updateTaskAction } from '../../context/actions';
+import {
+  createTaskAction,
+  completeTaskAction,
+  deferTaskAction,
+  deleteTaskAction,
+  clearDeferAction,
+  focusTaskAction,
+  updateTaskAction,
+} from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
 import { Markdown } from '../common/Markdown';
 import {
   isBlocked,
+  isDeferred,
+  isSomeday,
   projectTitle,
   taskSort,
 } from '../../utils/design';
+import { DeferMenu, type DeferChoice } from '../task/DeferMenu';
 import { deriveTaskFlow, type TaskFlowAction, type TaskFlowActionId } from '../../utils/taskFlow';
+import type { StatusFilter } from '../../context/reducer';
 import type { Project, Task, TaskLink } from '../../types';
 
 type SortMode = 'readiness' | 'due' | 'project';
@@ -18,6 +30,7 @@ export function AllView() {
   const { state, dispatch } = useAppState();
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SortMode>('readiness');
+  const [deferTargetId, setDeferTargetId] = useState<string | null>(null);
   const today = new Date().toISOString().split('T')[0];
   const config = { apiBase: state.apiBase, authToken: state.authToken };
   const selectedProject = state.selectedProjectId
@@ -35,9 +48,30 @@ export function AllView() {
       .filter(t => !lower || `${t.title} ${projectTitle(t, state.projects)}`.toLowerCase().includes(lower));
   }, [query, state.projects, state.selectedProjectId, state.tasks]);
 
+  const filterCounts = useMemo(() => {
+    const counts: Record<StatusFilter, number> = { ready: 0, deferred: 0, someday: 0, done: 0 };
+    for (const t of matchingTasks) {
+      if (t.status === 'done') counts.done += 1;
+      else if (isSomeday(t)) counts.someday += 1;
+      else if (isDeferred(t)) counts.deferred += 1;
+      else counts.ready += 1;
+    }
+    return counts;
+  }, [matchingTasks]);
+
+  const filteredTasks = useMemo(() => {
+    return matchingTasks.filter(t => {
+      switch (state.statusFilter) {
+        case 'done': return t.status === 'done';
+        case 'someday': return t.status !== 'done' && isSomeday(t);
+        case 'deferred': return t.status !== 'done' && !isSomeday(t) && isDeferred(t);
+        case 'ready': return t.status !== 'done' && !isDeferred(t);
+      }
+    });
+  }, [matchingTasks, state.statusFilter]);
+
   const sortedTasks = useMemo(() => {
-    const tasks = state.showDone ? matchingTasks : matchingTasks.filter(t => t.status !== 'done');
-    return [...tasks].sort((a, b) => {
+    return [...filteredTasks].sort((a, b) => {
       if (sort === 'due') {
         return (a.due_date ?? '9999-99-99').localeCompare(b.due_date ?? '9999-99-99')
           || taskSort(a, b, today, state.links, state.tasks);
@@ -48,13 +82,15 @@ export function AllView() {
       }
       return taskSort(a, b, today, state.links, state.tasks);
     });
-  }, [matchingTasks, sort, state.links, state.projects, state.showDone, state.tasks, today]);
+  }, [filteredTasks, sort, state.links, state.projects, state.tasks, today]);
 
-  const readyTasks = sortedTasks.filter(t => !isBlocked(t, state.links, state.tasks) && t.status !== 'done');
-  const blockedTasks = sortedTasks.filter(t => isBlocked(t, state.links, state.tasks) && t.status !== 'done');
-  const doneTasks = sortedTasks.filter(t => t.status === 'done');
-  const hiddenDoneCount = matchingTasks.filter(t => t.status === 'done').length;
-  const selectedTask = state.detailTaskId ? taskMap[state.detailTaskId] : (readyTasks[0] ?? blockedTasks[0] ?? doneTasks[0]);
+  const readyTasks = state.statusFilter === 'ready'
+    ? sortedTasks.filter(t => !isBlocked(t, state.links, state.tasks))
+    : sortedTasks;
+  const blockedTasks = state.statusFilter === 'ready'
+    ? sortedTasks.filter(t => isBlocked(t, state.links, state.tasks))
+    : [];
+  const selectedTask = state.detailTaskId ? taskMap[state.detailTaskId] : (readyTasks[0] ?? blockedTasks[0]);
 
   async function handleAdd(title: string) {
     await createTaskAction(title, config, dispatch);
@@ -86,9 +122,17 @@ export function AllView() {
     await updateTaskAction(id, { focused_until: null }, config, dispatch);
   }
 
-  async function handleSnooze(id: string) {
-    const snoozedUntil = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    await updateTaskAction(id, { focused_until: null, snoozed_until: snoozedUntil }, config, dispatch);
+  async function handleDefer(id: string, choice: DeferChoice) {
+    if (choice.kind === 'someday') {
+      await deferTaskAction(id, 'someday', null, config, dispatch);
+    } else {
+      await deferTaskAction(id, 'until', choice.untilIso, config, dispatch);
+    }
+    setDeferTargetId(null);
+  }
+
+  async function handleReopen(id: string) {
+    await clearDeferAction(id, config, dispatch);
   }
 
   function handleEdit(id: string) {
@@ -116,6 +160,18 @@ export function AllView() {
               }}
             />
           </div>
+          <div className="list-status-filter" role="tablist" aria-label="Status filter">
+            {(['ready', 'deferred', 'someday', 'done'] as const).map(filter => (
+              <button
+                key={filter}
+                className={`status-chip${state.statusFilter === filter ? ' active' : ''}`}
+                onClick={() => dispatch({ type: 'SET_STATUS_FILTER', filter })}
+              >
+                {filter}
+                <span className="status-chip-count">{filterCounts[filter]}</span>
+              </button>
+            ))}
+          </div>
           <div className="list-sort" role="tablist" aria-label="Task sort">
             {(['readiness', 'due', 'project'] as const).map(mode => (
               <button
@@ -130,47 +186,43 @@ export function AllView() {
         </div>
 
         <div className="list-scroll">
-          <TaskGroup
-            label="Ready"
-            tasks={readyTasks}
-            today={today}
-            selectedId={selectedTask?.id}
-            projects={state.projects}
-            links={state.links}
-            allTasks={state.tasks}
-            blocksMap={blocksMap}
-            onSelect={handleSelect}
-          />
-          <TaskGroup
-            label="Blocked"
-            tasks={blockedTasks}
-            today={today}
-            selectedId={selectedTask?.id}
-            projects={state.projects}
-            links={state.links}
-            allTasks={state.tasks}
-            blocksMap={blocksMap}
-            onSelect={handleSelect}
-          />
-          {hiddenDoneCount > 0 && (
+          {state.statusFilter === 'ready' ? (
             <>
-              <button className="done-toggle" onClick={() => dispatch({ type: 'SET_SHOW_DONE', value: !state.showDone })}>
-                {state.showDone ? 'Hide done' : `Show ${hiddenDoneCount} done`}
-              </button>
-              {state.showDone && (
-                <TaskGroup
-                  label="Done"
-                  tasks={doneTasks}
-                  today={today}
-                  selectedId={selectedTask?.id}
-                  projects={state.projects}
-                  links={state.links}
-                  allTasks={state.tasks}
-                  blocksMap={blocksMap}
-                  onSelect={handleSelect}
-                />
-              )}
+              <TaskGroup
+                label="Ready"
+                tasks={readyTasks}
+                today={today}
+                selectedId={selectedTask?.id}
+                projects={state.projects}
+                links={state.links}
+                allTasks={state.tasks}
+                blocksMap={blocksMap}
+                onSelect={handleSelect}
+              />
+              <TaskGroup
+                label="Blocked"
+                tasks={blockedTasks}
+                today={today}
+                selectedId={selectedTask?.id}
+                projects={state.projects}
+                links={state.links}
+                allTasks={state.tasks}
+                blocksMap={blocksMap}
+                onSelect={handleSelect}
+              />
             </>
+          ) : (
+            <TaskGroup
+              label={STATUS_FILTER_LABELS[state.statusFilter]}
+              tasks={readyTasks}
+              today={today}
+              selectedId={selectedTask?.id}
+              projects={state.projects}
+              links={state.links}
+              allTasks={state.tasks}
+              blocksMap={blocksMap}
+              onSelect={handleSelect}
+            />
           )}
         </div>
       </aside>
@@ -184,17 +236,28 @@ export function AllView() {
         taskMap={taskMap}
         blocksMap={blocksMap}
         blockedByMap={blockedByMap}
+        deferTargetId={deferTargetId}
         onSelect={handleSelect}
         onFocus={handleFocus}
         onComplete={handleComplete}
         onUnfocus={handleUnfocus}
-        onSnooze={handleSnooze}
+        onDeferRequest={(id) => setDeferTargetId(id)}
+        onDeferChoose={handleDefer}
+        onDeferCancel={() => setDeferTargetId(null)}
+        onReopen={handleReopen}
         onEdit={handleEdit}
         onDelete={handleDelete}
       />
     </div>
   );
 }
+
+const STATUS_FILTER_LABELS: Record<StatusFilter, string> = {
+  ready: 'Ready',
+  deferred: 'Deferred',
+  someday: 'Someday',
+  done: 'Done',
+};
 
 function TaskGroup({ label, tasks, today, selectedId, projects, links, allTasks, blocksMap, onSelect }: {
   label: string;
@@ -252,7 +315,7 @@ function TaskGroup({ label, tasks, today, selectedId, projects, links, allTasks,
   );
 }
 
-function DetailPanel({ task, today, projects, links, allTasks, taskMap, blocksMap, blockedByMap, onSelect, onFocus, onComplete, onUnfocus, onSnooze, onEdit, onDelete }: {
+function DetailPanel({ task, today, projects, links, allTasks, taskMap, blocksMap, blockedByMap, deferTargetId, onSelect, onFocus, onComplete, onUnfocus, onDeferRequest, onDeferChoose, onDeferCancel, onReopen, onEdit, onDelete }: {
   task?: Task;
   today: string;
   projects: Project[];
@@ -261,11 +324,15 @@ function DetailPanel({ task, today, projects, links, allTasks, taskMap, blocksMa
   taskMap: Record<string, Task>;
   blocksMap: Record<string, Set<string>>;
   blockedByMap: Record<string, Set<string>>;
+  deferTargetId: string | null;
   onSelect: (id: string) => void;
   onFocus: (id: string) => void;
   onComplete: (id: string) => void;
   onUnfocus: (id: string) => void;
-  onSnooze: (id: string) => void;
+  onDeferRequest: (id: string) => void;
+  onDeferChoose: (id: string, choice: DeferChoice) => void;
+  onDeferCancel: () => void;
+  onReopen: (id: string) => void;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
@@ -303,10 +370,11 @@ function DetailPanel({ task, today, projects, links, allTasks, taskMap, blocksMa
       case 'unfocus':
         onUnfocus(currentTask.id);
         break;
-      case 'snooze':
-        onSnooze(currentTask.id);
+      case 'defer':
+        onDeferRequest(currentTask.id);
         break;
-      case 'skip':
+      case 'reopen':
+        onReopen(currentTask.id);
         break;
     }
   }
@@ -358,6 +426,12 @@ function DetailPanel({ task, today, projects, links, allTasks, taskMap, blocksMa
           <FlowActionButton key={action.id} action={action} onAction={handleAction} />
         ))}
       </div>
+      {deferTargetId === currentTask.id && (
+        <DeferMenu
+          onChoose={(choice) => onDeferChoose(currentTask.id, choice)}
+          onCancel={onDeferCancel}
+        />
+      )}
     </section>
   );
 }

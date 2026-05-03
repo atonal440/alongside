@@ -18,31 +18,35 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`isFocused(task)`** — Returns `true` if the task's `focused_until` is set and in the future.
 
+**`notDeferredCondition(nowIso)`** — Drizzle SQL fragment expressing the "not currently deferred" predicate (mirrors `isDeferred` from `shared/readiness.ts`). Used by all read paths that should hide deferred tasks.
+
 **`readinessScore(task)`** — Scores a task for priority ordering; gives +5 to focused tasks.
 
 ### Task methods
 
-**`listTasks(statuses?)`** — Returns actionable tasks: filtered by status (defaults to `['pending']`), excluding currently-snoozed tasks, ordered by `due_date` then `created_at`.
+**`listTasks(statuses?)`** — Returns actionable tasks: filtered by status (defaults to `['pending']`), excluding currently-deferred tasks (`defer_kind = 'someday'` or future `defer_until`), ordered by `due_date` then `created_at`.
 
-**`listAllTasks(statuses?)`** — Returns all tasks including currently-snoozed ones (defaults to `['pending', 'done']`). Used by the PWA sync endpoint so the client gets the full picture.
+**`listAllTasks(statuses?)`** — Returns all tasks including currently-deferred ones (defaults to `['pending', 'done']`). Used by the PWA sync endpoint so the client gets the full picture.
 
 **`getTask(id)`** — Fetches a single task row by primary key.
 
-**`addTask(data)`** — Inserts a new task with a generated nanoid. Returns the created `Task`.
+**`addTask(data)`** — Inserts a new task with a generated nanoid (`defer_kind` defaults to `'none'`). Returns the created `Task`.
 
 **`completeTask(id)`** — Marks a task `done` and clears `focused_until`. If the task has a `recurrence` rule, creates the next occurrence with a computed `due_date` and carries `session_log` forward as `kickoff_note`.
 
-**`reopenTask(id)`** — Clears `snoozed_until`, making the task immediately actionable again. Does not modify `status`.
+**`reopenTask(id)`** — Clears `defer_kind`/`defer_until`, making the task immediately actionable again. Does not modify `status`.
 
-**`snoozeTask(id, until)`** — Sets `snoozed_until` to the given ISO timestamp and clears `focused_until`. Does not modify `status` — the task remains `pending`.
+**`deferTask(id, kind, until?)`** — Sets `defer_kind` to `'until'` or `'someday'` and clears `focused_until`. For `'until'`, also writes the supplied ISO timestamp to `defer_until`; for `'someday'`, clears `defer_until`. Does not modify `status`.
 
-**`updateTask(id, data)`** — Partial update: only columns present in `data` are written (including `focused_until` and `snoozed_until`). Updates `updated_at` automatically.
+**`clearDeferTask(id)`** — Resets `defer_kind` to `'none'` and clears `defer_until`. Equivalent to `reopenTask` for currently-pending tasks.
+
+**`updateTask(id, data)`** — Partial update: only columns present in `data` are written (including `focused_until`, `defer_until`, and `defer_kind`). Updates `updated_at` automatically.
 
 **`deleteTask(id)`** — Hard-deletes a task row (cascade removes links).
 
-**`listReadyTasks(projectId?)`** — Returns unblocked pending tasks (not currently snoozed, no incomplete blockers) sorted by readiness score. Optionally filtered to a project.
+**`listReadyTasks(projectId?)`** — Returns unblocked pending tasks (not currently deferred, no incomplete blockers) sorted by readiness score. Optionally filtered to a project.
 
-**`listFocusedTasks()`** — Returns tasks where `focused_until` is in the future and the task is not currently snoozed or done.
+**`listFocusedTasks()`** — Returns tasks where `focused_until` is in the future and the task is not currently deferred or done.
 
 ### Project methods
 

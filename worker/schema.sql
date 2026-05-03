@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   recurrence    TEXT,               -- iCal RRULE string, nullable
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL,
-  snoozed_until TEXT,               -- nullable, ISO 8601
+  defer_until   TEXT,               -- nullable, ISO 8601 (only meaningful when defer_kind = 'until')
+  defer_kind    TEXT NOT NULL DEFAULT 'none',  -- 'none' | 'until' | 'someday'
   task_type     TEXT NOT NULL DEFAULT 'action',  -- 'action' | 'plan'
   project_id    TEXT REFERENCES projects(id),
   kickoff_note  TEXT,               -- re-entry ramp: what to do next, not a summary

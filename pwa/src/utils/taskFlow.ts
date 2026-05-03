@@ -3,18 +3,20 @@ import {
   firstNoteEntry,
   formatDue,
   isBlocked,
+  isDeferred,
   isFocused,
+  isSomeday,
   projectColor,
   projectTitle,
   readinessScore,
 } from './design';
 
-export type TaskFlowMode = 'ready' | 'focused' | 'blocked' | 'done' | 'snoozed';
+export type TaskFlowMode = 'ready' | 'focused' | 'blocked' | 'done' | 'deferred' | 'someday';
 export type TaskFlowEmphasis = 'primary' | 'secondary' | 'muted';
-export type TaskFlowActionId = 'skip' | 'focus' | 'complete' | 'unfocus' | 'snooze' | 'edit' | 'delete';
+export type TaskFlowActionId = 'defer' | 'focus' | 'complete' | 'unfocus' | 'edit' | 'delete' | 'reopen';
 export type TaskFlowActionTone = 'primary' | 'neutral' | 'danger';
 export type TaskFlowSurface = 'focus' | 'queue' | 'list' | 'detail';
-export type TaskFlowPredicateId = 'done' | 'focused' | 'snoozed' | 'blocked' | 'ready';
+export type TaskFlowPredicateId = 'done' | 'focused' | 'someday' | 'deferred' | 'blocked' | 'ready';
 
 export interface TaskFlowAction {
   id: TaskFlowActionId;
@@ -66,8 +68,8 @@ export interface TaskFlowContext {
 
 const completeAction: TaskFlowAction = { id: 'complete', label: 'Done', tone: 'neutral' };
 const deleteAction: TaskFlowAction = { id: 'delete', label: 'Delete', tone: 'danger' };
-const skipAction: TaskFlowAction = { id: 'skip', label: 'Skip for now', tone: 'neutral' };
-const snoozeAction: TaskFlowAction = { id: 'snooze', label: 'Snooze', tone: 'neutral' };
+const deferAction: TaskFlowAction = { id: 'defer', label: 'Defer', tone: 'neutral' };
+const reopenAction: TaskFlowAction = { id: 'reopen', label: 'Bring back', tone: 'neutral' };
 const unfocusAction: TaskFlowAction = { id: 'unfocus', label: 'Unfocus', tone: 'neutral' };
 
 export const TASK_FLOW_CHART: TaskFlowStateDefinition[] = [
@@ -89,22 +91,34 @@ export const TASK_FLOW_CHART: TaskFlowStateDefinition[] = [
     emphasis: 'primary',
     statusLabel: 'In focus',
     actions: {
-      detail: actionSet(primaryAction('complete', 'Mark complete'), unfocusAction, snoozeAction, editAction('Edit notes'), deleteAction),
-      focus: actionSet(primaryAction('complete', 'Mark complete'), unfocusAction, snoozeAction, editAction('Edit >')),
+      detail: actionSet(primaryAction('complete', 'Mark complete'), unfocusAction, deferAction, editAction('Edit notes'), deleteAction),
+      focus: actionSet(primaryAction('complete', 'Mark complete'), unfocusAction, deferAction, editAction('Edit >')),
       list: actionSet(primaryAction('focus', 'Focus this ->')),
       queue: actionSet(primaryAction('focus', 'Focus this ->')),
     },
   },
   {
-    mode: 'snoozed',
-    predicate: 'snoozed',
+    mode: 'someday',
+    predicate: 'someday',
     emphasis: 'muted',
-    statusLabel: 'Snoozed',
+    statusLabel: 'Someday',
     actions: {
-      detail: actionSet(primaryAction('focus', 'Focus this ->'), completeAction, editAction('Edit notes'), deleteAction),
-      focus: actionSet(primaryAction('focus', 'Focus this ->'), skipAction, editAction('Edit >')),
-      list: actionSet(primaryAction('focus', 'Focus this ->')),
-      queue: actionSet(primaryAction('focus', 'Focus this ->')),
+      detail: actionSet(reopenAction, completeAction, editAction('Edit notes'), deleteAction),
+      focus: actionSet(reopenAction, editAction('Edit >')),
+      list: actionSet(reopenAction),
+      queue: actionSet(reopenAction),
+    },
+  },
+  {
+    mode: 'deferred',
+    predicate: 'deferred',
+    emphasis: 'muted',
+    statusLabel: 'Deferred',
+    actions: {
+      detail: actionSet(reopenAction, completeAction, editAction('Edit notes'), deleteAction),
+      focus: actionSet(reopenAction, editAction('Edit >')),
+      list: actionSet(reopenAction),
+      queue: actionSet(reopenAction),
     },
   },
   {
@@ -113,8 +127,8 @@ export const TASK_FLOW_CHART: TaskFlowStateDefinition[] = [
     emphasis: 'muted',
     statusLabel: 'Blocked',
     actions: {
-      detail: actionSet(primaryAction('focus', 'Focus this ->'), completeAction, editAction('Edit notes'), deleteAction),
-      focus: actionSet(primaryAction('focus', 'Focus this ->'), skipAction, editAction('Edit >')),
+      detail: actionSet(primaryAction('focus', 'Focus this ->'), completeAction, deferAction, editAction('Edit notes'), deleteAction),
+      focus: actionSet(primaryAction('focus', 'Focus this ->'), deferAction, editAction('Edit >')),
       list: actionSet(primaryAction('focus', 'Focus this ->')),
       queue: actionSet(primaryAction('focus', 'Focus this ->')),
     },
@@ -125,8 +139,8 @@ export const TASK_FLOW_CHART: TaskFlowStateDefinition[] = [
     emphasis: 'secondary',
     statusLabel: ({ dueLabel }) => dueLabel || 'Ready',
     actions: {
-      detail: actionSet(primaryAction('focus', 'Focus this ->'), completeAction, editAction('Edit notes'), deleteAction),
-      focus: actionSet(primaryAction('focus', 'Focus this ->'), skipAction, editAction('Edit >')),
+      detail: actionSet(primaryAction('focus', 'Focus this ->'), completeAction, deferAction, editAction('Edit notes'), deleteAction),
+      focus: actionSet(primaryAction('focus', 'Focus this ->'), deferAction, editAction('Edit >')),
       list: actionSet(primaryAction('focus', 'Focus this ->')),
       queue: actionSet(primaryAction('focus', 'Focus this ->')),
     },
@@ -143,14 +157,16 @@ export function deriveTaskFlow(task: Task, context: TaskFlowContext): TaskFlow {
 
   const dueLabel = formatDue(task, context.today);
   const focused = isFocused(task);
-  const snoozed = !!task.snoozed_until && task.snoozed_until > new Date().toISOString();
+  const someday = isSomeday(task);
+  const deferred = isDeferred(task);
   const allTasks = context.tasks ?? [];
   const blocked = isBlocked(task, context.links, allTasks);
   const done = task.status === 'done';
   const predicates: Record<TaskFlowPredicateId, boolean> = {
     done,
     focused,
-    snoozed,
+    someday,
+    deferred,
     blocked,
     ready: true,
   };

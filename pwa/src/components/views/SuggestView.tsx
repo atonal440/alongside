@@ -4,7 +4,8 @@ import { suggestQueue } from '../../utils/suggestQueue';
 import { EmptyState } from '../common/EmptyState';
 import { SearchBar } from '../common/SearchBar';
 import { TaskCard } from '../task/TaskCard';
-import { createTaskAction, completeTaskAction, focusTaskAction, updateTaskAction } from '../../context/actions';
+import { DeferMenu, type DeferChoice } from '../task/DeferMenu';
+import { createTaskAction, completeTaskAction, deferTaskAction, focusTaskAction, clearDeferAction, updateTaskAction } from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
 import { deriveTaskFlow, type TaskFlowActionId } from '../../utils/taskFlow';
 import type { Project, Task, TaskLink } from '../../types';
@@ -12,8 +13,9 @@ import type { Project, Task, TaskLink } from '../../types';
 export function SuggestView() {
   const { state, dispatch } = useAppState();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [deferOpenForTaskId, setDeferOpenForTaskId] = useState<string | null>(null);
   const today = new Date().toISOString().split('T')[0];
-  const queue = suggestQueue(state.tasks, today, state.cardSeen, state.links);
+  const queue = suggestQueue(state.tasks, today, state.links);
   const config = { apiBase: state.apiBase, authToken: state.authToken };
   const selectedTask = selectedTaskId ? queue.find(t => t.id === selectedTaskId) : null;
   const task = selectedTask ?? queue[0];
@@ -51,10 +53,18 @@ export function SuggestView() {
     await updateTaskAction(id, { focused_until: null }, config, dispatch);
   }
 
-  async function handleSnooze(id: string) {
-    const snoozedUntil = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    await updateTaskAction(id, { focused_until: null, snoozed_until: snoozedUntil }, config, dispatch);
+  async function handleDefer(id: string, choice: DeferChoice) {
+    if (choice.kind === 'someday') {
+      await deferTaskAction(id, 'someday', null, config, dispatch);
+    } else {
+      await deferTaskAction(id, 'until', choice.untilIso, config, dispatch);
+    }
     setSelectedTaskId(null);
+    setDeferOpenForTaskId(null);
+  }
+
+  async function handleReopen(id: string) {
+    await clearDeferAction(id, config, dispatch);
   }
 
   function handleEdit(id: string) {
@@ -85,17 +95,17 @@ export function SuggestView() {
       case 'complete':
         void handleDone(id);
         break;
-      case 'snooze':
-        void handleSnooze(id);
+      case 'defer':
+        setDeferOpenForTaskId(id);
+        break;
+      case 'reopen':
+        void handleReopen(id);
         break;
       case 'edit':
         handleEdit(id);
         break;
       case 'unfocus':
         void handleUnfocus(id);
-        break;
-      case 'skip':
-        dispatch({ type: 'CARD_SEEN', id });
         break;
       case 'delete':
         break;
@@ -105,8 +115,11 @@ export function SuggestView() {
   function handleTaskAction(action: TaskFlowActionId) {
     if (!task) return;
     switch (action) {
-      case 'skip':
-        dispatch({ type: 'CARD_SEEN', id: task.id });
+      case 'defer':
+        setDeferOpenForTaskId(task.id);
+        break;
+      case 'reopen':
+        void handleReopen(task.id);
         break;
       case 'focus':
         void handleStart(task.id);
@@ -116,9 +129,6 @@ export function SuggestView() {
         break;
       case 'unfocus':
         void handleUnfocus(task.id);
-        break;
-      case 'snooze':
-        void handleSnooze(task.id);
         break;
       case 'edit':
         handleEdit(task.id);
@@ -169,6 +179,12 @@ export function SuggestView() {
                       flow={flow}
                       onAction={handleTaskAction}
                     />
+                    {deferOpenForTaskId === task.id && (
+                      <DeferMenu
+                        onChoose={(choice) => handleDefer(task.id, choice)}
+                        onCancel={() => setDeferOpenForTaskId(null)}
+                      />
+                    )}
                   </div>
         </div>
       </section>

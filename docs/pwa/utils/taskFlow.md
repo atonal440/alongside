@@ -6,6 +6,6 @@ Typed task-flow model used by cards, queues, lists, and detail surfaces. It maps
 
 **`TaskFlowContext`** — Context passed into `deriveTaskFlow`: date, projects, links, optional full task list, surface, and selection state. Supplying `tasks` lets blocked/focused/readiness states distinguish active blockers from completed upstream blockers.
 
-**`TASK_FLOW_CHART`** — Declarative state table for `done`, `focused`, `snoozed`, `blocked`, and `ready` tasks, including per-surface actions.
+**`TASK_FLOW_CHART`** — Declarative state table for `done`, `focused`, `someday`, `deferred`, `blocked`, and `ready` tasks, including per-surface actions. Ready and focused tasks expose a `defer` action; deferred and someday tasks expose a `reopen` action that clears the deferral.
 
 **`deriveTaskFlow(task, context)`** — Returns the normalized view model for a task. Blocked mode and readiness are computed with the active-blocker semantics from `design.ts`.

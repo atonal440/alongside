@@ -113,15 +113,16 @@ Full field reference for the task object returned by all endpoints:
 | `id` | `string` | no | Nanoid, prefixed `t_` |
 | `title` | `string` | no | |
 | `notes` | `string` | yes | |
-| `status` | `string` | no | `pending`, `active`, `done`, or `snoozed` |
+| `status` | `string` | no | `pending` or `done` |
 | `due_date` | `string` | yes | ISO 8601 date |
 | `recurrence` | `string` | yes | iCal RRULE string |
-| `task_type` | `string` | no | `action`, `plan`, or `recurring` |
+| `task_type` | `string` | no | `action` or `plan` |
 | `project_id` | `string` | yes | FK to projects table |
 | `kickoff_note` | `string` | yes | Forward-looking re-entry note |
 | `session_log` | `string` | yes | Appended session history |
-| `snoozed_until` | `string` | yes | ISO 8601 date; cleared on reopen |
-| `session_id` | `string` | yes | Set when task is activated in a session |
+| `defer_until` | `string` | yes | ISO 8601 timestamp; meaningful only when `defer_kind = 'until'` |
+| `defer_kind` | `string` | no | `none` (default), `until` (timed), or `someday` (indefinite) |
+| `focused_until` | `string` | yes | ISO 8601 timestamp; task is "focused" while now < this value |
 | `created_at` | `string` | no | ISO 8601 datetime |
 | `updated_at` | `string` | no | ISO 8601 datetime |
 

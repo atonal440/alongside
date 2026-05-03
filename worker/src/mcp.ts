@@ -101,7 +101,7 @@ const TOOLS = [
   },
   {
     name: 'list_tasks',
-    description: 'Lists tasks filtered by status or search query. Includes snoozed tasks (check snoozed_until to see if active). Defaults to pending.',
+    description: 'Lists tasks filtered by status or search query. Includes deferred tasks (check defer_kind/defer_until to see if active). Defaults to pending.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -155,15 +155,16 @@ const TOOLS = [
     _meta: uiMeta(ACTION_LOG_URI),
   },
   {
-    name: 'snooze_task',
-    description: 'Hides a task until a given date.',
+    name: 'defer_task',
+    description: 'Hides a task. Use kind="until" with an ISO date to defer temporarily, or kind="someday" to defer indefinitely.',
     inputSchema: {
       type: 'object',
       properties: {
         task_id: { type: 'string' },
-        until: { type: 'string', description: 'ISO 8601 date when the task reappears.' },
+        kind: { type: 'string', enum: ['until', 'someday'], description: '"until" reappears at the given date; "someday" hides indefinitely.' },
+        until: { type: 'string', description: 'ISO 8601 date. Required when kind="until".' },
       },
-      required: ['task_id', 'until'],
+      required: ['task_id', 'kind'],
     },
     _meta: uiMeta(ACTION_LOG_URI),
   },
@@ -176,7 +177,7 @@ const TOOLS = [
         task_id: { type: 'string' },
         title: { type: 'string' },
         notes: { type: 'string', description: 'Replaces existing notes.' },
-        status: { type: 'string', enum: ['pending'], description: 'Use complete_task for "done", snooze_task to snooze, focus_task to put front-of-mind. Only valid value is "pending" (to reset a task).' },
+        status: { type: 'string', enum: ['pending'], description: 'Use complete_task for "done", defer_task to defer, focus_task to put front-of-mind. Only valid value is "pending" (to reset a task).' },
         due_date: { type: 'string', description: 'ISO 8601 date.' },
         recurrence: { type: 'string', description: 'iCal RRULE.' },
         task_type: { type: 'string', enum: ['action', 'plan'] },
@@ -191,7 +192,7 @@ const TOOLS = [
   },
   {
     name: 'reopen_task',
-    description: 'Clears a snooze or re-opens a completed task.',
+    description: 'Clears a deferral or re-opens a completed task.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -440,10 +441,15 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       return { ...result, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
     }
 
-    case 'snooze_task': {
-      const task = await db.snoozeTask(args.task_id as string, args.until as string);
+    case 'defer_task': {
+      const kind = args.kind as 'until' | 'someday';
+      if (kind !== 'until' && kind !== 'someday') throw new Error('kind must be "until" or "someday"');
+      const until = args.until as string | undefined;
+      if (kind === 'until' && !until) throw new Error('until is required when kind="until"');
+      const task = await db.deferTask(args.task_id as string, kind, until ?? null);
       if (!task) throw new Error('Task not found');
-      const log = await db.logAction({ tool_name: 'snooze_task', task_id: task.id, title: task.title, detail: args.until as string });
+      const detail = kind === 'someday' ? 'someday' : (until ?? '');
+      const log = await db.logAction({ tool_name: 'defer_task', task_id: task.id, title: task.title, detail });
       return { ...task, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
     }
 

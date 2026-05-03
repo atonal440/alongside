@@ -19,7 +19,7 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
     return json(tasks);
   }
 
-  // GET /api/tasks/sync — all tasks including done and snoozed, for full PWA sync
+  // GET /api/tasks/sync — all tasks including done and deferred, for full PWA sync
   if (method === 'GET' && path === '/api/tasks/sync') {
     const tasks = await db.listAllTasks();
     return json(tasks);
@@ -67,7 +67,20 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
 
   // PATCH /api/tasks/:id — update task
   if (method === 'PATCH' && singleMatch) {
-    const body = await request.json<{ title?: string; notes?: string; due_date?: string; recurrence?: string; kickoff_note?: string; status?: 'pending'; snoozed_until?: string; focused_until?: string }>();
+    const body = await request.json<{
+      title?: string;
+      notes?: string;
+      due_date?: string | null;
+      recurrence?: string | null;
+      kickoff_note?: string | null;
+      session_log?: string | null;
+      task_type?: 'action' | 'plan';
+      project_id?: string | null;
+      status?: 'pending';
+      defer_until?: string | null;
+      defer_kind?: 'none' | 'until' | 'someday';
+      focused_until?: string | null;
+    }>();
     const task = await db.updateTask(singleMatch[1], body);
     if (!task) return json({ error: 'Not found' }, 404);
     return json(task);

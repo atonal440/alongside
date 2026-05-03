@@ -16,7 +16,7 @@ Thin re-export layer consumed by both the worker and the PWA via the `@shared/ty
 
 **`TaskCreate`** — Input shape for creating a task. `title` required; `notes`, `due_date`, `recurrence`, `task_type`, `project_id`, `kickoff_note` optional.
 
-**`TaskUpdate`** — Input shape for updating a task. All fields optional. Includes `focused_until` and `snoozed_until`.
+**`TaskUpdate`** — Input shape for updating a task. All fields optional. Includes `focused_until`, `defer_until`, and `defer_kind`.
 
 **`ProjectCreate`** — Input shape for creating a project. `title` required; `kickoff_note` and `notes` optional.
 
