@@ -79,6 +79,7 @@ interface EditFormProps {
     session_log: string | null;
     defer_kind: 'none' | 'until' | 'someday';
     defer_until: string | null;
+    focused_until?: string | null;
   }) => Promise<void>;
   onCancel: () => void;
   onDelete: () => Promise<void>;
@@ -194,6 +195,7 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
             defer_until: deferKind === 'until' && deferUntil
               ? new Date(`${deferUntil}T09:00:00`).toISOString()
               : null,
+            ...(deferKind === 'none' ? {} : { focused_until: null }),
           })}
         >
           Save
