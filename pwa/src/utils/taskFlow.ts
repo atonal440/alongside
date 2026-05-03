@@ -42,6 +42,7 @@ export interface TaskFlow {
   mode: TaskFlowMode;
   emphasis: TaskFlowEmphasis;
   statusLabel: string;
+  metaLabel: string | null;
   projectLabel: string;
   projectColor: string;
   dueLabel: string;
@@ -176,6 +177,7 @@ export function deriveTaskFlow(task: Task, context: TaskFlowContext): TaskFlow {
   const statusLabel = typeof state.statusLabel === 'function'
     ? state.statusLabel({ dueLabel })
     : state.statusLabel;
+  const metaLabel = taskFlowMetaLabel(task, state.mode, statusLabel);
   const actions = state.actions[context.surface ?? 'focus'] ?? actionSet(undefined);
 
   return {
@@ -183,6 +185,7 @@ export function deriveTaskFlow(task: Task, context: TaskFlowContext): TaskFlow {
     mode: state.mode,
     emphasis,
     statusLabel,
+    metaLabel,
     projectLabel: projectTitle(task, context.projects),
     projectColor: projectColor(task.project_id),
     dueLabel,
@@ -194,6 +197,29 @@ export function deriveTaskFlow(task: Task, context: TaskFlowContext): TaskFlow {
     primaryAction: actions.primaryAction,
     secondaryActions: actions.secondaryActions,
   };
+}
+
+function taskFlowMetaLabel(task: Task, mode: TaskFlowMode, statusLabel: string): string | null {
+  switch (mode) {
+    case 'ready':
+    case 'focused':
+      return null;
+    case 'deferred':
+      return task.defer_until ? `Until ${formatMetaDate(task.defer_until)}` : statusLabel;
+    case 'someday':
+      return 'Someday';
+    case 'done':
+      return statusLabel;
+    case 'blocked':
+      return statusLabel;
+  }
+}
+
+function formatMetaDate(value: string): string {
+  const [datePart] = value.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  if (!year || !month || !day) return value;
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(year, month - 1, day));
 }
 
 function actionSet(primaryAction?: TaskFlowAction, ...secondaryActions: TaskFlowAction[]): TaskFlowActionSet {

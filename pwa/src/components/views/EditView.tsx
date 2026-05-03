@@ -100,6 +100,30 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
   const [deferUntil, setDeferUntil] = useState(task.defer_until?.split('T')[0] ?? '');
   const [linkToId, setLinkToId] = useState('');
   const [linkType, setLinkType] = useState<TaskLink['link_type']>('blocks');
+  const deferUntilRequired = deferKind === 'until' && !deferUntil;
+
+  function handleSave() {
+    if (deferUntilRequired) return;
+    onSave({
+      title,
+      notes: notes || null,
+      kickoff_note: kickoff || null,
+      due_date: dueDate || null,
+      recurrence: recurrence || null,
+      session_log: sessionLog || null,
+      defer_kind: deferKind,
+      defer_until: nextDeferUntil(),
+      ...(deferKind === 'none' ? {} : { focused_until: null }),
+    });
+  }
+
+  function nextDeferUntil(): string | null {
+    if (deferKind !== 'until') return null;
+    if (task.defer_kind === 'until' && task.defer_until?.split('T')[0] === deferUntil) {
+      return task.defer_until;
+    }
+    return new Date(`${deferUntil}T09:00:00`).toISOString();
+  }
 
   return (
     <div className="edit-form">
@@ -184,19 +208,8 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
       <div className="edit-actions">
         <button
           className="btn-save"
-          onClick={() => onSave({
-            title,
-            notes: notes || null,
-            kickoff_note: kickoff || null,
-            due_date: dueDate || null,
-            recurrence: recurrence || null,
-            session_log: sessionLog || null,
-            defer_kind: deferKind,
-            defer_until: deferKind === 'until' && deferUntil
-              ? new Date(`${deferUntil}T09:00:00`).toISOString()
-              : null,
-            ...(deferKind === 'none' ? {} : { focused_until: null }),
-          })}
+          disabled={deferUntilRequired}
+          onClick={handleSave}
         >
           Save
         </button>

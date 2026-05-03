@@ -300,8 +300,9 @@ function TaskGroup({ label, tasks, today, selectedId, projects, links, allTasks,
             <span className="list-item-title">{flow.title}</span>
             <span className="list-item-meta">
               {blocks > 0 && <span className="dep-badge blocks">Blocks {blocks}</span>}
-              {blocked && <span className="dep-badge blocked-by">{flow.statusLabel}</span>}
-              {!blocked && task.status !== 'done' && (
+              {flow.metaLabel ? (
+                <span className="dep-badge blocked-by">{flow.metaLabel}</span>
+              ) : (
                 <>
                   <span className="score-track"><span className="score-fill" style={{ width: `${flow.readiness}%` }} /></span>
                   <span className="score-num">{flow.readiness}</span>
