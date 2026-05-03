@@ -19,7 +19,17 @@ export function EditView() {
   return (
     <EditForm
       key={task.id}
-      task={{ id: task.id, title: task.title, notes: task.notes, kickoff_note: task.kickoff_note, due_date: task.due_date, recurrence: task.recurrence, session_log: task.session_log }}
+      task={{
+        id: task.id,
+        title: task.title,
+        notes: task.notes,
+        kickoff_note: task.kickoff_note,
+        due_date: task.due_date,
+        recurrence: task.recurrence,
+        session_log: task.session_log,
+        defer_kind: task.defer_kind,
+        defer_until: task.defer_until,
+      }}
       taskLinks={taskLinks}
       otherTasks={otherTasks}
       taskMap={taskMap}
@@ -54,6 +64,8 @@ interface EditFormProps {
     due_date: string | null;
     recurrence: string | null;
     session_log: string | null;
+    defer_kind: 'none' | 'until' | 'someday';
+    defer_until: string | null;
   };
   taskLinks: TaskLink[];
   otherTasks: { id: string; title: string }[];
@@ -65,12 +77,17 @@ interface EditFormProps {
     due_date: string | null;
     recurrence: string | null;
     session_log: string | null;
+    defer_kind: 'none' | 'until' | 'someday';
+    defer_until: string | null;
+    focused_until?: string | null;
   }) => Promise<void>;
   onCancel: () => void;
   onDelete: () => Promise<void>;
   onAddLink: (toId: string, linkType: TaskLink['link_type']) => Promise<void>;
   onRemoveLink: (fromId: string, toId: string, linkType: TaskLink['link_type']) => Promise<void>;
 }
+
+type DeferKind = EditFormProps['task']['defer_kind'];
 
 function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDelete, onAddLink, onRemoveLink }: EditFormProps) {
   const [title, setTitle] = useState(task.title);
@@ -79,6 +96,8 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
   const [dueDate, setDueDate] = useState(task.due_date ?? '');
   const [recurrence, setRecurrence] = useState(task.recurrence ?? '');
   const [sessionLog, setSessionLog] = useState(task.session_log ?? '');
+  const [deferKind, setDeferKind] = useState(task.defer_kind);
+  const [deferUntil, setDeferUntil] = useState(task.defer_until?.split('T')[0] ?? '');
   const [linkToId, setLinkToId] = useState('');
   const [linkType, setLinkType] = useState<TaskLink['link_type']>('blocks');
 
@@ -102,6 +121,15 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
         <option value="FREQ=WEEKLY;INTERVAL=1">Weekly</option>
         <option value="FREQ=MONTHLY;INTERVAL=1">Monthly</option>
       </select>
+      <label>Defer</label>
+      <select value={deferKind} onChange={e => setDeferKind(e.target.value as DeferKind)}>
+        <option value="none">None</option>
+        <option value="until">Until…</option>
+        <option value="someday">Someday</option>
+      </select>
+      {deferKind === 'until' && (
+        <input type="date" value={deferUntil} onChange={e => setDeferUntil(e.target.value)} />
+      )}
       <label>Session note</label>
       <textarea value={sessionLog} onChange={e => setSessionLog(e.target.value)} />
       <label>Relationships</label>
@@ -163,6 +191,11 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
             due_date: dueDate || null,
             recurrence: recurrence || null,
             session_log: sessionLog || null,
+            defer_kind: deferKind,
+            defer_until: deferKind === 'until' && deferUntil
+              ? new Date(`${deferUntil}T09:00:00`).toISOString()
+              : null,
+            ...(deferKind === 'none' ? {} : { focused_until: null }),
           })}
         >
           Save
