@@ -209,7 +209,7 @@ function taskFlowMetaLabel(task: Task, mode: TaskFlowMode, statusLabel: string):
     case 'someday':
       return 'Someday';
     case 'done':
-      return formatMetaDate(task.updated_at);
+      return statusLabel;
     case 'blocked':
       return statusLabel;
   }
