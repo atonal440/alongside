@@ -19,6 +19,7 @@ export function SuggestView() {
   const config = { apiBase: state.apiBase, authToken: state.authToken };
   const selectedTask = selectedTaskId ? queue.find(t => t.id === selectedTaskId) : null;
   const task = selectedTask ?? queue[0];
+  const deferTargetTask = deferOpenForTaskId ? state.tasks.find(t => t.id === deferOpenForTaskId) ?? null : null;
   const flow = task ? deriveTaskFlow(task, {
     today,
     projects: state.projects,
@@ -96,11 +97,6 @@ export function SuggestView() {
         void handleDone(id);
         break;
       case 'defer':
-        // The DeferMenu is rendered alongside the focused card and only
-        // appears when deferOpenForTaskId === task.id (the displayed task).
-        // When defer is triggered for a different queue task via the
-        // command palette, switch the focused card to that task first so
-        // the menu has somewhere to render.
         setSelectedTaskId(id);
         setDeferOpenForTaskId(id);
         break;
@@ -144,6 +140,20 @@ export function SuggestView() {
     }
   }
 
+  function renderCommandDeferMenu(currentTaskId: string | null) {
+    if (!deferTargetTask || deferTargetTask.id === currentTaskId) return null;
+
+    return (
+      <div className="command-defer-panel">
+        <DeferMenu
+          taskTitle={deferTargetTask.title}
+          onChoose={(choice) => handleDefer(deferTargetTask.id, choice)}
+          onCancel={() => setDeferOpenForTaskId(null)}
+        />
+      </div>
+    );
+  }
+
   if (!task || !flow) {
     return (
       <div className="focus-view">
@@ -156,6 +166,7 @@ export function SuggestView() {
             onOpenProject={handleOpenProject}
             onTaskAction={handleCommandAction}
           />
+          {renderCommandDeferMenu(null)}
           <EmptyState message="All clear. Add something with search." />
         </section>
         <QueuePanel queue={[]} currentId={null} today={today} projects={state.projects} links={state.links} tasks={state.tasks} doneToday={0} onPick={handlePickQueueTask} />
@@ -174,6 +185,7 @@ export function SuggestView() {
           onOpenProject={handleOpenProject}
           onTaskAction={handleCommandAction}
         />
+        {renderCommandDeferMenu(task.id)}
         <div className={`today-stage ${focused ? 'focused' : 'idle'}`}>
           <div className={`focus-card-wrap ${focused ? 'promoted' : 'docked'}`}>
                 <CardContextStrip
@@ -187,6 +199,7 @@ export function SuggestView() {
                     />
                     {deferOpenForTaskId === task.id && (
                       <DeferMenu
+                        taskTitle={task.title}
                         onChoose={(choice) => handleDefer(task.id, choice)}
                         onCancel={() => setDeferOpenForTaskId(null)}
                       />

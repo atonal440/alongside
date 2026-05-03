@@ -7,6 +7,7 @@ export type DeferChoice =
 interface Props {
   onChoose: (choice: DeferChoice) => void;
   onCancel: () => void;
+  taskTitle?: string;
 }
 
 function isoForDaysFromNow(days: number): string {
@@ -16,7 +17,7 @@ function isoForDaysFromNow(days: number): string {
   return d.toISOString();
 }
 
-export function DeferMenu({ onChoose, onCancel }: Props) {
+export function DeferMenu({ onChoose, onCancel, taskTitle }: Props) {
   const [pickingDate, setPickingDate] = useState(false);
   const [date, setDate] = useState('');
 
@@ -30,8 +31,8 @@ export function DeferMenu({ onChoose, onCancel }: Props) {
   }
 
   return (
-    <div className="defer-menu" role="dialog" aria-label="Defer this task">
-      <div className="defer-menu-title">Defer until…</div>
+    <div className="defer-menu" role="dialog" aria-label={taskTitle ? `Defer ${taskTitle}` : 'Defer this task'}>
+      <div className="defer-menu-title">{taskTitle ? `Defer "${taskTitle}" until...` : 'Defer until...'}</div>
       <div className="defer-menu-options">
         <button className="defer-option" onClick={() => pickDays(1)}>Tomorrow</button>
         <button className="defer-option" onClick={() => pickDays(7)}>Next week</button>

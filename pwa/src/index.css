@@ -702,6 +702,11 @@ button {
   padding: 14px 16px;
 }
 
+.command-defer-panel {
+  margin: 14px auto 0;
+  width: min(calc(100% - 64px), 720px);
+}
+
 .defer-menu-title {
   color: var(--ink-3);
   font-size: 12px;
