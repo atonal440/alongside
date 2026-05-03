@@ -269,9 +269,13 @@ function QueuePanel({ queue, currentId, today, projects, links, tasks, doneToday
               <span className="queue-title">{flow.title}</span>
               <span className="queue-meta">
                 <span>{flow.statusLabel}</span>
-                <span>{flow.readiness}</span>
+                {!flow.metaLabel && <span>{flow.readiness}</span>}
               </span>
-              <span className="score-track"><span className="score-fill" style={{ width: `${flow.readiness}%` }} /></span>
+              {flow.metaLabel ? (
+                <span className="dep-badge blocked-by">{flow.metaLabel}</span>
+              ) : (
+                <span className="score-track"><span className="score-fill" style={{ width: `${flow.readiness}%` }} /></span>
+              )}
             </button>
           );
         })}
