@@ -77,6 +77,8 @@ Local auth comes from `worker/.dev.vars`. The expected development token is usua
 dev-token-change-me
 ```
 
+Fresh worker checkouts should copy `worker/.dev.vars.example` to `worker/.dev.vars` so `AUTH_TOKEN=dev-token-change-me` is available locally and the PWA/API calls do not 401.
+
 ### Manual PWA
 
 ```sh
