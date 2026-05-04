@@ -6,6 +6,8 @@
 
 The detail panel renders task note previews with the shared `Markdown` component, which sanitizes task-authored markdown before injecting HTML.
 
+**Narrow-viewport layout (≤ 680 px):** the wrapper receives the `.has-detail` CSS class when `state.detailTaskId` is set. CSS rules in the `@media (max-width: 680px)` block hide the list column when `.has-detail` is present and hide the detail panel when it is absent, so only one panel is visible at a time. A `← Back` button rendered inside `.detail-breadcrumb` (hidden on desktop via `display: none`) clears `detailTaskId` and pushes the updated nav state, returning the user to the list.
+
 ## See Also
 
 - [[DeferMenu]] — inline defer popover in the task detail panel
