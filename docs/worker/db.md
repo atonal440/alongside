@@ -16,11 +16,9 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 ## Helper functions
 
-**`isFocused(task)`** — Returns `true` if the task's `focused_until` is set and in the future.
-
 **`notDeferredCondition(nowIso)`** — Drizzle SQL fragment expressing the "not currently deferred" predicate (mirrors `isDeferred` from `shared/readiness.ts`). Used by all read paths that should hide deferred tasks.
 
-**`readinessScore(task)`** — Scores a task for priority ordering. Base 3 pts; +3 for kickoff note; +2 for session log; +1 for due within 7 days; +1 recently active (updated within 14 days); +5 if focused.
+`isFocused` and `readinessScore` are imported from [[readiness|shared/readiness.ts]] — see that doc for the canonical scoring table and weights.
 
 ## Task operations
 

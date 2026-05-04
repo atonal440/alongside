@@ -10,6 +10,7 @@ import {
   actionLog as actionLogTable,
 } from '@shared/schema';
 import type { Task, Project, TaskLink, ActionLog, TaskCreate, TaskUpdate, ProjectCreate, ProjectUpdate } from '@shared/types';
+import { isFocused, readinessScore } from '@shared/readiness';
 
 export type { ActionLog as ActionLogEntry };
 
@@ -74,10 +75,6 @@ function parseNextOccurrence(rrule: string, fromDate: string): string | null {
   return date.toISOString().split('T')[0];
 }
 
-function isFocused(task: Task): boolean {
-  return !!task.focused_until && task.focused_until > new Date().toISOString();
-}
-
 // Mirrors shared/readiness.ts isDeferred for SQL: a task is "not currently
 // deferred" if its kind is 'none', or kind = 'until' with a non-future date.
 function notDeferredCondition(nowIso: string) {
@@ -90,22 +87,6 @@ function notDeferredCondition(nowIso: string) {
   );
 }
 
-// Readiness score: higher = more ready to start right now.
-// All tasks passed here are assumed unblocked (get_ready_tasks pre-filters).
-function readinessScore(task: Task): number {
-  let score = 3; // base: no unresolved blocks (pre-filtered)
-  if (isFocused(task)) score += 5;
-  if (task.kickoff_note) score += 3;
-  if (task.session_log) score += 2;
-  if (task.due_date) {
-    const daysUntilDue = (new Date(task.due_date).getTime() - Date.now()) / 86400000;
-    if (daysUntilDue >= 0 && daysUntilDue <= 7) score += 1;
-  }
-  if ((Date.now() - new Date(task.updated_at).getTime()) < 14 * 86400000) {
-    score += 1;
-  }
-  return score;
-}
 
 export class DB {
   private drizzle: DrizzleD1Database;
@@ -290,7 +271,7 @@ export class DB {
       .from(tasksTable)
       .where(and(...conditions));
 
-    return results.sort((a, b) => readinessScore(b) - readinessScore(a));
+    return results.sort((a, b) => readinessScore(b, ts) - readinessScore(a, ts));
   }
 
   // Returns tasks whose focused_until is still in the future.
