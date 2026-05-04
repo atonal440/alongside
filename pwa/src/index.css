@@ -1133,6 +1133,19 @@ button {
   padding: 12px 28px;
 }
 
+.detail-breadcrumb-back {
+  background: transparent;
+  border: 0;
+  color: var(--ink-2);
+  cursor: pointer;
+  display: none;
+  font-size: 13px;
+  margin-right: 6px;
+  padding: 4px 8px;
+}
+
+.detail-breadcrumb-back:hover { color: var(--ink); }
+
 .breadcrumb-button {
   background: transparent;
   border: 0;
@@ -1564,6 +1577,9 @@ button {
     min-height: 0;
   }
   .all-view { display: block; height: auto; min-height: auto; overflow: visible; }
+  .all-view.has-detail .task-list-col { display: none; }
+  .all-view:not(.has-detail) .detail-panel { display: none; }
+  .detail-breadcrumb-back { display: inline-flex; }
   .main-column {
     flex: 1;
     height: auto;
