@@ -20,9 +20,9 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`notDeferredCondition(nowIso)`** — Drizzle SQL fragment expressing the "not currently deferred" predicate (mirrors `isDeferred` from `shared/readiness.ts`). Used by all read paths that should hide deferred tasks.
 
-**`readinessScore(task)`** — Scores a task for priority ordering; gives +5 to focused tasks.
+**`readinessScore(task)`** — Scores a task for priority ordering. Base 3 pts; +3 for kickoff note; +2 for session log; +1 for due within 7 days; +1 recently active (updated within 14 days); +5 if focused.
 
-### Task methods
+## Task operations
 
 **`listTasks(statuses?)`** — Returns actionable tasks: filtered by status (defaults to `['pending']`), excluding currently-deferred tasks (`defer_kind = 'someday'` or future `defer_until`), ordered by `due_date` then `created_at`.
 
@@ -44,11 +44,13 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`deleteTask(id)`** — Hard-deletes a task row (cascade removes links).
 
+## Readiness and focus
+
 **`listReadyTasks(projectId?)`** — Returns unblocked pending tasks (not currently deferred, no incomplete blockers) sorted by readiness score. Optionally filtered to a project.
 
 **`listFocusedTasks()`** — Returns tasks where `focused_until` is in the future and the task is not currently deferred or done.
 
-### Project methods
+## Project operations
 
 **`createProject(data)`** — Inserts a new project row (with `notes` and `kickoff_note`) and returns it.
 
@@ -60,7 +62,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`deleteProject(id)`** — Unlinks all tasks from the project (sets `project_id = NULL`), then deletes the project row.
 
-### Link methods
+## Link operations
 
 **`linkTasks(fromId, toId, linkType)`** — Creates a dependency edge between two tasks. `linkType` is `'blocks'` or `'related'`.
 
@@ -70,7 +72,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`listAllLinks()`** — Returns every row in the `task_links` table.
 
-### Preference methods
+## Preferences
 
 **`getPreference(key)`** — Reads a single preference value by key.
 
@@ -80,14 +82,21 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`seedDefaultPreferences()`** — Inserts default preference rows if they don't already exist.
 
-### Action log methods
+## Action log
 
 **`logAction(entry)`** — Appends a row to `action_log` recording which tool ran and on which entity. Uses raw D1 to capture `last_row_id` for the returned row.
 
 **`getActionLog(limit?)`** — Returns the most recent action log entries (default 50).
 
-### Archive / Restore methods
+## Import / export
 
 **`exportAll(includeLog?)`** — Reads all tables in parallel and returns an `ExportPayload`. Action log is excluded by default (`includeLog = false`) since it can be large.
 
-**`importAll(payload, dryRun?)`** — Validates the payload, then either returns a preview of what would change (`dryRun = true`) or wipes all data and restores from the payload. Translates legacy `snoozed_until` (from pre-006 exports, which still claim `version: 1`) into `defer_kind = 'until'` so previously-snoozed tasks remain hidden after restore. Uses D1 `batch()` for atomic execution when statement count ≤ 100; falls back to chunked batches of 100 for larger datasets.
+**`importAll(payload, dryRun?)`** — Validates the payload, then either returns a preview of what would change (`dryRun = true`) or wipes all data and restores from the payload. Translates legacy `snoozed_until` (from pre-006 exports) into `defer_kind = 'until'` so previously-snoozed tasks remain hidden after restore. Uses D1 `batch()` for atomic execution when statement count ≤ 100; falls back to chunked batches for larger datasets.
+
+## See Also
+
+- [[schema]] — table definitions this module queries
+- [[readiness|shared/readiness.ts]] — `isDeferred` predicate mirrored by `notDeferredCondition`
+- [[api|worker/api.ts]] — REST handler that calls these methods
+- [[mcp|worker/mcp.ts]] — MCP handler that calls these methods

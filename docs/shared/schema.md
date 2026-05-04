@@ -27,3 +27,10 @@ Imported in the worker via the `@shared/schema` path alias. The PWA never import
 **`TaskLink`** — `typeof taskLinks.$inferSelect`.
 
 **`ActionLog`** — `typeof actionLog.$inferSelect`.
+
+## See Also
+
+- [[types|shared/types.ts]] — re-exported row types and `PendingOp` used by the PWA
+- [[db|worker/db.ts]] — Drizzle client built on these table definitions
+- [[readiness]] — predicates that operate on `Task` and `TaskLink` rows
+- [[idb-db|pwa/src/idb/db.ts]] — client-side IDB schema; mirrors this structure without Drizzle

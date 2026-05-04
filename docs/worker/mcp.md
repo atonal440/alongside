@@ -37,3 +37,11 @@ Model Context Protocol (MCP) handler. Exposes Alongside task data and operations
 | `unlink_tasks` | Removes a dependency between two tasks |
 | `update_preference` | Sets a user preference |
 | `get_action_log` | Returns recent operation history |
+
+## See Also
+
+- [[mcp-tools]] — full parameter and return shape reference for every tool
+- [[worker/api|worker/api.ts]] — implements the same functions as a REST api 
+- [[db|worker/db.ts]] — all tool implementations delegate to DB methods
+- [[oauth|worker/oauth.ts]] — how external clients authenticate before calling `/mcp`
+- [[app-ui|worker/src/app-ui.ts]] — MCP App widget HTML returned by `show_tasks` and `show_project`

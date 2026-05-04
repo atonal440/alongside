@@ -2,6 +2,22 @@
 
 A lightweight task manager built around conversational workflow. Tasks live in a Cloudflare Worker backed by D1, exposed through MCP tools for assistant clients and through a REST API for an offline-first PWA.
 
+## Features
+
+- **Offline-first PWA** — all reads and writes go to IndexedDB first; changes sync to the server when online
+- **Task deferral** — hide tasks until a specific date or indefinitely (Someday)
+- **Focus mode** — mark a task focused for a time window; expired focus surfaces in the Review view
+- **Readiness scoring** — unblocked tasks are ranked by kickoff notes, session log, due date, and recency
+- **Task dependencies** — `blocks` links gate downstream tasks from ready lists; `related` for softer relationships
+- **Action log** — append-only audit trail of every create, update, complete, defer, and delete
+- **Search / command palette** — `Cmd K` opens a global palette for search, inline actions, project navigation, and fast task creation
+- **Review view** — end-of-day close-out screen (Current Focus / Done Today / Carry Forward / Next Suggestion)
+- **Recurrence** — iCal RRULE on any task; completing it spawns the next occurrence automatically
+- **Import / export** — full JSON snapshot backup and restore (with optional `dry_run`)
+- **MCP integration** — 20 tools over JSON-RPC for Claude and other MCP clients
+- **OAuth 2.1 / PKCE** — external MCP clients (e.g. Claude.ai) authenticate via a proper authorization code flow; no static token sharing required
+- **User preferences** — per-user settings for sort order, urgency display, kickoff nudges, and session behavior
+
 ## Architecture
 
 ```text
@@ -11,6 +27,7 @@ Assistant client / MCP        PWA / browser
         v                         v
               Cloudflare Worker
         src/index.ts  routing/auth/CORS
+        src/oauth.ts  OAuth 2.1 + PKCE
         src/mcp.ts    MCP tools
         src/api.ts    REST API
         src/db.ts     D1 operations

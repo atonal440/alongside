@@ -7,3 +7,10 @@
 ## Types
 
 **`DeferChoice`** — Discriminated union representing a single defer commit: either `{ kind: 'until', untilIso: string }` or `{ kind: 'someday' }`.
+
+## See Also
+
+- [[SuggestView]] — hosts DeferMenu in the task action bar and command-targeted mode
+- [[AllView]] — hosts DeferMenu in the task detail panel
+- [[actions]] — `deferTaskAction` called with the `DeferChoice` on confirm
+- [[taskFlow]] — `defer` action in `TASK_FLOW_CHART` determines when DeferMenu is shown

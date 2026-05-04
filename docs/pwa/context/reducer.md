@@ -13,3 +13,9 @@ Pure state management logic. No side effects, no async — just types and the re
 **`getInitialState()`** — Reads worker config from `localStorage` and returns the default `AppState` with empty arrays and `currentView: 'suggest'`. The `alongside_logged_out` marker suppresses dev defaults so an explicit logout stays logged out after refresh.
 
 **`reducer(state, action)`** — Processes each `AppAction` and returns a new `AppState`. Handles all task/project/link list mutations and UI state transitions. `LOG_OUT` clears in-memory task data and worker credentials; the Sidebar logout handler clears IndexedDB before dispatching it so cached tasks, projects, links, and pending ops do not survive across credentials. Used exclusively in `AppContext.tsx`.
+
+## See Also
+
+- [[actions]] — async action creators that dispatch to this reducer
+- [[AppContext]] — provides `dispatch` to the component tree via `useContext`
+- [[idb-tasks|pwa/src/idb/tasks.ts]] — IDB writes that precede reducer dispatches

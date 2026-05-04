@@ -1,6 +1,6 @@
 # worker/src/index.ts
 
-Entry point for the Cloudflare Worker. Exports the default `fetch` handler that receives every inbound HTTP request, handles CORS preflight, and routes to the appropriate sub-handler.
+Entry point for the Cloudflare Worker. Exports the default `fetch` handler that receives every inbound HTTP request, handles CORS preflight, and routes to the appropriate sub-handler. Handles both the MCP and REST endpoints. 
 
 ## Exports / handlers
 
