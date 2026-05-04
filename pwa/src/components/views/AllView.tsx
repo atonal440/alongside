@@ -140,8 +140,13 @@ export function AllView() {
     pushNav({ view: state.currentView, detailId: id, editId: id });
   }
 
+  function handleBack() {
+    dispatch({ type: 'SET_DETAIL', id: null });
+    pushNav({ view: state.currentView, detailId: null, editId: null });
+  }
+
   return (
-    <div className="all-view">
+    <div className={`all-view${state.detailTaskId ? ' has-detail' : ''}`}>
       <aside className="task-list-col">
         <div className="list-header">
           <div className="list-title">{selectedProject ? selectedProject.title : 'All Tasks'}</div>
@@ -247,6 +252,7 @@ export function AllView() {
         onReopen={handleReopen}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        onBack={handleBack}
       />
     </div>
   );
@@ -316,7 +322,7 @@ function TaskGroup({ label, tasks, today, selectedId, projects, links, allTasks,
   );
 }
 
-function DetailPanel({ task, today, projects, links, allTasks, taskMap, blocksMap, blockedByMap, deferTargetId, onSelect, onFocus, onComplete, onUnfocus, onDeferRequest, onDeferChoose, onDeferCancel, onReopen, onEdit, onDelete }: {
+function DetailPanel({ task, today, projects, links, allTasks, taskMap, blocksMap, blockedByMap, deferTargetId, onSelect, onFocus, onComplete, onUnfocus, onDeferRequest, onDeferChoose, onDeferCancel, onReopen, onEdit, onDelete, onBack }: {
   task?: Task;
   today: string;
   projects: Project[];
@@ -336,6 +342,7 @@ function DetailPanel({ task, today, projects, links, allTasks, taskMap, blocksMa
   onReopen: (id: string) => void;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
+  onBack: () => void;
 }) {
   if (!task) {
     return (
@@ -383,6 +390,7 @@ function DetailPanel({ task, today, projects, links, allTasks, taskMap, blocksMa
   return (
     <section className="detail-panel">
       <div className="detail-breadcrumb">
+        <button className="detail-breadcrumb-back" onClick={onBack} aria-label="Back to task list">&larr; Back</button>
         <span className="breadcrumb-item current">All Tasks</span>
         <span className="breadcrumb-sep">&gt;</span>
         <span className="breadcrumb-item current">{task.title}</span>
