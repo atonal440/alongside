@@ -1,10 +1,15 @@
 import type { Project, Task, TaskLink } from '../types';
-import { isDeferred as sharedIsDeferred } from '@shared/readiness';
+import {
+  isDeferred as sharedIsDeferred,
+  isFocused as sharedIsFocused,
+  hasActiveBlocker,
+  readinessScore as sharedReadinessScore,
+} from '@shared/readiness';
 
 const PROJECT_COLORS = ['#3A6280', '#4A7C5A', '#8B6BAE', '#9C8472', '#C0622A'];
 
 export function isFocused(task: Pick<Task, 'focused_until'>): boolean {
-  return !!task.focused_until && task.focused_until > new Date().toISOString();
+  return sharedIsFocused(task, new Date().toISOString());
 }
 
 export function isDeferred(task: Pick<Task, 'defer_kind' | 'defer_until'>, nowIso = new Date().toISOString()): boolean {
@@ -36,36 +41,13 @@ export function formatDue(task: Pick<Task, 'due_date'>, today: string): string {
   return `Due ${task.due_date}`;
 }
 
-export function readinessScore(task: Task, today: string, links: TaskLink[] = [], tasks: Task[] = []): number {
-  if (task.status === 'done') return 0;
-  if (isBlocked(task, links, tasks)) return 24;
-
-  let score = 48;
-  if (task.kickoff_note) score += 18;
-  if (task.notes) score += 8;
-  if (isFocused(task)) score += 20;
-  if (task.due_date) {
-    if (task.due_date < today) score += 30;
-    else if (task.due_date === today) score += 24;
-    else score += 8;
-  }
-  return Math.max(1, Math.min(99, score));
+export function readinessScore(task: Task, _today: string, links: TaskLink[] = [], tasks: Task[] = []): number {
+  return sharedReadinessScore(task, new Date().toISOString(), links, tasks);
 }
 
 export function isBlocked(task: Task, links: TaskLink[], tasks: Task[] = []): boolean {
-  if (tasks.length === 0) {
-    return links.some(l => l.link_type === 'blocks' && l.to_task_id === task.id);
-  }
+  if (tasks.length === 0) return links.some(l => l.link_type === 'blocks' && l.to_task_id === task.id);
   return hasActiveBlocker(task, links, tasks);
-}
-
-export function hasActiveBlocker(task: Task, links: TaskLink[], tasks: Task[]): boolean {
-  const taskById = new Map(tasks.map(candidate => [candidate.id, candidate]));
-  return links.some(link => {
-    if (link.link_type !== 'blocks' || link.to_task_id !== task.id) return false;
-    const blocker = taskById.get(link.from_task_id);
-    return !!blocker && blocker.status !== 'done';
-  });
 }
 
 export function taskSort(a: Task, b: Task, today: string, links: TaskLink[], tasks: Task[] = []): number {
