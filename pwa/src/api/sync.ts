@@ -1,4 +1,4 @@
-import type { Task, Project, TaskLink } from '@shared/types';
+import type { Task, Project, TaskLink, Duty } from '@shared/types';
 import { apiFetch, type ApiConfig } from './client';
 import {
   idbGetAllTasks, idbPutTask, idbDeleteTask,
@@ -10,6 +10,9 @@ import {
   idbClearLinks, idbPutLink,
 } from '../idb/links';
 import {
+  idbClearDuties, idbPutDuty,
+} from '../idb/duties';
+import {
   idbGetPendingOps, idbDeletePendingOp, idbPutPendingOp,
 } from '../idb/pendingOps';
 
@@ -18,6 +21,7 @@ export interface SyncResult {
   tasks?: Task[];
   projects?: Project[];
   links?: TaskLink[];
+  duties?: Duty[];
 }
 
 export async function flushPendingOps(config: ApiConfig): Promise<void> {
@@ -83,13 +87,15 @@ export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
     await idbPutTask(rt);
   }
 
-  const [projectsRaw, linksRaw] = await Promise.all([
+  const [projectsRaw, linksRaw, dutiesRaw] = await Promise.all([
     apiFetch('/api/projects/sync', {}, config),
     apiFetch('/api/tasks/links', {}, config),
+    apiFetch('/api/duties', {}, config),
   ]);
 
   let projects: Project[] = [];
   let links: TaskLink[] = [];
+  let duties: Duty[] = [];
 
   if (projectsRaw) {
     projects = projectsRaw as Project[];
@@ -101,9 +107,14 @@ export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
     await idbClearLinks();
     for (const l of links) await idbPutLink(l);
   }
+  if (dutiesRaw) {
+    duties = dutiesRaw as Duty[];
+    await idbClearDuties();
+    for (const d of duties) await idbPutDuty(d);
+  }
 
   // Merge offline tasks back in (they survived deletion above)
   const finalTasks = await idbGetAllTasks();
 
-  return { online: true, tasks: finalTasks, projects, links };
+  return { online: true, tasks: finalTasks, projects, links, duties };
 }

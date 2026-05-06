@@ -2,6 +2,7 @@ import { DB } from './db';
 import type { Task, Project } from '@shared/types';
 import type { Env } from './index';
 import { getAppHtml, getActionLogHtml } from './app-ui';
+import { materializeDueDuties, dateAtMidnightInTz, todayInTz, getUserTimezone, computeNextFire } from './duties';
 
 interface McpRequest {
   jsonrpc: '2.0';
@@ -126,14 +127,13 @@ const TOOLS = [
   },
   {
     name: 'add_task',
-    description: 'Creates a task in pending status. Set due_date + recurrence for repeating tasks. Set task_type "plan" for tasks needing a planning conversation.',
+    description: 'Creates a one-shot task in pending status. Use add_duty for anything that should repeat. Set task_type "plan" for tasks needing a planning conversation.',
     inputSchema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Short, actionable title.' },
         notes: { type: 'string', description: 'Additional context or links.' },
         due_date: { type: 'string', description: 'ISO 8601 date. Omit for undated.' },
-        recurrence: { type: 'string', description: 'iCal RRULE (e.g. FREQ=WEEKLY;INTERVAL=2). Requires due_date.' },
         task_type: { type: 'string', enum: ['action', 'plan'], description: '"action" (default) or "plan".' },
         project_id: { type: 'string', description: 'Associate with a project.' },
         kickoff_note: { type: 'string', description: 'Where to start next time.' },
@@ -144,7 +144,7 @@ const TOOLS = [
   },
   {
     name: 'complete_task',
-    description: 'Marks a task done. Recurring tasks automatically get their next occurrence created.',
+    description: 'Marks a task done. For tasks materialized from a duty, the duty\'s schedule advances independently — completing this task does not create the next instance.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -170,7 +170,7 @@ const TOOLS = [
   },
   {
     name: 'update_task',
-    description: 'Updates fields on an existing task. Only included fields change.',
+    description: 'Updates fields on an existing task. Only included fields change. To change a recurring task\'s schedule, edit the parent duty via update_duty (look up duty_id on the task).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -179,7 +179,6 @@ const TOOLS = [
         notes: { type: 'string', description: 'Replaces existing notes.' },
         status: { type: 'string', enum: ['pending'], description: 'Use complete_task for "done", defer_task to defer, focus_task to put front-of-mind. Only valid value is "pending" (to reset a task).' },
         due_date: { type: 'string', description: 'ISO 8601 date.' },
-        recurrence: { type: 'string', description: 'iCal RRULE.' },
         task_type: { type: 'string', enum: ['action', 'plan'] },
         project_id: { type: 'string', description: 'Move to project, or null to remove.' },
         kickoff_note: { type: 'string', description: 'Where to start next time.' },
@@ -310,6 +309,63 @@ const TOOLS = [
     _meta: uiMeta(ACTION_LOG_URI),
   },
   {
+    name: 'add_duty',
+    description: 'Creates a recurring task template that materializes into real tasks on a schedule. Use this for anything that should repeat. Replaces task-level recurrence.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Title used for each materialized task.' },
+        notes: { type: 'string', description: 'Carried onto each materialized task.' },
+        kickoff_note: { type: 'string', description: 'Re-entry note for each materialized task. Auto-updated from session_log on completion.' },
+        recurrence: { type: 'string', description: 'iCal RRULE. Supported: FREQ=DAILY|WEEKLY|MONTHLY|YEARLY (+INTERVAL).' },
+        first_fire_date: { type: 'string', description: 'YYYY-MM-DD. The first day this duty should materialize a task. Defaults to today (user tz).' },
+        due_offset_days: { type: 'number', description: 'Days between fire date and the materialized task\'s due_date. Defaults to 0.' },
+        task_type: { type: 'string', enum: ['action', 'plan'] },
+        project_id: { type: 'string' },
+      },
+      required: ['title', 'recurrence'],
+    },
+    _meta: uiMeta(ACTION_LOG_URI),
+  },
+  {
+    name: 'list_duties',
+    description: 'Lists all duties (active and paused). Each duty\'s next_fire_at indicates when it will next materialize.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'update_duty',
+    description: 'Updates a duty\'s template fields or schedule. Editing recurrence does not change next_fire_at — pass next_fire_at explicitly (or first_fire_date) to reschedule.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        duty_id: { type: 'string' },
+        title: { type: 'string' },
+        notes: { type: 'string' },
+        kickoff_note: { type: 'string' },
+        recurrence: { type: 'string' },
+        first_fire_date: { type: 'string', description: 'YYYY-MM-DD. Replaces next_fire_at with midnight on this date in user tz.' },
+        due_offset_days: { type: 'number' },
+        task_type: { type: 'string', enum: ['action', 'plan'] },
+        project_id: { type: 'string' },
+        active: { type: 'boolean', description: 'false to pause without deleting.' },
+      },
+      required: ['duty_id'],
+    },
+    _meta: uiMeta(ACTION_LOG_URI),
+  },
+  {
+    name: 'delete_duty',
+    description: 'Permanently deletes a duty. Tasks already materialized from it are kept (their duty_id is cleared).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        duty_id: { type: 'string' },
+      },
+      required: ['duty_id'],
+    },
+    _meta: uiMeta(ACTION_LOG_URI),
+  },
+  {
     name: 'update_preference',
     description: 'Sets a user preference. Call immediately when the user states one.',
     inputSchema: {
@@ -346,6 +402,7 @@ const UI_RESOURCES = [
 async function handleToolCall(name: string, args: Record<string, unknown>, db: DB) {
   switch (name) {
     case 'show_tasks': {
+      await materializeDueDuties(db, new Date().toISOString());
       const taskIds = args.task_ids as string[];
       const tasks = (await Promise.all(taskIds.map(id => db.getTask(id)))).filter((t): t is NonNullable<typeof t> => t !== null);
       // Include project names so the widget can show them without extra fetches
@@ -358,6 +415,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'show_project': {
+      await materializeDueDuties(db, new Date().toISOString());
       const project = await db.getProject(args.project_id as string);
       if (!project) throw new Error('Project not found');
       const allTasks = await db.listAllTasks(['pending']);
@@ -367,6 +425,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
 
     case 'start_session': {
       await db.seedDefaultPreferences();
+      await materializeDueDuties(db, new Date().toISOString());
       const [readyTasks, focusedTasks, preferences, lastSessionAt] = await Promise.all([
         db.listReadyTasks(),
         db.listFocusedTasks(),
@@ -396,6 +455,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'list_tasks': {
+      await materializeDueDuties(db, new Date().toISOString());
       const statuses = ((args.statuses as string[]) || ['pending']) as Task['status'][];
       let tasks = await db.listAllTasks(statuses);
       const query = args.query as string | undefined;
@@ -410,6 +470,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'get_ready_tasks': {
+      await materializeDueDuties(db, new Date().toISOString());
       const projectId = args.project_id as string | undefined;
       const tasks = await db.listReadyTasks(projectId);
       return { tasks };
@@ -436,7 +497,6 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
         tool_name: 'complete_task',
         task_id: result.completed.id,
         title: result.completed.title,
-        detail: result.next ? `→ recurs ${result.next.due_date}` : undefined,
       });
       return { ...result, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
     }
@@ -557,6 +617,68 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       await db.unlinkTasks(args.from_task_id as string, args.to_task_id as string, unlinkType as 'blocks' | 'related');
       const log = await db.logAction({ tool_name: 'unlink_tasks', title: 'Unlinked', detail: `${args.from_task_id} → ${args.to_task_id}` });
       return { unlinked: true, from_task_id: args.from_task_id, to_task_id: args.to_task_id, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
+    }
+
+    case 'add_duty': {
+      const tz = await getUserTimezone(db);
+      const today = todayInTz(tz);
+      const firstFireDate = (args.first_fire_date as string | undefined) ?? today;
+      const nextFireAt = dateAtMidnightInTz(firstFireDate, tz);
+      const recurrence = args.recurrence as string;
+      // Validate the RRULE up front so a typo doesn't silently pause the duty
+      // on its first cron tick.
+      if (!computeNextFire(recurrence, nextFireAt, tz)) {
+        throw new Error(`Unsupported recurrence "${recurrence}". Use FREQ=DAILY|WEEKLY|MONTHLY|YEARLY (+INTERVAL).`);
+      }
+      const duty = await db.addDuty({
+        title: args.title as string,
+        notes: args.notes as string | undefined,
+        kickoff_note: args.kickoff_note as string | undefined,
+        task_type: args.task_type as 'action' | 'plan' | undefined,
+        project_id: args.project_id as string | undefined,
+        recurrence,
+        due_offset_days: args.due_offset_days as number | undefined,
+        next_fire_at: nextFireAt,
+      });
+      const log = await db.logAction({
+        tool_name: 'add_duty',
+        title: duty.title,
+        detail: `${duty.recurrence} from ${firstFireDate}`,
+      });
+      return { ...duty, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
+    }
+
+    case 'list_duties': {
+      const duties = await db.listDuties();
+      return { duties };
+    }
+
+    case 'update_duty': {
+      const { duty_id, first_fire_date, ...rest } = args as Record<string, unknown> & { duty_id: string; first_fire_date?: string };
+      const updates: Parameters<DB['updateDuty']>[1] = { ...rest } as Parameters<DB['updateDuty']>[1];
+      if (typeof first_fire_date === 'string' && first_fire_date.length > 0) {
+        const tz = await getUserTimezone(db);
+        updates.next_fire_at = dateAtMidnightInTz(first_fire_date, tz);
+      }
+      if (typeof updates.recurrence === 'string') {
+        const tz = await getUserTimezone(db);
+        const probe = updates.next_fire_at ?? (await db.getDuty(duty_id))?.next_fire_at;
+        if (probe && !computeNextFire(updates.recurrence, probe, tz)) {
+          throw new Error(`Unsupported recurrence "${updates.recurrence}".`);
+        }
+      }
+      const duty = await db.updateDuty(duty_id, updates);
+      if (!duty) throw new Error('Duty not found');
+      const log = await db.logAction({ tool_name: 'update_duty', title: duty.title });
+      return { ...duty, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
+    }
+
+    case 'delete_duty': {
+      const toDelete = await db.getDuty(args.duty_id as string);
+      if (!toDelete) throw new Error('Duty not found');
+      const log = await db.logAction({ tool_name: 'delete_duty', title: toDelete.title });
+      await db.deleteDuty(toDelete.id);
+      return { deleted: true, duty_id: toDelete.id, title: toDelete.title, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
     }
 
     case 'update_preference': {

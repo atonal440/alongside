@@ -34,6 +34,7 @@ export function DetailView() {
     .filter(Boolean) as Task[];
 
   const projectName = task.project_id ? (projectMap[task.project_id]?.title ?? '') : '';
+  const dutyTitle = task.duty_id ? (state.duties.find(d => d.id === task.duty_id)?.title ?? null) : null;
 
   const focused = !!task.focused_until && task.focused_until > new Date().toISOString();
 
@@ -86,7 +87,7 @@ export function DetailView() {
             {projectLabel}
             {statusLabel && <span>- {statusLabel}</span>}
             {task.due_date && <span>- Due {task.due_date}</span>}
-            {task.recurrence && <span>- Recurring</span>}
+            {dutyTitle && <span>- Duty: {dutyTitle}</span>}
           </div>
           <h1 className="detail-title">{task.title}</h1>
         </div>

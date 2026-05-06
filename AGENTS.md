@@ -16,11 +16,12 @@ Alongside is a lightweight task manager built around conversational workflow. It
 ```text
 shared/
   schema.ts        Drizzle ORM table definitions
-  types.ts         Shared Task, Project, TaskLink, ActionLog, pending op, and input types
+  types.ts         Shared Task, Project, TaskLink, ActionLog, Duty, pending op, and input types
 
 worker/
   src/index.ts     Worker entrypoint, routing, CORS, auth dispatch
-  src/db.ts        D1 operations, recurrence, readiness scoring, export/import
+  src/db.ts        D1 operations, readiness scoring, export/import (recurrence is now duty-driven)
+  src/duties.ts    Duty materialization engine (lazy, request-path)
   src/api.ts       REST endpoints for the PWA
   src/mcp.ts       MCP JSON-RPC handler and tool definitions
   src/ui.ts        Iframe/widget UI route handlers
@@ -147,6 +148,7 @@ http://127.0.0.1:8787/ui/active
 - Prefer existing task-flow helpers in `pwa/src/utils/taskFlow.ts` for task-card action logic.
 - Prefer existing design helpers in `pwa/src/utils/design.ts` for labels, colors, and sorting.
 - Do not introduce a new state library unless the existing reducer/context model is intentionally being replaced.
+- Recurrence is duty-driven, not task-driven. New recurring work goes through `add_duty`; never set `tasks.recurrence` on new tasks. The `tasks.recurrence` column is retained only for historical data. The duty's `next_fire_at` (interpreted in `user_preferences.timezone`, defaults to `UTC`) is the schedule of record.
 
 ## Documentation Rule
 

@@ -18,9 +18,9 @@ Alongside is a lightweight, offline-first task manager built around conversation
 - **Review view** — the [[ReviewView]] is an end-of-day close-out surface with four panels: Current Focus, Done Today, Carry Forward, and Next Suggestion
 - **OAuth 2.1 / PKCE** — the [[oauth|worker/oauth.ts]] module implements dynamic client registration and the full PKCE authorization code flow so Claude.ai and other external MCP clients can authenticate without sharing the static `AUTH_TOKEN`
 - **User preferences** — key-value store for per-user settings: `sort_by`, `urgency_visibility`, `kickoff_nudge`, `session_log`, `interruption_style`, `planning_prompt`; applied at session start
-- **Recurrence (iCal RRULE)** — tasks can carry a `recurrence` field (e.g. `FREQ=WEEKLY;INTERVAL=1`); completing a recurring task auto-creates the next occurrence and carries the `session_log` forward as `kickoff_note`
+- **Duties — schedule-driven recurrence** — a `duties` table holds task templates plus an iCal RRULE schedule (e.g. `FREQ=WEEKLY;INTERVAL=1`). [[duties|worker/duties.ts]] materializes due duties into real tasks lazily on the request path, advancing each duty's `next_fire_at` in the user's configured timezone. Replaces the old completion-driven recurrence so accidentally checking off a task no longer shifts the schedule. Duties are managed via the `add_duty` / `update_duty` / `delete_duty` MCP tools; tasks materialized from a duty carry a `duty_id` and a `Duty` chip in the PWA.
 - **Import / export** — `GET /api/export` returns a full JSON snapshot; `POST /api/import` (with optional `?dry_run=true`) restores from a snapshot
-- **MCP integration** — 20 tools over JSON-RPC at `/mcp` for Claude and other MCP clients; see [[mcp-tools]] for the full reference
+- **MCP integration** — 24 tools over JSON-RPC at `/mcp` for Claude and other MCP clients; see [[mcp-tools]] for the full reference
 
 ## How data flows
 
@@ -67,6 +67,7 @@ docs/
     db.md                  ← worker/src/db.ts
     api.md                 ← worker/src/api.ts
     mcp.md                 ← worker/src/mcp.ts
+    duties.md              ← worker/src/duties.ts
     ui.md                  ← worker/src/ui.ts
     oauth.md               ← worker/src/oauth.ts
     sign.md                ← worker/src/sign.ts
@@ -87,6 +88,7 @@ docs/
       tasks.md             ← pwa/src/idb/tasks.ts
       projects.md          ← pwa/src/idb/projects.ts
       links.md             ← pwa/src/idb/links.ts
+      duties.md            ← pwa/src/idb/duties.ts
       pendingOps.md        ← pwa/src/idb/pendingOps.ts
     api/
       client.md            ← pwa/src/api/client.ts

@@ -1,4 +1,4 @@
-import type { Task, Project, TaskLink } from '../types';
+import type { Task, Project, TaskLink, Duty } from '../types';
 
 export type StatusFilter = 'ready' | 'deferred' | 'someday' | 'done';
 
@@ -6,6 +6,7 @@ export interface AppState {
   tasks: Task[];
   projects: Project[];
   links: TaskLink[];
+  duties: Duty[];
   currentView: 'suggest' | 'all' | 'review';
   selectedProjectId: string | null;
   editingTaskId: string | null;
@@ -19,7 +20,7 @@ export interface AppState {
 }
 
 export type AppAction =
-  | { type: 'SET_DATA'; tasks: Task[]; projects: Project[]; links: TaskLink[] }
+  | { type: 'SET_DATA'; tasks: Task[]; projects: Project[]; links: TaskLink[]; duties: Duty[] }
   | { type: 'UPSERT_TASK'; task: Task }
   | { type: 'DELETE_TASK'; id: string }
   | { type: 'UPSERT_PROJECT'; project: Project }
@@ -54,6 +55,7 @@ export function getInitialState(): AppState {
     tasks: [],
     projects: [],
     links: [],
+    duties: [],
     currentView: 'suggest',
     selectedProjectId: null,
     editingTaskId: null,
@@ -72,7 +74,7 @@ export function getInitialState(): AppState {
 export function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'SET_DATA':
-      return { ...state, tasks: action.tasks, projects: action.projects, links: action.links };
+      return { ...state, tasks: action.tasks, projects: action.projects, links: action.links, duties: action.duties };
 
     case 'UPSERT_TASK': {
       const exists = state.tasks.some(t => t.id === action.task.id);
@@ -146,6 +148,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
         tasks: [],
         projects: [],
         links: [],
+        duties: [],
         currentView: 'suggest',
         selectedProjectId: null,
         editingTaskId: null,

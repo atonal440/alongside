@@ -9,12 +9,13 @@ Codex-specific agent instructions live in `AGENTS.md`. Keep `CLAUDE.md` and `AGE
 ```
 shared/
   schema.ts        Drizzle ORM table definitions (single source of truth for DB schema + types)
-  types.ts         Re-exports Task, Project, TaskLink, ActionLog from schema; adds PendingOp + input types
+  types.ts         Re-exports Task, Project, TaskLink, ActionLog, Duty from schema; adds PendingOp + input types
 worker/            Cloudflare Worker (D1 + MCP + REST API + iframe widget)
   src/index.ts     Entry point, routing, CORS, auth
   src/db.ts        All D1 operations via Drizzle; exportAll/importAll for archive/restore
-  src/api.ts       REST endpoints for PWA (incl. /api/export and /api/import)
-  src/mcp.ts       MCP protocol handler (JSON-RPC)
+  src/duties.ts    Duty materialization engine (lazy; called from list/show read paths)
+  src/api.ts       REST endpoints for PWA (incl. /api/duties, /api/export, /api/import)
+  src/mcp.ts       MCP protocol handler (JSON-RPC); add_duty/list_duties/update_duty/delete_duty live here
   src/ui.ts        Serves the iframe widget at /ui/active
   schema.sql       D1 schema (reference; Drizzle schema.ts is authoritative going forward)
   drizzle.config.ts  Drizzle-kit config for generating migrations
@@ -22,7 +23,7 @@ pwa/               React + Vite + TypeScript PWA (offline-first, IndexedDB)
   src/
     App.tsx        Top-level shell: header, nav, view switcher, SW registration
     context/       AppContext (useReducer), reducer, async action creators
-    idb/           IndexedDB modules (tasks, projects, links, pendingOps)
+    idb/           IndexedDB modules (tasks, projects, links, duties, pendingOps)
     api/           apiFetch client, sync (flushPendingOps, syncFromServer)
     hooks/         useAppState, useSync, useHistory
     components/    layout/, common/, task/, views/
@@ -73,7 +74,7 @@ Fresh worker checkouts need `worker/.dev.vars`; copy `worker/.dev.vars.example` 
 
 - **nanoid v3** is used in the worker (not v4+) because v3 supports CommonJS which wrangler bundles more reliably.
 - **Auth** is a single static bearer token in `wrangler.toml` vars (`AUTH_TOKEN`). The `/ui/*` routes skip auth so the iframe can be embedded.
-- **Recurrence** uses a minimal RRULE parser in `db.ts` (DAILY/WEEKLY/MONTHLY/YEARLY + INTERVAL). No BYDAY support yet.
+- **Recurrence is duty-driven, not task-driven.** A duty is a template + iCal RRULE schedule (FREQ=DAILY|WEEKLY|MONTHLY|YEARLY + INTERVAL; no BYDAY yet). `worker/src/duties.ts` materializes due duties into real tasks on every list/show read — there is no cron because due dates are day-level. RRULE math runs in the user's `user_preferences.timezone` (default UTC) so DST does not drift the anchor. Completing a task no longer creates the next instance; only the schedule does.
 - **MCP endpoint** is at `/mcp` and expects JSON-RPC POST requests.
 - **PWA sync** is local-first: writes go to IndexedDB immediately, then flush to the worker. Merge is last-write-wins on `updated_at`.
 - **State management** is `useReducer` + React context. No external state library. Async ops are plain async functions in `context/actions.ts` that take `dispatch` as a parameter.

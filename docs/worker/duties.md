@@ -1,0 +1,28 @@
+# worker/duties.ts
+
+Materialization engine for the `duties` table. A duty is a schedule-driven task template; this module computes when it next fires (in the user's configured timezone), creates one real task per fire, and advances the duty's `next_fire_at`.
+
+There is no cron — materialization runs on the request path. Read handlers in `worker/api.ts` and `worker/mcp.ts` call `materializeDueDuties` once at the top so the listed tasks are always current. Idempotency on `(duty_id, duty_fire_at)` makes concurrent reads safe.
+
+The user's timezone is read from the `user_preferences` table (`key = 'timezone'`); when absent it defaults to `UTC`. RRULE math runs on wall-clock parts in that timezone (not UTC), so DST transitions don't drift the anchor time.
+
+## Exported functions
+
+**`computeNextFire(rrule, fromIso, tz)`** — Returns the next fire timestamp (UTC ISO) by adding one `INTERVAL` of the duty's `FREQ` to `fromIso` interpreted in `tz`. Supports `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY`. Returns `null` for unsupported RRULEs (caller pauses the duty).
+
+**`deriveDueDate(fireAtIso, offsetDays, tz)`** — Returns a `YYYY-MM-DD` string by converting `fireAtIso` to wall-clock in `tz` and adding `offsetDays`. Used to compute the materialized task's `due_date`.
+
+**`dateAtMidnightInTz(yyyymmdd, tz)`** — Inverse of `deriveDueDate`: takes a date and returns the UTC ISO timestamp at midnight on that date in `tz`. Used by `add_duty` / `update_duty` to translate a user-supplied `first_fire_date` into `next_fire_at`.
+
+**`todayInTz(tz)`** — Returns today's `YYYY-MM-DD` in `tz`. Default for `first_fire_date` when callers omit it.
+
+**`getUserTimezone(db)`** — Reads `timezone` from `user_preferences`; returns `'UTC'` when unset.
+
+**`materializeDueDuties(db, nowIso)`** — Main loop. Selects every active duty with `next_fire_at <= nowIso`. For each, creates one task (skipped if a task with the same `duty_id + duty_fire_at` already exists) and advances `next_fire_at` via `computeNextFire`. Logs a `duty_fired` action log entry per materialized task. Idempotent: safe to call from multiple read paths concurrently.
+
+## See Also
+
+- [[schema|shared/schema.ts]] — `duties` and `tasks.duty_id` / `tasks.duty_fire_at` columns
+- [[db|worker/db.ts]] — duty CRUD methods (`addDuty`, `listDuties`, `updateDuty`, etc.)
+- [[mcp|worker/mcp.ts]] — `add_duty`, `list_duties`, `update_duty`, `delete_duty` MCP tools
+- [[api|worker/api.ts]] — `/api/duties` REST endpoints

@@ -3,6 +3,7 @@ import { reducer, getInitialState, type AppState, type AppAction } from './reduc
 import { idbGetAllTasks } from '../idb/tasks';
 import { idbGetAllProjects } from '../idb/projects';
 import { idbGetAllLinks } from '../idb/links';
+import { idbGetAllDuties } from '../idb/duties';
 
 interface AppContextValue {
   state: AppState;
@@ -17,15 +18,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Load local data only while a worker config is available.
   useEffect(() => {
     if (!state.apiBase || !state.authToken) {
-      dispatch({ type: 'SET_DATA', tasks: [], projects: [], links: [] });
+      dispatch({ type: 'SET_DATA', tasks: [], projects: [], links: [], duties: [] });
       return;
     }
 
     let cancelled = false;
-    Promise.all([idbGetAllTasks(), idbGetAllProjects(), idbGetAllLinks()])
-      .then(([tasks, projects, links]) => {
+    Promise.all([idbGetAllTasks(), idbGetAllProjects(), idbGetAllLinks(), idbGetAllDuties()])
+      .then(([tasks, projects, links, duties]) => {
         if (cancelled) return;
-        dispatch({ type: 'SET_DATA', tasks, projects, links });
+        dispatch({ type: 'SET_DATA', tasks, projects, links, duties });
       })
       .catch(err => console.warn('Initial IDB load failed:', err));
 

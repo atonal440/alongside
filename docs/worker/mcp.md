@@ -22,21 +22,27 @@ Model Context Protocol (MCP) handler. Exposes Alongside task data and operations
 | `list_projects` | Lists projects filtered by status |
 | `list_tasks` | Lists tasks filtered by status or search query |
 | `get_ready_tasks` | Returns unblocked tasks sorted by readiness score |
-| `add_task` | Creates a task in pending status |
-| `complete_task` | Marks a task done, handles recurrence |
+| `add_task` | Creates a one-shot task in pending status (use `add_duty` for repeating work) |
+| `complete_task` | Marks a task done; for duty-derived tasks, schedule advancement is independent |
 | `defer_task` | Hides a task. `kind: 'until'` (with `until` ISO date) or `kind: 'someday'` (indefinite) |
 | `update_task` | Updates fields on a task (including `status` and `focused_until`) |
 | `focus_task` | Sets `focused_until` on a task (task_id required, hours optional defaulting to 3) |
 | `reopen_task` | Moves a task back to pending |
 | `delete_task` | Permanently deletes a task |
+| `add_duty` | Creates a recurring task template that materializes on a schedule |
+| `list_duties` | Lists all duties (active and paused) |
+| `update_duty` | Updates a duty's template fields, schedule, or active state |
+| `delete_duty` | Permanently deletes a duty (materialized tasks survive) |
 | `create_project` | Creates a project, optionally assigns tasks |
 | `update_project` | Updates project title, notes, kickoff note, or status |
 | `delete_project` | Permanently deletes a project, unlinks its tasks |
 | `get_project_context` | Returns project details and ready tasks |
 | `link_tasks` | Creates a dependency between two tasks |
 | `unlink_tasks` | Removes a dependency between two tasks |
-| `update_preference` | Sets a user preference |
+| `update_preference` | Sets a user preference (note: `timezone` is read by the duties engine) |
 | `get_action_log` | Returns recent operation history |
+
+Read tools (`list_tasks`, `get_ready_tasks`, `show_tasks`, `show_project`, `start_session`) call `materializeDueDuties` first so any duties whose `next_fire_at` has passed are turned into real tasks before the response goes out.
 
 ## See Also
 
@@ -45,3 +51,4 @@ Model Context Protocol (MCP) handler. Exposes Alongside task data and operations
 - [[db|worker/db.ts]] — all tool implementations delegate to DB methods
 - [[oauth|worker/oauth.ts]] — how external clients authenticate before calling `/mcp`
 - [[app-ui|worker/src/app-ui.ts]] — MCP App widget HTML returned by `show_tasks` and `show_project`
+- [[duties|worker/duties.ts]] — materialization engine called by read paths and by duty MCP tools

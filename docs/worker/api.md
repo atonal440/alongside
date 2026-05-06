@@ -4,7 +4,7 @@ REST API handler for the PWA. Exposes CRUD endpoints for tasks, projects, and li
 
 ## Functions
 
-**`handleApiRequest(request, url, db)`** — Main dispatcher. Parses the URL path and HTTP method, then calls the appropriate `DB` method and returns a JSON `Response`. Covers:
+**`handleApiRequest(request, url, db)`** — Main dispatcher. Parses the URL path and HTTP method, then calls the appropriate `DB` method and returns a JSON `Response`. The two task-list reads (`GET /api/tasks` and `GET /api/tasks/sync`) call `materializeDueDuties` first so any due duties become real tasks before the response is computed. Covers:
 
 - `GET /api/tasks` — list actionable pending tasks (excludes currently-deferred)
 - `GET /api/tasks/sync` — list all tasks including done and deferred-pending (for full PWA sync)
@@ -15,7 +15,12 @@ REST API handler for the PWA. Exposes CRUD endpoints for tasks, projects, and li
 - `POST /api/tasks` — create task
 - `PATCH /api/tasks/:id` — update task fields (including `focused_until`, `defer_until`, `defer_kind`)
 - `DELETE /api/tasks/:id` — delete task
-- `POST /api/tasks/:id/complete` — complete task (handles recurrence)
+- `POST /api/tasks/:id/complete` — mark task done; duty schedule advances independently
+- `GET /api/duties` — list all duties (active and paused)
+- `POST /api/duties` — create a duty (`title`, `recurrence` required; `first_fire_date` defaults to today in user tz)
+- `GET /api/duties/:id` — get single duty
+- `PATCH /api/duties/:id` — update duty fields (`first_fire_date` shorthand resolves to `next_fire_at`)
+- `DELETE /api/duties/:id` — delete a duty (materialized tasks survive)
 - `GET /api/projects` — list active projects
 - `GET /api/projects/sync` — list all projects including archived (for PWA sync)
 - `POST /api/projects` — create project

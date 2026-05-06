@@ -7,4 +7,6 @@ export type {
   TaskUpdate,
   ProjectCreate,
   ProjectUpdate,
+  Duty,
+  DutyUpdate,
 } from '@shared/types';

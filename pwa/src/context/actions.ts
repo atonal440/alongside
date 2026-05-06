@@ -30,6 +30,8 @@ export async function createTaskAction(
     kickoff_note: null,
     session_log: null,
     focused_until: null,
+    duty_id: null,
+    duty_fire_at: null,
   };
   await idbPutTask(task);
   dispatch({ type: 'UPSERT_TASK', task });
@@ -84,23 +86,12 @@ export async function completeTaskAction(
   const task = tasks.find(t => t.id === id);
   if (!task) return null;
 
-  const wasRecurring = !!task.recurrence;
   const updated: Task = { ...task, status: 'done', updated_at: new Date().toISOString() };
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
   const result = await apiFetch(`/api/tasks/${id}/complete`, { method: 'POST' }, config);
-  if (result) {
-    const res = result as { completed: Task; next?: Task };
-    if (res.next) {
-      await idbPutTask(res.next);
-      dispatch({ type: 'UPSERT_TASK', task: res.next });
-      return `Done! Next: <span class="next-date">${res.next.due_date}</span>`;
-    }
-  } else {
-    await idbQueueOp('POST', `/api/tasks/${id}/complete`, null);
-    if (wasRecurring) return 'Done! Next occurrence will sync when online.';
-  }
+  if (!result) await idbQueueOp('POST', `/api/tasks/${id}/complete`, null);
   return null;
 }
 

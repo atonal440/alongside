@@ -15,6 +15,7 @@ export function EditView() {
   );
   const otherTasks = state.tasks.filter(t => t.id !== task.id && t.status !== 'done');
   const taskMap = Object.fromEntries(state.tasks.map(t => [t.id, t]));
+  const duty = task.duty_id ? state.duties.find(d => d.id === task.duty_id) : null;
 
   return (
     <EditForm
@@ -25,11 +26,11 @@ export function EditView() {
         notes: task.notes,
         kickoff_note: task.kickoff_note,
         due_date: task.due_date,
-        recurrence: task.recurrence,
         session_log: task.session_log,
         defer_kind: task.defer_kind,
         defer_until: task.defer_until,
       }}
+      dutyTitle={duty?.title ?? null}
       taskLinks={taskLinks}
       otherTasks={otherTasks}
       taskMap={taskMap}
@@ -62,11 +63,11 @@ interface EditFormProps {
     notes: string | null;
     kickoff_note: string | null;
     due_date: string | null;
-    recurrence: string | null;
     session_log: string | null;
     defer_kind: 'none' | 'until' | 'someday';
     defer_until: string | null;
   };
+  dutyTitle: string | null;
   taskLinks: TaskLink[];
   otherTasks: { id: string; title: string }[];
   taskMap: Record<string, { id: string; title: string }>;
@@ -75,7 +76,6 @@ interface EditFormProps {
     notes: string | null;
     kickoff_note: string | null;
     due_date: string | null;
-    recurrence: string | null;
     session_log: string | null;
     defer_kind: 'none' | 'until' | 'someday';
     defer_until: string | null;
@@ -89,12 +89,11 @@ interface EditFormProps {
 
 type DeferKind = EditFormProps['task']['defer_kind'];
 
-function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDelete, onAddLink, onRemoveLink }: EditFormProps) {
+function EditForm({ task, dutyTitle, taskLinks, otherTasks, taskMap, onSave, onCancel, onDelete, onAddLink, onRemoveLink }: EditFormProps) {
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes ?? '');
   const [kickoff, setKickoff] = useState(task.kickoff_note ?? '');
   const [dueDate, setDueDate] = useState(task.due_date ?? '');
-  const [recurrence, setRecurrence] = useState(task.recurrence ?? '');
   const [sessionLog, setSessionLog] = useState(task.session_log ?? '');
   const [deferKind, setDeferKind] = useState(task.defer_kind);
   const [deferUntil, setDeferUntil] = useState(task.defer_until?.split('T')[0] ?? '');
@@ -109,7 +108,6 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
       notes: notes || null,
       kickoff_note: kickoff || null,
       due_date: dueDate || null,
-      recurrence: recurrence || null,
       session_log: sessionLog || null,
       defer_kind: deferKind,
       defer_until: nextDeferUntil(),
@@ -138,13 +136,15 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
       <textarea value={kickoff} onChange={e => setKickoff(e.target.value)} />
       <label>Due date</label>
       <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
-      <label>Recurrence</label>
-      <select value={recurrence} onChange={e => setRecurrence(e.target.value)}>
-        <option value="">None</option>
-        <option value="FREQ=DAILY;INTERVAL=1">Daily</option>
-        <option value="FREQ=WEEKLY;INTERVAL=1">Weekly</option>
-        <option value="FREQ=MONTHLY;INTERVAL=1">Monthly</option>
-      </select>
+      {dutyTitle ? (
+        <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 6 }}>
+          From duty: <strong>{dutyTitle}</strong>. Schedule changes belong on the duty.
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 6 }}>
+          For repeating work, ask Claude to create a duty.
+        </div>
+      )}
       <label>Defer</label>
       <select value={deferKind} onChange={e => setDeferKind(e.target.value as DeferKind)}>
         <option value="none">None</option>

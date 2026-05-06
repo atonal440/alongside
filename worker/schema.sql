@@ -9,13 +9,35 @@ CREATE TABLE IF NOT EXISTS projects (
   updated_at   TEXT NOT NULL
 );
 
+-- Duties: schedule-driven recurring task templates. A duty is a template + a
+-- schedule; a materialization step creates one task per fire. Replaces the
+-- prior completion-driven recurrence model so accidental task completion no
+-- longer shifts the schedule forward.
+CREATE TABLE IF NOT EXISTS duties (
+  id              TEXT PRIMARY KEY,          -- nanoid, e.g. "d_x7k2m"
+  title           TEXT NOT NULL,
+  notes           TEXT,
+  kickoff_note    TEXT,
+  task_type       TEXT NOT NULL DEFAULT 'action',  -- 'action' | 'plan'
+  project_id      TEXT REFERENCES projects(id),
+  recurrence      TEXT NOT NULL,             -- iCal RRULE: FREQ=DAILY|WEEKLY|MONTHLY|YEARLY (+INTERVAL)
+  due_offset_days INTEGER NOT NULL DEFAULT 0,-- task.due_date = fire_date + offset
+  active          INTEGER NOT NULL DEFAULT 1,-- bool; pause without deleting
+  next_fire_at    TEXT NOT NULL,             -- ISO 8601 UTC; precomputed
+  last_fired_at   TEXT,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_duties_active_next_fire ON duties(active, next_fire_at);
+
 CREATE TABLE IF NOT EXISTS tasks (
   id            TEXT PRIMARY KEY,   -- nanoid, e.g. "t_x7k2m"
   title         TEXT NOT NULL,
   notes         TEXT,
   status        TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'done'
   due_date      TEXT,               -- ISO 8601 date string, nullable
-  recurrence    TEXT,               -- iCal RRULE string, nullable
+  recurrence    TEXT,               -- iCal RRULE string, nullable (legacy; new tasks use duties)
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL,
   defer_until   TEXT,               -- nullable, ISO 8601 (only meaningful when defer_kind = 'until')
@@ -24,12 +46,15 @@ CREATE TABLE IF NOT EXISTS tasks (
   project_id    TEXT REFERENCES projects(id),
   kickoff_note  TEXT,               -- re-entry ramp: what to do next, not a summary
   session_log   TEXT,               -- appended at session close: what happened, decisions made
-  focused_until TEXT                -- ISO 8601 timestamp; task is "focused" while now < this value
+  focused_until TEXT,               -- ISO 8601 timestamp; task is "focused" while now < this value
+  duty_id       TEXT REFERENCES duties(id) ON DELETE SET NULL,  -- materializing duty, or NULL
+  duty_fire_at  TEXT                -- which fire produced this instance (idempotency key with duty_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_duty_fire ON tasks(duty_id, duty_fire_at);
 
 -- Horizontal dependency graph between tasks
 CREATE TABLE IF NOT EXISTS task_links (

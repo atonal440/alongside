@@ -26,6 +26,8 @@ const applied = [
   '004_remove_snoozed_status.sql',
   '005_remove_active_status.sql',
   '006_defer.sql',
+  '007_duties.sql',
+  '008_recurring_tasks_to_duties.sql',
 ];
 
 const inserts = applied

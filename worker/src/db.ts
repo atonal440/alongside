@@ -8,8 +8,12 @@ import {
   taskLinks as taskLinksTable,
   userPreferences as prefsTable,
   actionLog as actionLogTable,
+  duties as dutiesTable,
 } from '@shared/schema';
-import type { Task, Project, TaskLink, ActionLog, TaskCreate, TaskUpdate, ProjectCreate, ProjectUpdate } from '@shared/types';
+import type {
+  Task, Project, TaskLink, ActionLog, Duty,
+  TaskCreate, TaskUpdate, ProjectCreate, ProjectUpdate, DutyUpdate,
+} from '@shared/types';
 import { isFocused, readinessScore } from '@shared/readiness';
 
 export type { ActionLog as ActionLogEntry };
@@ -22,13 +26,14 @@ export interface ExportPayload {
   links: TaskLink[];
   preferences: Record<string, string>;
   action_log?: ActionLog[];
+  duties?: Duty[];
 }
 
 export interface ImportResult {
   dry_run: boolean;
   would_delete?: { tasks: number; projects: number };
   would_insert?: { tasks: number; projects: number };
-  inserted?: { projects: number; tasks: number; links: number; preferences: number; action_log: number };
+  inserted?: { projects: number; tasks: number; links: number; preferences: number; action_log: number; duties: number };
 }
 
 const DEFAULT_PREFERENCES: Record<string, string> = {
@@ -42,37 +47,6 @@ const DEFAULT_PREFERENCES: Record<string, string> = {
 
 function now(): string {
   return new Date().toISOString();
-}
-
-function parseNextOccurrence(rrule: string, fromDate: string): string | null {
-  const parts: Record<string, string> = {};
-  for (const part of rrule.split(';')) {
-    const [key, val] = part.split('=');
-    if (key && val) parts[key] = val;
-  }
-
-  const freq = parts['FREQ'];
-  const interval = parseInt(parts['INTERVAL'] || '1', 10);
-  const date = new Date(fromDate);
-
-  switch (freq) {
-    case 'DAILY':
-      date.setDate(date.getDate() + interval);
-      break;
-    case 'WEEKLY':
-      date.setDate(date.getDate() + 7 * interval);
-      break;
-    case 'MONTHLY':
-      date.setMonth(date.getMonth() + interval);
-      break;
-    case 'YEARLY':
-      date.setFullYear(date.getFullYear() + interval);
-      break;
-    default:
-      return null;
-  }
-
-  return date.toISOString().split('T')[0];
 }
 
 // Mirrors shared/readiness.ts isDeferred for SQL: a task is "not currently
@@ -146,13 +120,15 @@ export class DB {
       kickoff_note: input.kickoff_note ?? null,
       session_log: null,
       focused_until: null,
+      duty_id: input.duty_id ?? null,
+      duty_fire_at: input.duty_fire_at ?? null,
     };
 
     await this.drizzle.insert(tasksTable).values(task);
     return task;
   }
 
-  async completeTask(id: string): Promise<{ completed: Task; next?: Task } | null> {
+  async completeTask(id: string): Promise<{ completed: Task } | null> {
     const task = await this.getTask(id);
     if (!task) return null;
 
@@ -162,26 +138,18 @@ export class DB {
       .set({ status: 'done', focused_until: null, updated_at: timestamp })
       .where(eq(tasksTable.id, id));
 
-    const completed = { ...task, status: 'done' as const, focused_until: null, updated_at: timestamp };
-
-    if (task.recurrence && task.due_date) {
-      const nextDue = parseNextOccurrence(task.recurrence, task.due_date);
-      if (nextDue) {
-        // Carry kickoff_note forward from session_log for recurring tasks
-        const nextKickoff = task.session_log ?? task.kickoff_note ?? null;
-        const next = await this.addTask({
-          title: task.title,
-          notes: task.notes ?? undefined,
-          due_date: nextDue,
-          recurrence: task.recurrence,
-          task_type: task.task_type,
-          project_id: task.project_id ?? undefined,
-          kickoff_note: nextKickoff ?? undefined,
-        });
-        return { completed, next };
-      }
+    // Carry session_log forward to the parent duty so the next materialization
+    // surfaces the user's most recent re-entry note. Schedule advancement is
+    // handled by the duty's next_fire_at, not by completion — accidental
+    // completion no longer shifts the schedule.
+    if (task.duty_id && task.session_log) {
+      await this.drizzle
+        .update(dutiesTable)
+        .set({ kickoff_note: task.session_log, updated_at: timestamp })
+        .where(eq(dutiesTable.id, task.duty_id));
     }
 
+    const completed = { ...task, status: 'done' as const, focused_until: null, updated_at: timestamp };
     return { completed };
   }
 
@@ -354,6 +322,108 @@ export class DB {
     return result.meta.changes > 0;
   }
 
+  // ── Duties ─────────────────────────────────────────────────────────────────
+
+  async addDuty(input: {
+    title: string;
+    notes?: string | null;
+    kickoff_note?: string | null;
+    task_type?: 'action' | 'plan';
+    project_id?: string | null;
+    recurrence: string;
+    due_offset_days?: number;
+    next_fire_at: string;
+    active?: boolean;
+  }): Promise<Duty> {
+    const ts = now();
+    const duty: Duty = {
+      id: `d_${nanoid(5)}`,
+      title: input.title,
+      notes: input.notes ?? null,
+      kickoff_note: input.kickoff_note ?? null,
+      task_type: input.task_type ?? 'action',
+      project_id: input.project_id ?? null,
+      recurrence: input.recurrence,
+      due_offset_days: input.due_offset_days ?? 0,
+      active: input.active ?? true,
+      next_fire_at: input.next_fire_at,
+      last_fired_at: null,
+      created_at: ts,
+      updated_at: ts,
+    };
+    await this.drizzle.insert(dutiesTable).values(duty);
+    return duty;
+  }
+
+  async getDuty(id: string): Promise<Duty | null> {
+    const result = await this.drizzle
+      .select()
+      .from(dutiesTable)
+      .where(eq(dutiesTable.id, id))
+      .limit(1);
+    return result[0] ?? null;
+  }
+
+  async listDuties(): Promise<Duty[]> {
+    return this.drizzle.select().from(dutiesTable).orderBy(asc(dutiesTable.created_at));
+  }
+
+  async listDueDuties(nowIso: string): Promise<Duty[]> {
+    return this.drizzle
+      .select()
+      .from(dutiesTable)
+      .where(and(eq(dutiesTable.active, true), lte(dutiesTable.next_fire_at, nowIso)))
+      .orderBy(asc(dutiesTable.next_fire_at));
+  }
+
+  async findTaskByDutyFire(dutyId: string, fireAt: string): Promise<Task | null> {
+    const rows = await this.drizzle
+      .select()
+      .from(tasksTable)
+      .where(and(eq(tasksTable.duty_id, dutyId), eq(tasksTable.duty_fire_at, fireAt)))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  async updateDuty(id: string, updates: DutyUpdate): Promise<Duty | null> {
+    const patch: Partial<typeof dutiesTable.$inferInsert> = {};
+    if (updates.title           !== undefined) patch.title           = updates.title;
+    if (updates.notes           !== undefined) patch.notes           = updates.notes;
+    if (updates.kickoff_note    !== undefined) patch.kickoff_note    = updates.kickoff_note;
+    if (updates.task_type       !== undefined) patch.task_type       = updates.task_type;
+    if (updates.project_id      !== undefined) patch.project_id      = updates.project_id;
+    if (updates.recurrence      !== undefined) patch.recurrence      = updates.recurrence;
+    if (updates.due_offset_days !== undefined) patch.due_offset_days = updates.due_offset_days;
+    if (updates.active          !== undefined) patch.active          = updates.active;
+    if (updates.next_fire_at    !== undefined) patch.next_fire_at    = updates.next_fire_at;
+    if (Object.keys(patch).length === 0) return this.getDuty(id);
+    patch.updated_at = now();
+    await this.drizzle.update(dutiesTable).set(patch).where(eq(dutiesTable.id, id));
+    return this.getDuty(id);
+  }
+
+  async markDutyFired(id: string, firedAt: string, nextFireAt: string, nowIso: string): Promise<void> {
+    await this.drizzle
+      .update(dutiesTable)
+      .set({ last_fired_at: firedAt, next_fire_at: nextFireAt, updated_at: nowIso })
+      .where(eq(dutiesTable.id, id));
+  }
+
+  async setDutyActive(id: string, active: boolean, nowIso: string): Promise<void> {
+    await this.drizzle
+      .update(dutiesTable)
+      .set({ active, updated_at: nowIso })
+      .where(eq(dutiesTable.id, id));
+  }
+
+  async deleteDuty(id: string): Promise<boolean> {
+    const result = await this.d1
+      .prepare('DELETE FROM duties WHERE id = ?')
+      .bind(id)
+      .run();
+    return result.meta.changes > 0;
+  }
+
   // ── Task Links ─────────────────────────────────────────────────────────────
 
   async linkTasks(fromTaskId: string, toTaskId: string, linkType: TaskLink['link_type']): Promise<void> {
@@ -452,11 +522,12 @@ export class DB {
   // ── Archive / Restore ──────────────────────────────────────────────────────
 
   async exportAll(includeLog = false): Promise<ExportPayload> {
-    const [taskRows, projectRows, linkRows, prefRows, logRows] = await Promise.all([
+    const [taskRows, projectRows, linkRows, prefRows, dutyRows, logRows] = await Promise.all([
       this.drizzle.select().from(tasksTable),
       this.drizzle.select().from(projectsTable),
       this.drizzle.select().from(taskLinksTable),
       this.drizzle.select().from(prefsTable),
+      this.drizzle.select().from(dutiesTable),
       includeLog
         ? this.drizzle.select().from(actionLogTable).orderBy(asc(actionLogTable.id))
         : Promise.resolve([] as ActionLog[]),
@@ -469,6 +540,7 @@ export class DB {
       tasks: taskRows,
       links: linkRows,
       preferences: Object.fromEntries(prefRows.map(p => [p.key, p.value])),
+      duties: dutyRows,
     };
     if (includeLog) payload.action_log = logRows;
     return payload;
@@ -494,6 +566,7 @@ export class DB {
       this.d1.prepare('DELETE FROM task_links'),
       this.d1.prepare('DELETE FROM action_log'),
       this.d1.prepare('DELETE FROM tasks'),
+      this.d1.prepare('DELETE FROM duties'),
       this.d1.prepare('DELETE FROM projects'),
       this.d1.prepare('DELETE FROM user_preferences'),
     ];
@@ -503,6 +576,14 @@ export class DB {
         this.d1
           .prepare('INSERT INTO projects (id,title,notes,kickoff_note,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
           .bind(p.id, p.title, p.notes, p.kickoff_note, p.status, p.created_at, p.updated_at)
+      );
+    }
+
+    for (const d of payload.duties ?? []) {
+      stmts.push(
+        this.d1
+          .prepare('INSERT INTO duties (id,title,notes,kickoff_note,task_type,project_id,recurrence,due_offset_days,active,next_fire_at,last_fired_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .bind(d.id, d.title, d.notes, d.kickoff_note, d.task_type, d.project_id, d.recurrence, d.due_offset_days, d.active ? 1 : 0, d.next_fire_at, d.last_fired_at, d.created_at, d.updated_at)
       );
     }
 
@@ -522,10 +603,12 @@ export class DB {
         ? (legacy.defer_until ?? null)
         : (legacy.snoozed_until ?? null);
 
+      const dutyId = (t as Task).duty_id ?? null;
+      const dutyFireAt = (t as Task).duty_fire_at ?? null;
       stmts.push(
         this.d1
-          .prepare('INSERT INTO tasks (id,title,notes,status,due_date,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-          .bind(t.id, t.title, t.notes, t.status, t.due_date, t.recurrence, t.created_at, t.updated_at, deferUntil, deferKind, t.task_type, t.project_id, t.kickoff_note, t.session_log, t.focused_until)
+          .prepare('INSERT INTO tasks (id,title,notes,status,due_date,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until,duty_id,duty_fire_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .bind(t.id, t.title, t.notes, t.status, t.due_date, t.recurrence, t.created_at, t.updated_at, deferUntil, deferKind, t.task_type, t.project_id, t.kickoff_note, t.session_log, t.focused_until, dutyId, dutyFireAt)
       );
     }
 
@@ -563,8 +646,8 @@ export class DB {
       await this.d1.batch(stmts);
     } else {
       validatePayloadIntegrity(payload);
-      await this.d1.batch(stmts.slice(0, 5)); // wipe
-      for (let i = 5; i < stmts.length; i += CHUNK) {
+      await this.d1.batch(stmts.slice(0, 6)); // wipe
+      for (let i = 6; i < stmts.length; i += CHUNK) {
         await this.d1.batch(stmts.slice(i, i + CHUNK));
       }
     }
@@ -577,6 +660,7 @@ export class DB {
         links: payload.links.length,
         preferences: Object.keys(payload.preferences).length,
         action_log: logEntries.length,
+        duties: (payload.duties ?? []).length,
       },
     };
   }

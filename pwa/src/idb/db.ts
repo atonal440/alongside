@@ -1,5 +1,5 @@
 const IDB_NAME = 'alongside';
-const IDB_VERSION = 3;
+const IDB_VERSION = 4;
 
 let _db: IDBDatabase | null = null;
 
@@ -39,6 +39,9 @@ export function getDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains('links')) {
         db.createObjectStore('links', { keyPath: ['from_task_id', 'to_task_id', 'link_type'] });
+      }
+      if (!db.objectStoreNames.contains('duties')) {
+        db.createObjectStore('duties', { keyPath: 'id' });
       }
       // v3: snoozed_until → defer_until + defer_kind. Rewrite each task in
       // place, and rewrite queued offline task updates so unsynced work

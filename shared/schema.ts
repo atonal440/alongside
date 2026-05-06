@@ -10,6 +10,22 @@ export const projects = sqliteTable('projects', {
   updated_at:   text('updated_at').notNull(),
 });
 
+export const duties = sqliteTable('duties', {
+  id:              text('id').primaryKey(),
+  title:           text('title').notNull(),
+  notes:           text('notes'),
+  kickoff_note:    text('kickoff_note'),
+  task_type:       text('task_type', { enum: ['action', 'plan'] }).notNull().default('action'),
+  project_id:      text('project_id').references(() => projects.id),
+  recurrence:      text('recurrence').notNull(),
+  due_offset_days: integer('due_offset_days').notNull().default(0),
+  active:          integer('active', { mode: 'boolean' }).notNull().default(true),
+  next_fire_at:    text('next_fire_at').notNull(),
+  last_fired_at:   text('last_fired_at'),
+  created_at:      text('created_at').notNull(),
+  updated_at:      text('updated_at').notNull(),
+});
+
 export const tasks = sqliteTable('tasks', {
   id:            text('id').primaryKey(),
   title:         text('title').notNull(),
@@ -26,6 +42,8 @@ export const tasks = sqliteTable('tasks', {
   kickoff_note:  text('kickoff_note'),
   session_log:   text('session_log'),
   focused_until: text('focused_until'),
+  duty_id:       text('duty_id').references(() => duties.id, { onDelete: 'set null' }),
+  duty_fire_at:  text('duty_fire_at'),
 });
 
 export const taskLinks = sqliteTable('task_links', {
@@ -62,3 +80,4 @@ export type Task      = typeof tasks.$inferSelect;
 export type Project   = typeof projects.$inferSelect;
 export type TaskLink  = typeof taskLinks.$inferSelect;
 export type ActionLog = typeof actionLog.$inferSelect;
+export type Duty      = typeof duties.$inferSelect;

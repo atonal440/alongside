@@ -12,7 +12,7 @@ export function taskMetaString(task: Task, today: string): string {
     else if (task.due_date === today) parts.push('Due today');
     else parts.push(task.due_date);
   }
-  if (task.recurrence) parts.push('Recurring');
+  if (task.duty_id) parts.push('Duty');
   return parts.join(' · ');
 }
 

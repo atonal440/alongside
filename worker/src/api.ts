@@ -1,6 +1,7 @@
 import { DB } from './db';
 import type { ExportPayload } from './db';
-import type { TaskLink, ProjectUpdate } from '@shared/types';
+import type { TaskLink, ProjectUpdate, DutyUpdate } from '@shared/types';
+import { materializeDueDuties, dateAtMidnightInTz, todayInTz, getUserTimezone, computeNextFire } from './duties';
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -15,12 +16,14 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
 
   // GET /api/tasks — list all non-done tasks
   if (method === 'GET' && path === '/api/tasks') {
+    await materializeDueDuties(db, new Date().toISOString());
     const tasks = await db.listTasks();
     return json(tasks);
   }
 
   // GET /api/tasks/sync — all tasks including done and deferred, for full PWA sync
   if (method === 'GET' && path === '/api/tasks/sync') {
+    await materializeDueDuties(db, new Date().toISOString());
     const tasks = await db.listAllTasks();
     return json(tasks);
   }
@@ -93,12 +96,82 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
     return json({ ok: true });
   }
 
-  // POST /api/tasks/:id/complete — complete + handle recurrence
+  // POST /api/tasks/:id/complete — mark task done; duty schedule advances independently.
   const completeMatch = path.match(/^\/api\/tasks\/([^/]+)\/complete$/);
   if (method === 'POST' && completeMatch) {
     const result = await db.completeTask(completeMatch[1]);
     if (!result) return json({ error: 'Not found' }, 404);
     return json(result);
+  }
+
+  // ── Duties ────────────────────────────────────────────────────────────────
+
+  // GET /api/duties — list all duties (active and paused)
+  if (method === 'GET' && path === '/api/duties') {
+    const duties = await db.listDuties();
+    return json(duties);
+  }
+
+  // POST /api/duties — create a duty
+  if (method === 'POST' && path === '/api/duties') {
+    const body = await request.json<{
+      title: string;
+      notes?: string;
+      kickoff_note?: string;
+      task_type?: 'action' | 'plan';
+      project_id?: string | null;
+      recurrence: string;
+      due_offset_days?: number;
+      first_fire_date?: string;
+      next_fire_at?: string;
+    }>();
+    if (!body.title || !body.recurrence) return json({ error: 'title and recurrence are required' }, 400);
+    const tz = await getUserTimezone(db);
+    const nextFireAt = body.next_fire_at ?? dateAtMidnightInTz(body.first_fire_date ?? todayInTz(tz), tz);
+    if (!computeNextFire(body.recurrence, nextFireAt, tz)) {
+      return json({ error: `Unsupported recurrence "${body.recurrence}"` }, 400);
+    }
+    const duty = await db.addDuty({
+      title: body.title,
+      notes: body.notes,
+      kickoff_note: body.kickoff_note,
+      task_type: body.task_type,
+      project_id: body.project_id ?? undefined,
+      recurrence: body.recurrence,
+      due_offset_days: body.due_offset_days,
+      next_fire_at: nextFireAt,
+    });
+    return json(duty, 201);
+  }
+
+  const dutyMatch = path.match(/^\/api\/duties\/([^/]+)$/);
+
+  // GET /api/duties/:id
+  if (method === 'GET' && dutyMatch) {
+    const duty = await db.getDuty(dutyMatch[1]);
+    if (!duty) return json({ error: 'Not found' }, 404);
+    return json(duty);
+  }
+
+  // PATCH /api/duties/:id
+  if (method === 'PATCH' && dutyMatch) {
+    const body = await request.json<DutyUpdate & { first_fire_date?: string }>();
+    const updates: DutyUpdate = { ...body };
+    if (typeof body.first_fire_date === 'string' && body.first_fire_date.length > 0) {
+      const tz = await getUserTimezone(db);
+      updates.next_fire_at = dateAtMidnightInTz(body.first_fire_date, tz);
+      delete (updates as { first_fire_date?: string }).first_fire_date;
+    }
+    const duty = await db.updateDuty(dutyMatch[1], updates);
+    if (!duty) return json({ error: 'Not found' }, 404);
+    return json(duty);
+  }
+
+  // DELETE /api/duties/:id
+  if (method === 'DELETE' && dutyMatch) {
+    const deleted = await db.deleteDuty(dutyMatch[1]);
+    if (!deleted) return json({ error: 'Not found' }, 404);
+    return json({ ok: true });
   }
 
   // GET /api/projects — list active projects

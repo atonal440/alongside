@@ -1,4 +1,4 @@
-export type { Task, Project, TaskLink, ActionLog } from './schema';
+export type { Task, Project, TaskLink, ActionLog, Duty } from './schema';
 
 export interface PendingOp {
   id?: number;
@@ -9,10 +9,10 @@ export interface PendingOp {
   created_at: string;
 }
 
-import type { Task, Project } from './schema';
+import type { Task, Project, Duty } from './schema';
 
 export type TaskCreate = Pick<Task, 'title'> &
-  Partial<Pick<Task, 'notes' | 'due_date' | 'recurrence' | 'task_type' | 'project_id' | 'kickoff_note'>>;
+  Partial<Pick<Task, 'notes' | 'due_date' | 'recurrence' | 'task_type' | 'project_id' | 'kickoff_note' | 'duty_id' | 'duty_fire_at'>>;
 
 export type TaskUpdate = Partial<Pick<Task,
   'title' | 'notes' | 'due_date' | 'recurrence' | 'task_type' | 'project_id' |
@@ -20,3 +20,11 @@ export type TaskUpdate = Partial<Pick<Task,
 
 export type ProjectCreate = Pick<Project, 'title'> & Partial<Pick<Project, 'kickoff_note' | 'notes'>>;
 export type ProjectUpdate = Partial<Pick<Project, 'title' | 'kickoff_note' | 'notes' | 'status'>>;
+
+export type DutyCreate = Pick<Duty, 'title' | 'recurrence'> &
+  Partial<Pick<Duty, 'notes' | 'kickoff_note' | 'task_type' | 'project_id' | 'due_offset_days' | 'active' | 'next_fire_at'>> &
+  { first_fire_date?: string };
+
+export type DutyUpdate = Partial<Pick<Duty,
+  'title' | 'notes' | 'kickoff_note' | 'task_type' | 'project_id' | 'recurrence' |
+  'due_offset_days' | 'active' | 'next_fire_at'>>;

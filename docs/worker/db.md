@@ -30,7 +30,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`addTask(data)`** — Inserts a new task with a generated nanoid (`defer_kind` defaults to `'none'`). Returns the created `Task`.
 
-**`completeTask(id)`** — Marks a task `done` and clears `focused_until`. If the task has a `recurrence` rule, creates the next occurrence with a computed `due_date` and carries `session_log` forward as `kickoff_note`.
+**`completeTask(id)`** — Marks a task `done` and clears `focused_until`. If the task came from a duty (`duty_id` is set) and has a `session_log`, copies the log onto the parent duty as its new `kickoff_note` so the next materialization carries forward the user's re-entry note. Schedule advancement is handled by the duty (not by completion), so accidental completion does not shift the schedule.
 
 **`reopenTask(id)`** — Clears `defer_kind`/`defer_until`, making the task immediately actionable again. Does not modify `status`.
 
@@ -59,6 +59,26 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 **`updateProject(id, data)`** — Partial update of project fields (`title`, `notes`, `kickoff_note`, `status`).
 
 **`deleteProject(id)`** — Unlinks all tasks from the project (sets `project_id = NULL`), then deletes the project row.
+
+## Duty operations
+
+**`addDuty(data)`** — Inserts a new duty with a generated nanoid. `recurrence` and `next_fire_at` are required; everything else has sensible defaults (`task_type = 'action'`, `due_offset_days = 0`, `active = true`).
+
+**`getDuty(id)`** — Fetches a single duty row by primary key.
+
+**`listDuties()`** — Returns all duties (active and paused) ordered by `created_at`.
+
+**`listDueDuties(nowIso)`** — Returns active duties whose `next_fire_at <= nowIso`. Used by the materialization engine.
+
+**`findTaskByDutyFire(dutyId, fireAt)`** — Returns the task that was already materialized for this duty/fire (if any). Used as the idempotency check in `materializeDueDuties`.
+
+**`updateDuty(id, data)`** — Partial update of duty fields. Updates `updated_at` automatically.
+
+**`markDutyFired(id, firedAt, nextFireAt, nowIso)`** — After a successful materialization, sets `last_fired_at` to `firedAt` and `next_fire_at` to the precomputed next fire timestamp.
+
+**`setDutyActive(id, active, nowIso)`** — Pause or resume a duty without deleting it. The materialization engine calls this with `active = false` when it encounters an unparseable RRULE.
+
+**`deleteDuty(id)`** — Hard-deletes a duty. Materialized tasks survive (their `duty_id` is set null via the FK).
 
 ## Link operations
 
@@ -98,3 +118,4 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 - [[readiness|shared/readiness.ts]] — `isDeferred` predicate mirrored by `notDeferredCondition`
 - [[api|worker/api.ts]] — REST handler that calls these methods
 - [[mcp|worker/mcp.ts]] — MCP handler that calls these methods
+- [[duties|worker/duties.ts]] — materialization engine that calls duty methods on this DB

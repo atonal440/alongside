@@ -25,6 +25,7 @@ export function useSync() {
             tasks: result.tasks,
             projects: result.projects ?? [],
             links: result.links ?? [],
+            duties: result.duties ?? [],
           });
           dispatch({ type: 'SET_SYNC_STATUS', status: 'online' });
         } else {
