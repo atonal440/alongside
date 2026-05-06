@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const projects = sqliteTable('projects', {
   id:           text('id').primaryKey(),
@@ -44,7 +44,9 @@ export const tasks = sqliteTable('tasks', {
   focused_until: text('focused_until'),
   duty_id:       text('duty_id').references(() => duties.id, { onDelete: 'set null' }),
   duty_fire_at:  text('duty_fire_at'),
-});
+}, (t) => [
+  uniqueIndex('idx_tasks_duty_fire').on(t.duty_id, t.duty_fire_at),
+]);
 
 export const taskLinks = sqliteTable('task_links', {
   from_task_id: text('from_task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),

@@ -98,6 +98,13 @@ export function todayInTz(tz: string): string {
 
 const DEFAULT_TZ = 'UTC';
 
+function isDutyFireUniqueViolation(error: unknown): boolean {
+  return error instanceof Error
+    && error.message.includes('UNIQUE constraint failed')
+    && error.message.includes('tasks.duty_id')
+    && error.message.includes('tasks.duty_fire_at');
+}
+
 export async function getUserTimezone(db: DB): Promise<string> {
   const tz = await db.getPreference('timezone');
   return tz || DEFAULT_TZ;
@@ -118,27 +125,32 @@ export async function materializeDueDuties(db: DB, nowIso: string): Promise<{ ma
     const fireAt = duty.next_fire_at;
 
     // Idempotency: only create the task if no instance for this fire exists.
+    // A unique index backs this up when concurrent request paths race here.
     const already = await db.findTaskByDutyFire(duty.id, fireAt);
     if (!already) {
       const dueDate = deriveDueDate(fireAt, duty.due_offset_days, tz);
-      const task = await db.addTask({
-        title:        duty.title,
-        notes:        duty.notes ?? undefined,
-        kickoff_note: duty.kickoff_note ?? undefined,
-        task_type:    duty.task_type,
-        project_id:   duty.project_id ?? undefined,
-        due_date:     dueDate,
-        recurrence:   undefined,
-        duty_id:      duty.id,
-        duty_fire_at: fireAt,
-      });
-      await db.logAction({
-        tool_name: 'duty_fired',
-        task_id:   task.id,
-        title:     task.title,
-        detail:    duty.id,
-      });
-      count += 1;
+      try {
+        const task = await db.addTask({
+          title:        duty.title,
+          notes:        duty.notes ?? undefined,
+          kickoff_note: duty.kickoff_note ?? undefined,
+          task_type:    duty.task_type,
+          project_id:   duty.project_id ?? undefined,
+          due_date:     dueDate,
+          recurrence:   undefined,
+          duty_id:      duty.id,
+          duty_fire_at: fireAt,
+        });
+        await db.logAction({
+          tool_name: 'duty_fired',
+          task_id:   task.id,
+          title:     task.title,
+          detail:    duty.id,
+        });
+        count += 1;
+      } catch (error) {
+        if (!isDutyFireUniqueViolation(error)) throw error;
+      }
     }
 
     const next = computeNextFire(duty.recurrence, fireAt, tz);

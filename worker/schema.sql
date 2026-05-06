@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_duty_fire ON tasks(duty_id, duty_fire_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_duty_fire ON tasks(duty_id, duty_fire_at);
 
 -- Horizontal dependency graph between tasks
 CREATE TABLE IF NOT EXISTS task_links (

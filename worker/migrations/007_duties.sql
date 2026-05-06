@@ -24,4 +24,4 @@ CREATE INDEX IF NOT EXISTS idx_duties_active_next_fire ON duties(active, next_fi
 ALTER TABLE tasks ADD COLUMN duty_id TEXT REFERENCES duties(id) ON DELETE SET NULL;
 ALTER TABLE tasks ADD COLUMN duty_fire_at TEXT;
 
-CREATE INDEX IF NOT EXISTS idx_tasks_duty_fire ON tasks(duty_id, duty_fire_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_duty_fire ON tasks(duty_id, duty_fire_at);

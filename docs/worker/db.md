@@ -58,7 +58,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`updateProject(id, data)`** — Partial update of project fields (`title`, `notes`, `kickoff_note`, `status`).
 
-**`deleteProject(id)`** — Unlinks all tasks from the project (sets `project_id = NULL`), then deletes the project row.
+**`deleteProject(id)`** — Unlinks all tasks and duties from the project (sets `project_id = NULL`), then deletes the project row.
 
 ## Duty operations
 

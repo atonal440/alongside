@@ -311,10 +311,15 @@ export class DB {
   }
 
   async deleteProject(id: string): Promise<boolean> {
+    const ts = now();
     await this.drizzle
       .update(tasksTable)
-      .set({ project_id: null, updated_at: now() })
+      .set({ project_id: null, updated_at: ts })
       .where(eq(tasksTable.project_id, id));
+    await this.drizzle
+      .update(dutiesTable)
+      .set({ project_id: null, updated_at: ts })
+      .where(eq(dutiesTable.project_id, id));
     const result = await this.d1
       .prepare('DELETE FROM projects WHERE id = ?')
       .bind(id)
