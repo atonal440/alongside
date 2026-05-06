@@ -2,7 +2,7 @@
 -- real tasks on a schedule. Replaces the prior completion-driven recurrence
 -- (where marking a recurring task done auto-created the next instance) so
 -- accidental completion no longer shifts the schedule. Existing recurring
--- tasks are migrated by a separate one-time script (scripts/migrate-recurrence-to-duties.ts).
+-- tasks are migrated by 008_recurring_tasks_to_duties.sql.
 CREATE TABLE IF NOT EXISTS duties (
   id              TEXT PRIMARY KEY,
   title           TEXT NOT NULL,
