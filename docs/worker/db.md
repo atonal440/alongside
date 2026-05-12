@@ -104,7 +104,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`getAllPreferences()`** — Returns all preference rows merged with built-in defaults.
 
-**`seedDefaultPreferences()`** — Inserts default preference rows if they don't already exist.
+**`seedDefaultPreferences()`** — Inserts default preference rows if they don't already exist, except `timezone`. `timezone` remains a computed default (`UTC`) until the PWA or MCP preference writer stores an explicit IANA timezone, so legacy recurrence migration can distinguish real user timezone from fallback.
 
 ## Action log
 

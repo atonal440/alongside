@@ -6,7 +6,7 @@ Materialization runs from an hourly Cloudflare cron handler and still has reques
 
 The user's timezone is read from the `user_preferences` table (`key = 'timezone'`); when absent it defaults to `UTC`. RRULE math runs on wall-clock parts in that timezone (not UTC), so DST transitions don't drift the anchor time.
 
-Before selecting due duties, the materializer also converts pending legacy task-level recurrence rows into duties. That conversion is intentionally done in worker code instead of the SQL migration because D1 migrations do not have IANA timezone support; legacy due dates are normalized to valid `YYYY-MM-DD` values before `dateAtMidnightInTz` so the original local calendar day is preserved when possible and malformed old data falls back safely.
+Before selecting due duties, request-path materialization also converts pending legacy task-level recurrence rows into duties, but only after an explicit valid `user_preferences.timezone` row exists. That conversion is intentionally done in worker code instead of the SQL migration because D1 migrations do not have IANA timezone support; legacy due dates are normalized to valid `YYYY-MM-DD` values before `dateAtMidnightInTz` so the original local calendar day is preserved when possible and malformed old data falls back safely.
 
 ## Exported functions
 
@@ -24,7 +24,7 @@ Before selecting due duties, the materializer also converts pending legacy task-
 
 **`getUserTimezone(db)`** — Reads `timezone` from `user_preferences`; returns `'UTC'` when unset or invalid.
 
-**`materializeDueDuties(db, nowIso, options?)`** — Main loop. Selects every active duty with `next_fire_at <= nowIso`. For each due fire up through `nowIso`, creates one task (skipped if a task with the same `duty_id + duty_fire_at` already exists) and advances `next_fire_at` via `computeNextFire` until the duty is no longer overdue. Logs a `duty_fired` action log entry per materialized task. Idempotent: safe to call from multiple read paths concurrently. Pass `{ migrateLegacy: false }` from cron paths that should not convert old task-level recurrence before user timezone exists.
+**`materializeDueDuties(db, nowIso, options?)`** — Main loop. Selects every active duty with `next_fire_at <= nowIso`. For each due fire up through `nowIso`, creates one task (skipped if a task with the same `duty_id + duty_fire_at` already exists) and advances `next_fire_at` via `computeNextFire` until the duty is no longer overdue. Logs a `duty_fired` action log entry per materialized task. Idempotent: safe to call from multiple read paths concurrently. Legacy task-level recurrence migration runs only when a valid timezone preference has been explicitly stored; pass `{ migrateLegacy: false }` from cron paths that should never perform that conversion.
 
 ## See Also
 

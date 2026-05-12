@@ -200,8 +200,10 @@ export async function materializeDueDuties(
   nowIso: string,
   options: MaterializeOptions = {},
 ): Promise<{ materialized: number }> {
-  const tz = await getUserTimezone(db);
-  if (options.migrateLegacy !== false) {
+  const timezonePreference = await db.getPreference('timezone');
+  const hasValidTimezonePreference = timezonePreference !== null && isValidTimezone(timezonePreference);
+  const tz = hasValidTimezonePreference ? timezonePreference : DEFAULT_TZ;
+  if (options.migrateLegacy !== false && hasValidTimezonePreference) {
     await migrateLegacyRecurringTasks(db, tz, nowIso);
   }
 

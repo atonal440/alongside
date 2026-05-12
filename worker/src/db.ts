@@ -580,6 +580,7 @@ export class DB {
   // Seed missing default preferences (called by start_session)
   async seedDefaultPreferences(): Promise<void> {
     for (const [key, value] of Object.entries(DEFAULT_PREFERENCES)) {
+      if (key === 'timezone') continue;
       await this.d1
         .prepare('INSERT OR IGNORE INTO user_preferences (key, value) VALUES (?, ?)')
         .bind(key, value)
