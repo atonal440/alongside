@@ -728,6 +728,7 @@ export class DB {
 function validatePayloadIntegrity(payload: ExportPayload): void {
   const projectIds = new Set(payload.projects.map(p => p.id));
   const taskIds = new Set(payload.tasks.map(t => t.id));
+  const dutyIds = new Set((payload.duties ?? []).map(d => d.id));
 
   const dupProjects = payload.projects.length - projectIds.size;
   if (dupProjects > 0) throw new Error(`Payload contains ${dupProjects} duplicate project id(s)`);
@@ -735,9 +736,34 @@ function validatePayloadIntegrity(payload: ExportPayload): void {
   const dupTasks = payload.tasks.length - taskIds.size;
   if (dupTasks > 0) throw new Error(`Payload contains ${dupTasks} duplicate task id(s)`);
 
+  const dupDuties = (payload.duties ?? []).length - dutyIds.size;
+  if (dupDuties > 0) throw new Error(`Payload contains ${dupDuties} duplicate duty id(s)`);
+
+  for (const duty of payload.duties ?? []) {
+    if (duty.project_id !== null && !projectIds.has(duty.project_id)) {
+      throw new Error(`Duty ${duty.id} references unknown project ${duty.project_id}`);
+    }
+  }
+
+  const dutyFireKeys = new Set<string>();
   for (const task of payload.tasks) {
     if (task.project_id !== null && !projectIds.has(task.project_id)) {
       throw new Error(`Task ${task.id} references unknown project ${task.project_id}`);
+    }
+    const dutyId = (task as Task).duty_id ?? null;
+    const dutyFireAt = (task as Task).duty_fire_at ?? null;
+    if (dutyId !== null) {
+      if (!dutyIds.has(dutyId)) {
+        throw new Error(`Task ${task.id} references unknown duty ${dutyId}`);
+      }
+      if (dutyFireAt === null) {
+        throw new Error(`Task ${task.id} has duty_id without duty_fire_at`);
+      }
+      const dutyFireKey = `${dutyId}\u0000${dutyFireAt}`;
+      if (dutyFireKeys.has(dutyFireKey)) {
+        throw new Error(`Payload contains duplicate task duty fire ${dutyId} / ${dutyFireAt}`);
+      }
+      dutyFireKeys.add(dutyFireKey);
     }
   }
 
@@ -758,6 +784,7 @@ function validateExportPayload(payload: unknown): asserts payload is ExportPaylo
   if (!Array.isArray(p['projects'])) throw new Error('Missing or invalid projects array');
   if (!Array.isArray(p['tasks'])) throw new Error('Missing or invalid tasks array');
   if (!Array.isArray(p['links'])) throw new Error('Missing or invalid links array');
+  if (p['duties'] !== undefined && !Array.isArray(p['duties'])) throw new Error('Invalid duties array');
   if (typeof p['preferences'] !== 'object' || p['preferences'] === null || Array.isArray(p['preferences'])) {
     throw new Error('Missing or invalid preferences object');
   }
