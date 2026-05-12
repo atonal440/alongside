@@ -86,9 +86,9 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`updateDuty(id, data)`** — Partial update of duty fields. Updates `updated_at` automatically and rejects non-integer `due_offset_days` patches.
 
-**`markDutyFired(id, firedAt, nextFireAt, nowIso)`** — After a successful materialization, sets `last_fired_at` to `firedAt` and `next_fire_at` to the precomputed next fire timestamp.
+**`markDutyFired(id, firedAt, nextFireAt, nowIso)`** — After a successful materialization, sets `last_fired_at` to `firedAt` and `next_fire_at` to the precomputed next fire timestamp, but only if the row still has `next_fire_at = firedAt`. Returns whether the compare-and-set update succeeded so stale materializers do not overwrite concurrent duty edits.
 
-**`setDutyActive(id, active, nowIso)`** — Pause or resume a duty without deleting it. The materialization engine calls this with `active = false` when it encounters an unparseable RRULE.
+**`setDutyActive(id, active, nowIso, expectedNextFireAt?)`** — Pause or resume a duty without deleting it. When `expectedNextFireAt` is provided, the update only applies if the row still has that fire time. The materialization engine uses that guard when pausing stale or unparseable duties so concurrent edits are not overwritten.
 
 **`deleteDuty(id)`** — Hard-deletes a duty. Materialized tasks survive (their `duty_id` is set null via the FK).
 

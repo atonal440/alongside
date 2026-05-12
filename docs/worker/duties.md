@@ -24,7 +24,7 @@ Before selecting due duties, request-path materialization also converts pending 
 
 **`getUserTimezone(db)`** — Reads `timezone` from `user_preferences`; returns `'UTC'` when unset or invalid.
 
-**`materializeDueDuties(db, nowIso, options?)`** — Main loop. Selects every active duty with `next_fire_at <= nowIso`. For each due fire up through `nowIso`, creates one task (skipped if a task with the same `duty_id + duty_fire_at` already exists) and advances `next_fire_at` via `computeNextFire` until the duty is no longer overdue. Logs a `duty_fired` action log entry per materialized task. Idempotent: safe to call from multiple read paths concurrently. Legacy task-level recurrence migration runs only when a valid timezone preference has been explicitly stored; pass `{ migrateLegacy: false }` from cron paths that should never perform that conversion.
+**`materializeDueDuties(db, nowIso, options?)`** — Main loop. Selects every active duty with `next_fire_at <= nowIso`. For each due fire up through `nowIso`, creates one task (skipped if a task with the same `duty_id + duty_fire_at` already exists) and advances `next_fire_at` via `computeNextFire` until the duty is no longer overdue. Advancement and materializer-triggered pauses are conditional on the duty still having the fire time that was selected, so a concurrent user edit that moves `next_fire_at` wins over stale materialization. Logs a `duty_fired` action log entry per materialized task. Idempotent: safe to call from multiple read paths concurrently. Legacy task-level recurrence migration runs only when a valid timezone preference has been explicitly stored; pass `{ migrateLegacy: false }` from cron paths that should never perform that conversion.
 
 ## See Also
 

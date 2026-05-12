@@ -279,14 +279,15 @@ export async function materializeDueDuties(
       const next = computeNextFire(duty.recurrence, fireAt, tz);
       if (next) {
         if (next <= fireAt) {
-          await db.setDutyActive(duty.id, false, nowIso);
+          await db.setDutyActive(duty.id, false, nowIso, fireAt);
           break;
         }
-        await db.markDutyFired(duty.id, fireAt, next, nowIso);
+        const advanced = await db.markDutyFired(duty.id, fireAt, next, nowIso);
+        if (!advanced) break;
         fireAt = next;
       } else {
         // Unparseable RRULE — pause the duty so we don't loop. Edit and re-activate.
-        await db.setDutyActive(duty.id, false, nowIso);
+        await db.setDutyActive(duty.id, false, nowIso, fireAt);
         break;
       }
     }

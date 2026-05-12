@@ -504,18 +504,30 @@ export class DB {
     return this.getDuty(id);
   }
 
-  async markDutyFired(id: string, firedAt: string, nextFireAt: string, nowIso: string): Promise<void> {
-    await this.drizzle
-      .update(dutiesTable)
-      .set({ last_fired_at: firedAt, next_fire_at: nextFireAt, updated_at: nowIso })
-      .where(eq(dutiesTable.id, id));
+  async markDutyFired(id: string, firedAt: string, nextFireAt: string, nowIso: string): Promise<boolean> {
+    const result = await this.d1
+      .prepare(`
+        UPDATE duties
+        SET last_fired_at = ?, next_fire_at = ?, updated_at = ?
+        WHERE id = ? AND next_fire_at = ?
+      `)
+      .bind(firedAt, nextFireAt, nowIso, id, firedAt)
+      .run();
+    return result.meta.changes > 0;
   }
 
-  async setDutyActive(id: string, active: boolean, nowIso: string): Promise<void> {
-    await this.drizzle
-      .update(dutiesTable)
-      .set({ active, updated_at: nowIso })
-      .where(eq(dutiesTable.id, id));
+  async setDutyActive(id: string, active: boolean, nowIso: string, expectedNextFireAt?: string): Promise<boolean> {
+    const activeValue = active ? 1 : 0;
+    const result = expectedNextFireAt === undefined
+      ? await this.d1
+        .prepare('UPDATE duties SET active = ?, updated_at = ? WHERE id = ?')
+        .bind(activeValue, nowIso, id)
+        .run()
+      : await this.d1
+        .prepare('UPDATE duties SET active = ?, updated_at = ? WHERE id = ? AND next_fire_at = ?')
+        .bind(activeValue, nowIso, id, expectedNextFireAt)
+        .run();
+    return result.meta.changes > 0;
   }
 
   async deleteDuty(id: string): Promise<boolean> {
