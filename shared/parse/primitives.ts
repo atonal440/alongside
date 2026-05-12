@@ -102,11 +102,16 @@ function getTimezoneSet(): Set<string> {
   return timezoneSet;
 }
 
+function hasTimezoneIdentifierCase(input: string): boolean {
+  return !input.includes('/') || input !== input.toLowerCase();
+}
+
 export function isIanaTimezoneString(input: string): boolean {
   if (input === CANONICAL_UTC_TIMEZONE) return true;
 
   const supported = getTimezoneSet();
-  if (supported.size > 0) return supported.has(input);
+  if (supported.has(input)) return true;
+  if (!hasTimezoneIdentifierCase(input)) return false;
 
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: input }).format();

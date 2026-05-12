@@ -10,7 +10,7 @@ Valibot-backed primitive parsers and branded primitive types. These are the foun
 
 **`IsoDateTime`** — Branded ISO date-time requiring `Z` or an explicit offset.
 
-**`IanaTimezone`** — Branded IANA timezone name. Accepts canonical `UTC` in addition to zones returned by the runtime's IANA timezone list.
+**`IanaTimezone`** — Branded IANA timezone name. Accepts canonical `UTC`, zones returned by the runtime's IANA timezone list, and case-preserving timezone aliases accepted by `Intl.DateTimeFormat` (for example, `Etc/UTC` and `Etc/GMT`).
 
 **`NonEmptyString<Max>`**, **`BoundedString<Max>`**, **`PositiveInt<Max>`**, **`PositiveFiniteNumber<Max>`** — Branded constrained scalar types.
 

@@ -29,6 +29,11 @@ describe('primitive parsers', () => {
     expect(parseIanaTimezone('etc/utc').ok).toBe(false);
   });
 
+  it('accepts Intl-valid timezone aliases', () => {
+    expect(parseIanaTimezone('Etc/UTC').ok).toBe(true);
+    expect(parseIanaTimezone('Etc/GMT').ok).toBe(true);
+  });
+
   it('rejects non-positive or unbounded numeric inputs', () => {
     expect(parsePositiveInt(24, 3).ok).toBe(true);
     expect(parsePositiveInt(24, 0).ok).toBe(false);
