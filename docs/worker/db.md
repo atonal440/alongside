@@ -82,6 +82,8 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`convertLegacyRecurringTaskToDuty(task, fireAt, nowIso)`** — Creates a deterministic duty for one legacy recurring task (`d_` plus the task suffix), links the task to that duty/fire, and clears `tasks.recurrence`. Uses `INSERT OR IGNORE` plus a guarded task update so repeated request-path conversions are safe.
 
+**`clearLegacyTaskRecurrence(taskId, nowIso)`** — Clears `tasks.recurrence` on an unconverted legacy task. Used during migration for undated legacy recurrence rows, preserving their old one-off behavior instead of inventing a schedule.
+
 **`updateDuty(id, data)`** — Partial update of duty fields. Updates `updated_at` automatically and rejects non-integer `due_offset_days` patches.
 
 **`markDutyFired(id, firedAt, nextFireAt, nowIso)`** — After a successful materialization, sets `last_fired_at` to `firedAt` and `next_fire_at` to the precomputed next fire timestamp.

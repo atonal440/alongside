@@ -174,12 +174,11 @@ export async function getUserTimezone(db: DB): Promise<string> {
   return tz && isValidTimezone(tz) ? tz : DEFAULT_TZ;
 }
 
-function normalizeLegacyDueDate(value: string | null, tz: string): string {
-  if (value) {
-    if (isValidDateOnly(value)) return value;
-    const datePart = value.slice(0, 10);
-    if (isValidDateOnly(datePart)) return datePart;
-  }
+function normalizeLegacyDueDate(value: string | null, tz: string): string | null {
+  if (!value) return null;
+  if (isValidDateOnly(value)) return value;
+  const datePart = value.slice(0, 10);
+  if (isValidDateOnly(datePart)) return datePart;
   return todayInTz(tz);
 }
 
@@ -187,6 +186,10 @@ async function migrateLegacyRecurringTasks(db: DB, tz: string, nowIso: string): 
   const tasks = await db.listLegacyRecurringTasks();
   for (const task of tasks) {
     const fireDate = normalizeLegacyDueDate(task.due_date, tz);
+    if (!fireDate) {
+      await db.clearLegacyTaskRecurrence(task.id, nowIso);
+      continue;
+    }
     await db.convertLegacyRecurringTaskToDuty(task, dateAtMidnightInTz(fireDate, tz), nowIso);
   }
 }

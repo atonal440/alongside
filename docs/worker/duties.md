@@ -6,7 +6,7 @@ Materialization runs from an hourly Cloudflare cron handler and still has reques
 
 The user's timezone is read from the `user_preferences` table (`key = 'timezone'`); when absent it defaults to `UTC`. RRULE math runs on wall-clock parts in that timezone (not UTC), so DST transitions don't drift the anchor time.
 
-Before selecting due duties, request-path materialization also converts pending legacy task-level recurrence rows into duties, but only after an explicit valid `user_preferences.timezone` row exists. That conversion is intentionally done in worker code instead of the SQL migration because D1 migrations do not have IANA timezone support; legacy due dates are normalized to valid `YYYY-MM-DD` values before `dateAtMidnightInTz` so the original local calendar day is preserved when possible and malformed old data falls back safely.
+Before selecting due duties, request-path materialization also converts pending legacy task-level recurrence rows into duties, but only after an explicit valid `user_preferences.timezone` row exists. That conversion is intentionally done in worker code instead of the SQL migration because D1 migrations do not have IANA timezone support; legacy due dates are normalized to valid `YYYY-MM-DD` values before `dateAtMidnightInTz` so the original local calendar day is preserved when possible and malformed old data falls back safely. Undated legacy recurrence rows are not converted into scheduled duties; their recurrence is cleared so they keep the old one-off completion behavior.
 
 ## Exported functions
 

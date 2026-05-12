@@ -471,6 +471,17 @@ export class DB {
     ]);
   }
 
+  async clearLegacyTaskRecurrence(taskId: string, nowIso: string): Promise<void> {
+    await this.d1
+      .prepare(`
+        UPDATE tasks
+        SET recurrence = NULL, updated_at = ?
+        WHERE id = ? AND duty_id IS NULL AND recurrence IS NOT NULL
+      `)
+      .bind(nowIso, taskId)
+      .run();
+  }
+
   async updateDuty(id: string, updates: DutyUpdate): Promise<Duty | null> {
     const patch: Partial<typeof dutiesTable.$inferInsert> = {};
     if (updates.title           !== undefined) patch.title           = updates.title;
