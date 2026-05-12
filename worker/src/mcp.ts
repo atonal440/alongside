@@ -2,7 +2,7 @@ import { DB } from './db';
 import type { Task, Project } from '@shared/types';
 import type { Env } from './index';
 import { getAppHtml, getActionLogHtml } from './app-ui';
-import { materializeDueDuties, dateAtMidnightInTz, todayInTz, getUserTimezone, computeNextFire, isValidTimezone } from './duties';
+import { materializeDueDuties, dateAtMidnightInTz, todayInTz, getUserTimezone, computeNextFire, isValidTimezone, isValidDateOnly } from './duties';
 
 interface McpRequest {
   jsonrpc: '2.0';
@@ -25,6 +25,15 @@ function mcpError(id: string | number, code: number, message: string) {
 
 function isValidDutyOffsetDays(value: unknown): value is number {
   return Number.isInteger(value) && Number.isFinite(value);
+}
+
+function firstFireDateToNextFireAt(firstFireDate: string, tz: string): string | null {
+  if (!isValidDateOnly(firstFireDate)) return null;
+  try {
+    return dateAtMidnightInTz(firstFireDate, tz);
+  } catch {
+    return null;
+  }
 }
 
 const TASK_DASHBOARD_URI = 'ui://alongside/task-dashboard';
@@ -627,8 +636,14 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     case 'add_duty': {
       const tz = await getUserTimezone(db);
       const today = todayInTz(tz);
-      const firstFireDate = (args.first_fire_date as string | undefined) ?? today;
-      const nextFireAt = dateAtMidnightInTz(firstFireDate, tz);
+      if (args.first_fire_date !== undefined && typeof args.first_fire_date !== 'string') {
+        throw new Error('first_fire_date must be a valid YYYY-MM-DD date');
+      }
+      const firstFireDate = args.first_fire_date ?? today;
+      const nextFireAt = firstFireDateToNextFireAt(firstFireDate, tz);
+      if (!nextFireAt) {
+        throw new Error('first_fire_date must be a valid YYYY-MM-DD date');
+      }
       const recurrence = args.recurrence as string;
       if (args.due_offset_days !== undefined && !isValidDutyOffsetDays(args.due_offset_days)) {
         throw new Error('due_offset_days must be an integer');
@@ -668,9 +683,16 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       if (updates.due_offset_days !== undefined && !isValidDutyOffsetDays(updates.due_offset_days)) {
         throw new Error('due_offset_days must be an integer');
       }
-      if (typeof first_fire_date === 'string' && first_fire_date.length > 0) {
+      if (first_fire_date !== undefined) {
+        if (typeof first_fire_date !== 'string') {
+          throw new Error('first_fire_date must be a valid YYYY-MM-DD date');
+        }
         const tz = await getUserTimezone(db);
-        updates.next_fire_at = dateAtMidnightInTz(first_fire_date, tz);
+        const nextFireAt = firstFireDateToNextFireAt(first_fire_date, tz);
+        if (!nextFireAt) {
+          throw new Error('first_fire_date must be a valid YYYY-MM-DD date');
+        }
+        updates.next_fire_at = nextFireAt;
       }
       if (typeof updates.recurrence === 'string') {
         const tz = await getUserTimezone(db);

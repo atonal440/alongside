@@ -206,7 +206,7 @@ Create a recurring task template. Duties materialize real tasks on the hourly Wo
 |---|---|---|---|
 | `title` | `string` | yes | Template title for materialized tasks. |
 | `recurrence` | `string` | yes | Supported RRULE (`FREQ=DAILY\|WEEKLY\|MONTHLY\|YEARLY` with optional `INTERVAL`). |
-| `first_fire_date` | `string` | no | `YYYY-MM-DD`; defaults to today in the user timezone. |
+| `first_fire_date` | `string` | no | Valid `YYYY-MM-DD` calendar date; defaults to today in the user timezone. |
 | `notes` | `string` | no | Template notes. |
 | `kickoff_note` | `string` | no | Template kickoff note copied to materialized tasks. |
 | `task_type` | `'action'\|'plan'` | no | Defaults to `'action'`. |
@@ -242,7 +242,7 @@ Update one or more fields on an existing duty. Only provided fields are changed.
 | `task_type` | `'action'\|'plan'` | no | |
 | `project_id` | `string` | no | |
 | `recurrence` | `string` | no | Supported RRULE; validated before storage. |
-| `first_fire_date` | `string` | no | `YYYY-MM-DD`; resolves to `next_fire_at` in the user timezone. |
+| `first_fire_date` | `string` | no | Valid `YYYY-MM-DD` calendar date; resolves to `next_fire_at` in the user timezone. |
 | `due_offset_days` | `number` | no | Must be an integer. |
 | `active` | `boolean` | no | Pause or resume the duty. |
 

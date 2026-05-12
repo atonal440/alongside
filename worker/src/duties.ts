@@ -80,6 +80,18 @@ export function deriveDueDate(fireAtIso: string, offsetDays: number, tz: string)
   return `${normalized.y}-${mo}-${d}`;
 }
 
+export function isValidDateOnly(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const y = Number(match[1]);
+  const mo = Number(match[2]);
+  const d = Number(match[3]);
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  return date.getUTCFullYear() === y
+    && date.getUTCMonth() === mo - 1
+    && date.getUTCDate() === d;
+}
+
 // Convert a YYYY-MM-DD date to a UTC ISO timestamp at midnight in `tz`.
 export function dateAtMidnightInTz(yyyymmdd: string, tz: string): string {
   const [yStr, moStr, dStr] = yyyymmdd.split('-');

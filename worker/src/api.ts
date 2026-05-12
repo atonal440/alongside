@@ -1,7 +1,7 @@
 import { DB } from './db';
 import type { ExportPayload } from './db';
 import type { TaskLink, ProjectUpdate, DutyUpdate } from '@shared/types';
-import { materializeDueDuties, dateAtMidnightInTz, todayInTz, getUserTimezone, computeNextFire, isValidTimezone } from './duties';
+import { materializeDueDuties, dateAtMidnightInTz, todayInTz, getUserTimezone, computeNextFire, isValidTimezone, isValidDateOnly } from './duties';
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -16,18 +16,6 @@ function isSupportedDutySchedule(recurrence: string, nextFireAt: string, tz: str
   } catch {
     return false;
   }
-}
-
-function isValidDateOnly(value: string): boolean {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return false;
-  const y = Number(match[1]);
-  const mo = Number(match[2]);
-  const d = Number(match[3]);
-  const date = new Date(Date.UTC(y, mo - 1, d));
-  return date.getUTCFullYear() === y
-    && date.getUTCMonth() === mo - 1
-    && date.getUTCDate() === d;
 }
 
 function firstFireDateToNextFireAt(firstFireDate: string, tz: string): string | null {

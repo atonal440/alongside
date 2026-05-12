@@ -14,6 +14,8 @@ Before selecting due duties, the materializer also converts pending legacy task-
 
 **`deriveDueDate(fireAtIso, offsetDays, tz)`** — Returns a `YYYY-MM-DD` string by converting `fireAtIso` to wall-clock in `tz` and adding `offsetDays`. Used to compute the materialized task's `due_date`.
 
+**`isValidDateOnly(value)`** — Returns whether a string is an exact valid calendar date in `YYYY-MM-DD` form. Rejects overflow dates such as `2026-02-31` before `dateAtMidnightInTz` can normalize them.
+
 **`dateAtMidnightInTz(yyyymmdd, tz)`** — Inverse of `deriveDueDate`: takes a date and returns the UTC ISO timestamp at midnight on that date in `tz`. Used by `add_duty` / `update_duty` to translate a user-supplied `first_fire_date` into `next_fire_at`.
 
 **`todayInTz(tz)`** — Returns today's `YYYY-MM-DD` in `tz`. Default for `first_fire_date` when callers omit it.
