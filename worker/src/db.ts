@@ -390,6 +390,48 @@ export class DB {
     return rows[0] ?? null;
   }
 
+  async listLegacyRecurringTasks(): Promise<Task[]> {
+    return this.drizzle
+      .select()
+      .from(tasksTable)
+      .where(and(eq(tasksTable.status, 'pending'), sql`${tasksTable.recurrence} IS NOT NULL`))
+      .orderBy(asc(tasksTable.created_at));
+  }
+
+  async convertLegacyRecurringTaskToDuty(task: Task, fireAt: string, nowIso: string): Promise<void> {
+    if (!task.recurrence) return;
+
+    const dutyId = task.id.startsWith('t_') ? `d_${task.id.slice(2)}` : `d_${task.id}`;
+    await this.d1.batch([
+      this.d1
+        .prepare(`
+          INSERT OR IGNORE INTO duties (
+            id, title, notes, kickoff_note, task_type, project_id,
+            recurrence, due_offset_days, active, next_fire_at, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?)
+        `)
+        .bind(
+          dutyId,
+          task.title,
+          task.notes,
+          task.kickoff_note,
+          task.task_type,
+          task.project_id,
+          task.recurrence,
+          fireAt,
+          task.created_at,
+          nowIso,
+        ),
+      this.d1
+        .prepare(`
+          UPDATE tasks
+          SET duty_id = ?, duty_fire_at = ?, recurrence = NULL, updated_at = ?
+          WHERE id = ? AND status = 'pending' AND recurrence IS NOT NULL
+        `)
+        .bind(dutyId, fireAt, nowIso, task.id),
+    ]);
+  }
+
   async updateDuty(id: string, updates: DutyUpdate): Promise<Duty | null> {
     const patch: Partial<typeof dutiesTable.$inferInsert> = {};
     if (updates.title           !== undefined) patch.title           = updates.title;

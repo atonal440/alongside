@@ -47,8 +47,9 @@ function parseRRule(rrule: string): RRuleParts | null {
     if (k && v) map[k] = v;
   }
   const freq = map.FREQ;
-  const interval = Math.max(1, parseInt(map.INTERVAL || '1', 10));
+  const interval = map.INTERVAL === undefined ? 1 : Number(map.INTERVAL);
   if (freq !== 'DAILY' && freq !== 'WEEKLY' && freq !== 'MONTHLY' && freq !== 'YEARLY') return null;
+  if (!Number.isInteger(interval) || interval < 1) return null;
   return { freq, interval };
 }
 
@@ -110,15 +111,25 @@ export async function getUserTimezone(db: DB): Promise<string> {
   return tz || DEFAULT_TZ;
 }
 
+async function migrateLegacyRecurringTasks(db: DB, tz: string, nowIso: string): Promise<void> {
+  const tasks = await db.listLegacyRecurringTasks();
+  for (const task of tasks) {
+    const fireDate = task.due_date ?? todayInTz(tz);
+    await db.convertLegacyRecurringTaskToDuty(task, dateAtMidnightInTz(fireDate, tz), nowIso);
+  }
+}
+
 // Materialize every duty whose next_fire_at is at or before `nowIso` into a real
 // task and advance its schedule. Idempotent: skips creation when a task already
 // exists for the same (duty_id, duty_fire_at) pair, so concurrent reads can call
 // this without producing duplicates.
 export async function materializeDueDuties(db: DB, nowIso: string): Promise<{ materialized: number }> {
+  const tz = await getUserTimezone(db);
+  await migrateLegacyRecurringTasks(db, tz, nowIso);
+
   const dueDuties = await db.listDueDuties(nowIso);
   if (dueDuties.length === 0) return { materialized: 0 };
 
-  const tz = await getUserTimezone(db);
   let count = 0;
 
   for (const duty of dueDuties) {

@@ -6,9 +6,11 @@ There is no cron — materialization runs on the request path. Read handlers in 
 
 The user's timezone is read from the `user_preferences` table (`key = 'timezone'`); when absent it defaults to `UTC`. RRULE math runs on wall-clock parts in that timezone (not UTC), so DST transitions don't drift the anchor time.
 
+Before selecting due duties, the materializer also converts pending legacy task-level recurrence rows into duties. That conversion is intentionally done in worker code instead of the SQL migration because D1 migrations do not have IANA timezone support; date-only legacy due dates are translated with `dateAtMidnightInTz` so the original local calendar day is preserved.
+
 ## Exported functions
 
-**`computeNextFire(rrule, fromIso, tz)`** — Returns the next fire timestamp (UTC ISO) by adding one `INTERVAL` of the duty's `FREQ` to `fromIso` interpreted in `tz`. Supports `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY`. Returns `null` for unsupported RRULEs (caller pauses the duty).
+**`computeNextFire(rrule, fromIso, tz)`** — Returns the next fire timestamp (UTC ISO) by adding one `INTERVAL` of the duty's `FREQ` to `fromIso` interpreted in `tz`. Supports `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY` with a positive integer `INTERVAL`. Returns `null` for unsupported or malformed RRULEs (caller pauses the duty).
 
 **`deriveDueDate(fireAtIso, offsetDays, tz)`** — Returns a `YYYY-MM-DD` string by converting `fireAtIso` to wall-clock in `tz` and adding `offsetDays`. Used to compute the materialized task's `due_date`.
 

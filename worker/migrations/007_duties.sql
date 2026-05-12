@@ -2,7 +2,8 @@
 -- real tasks on a schedule. Replaces the prior completion-driven recurrence
 -- (where marking a recurring task done auto-created the next instance) so
 -- accidental completion no longer shifts the schedule. Existing recurring
--- tasks are migrated by 008_recurring_tasks_to_duties.sql.
+-- tasks are migrated lazily by the worker request path so date-only schedules
+-- can be interpreted in user_preferences.timezone.
 CREATE TABLE IF NOT EXISTS duties (
   id              TEXT PRIMARY KEY,
   title           TEXT NOT NULL,

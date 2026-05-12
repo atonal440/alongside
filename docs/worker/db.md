@@ -72,6 +72,10 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`findTaskByDutyFire(dutyId, fireAt)`** — Returns the task that was already materialized for this duty/fire (if any). Used as the idempotency check in `materializeDueDuties`.
 
+**`listLegacyRecurringTasks()`** — Returns pending tasks that still carry the legacy task-level `recurrence` field. Used by the duty materializer to lazily migrate old recurring tasks with access to user timezone math.
+
+**`convertLegacyRecurringTaskToDuty(task, fireAt, nowIso)`** — Creates a deterministic duty for one legacy recurring task (`d_` plus the task suffix), links the task to that duty/fire, and clears `tasks.recurrence`. Uses `INSERT OR IGNORE` plus a guarded task update so repeated request-path conversions are safe.
+
 **`updateDuty(id, data)`** — Partial update of duty fields. Updates `updated_at` automatically.
 
 **`markDutyFired(id, firedAt, nextFireAt, nowIso)`** — After a successful materialization, sets `last_fired_at` to `firedAt` and `next_fire_at` to the precomputed next fire timestamp.
