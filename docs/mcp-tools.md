@@ -198,7 +198,7 @@ Permanently delete a task. This is a hard delete — there is no undo.
 
 ### `add_duty`
 
-Create a recurring task template. Duties materialize real tasks on the request path according to their schedule; use this instead of `add_task.recurrence` for new recurring work.
+Create a recurring task template. Duties materialize real tasks on the hourly Worker cron with request-path fallback; use this instead of `add_task.recurrence` for new recurring work.
 
 **Parameters:**
 

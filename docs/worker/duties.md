@@ -2,7 +2,7 @@
 
 Materialization engine for the `duties` table. A duty is a schedule-driven task template; this module computes when it next fires (in the user's configured timezone), creates one real task per fire, and advances the duty's `next_fire_at`.
 
-There is no cron — materialization runs on the request path. Read handlers in `worker/api.ts` and `worker/mcp.ts` call `materializeDueDuties` once at the top so the listed tasks are always current. Idempotency on `(duty_id, duty_fire_at)` makes concurrent reads safe.
+Materialization runs from an hourly Cloudflare cron handler and still has request-path fallback. Read handlers in `worker/api.ts` and `worker/mcp.ts` call `materializeDueDuties` once at the top so listed tasks remain current even before the next cron tick. Idempotency on `(duty_id, duty_fire_at)` makes concurrent cron/read calls safe.
 
 The user's timezone is read from the `user_preferences` table (`key = 'timezone'`); when absent it defaults to `UTC`. RRULE math runs on wall-clock parts in that timezone (not UTC), so DST transitions don't drift the anchor time.
 
@@ -27,6 +27,7 @@ Before selecting due duties, the materializer also converts pending legacy task-
 ## See Also
 
 - [[schema|shared/schema.ts]] — `duties` and `tasks.duty_id` / `tasks.duty_fire_at` columns
+- [[index|worker/src/index.ts]] — scheduled Worker handler that runs the hourly cron materializer
 - [[db|worker/db.ts]] — duty CRUD methods (`addDuty`, `listDuties`, `updateDuty`, etc.)
 - [[mcp|worker/mcp.ts]] — `add_duty`, `list_duties`, `update_duty`, `delete_duty` MCP tools
 - [[api|worker/api.ts]] — `/api/duties` REST endpoints

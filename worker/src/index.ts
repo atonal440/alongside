@@ -6,6 +6,7 @@ import { verifySignature } from './sign';
 import { handleOAuthRequest } from './oauth';
 import { getHarnessHtml } from './dev-harness';
 import { getAppHtml } from './app-ui';
+import { materializeDueDuties } from './duties';
 
 export interface Env {
   DB: D1Database;
@@ -13,6 +14,12 @@ export interface Env {
 }
 
 export default {
+  async scheduled(controller: ScheduledController, env: Env): Promise<void> {
+    const db = new DB(env.DB);
+    const nowIso = new Date(controller.scheduledTime).toISOString();
+    await materializeDueDuties(db, nowIso);
+  },
+
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
