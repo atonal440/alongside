@@ -42,7 +42,7 @@ Model Context Protocol (MCP) handler. Exposes Alongside task data and operations
 | `update_preference` | Sets a user preference, including `timezone` for duty scheduling |
 | `get_action_log` | Returns recent operation history |
 
-Read tools (`list_tasks`, `get_ready_tasks`, `show_tasks`, `show_project`, `start_session`, `list_duties`) and `complete_task` call `materializeDueDuties` first so legacy recurring tasks are converted and any duties whose `next_fire_at` has passed are turned into real tasks before the response goes out.
+Read tools (`list_tasks`, `get_ready_tasks`, `get_project_context`, `show_tasks`, `show_project`, `start_session`, `list_duties`) and `complete_task` call `materializeDueDuties` first so legacy recurring tasks are converted and any duties whose `next_fire_at` has passed are turned into real tasks before the response goes out.
 
 ## See Also
 

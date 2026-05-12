@@ -316,7 +316,7 @@ Create a new project and optionally link existing tasks to it.
 
 ### `get_project_context`
 
-Fetch a project and its ready (unblocked) tasks. Useful for orienting at the start of a focused work session.
+Fetch a project and its ready (unblocked) tasks. Materializes due duties before reading so scheduled project tasks are included. Useful for orienting at the start of a focused work session.
 
 **Parameters:**
 

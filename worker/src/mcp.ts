@@ -579,6 +579,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'get_project_context': {
+      await materializeDueDuties(db, new Date().toISOString());
       const project = await db.getProject(args.project_id as string);
       if (!project) throw new Error('Project not found');
       const ready_tasks = await db.listReadyTasks(args.project_id as string);
