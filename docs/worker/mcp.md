@@ -29,9 +29,9 @@ Model Context Protocol (MCP) handler. Exposes Alongside task data and operations
 | `focus_task` | Sets `focused_until` on a task (task_id required, hours optional defaulting to 3) |
 | `reopen_task` | Moves a task back to pending |
 | `delete_task` | Permanently deletes a task |
-| `add_duty` | Creates a recurring task template that materializes on a schedule |
+| `add_duty` | Creates a recurring task template that materializes on a schedule; `due_offset_days` must be an integer |
 | `list_duties` | Lists all duties (active and paused) |
-| `update_duty` | Updates a duty's template fields, schedule, or active state |
+| `update_duty` | Updates a duty's template fields, schedule, due offset, or active state; `due_offset_days` must be an integer |
 | `delete_duty` | Permanently deletes a duty (materialized tasks survive) |
 | `create_project` | Creates a project, optionally assigns tasks |
 | `update_project` | Updates project title, notes, kickoff note, or status |

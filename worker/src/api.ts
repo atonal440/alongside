@@ -39,6 +39,10 @@ function firstFireDateToNextFireAt(firstFireDate: string, tz: string): string | 
   }
 }
 
+function isValidDutyOffsetDays(value: unknown): value is number {
+  return Number.isInteger(value) && Number.isFinite(value);
+}
+
 export async function handleApiRequest(request: Request, url: URL, db: DB): Promise<Response> {
   const method = request.method;
   const path = url.pathname;
@@ -157,6 +161,9 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
       next_fire_at?: string;
     }>();
     if (!body.title || !body.recurrence) return json({ error: 'title and recurrence are required' }, 400);
+    if (body.due_offset_days !== undefined && !isValidDutyOffsetDays(body.due_offset_days)) {
+      return json({ error: 'due_offset_days must be an integer' }, 400);
+    }
     const tz = await getUserTimezone(db);
     let nextFireAt = body.next_fire_at;
     if (nextFireAt === undefined) {
@@ -195,6 +202,9 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   if (method === 'PATCH' && dutyMatch) {
     const body = await request.json<DutyUpdate & { first_fire_date?: string }>();
     const updates: DutyUpdate = { ...body };
+    if (updates.due_offset_days !== undefined && !isValidDutyOffsetDays(updates.due_offset_days)) {
+      return json({ error: 'due_offset_days must be an integer' }, 400);
+    }
     let nextFireAt = updates.next_fire_at;
     if (body.first_fire_date !== undefined) {
       if (typeof body.first_fire_date !== 'string') {

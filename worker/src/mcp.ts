@@ -23,6 +23,10 @@ function mcpError(id: string | number, code: number, message: string) {
   });
 }
 
+function isValidDutyOffsetDays(value: unknown): value is number {
+  return Number.isInteger(value) && Number.isFinite(value);
+}
+
 const TASK_DASHBOARD_URI = 'ui://alongside/task-dashboard';
 const ACTION_LOG_URI = 'ui://alongside/action-log';
 
@@ -626,6 +630,9 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       const firstFireDate = (args.first_fire_date as string | undefined) ?? today;
       const nextFireAt = dateAtMidnightInTz(firstFireDate, tz);
       const recurrence = args.recurrence as string;
+      if (args.due_offset_days !== undefined && !isValidDutyOffsetDays(args.due_offset_days)) {
+        throw new Error('due_offset_days must be an integer');
+      }
       // Validate the RRULE up front so a typo doesn't silently pause the duty
       // on its first cron tick.
       if (!computeNextFire(recurrence, nextFireAt, tz)) {
@@ -658,6 +665,9 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     case 'update_duty': {
       const { duty_id, first_fire_date, ...rest } = args as Record<string, unknown> & { duty_id: string; first_fire_date?: string };
       const updates: Parameters<DB['updateDuty']>[1] = { ...rest } as Parameters<DB['updateDuty']>[1];
+      if (updates.due_offset_days !== undefined && !isValidDutyOffsetDays(updates.due_offset_days)) {
+        throw new Error('due_offset_days must be an integer');
+      }
       if (typeof first_fire_date === 'string' && first_fire_date.length > 0) {
         const tz = await getUserTimezone(db);
         updates.next_fire_at = dateAtMidnightInTz(first_fire_date, tz);

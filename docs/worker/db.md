@@ -64,7 +64,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 ## Duty operations
 
-**`addDuty(data)`** — Inserts a new duty with a generated nanoid. `recurrence` and `next_fire_at` are required; everything else has sensible defaults (`task_type = 'action'`, `due_offset_days = 0`, `active = true`).
+**`addDuty(data)`** — Inserts a new duty with a generated nanoid. `recurrence` and `next_fire_at` are required; everything else has sensible defaults (`task_type = 'action'`, `due_offset_days = 0`, `active = true`). Rejects non-integer `due_offset_days` values before storage so materialized due dates remain valid.
 
 **`getDuty(id)`** — Fetches a single duty row by primary key.
 
@@ -78,7 +78,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`convertLegacyRecurringTaskToDuty(task, fireAt, nowIso)`** — Creates a deterministic duty for one legacy recurring task (`d_` plus the task suffix), links the task to that duty/fire, and clears `tasks.recurrence`. Uses `INSERT OR IGNORE` plus a guarded task update so repeated request-path conversions are safe.
 
-**`updateDuty(id, data)`** — Partial update of duty fields. Updates `updated_at` automatically.
+**`updateDuty(id, data)`** — Partial update of duty fields. Updates `updated_at` automatically and rejects non-integer `due_offset_days` patches.
 
 **`markDutyFired(id, firedAt, nextFireAt, nowIso)`** — After a successful materialization, sets `last_fired_at` to `firedAt` and `next_fire_at` to the precomputed next fire timestamp.
 
@@ -116,7 +116,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`exportAll(includeLog?)`** — Reads all tables in parallel and returns an `ExportPayload`. Action log is excluded by default (`includeLog = false`) since it can be large.
 
-**`importAll(payload, dryRun?)`** — Validates the payload, then either returns a preview of what would change (`dryRun = true`) or wipes all data and restores from the payload. Translates legacy `snoozed_until` (from pre-006 exports) into `defer_kind = 'until'` so previously-snoozed tasks remain hidden after restore. Uses D1 `batch()` for atomic execution when statement count ≤ 100; falls back to chunked batches for larger datasets after preflighting duplicate IDs and task/link/duty references.
+**`importAll(payload, dryRun?)`** — Validates the payload, then either returns a preview of what would change (`dryRun = true`) or wipes all data and restores from the payload. Translates legacy `snoozed_until` (from pre-006 exports) into `defer_kind = 'until'` so previously-snoozed tasks remain hidden after restore. Uses D1 `batch()` for atomic execution when statement count ≤ 100; falls back to chunked batches for larger datasets after preflighting duplicate IDs, task/link/duty references, and integer duty due offsets.
 
 ## See Also
 

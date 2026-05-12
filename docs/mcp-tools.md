@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-Alongside exposes 18 tools via the MCP endpoint at `/mcp` (JSON-RPC POST). All calls require an `Authorization: Bearer {AUTH_TOKEN}` header.
+Alongside exposes task, project, duty, preference, and widget tools via the MCP endpoint at `/mcp` (JSON-RPC POST). All calls require an `Authorization: Bearer {AUTH_TOKEN}` header.
 
 ---
 
@@ -191,6 +191,76 @@ Permanently delete a task. This is a hard delete — there is no undo.
 | `task_id` | `string` | yes | |
 
 **Returns:** `{ deleted: true, task_id, title, action_log_entry }`
+
+---
+
+## Duties
+
+### `add_duty`
+
+Create a recurring task template. Duties materialize real tasks on the request path according to their schedule; use this instead of `add_task.recurrence` for new recurring work.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `title` | `string` | yes | Template title for materialized tasks. |
+| `recurrence` | `string` | yes | Supported RRULE (`FREQ=DAILY\|WEEKLY\|MONTHLY\|YEARLY` with optional `INTERVAL`). |
+| `first_fire_date` | `string` | no | `YYYY-MM-DD`; defaults to today in the user timezone. |
+| `notes` | `string` | no | Template notes. |
+| `kickoff_note` | `string` | no | Template kickoff note copied to materialized tasks. |
+| `task_type` | `'action'\|'plan'` | no | Defaults to `'action'`. |
+| `project_id` | `string` | no | Associate materialized tasks with a project. |
+| `due_offset_days` | `number` | no | Integer days between fire date and materialized task `due_date`; defaults to `0`. |
+
+**Returns:** `{ ...Duty, action_log_entry }`
+
+---
+
+### `list_duties`
+
+List all duties, active and paused. Due duties are materialized before the response is returned.
+
+**Parameters:** none
+
+**Returns:** `{ duties: Duty[] }`
+
+---
+
+### `update_duty`
+
+Update one or more fields on an existing duty. Only provided fields are changed.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `duty_id` | `string` | yes | |
+| `title` | `string` | no | |
+| `notes` | `string` | no | |
+| `kickoff_note` | `string` | no | |
+| `task_type` | `'action'\|'plan'` | no | |
+| `project_id` | `string` | no | |
+| `recurrence` | `string` | no | Supported RRULE; validated before storage. |
+| `first_fire_date` | `string` | no | `YYYY-MM-DD`; resolves to `next_fire_at` in the user timezone. |
+| `due_offset_days` | `number` | no | Must be an integer. |
+| `active` | `boolean` | no | Pause or resume the duty. |
+
+**Returns:** `{ ...Duty, action_log_entry }`
+
+---
+
+### `delete_duty`
+
+Permanently delete a duty. Materialized tasks survive.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `duty_id` | `string` | yes | |
+
+**Returns:** `{ deleted: true, duty_id, title, action_log_entry }`
 
 ---
 

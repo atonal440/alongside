@@ -50,6 +50,10 @@ function now(): string {
   return new Date().toISOString();
 }
 
+function isValidDutyOffsetDays(value: unknown): value is number {
+  return Number.isInteger(value) && Number.isFinite(value);
+}
+
 // Mirrors shared/readiness.ts isDeferred for SQL: a task is "not currently
 // deferred" if its kind is 'none', or kind = 'until' with a non-future date.
 function notDeferredCondition(nowIso: string) {
@@ -349,6 +353,9 @@ export class DB {
     next_fire_at: string;
     active?: boolean;
   }): Promise<Duty> {
+    if (input.due_offset_days !== undefined && !isValidDutyOffsetDays(input.due_offset_days)) {
+      throw new Error('due_offset_days must be an integer');
+    }
     const ts = now();
     const duty: Duty = {
       id: `d_${nanoid(5)}`,
@@ -449,7 +456,12 @@ export class DB {
     if (updates.task_type       !== undefined) patch.task_type       = updates.task_type;
     if (updates.project_id      !== undefined) patch.project_id      = updates.project_id;
     if (updates.recurrence      !== undefined) patch.recurrence      = updates.recurrence;
-    if (updates.due_offset_days !== undefined) patch.due_offset_days = updates.due_offset_days;
+    if (updates.due_offset_days !== undefined) {
+      if (!isValidDutyOffsetDays(updates.due_offset_days)) {
+        throw new Error('due_offset_days must be an integer');
+      }
+      patch.due_offset_days = updates.due_offset_days;
+    }
     if (updates.active          !== undefined) patch.active          = updates.active;
     if (updates.next_fire_at    !== undefined) patch.next_fire_at    = updates.next_fire_at;
     if (Object.keys(patch).length === 0) return this.getDuty(id);
@@ -740,6 +752,9 @@ function validatePayloadIntegrity(payload: ExportPayload): void {
   if (dupDuties > 0) throw new Error(`Payload contains ${dupDuties} duplicate duty id(s)`);
 
   for (const duty of payload.duties ?? []) {
+    if (!isValidDutyOffsetDays(duty.due_offset_days)) {
+      throw new Error(`Duty ${duty.id} has invalid due_offset_days`);
+    }
     if (duty.project_id !== null && !projectIds.has(duty.project_id)) {
       throw new Error(`Duty ${duty.id} references unknown project ${duty.project_id}`);
     }
