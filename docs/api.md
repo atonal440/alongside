@@ -6,7 +6,7 @@ The Alongside worker exposes a REST API used by the PWA. All endpoints require a
 
 **Auth:** `Authorization: Bearer {AUTH_TOKEN}` on every request.
 
-**CORS:** All origins allowed (`Access-Control-Allow-Origin: *`). Preflight OPTIONS requests return 204.
+**CORS:** All origins allowed (`Access-Control-Allow-Origin: *`). Preflight OPTIONS requests return 204 and allow `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `OPTIONS`.
 
 ---
 

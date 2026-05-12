@@ -6,7 +6,7 @@ Entry point for the Cloudflare Worker. Exports the default `fetch` handler that 
 
 **`Env`** (interface) — Declares the Cloudflare Worker environment bindings: `DB` (D1 database instance) and `AUTH_TOKEN` (static bearer token string read from `wrangler.toml` vars).
 
-**Default export** (Cloudflare Worker `fetch` handler) — Top-level router. Responds to `OPTIONS` with CORS headers, then dispatches to:
+**Default export** (Cloudflare Worker `fetch` handler) — Top-level router. Responds to `OPTIONS` with CORS headers that allow `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `OPTIONS`, then dispatches to:
 - `handleOAuthRequest` for `/oauth/*` paths
 - `handleApiRequest` for `/api/*` paths (requires auth)
 - `handleMcpRequest` for `/mcp` (requires auth)
