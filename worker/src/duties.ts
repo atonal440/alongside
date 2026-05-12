@@ -39,6 +39,7 @@ function fromTzParts(p: TzParts, tz: string): string {
 }
 
 interface RRuleParts { freq: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY'; interval: number; }
+interface MaterializeOptions { migrateLegacy?: boolean; }
 
 function daysInMonth(y: number, mo: number): number {
   return new Date(Date.UTC(y, mo, 0)).getUTCDate();
@@ -194,9 +195,15 @@ async function migrateLegacyRecurringTasks(db: DB, tz: string, nowIso: string): 
 // task and advance its schedule. Idempotent: skips creation when a task already
 // exists for the same (duty_id, duty_fire_at) pair, so concurrent reads can call
 // this without producing duplicates.
-export async function materializeDueDuties(db: DB, nowIso: string): Promise<{ materialized: number }> {
+export async function materializeDueDuties(
+  db: DB,
+  nowIso: string,
+  options: MaterializeOptions = {},
+): Promise<{ materialized: number }> {
   const tz = await getUserTimezone(db);
-  await migrateLegacyRecurringTasks(db, tz, nowIso);
+  if (options.migrateLegacy !== false) {
+    await migrateLegacyRecurringTasks(db, tz, nowIso);
+  }
 
   const dueDuties = await db.listDueDuties(nowIso);
   if (dueDuties.length === 0) return { materialized: 0 };

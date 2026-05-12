@@ -8,7 +8,7 @@ Entry point for the Cloudflare Worker. Exports the default `fetch` handler that 
 
 **Default export** (Cloudflare Worker handlers) — Top-level Cloudflare Worker object:
 
-- `scheduled(controller, env)` — Hourly cron entrypoint configured in `wrangler.toml`. Calls `materializeDueDuties(new DB(env.DB), scheduledTime)` so duties usually advance outside request handling.
+- `scheduled(controller, env)` — Hourly cron entrypoint configured in `wrangler.toml`. Calls `materializeDueDuties(new DB(env.DB), scheduledTime, { migrateLegacy: false })` so duties usually advance outside request handling without converting legacy task recurrence before the user's timezone has been synced.
 - `fetch(request, env)` — Top-level router. Responds to `OPTIONS` with CORS headers that allow `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `OPTIONS`, then dispatches to:
 - `handleOAuthRequest` for `/oauth/*` paths
 - `handleApiRequest` for `/api/*` paths (requires auth)

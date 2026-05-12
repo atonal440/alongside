@@ -60,7 +60,7 @@ This keeps the UI responsive regardless of network state. Temp IDs (local nanoid
 2. Every 30 seconds: repeat
 3. On service worker sync message: repeat
 
-[[sync|pwa/src/api/sync.ts]] implements these functions. Browser timezone sync writes the local IANA timezone to the worker before queued writes are flushed, so offline completions cannot trigger duty migration with the default UTC timezone. `flushPendingOps` drains the pending ops queue in chronological order. `syncFromServer` replaces local IDB with a full server pull (duties first, then tasks, projects, and links) and dispatches `SET_*` actions to refresh React state. Duties are fetched before tasks because the duty endpoint can materialize overdue work that the task snapshot should include. Conflict resolution is last-write-wins on `updated_at`.
+[[sync|pwa/src/api/sync.ts]] implements these functions. Browser timezone sync writes the local IANA timezone to the worker before queued writes are flushed, so offline completions cannot trigger duty migration with the default UTC timezone. `flushPendingOps` drains the pending ops queue in chronological order. `syncFromServer` replaces local IDB with a full server pull (duties first, then tasks, projects, and links) and dispatches `SET_*` actions to refresh React state. Duties are fetched before tasks because the duty endpoint can materialize overdue work that the task snapshot should include; when talking to an older worker without `/api/duties`, the PWA treats duties as empty and continues syncing the older data model. Conflict resolution is last-write-wins on `updated_at`.
 
 ## View model: taskFlow
 

@@ -80,12 +80,11 @@ export async function flushPendingOps(config: ApiConfig): Promise<void> {
 
 export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
   const dutiesRaw = await apiFetch('/api/duties', {}, config);
-  if (!dutiesRaw) return { online: false };
 
   const remote = await apiFetch('/api/tasks/sync', {}, config);
   if (!remote) return { online: false };
 
-  const duties = dutiesRaw as Duty[];
+  const duties = (dutiesRaw ?? []) as Duty[];
   const remoteTasks = remote as Task[];
   const remoteMap = Object.fromEntries(remoteTasks.map(t => [t.id, t]));
   const pendingOps = await idbGetPendingOps();

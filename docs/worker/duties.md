@@ -2,7 +2,7 @@
 
 Materialization engine for the `duties` table. A duty is a schedule-driven task template; this module computes when it next fires (in the user's configured timezone), creates one real task per fire, and advances the duty's `next_fire_at`.
 
-Materialization runs from an hourly Cloudflare cron handler and still has request-path fallback. Read handlers in `worker/api.ts` and `worker/mcp.ts` call `materializeDueDuties` once at the top so listed tasks remain current even before the next cron tick. Idempotency on `(duty_id, duty_fire_at)` makes concurrent cron/read calls safe.
+Materialization runs from an hourly Cloudflare cron handler and still has request-path fallback. The cron advances already-created duties but skips legacy task recurrence migration so it cannot anchor old date-only tasks before the user's timezone has been synced. Read handlers in `worker/api.ts` and `worker/mcp.ts` call `materializeDueDuties` once at the top so listed tasks remain current even before the next cron tick. Idempotency on `(duty_id, duty_fire_at)` makes concurrent cron/read calls safe.
 
 The user's timezone is read from the `user_preferences` table (`key = 'timezone'`); when absent it defaults to `UTC`. RRULE math runs on wall-clock parts in that timezone (not UTC), so DST transitions don't drift the anchor time.
 
@@ -24,7 +24,7 @@ Before selecting due duties, the materializer also converts pending legacy task-
 
 **`getUserTimezone(db)`** — Reads `timezone` from `user_preferences`; returns `'UTC'` when unset or invalid.
 
-**`materializeDueDuties(db, nowIso)`** — Main loop. Selects every active duty with `next_fire_at <= nowIso`. For each due fire up through `nowIso`, creates one task (skipped if a task with the same `duty_id + duty_fire_at` already exists) and advances `next_fire_at` via `computeNextFire` until the duty is no longer overdue. Logs a `duty_fired` action log entry per materialized task. Idempotent: safe to call from multiple read paths concurrently.
+**`materializeDueDuties(db, nowIso, options?)`** — Main loop. Selects every active duty with `next_fire_at <= nowIso`. For each due fire up through `nowIso`, creates one task (skipped if a task with the same `duty_id + duty_fire_at` already exists) and advances `next_fire_at` via `computeNextFire` until the duty is no longer overdue. Logs a `duty_fired` action log entry per materialized task. Idempotent: safe to call from multiple read paths concurrently. Pass `{ migrateLegacy: false }` from cron paths that should not convert old task-level recurrence before user timezone exists.
 
 ## See Also
 

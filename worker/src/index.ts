@@ -17,7 +17,7 @@ export default {
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
     const db = new DB(env.DB);
     const nowIso = new Date(controller.scheduledTime).toISOString();
-    await materializeDueDuties(db, nowIso);
+    await materializeDueDuties(db, nowIso, { migrateLegacy: false });
   },
 
   async fetch(request: Request, env: Env): Promise<Response> {

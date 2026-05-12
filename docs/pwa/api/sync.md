@@ -12,7 +12,7 @@ Two-phase sync logic between IndexedDB and the Cloudflare Worker. Called by `use
 
 **`flushPendingOps(config, dispatch)`** — Reads all `PendingOps` from IndexedDB and replays them against the server in chronological order using `apiFetch`. On success, deletes each op and dispatches the server's response to update React state. Handles temp-ID remapping: if a `POST /api/tasks` succeeds, the server's real `id` replaces the locally generated nanoid in both IndexedDB and any subsequent pending ops that reference it.
 
-**`syncFromServer(config, dispatch)`** — Fetches the full duty, task, project, and link lists from the server (using `/api/projects/sync` to include archived projects), clears the corresponding IndexedDB stores, writes the server records in, and dispatches `SET_TASKS` / `SET_PROJECTS` / `SET_LINKS` / duties to refresh React state. Fetches duties before tasks because `/api/duties` can materialize overdue duty tasks, and the following task snapshot must include that work. Returns a `SyncResult` indicating online status and the fetched data.
+**`syncFromServer(config, dispatch)`** — Fetches the full duty, task, project, and link lists from the server (using `/api/projects/sync` to include archived projects), clears the corresponding IndexedDB stores, writes the server records in, and dispatches `SET_TASKS` / `SET_PROJECTS` / `SET_LINKS` / duties to refresh React state. Fetches duties before tasks because `/api/duties` can materialize overdue duty tasks, and the following task snapshot must include that work. If `/api/duties` is unavailable on an older worker, continues with an empty duty list so task/project/link sync still succeeds. Returns a `SyncResult` indicating online status and the fetched data.
 
 ## See Also
 
