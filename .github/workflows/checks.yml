@@ -1,0 +1,49 @@
+name: Checks
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  hygiene:
+    name: Diff hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check committed diff whitespace
+        run: git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+
+  worker:
+    name: Worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci --prefix worker
+      - run: npm --prefix worker run typecheck
+      - run: npm --prefix worker run test
+      - run: npm --prefix worker run build:dry
+
+  pwa:
+    name: PWA
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            worker/package-lock.json
+            pwa/package-lock.json
+      - name: Install Worker dependencies for shared type resolution
+        run: npm ci --prefix worker
+      - run: npm ci --prefix pwa
+      - run: npm --prefix pwa run typecheck
+      - run: npm --prefix pwa run build
