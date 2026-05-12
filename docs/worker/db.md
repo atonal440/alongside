@@ -32,7 +32,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`addTaskFromDuty(data)`** — Inserts a materialized duty task with required `duty_id` and `duty_fire_at` idempotency keys. This is the only task-creation path that can set those internal fields.
 
-**`completeTask(id)`** — Marks a task `done` and clears `focused_until`. If the task came from a duty (`duty_id` is set) and has a `session_log`, copies the log onto the parent duty as its new `kickoff_note` so the next materialization carries forward the user's re-entry note. Schedule advancement is handled by the duty (not by completion), so accidental completion does not shift the schedule.
+**`completeTask(id)`** — Marks a task `done` and clears `focused_until`. Callers run duty materialization first so legacy task-level recurrence is converted before completion. If the task came from a duty (`duty_id` is set) and has a `session_log`, copies the log onto the parent duty as its new `kickoff_note` so the next materialization carries forward the user's re-entry note. Schedule advancement is handled by the duty (not by completion), so accidental completion does not shift the schedule.
 
 **`reopenTask(id)`** — Clears `defer_kind`/`defer_until`, making the task immediately actionable again. Does not modify `status`.
 

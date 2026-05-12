@@ -10,6 +10,14 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+function isSupportedDutySchedule(recurrence: string, nextFireAt: string, tz: string): boolean {
+  try {
+    return computeNextFire(recurrence, nextFireAt, tz) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export async function handleApiRequest(request: Request, url: URL, db: DB): Promise<Response> {
   const method = request.method;
   const path = url.pathname;
@@ -99,6 +107,7 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   // POST /api/tasks/:id/complete — mark task done; duty schedule advances independently.
   const completeMatch = path.match(/^\/api\/tasks\/([^/]+)\/complete$/);
   if (method === 'POST' && completeMatch) {
+    await materializeDueDuties(db, new Date().toISOString());
     const result = await db.completeTask(completeMatch[1]);
     if (!result) return json({ error: 'Not found' }, 404);
     return json(result);
@@ -129,7 +138,7 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
     if (!body.title || !body.recurrence) return json({ error: 'title and recurrence are required' }, 400);
     const tz = await getUserTimezone(db);
     const nextFireAt = body.next_fire_at ?? dateAtMidnightInTz(body.first_fire_date ?? todayInTz(tz), tz);
-    if (!computeNextFire(body.recurrence, nextFireAt, tz)) {
+    if (!isSupportedDutySchedule(body.recurrence, nextFireAt, tz)) {
       return json({ error: `Unsupported recurrence "${body.recurrence}"` }, 400);
     }
     const duty = await db.addDuty({
@@ -158,10 +167,22 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   if (method === 'PATCH' && dutyMatch) {
     const body = await request.json<DutyUpdate & { first_fire_date?: string }>();
     const updates: DutyUpdate = { ...body };
+    let nextFireAt = updates.next_fire_at;
     if (typeof body.first_fire_date === 'string' && body.first_fire_date.length > 0) {
       const tz = await getUserTimezone(db);
-      updates.next_fire_at = dateAtMidnightInTz(body.first_fire_date, tz);
+      nextFireAt = dateAtMidnightInTz(body.first_fire_date, tz);
+      updates.next_fire_at = nextFireAt;
       delete (updates as { first_fire_date?: string }).first_fire_date;
+    }
+    if (updates.recurrence !== undefined || nextFireAt !== undefined) {
+      const existing = await db.getDuty(dutyMatch[1]);
+      if (!existing) return json({ error: 'Not found' }, 404);
+      const recurrence = updates.recurrence ?? existing.recurrence;
+      const probeFireAt = nextFireAt ?? existing.next_fire_at;
+      const tz = await getUserTimezone(db);
+      if (!isSupportedDutySchedule(recurrence, probeFireAt, tz)) {
+        return json({ error: `Unsupported recurrence "${recurrence}"` }, 400);
+      }
     }
     const duty = await db.updateDuty(dutyMatch[1], updates);
     if (!duty) return json({ error: 'Not found' }, 404);

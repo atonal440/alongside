@@ -1,5 +1,6 @@
 import { DB } from './db';
 import type { Task } from '@shared/types';
+import { materializeDueDuties } from './duties';
 
 function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
   const taskRows = tasks.map(t => `
@@ -192,6 +193,7 @@ export async function handleUiRequest(request: Request, url: URL, db: DB): Promi
   // Unauthenticated complete endpoint for the iframe widget
   const completeMatch = path.match(/^\/ui\/complete\/([^/]+)$/);
   if (request.method === 'POST' && completeMatch) {
+    await materializeDueDuties(db, new Date().toISOString());
     const result = await db.completeTask(completeMatch[1]);
     if (!result) {
       return new Response(JSON.stringify({ error: 'Not found' }), {

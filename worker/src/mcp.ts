@@ -491,6 +491,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'complete_task': {
+      await materializeDueDuties(db, new Date().toISOString());
       const result = await db.completeTask(args.task_id as string);
       if (!result) throw new Error('Task not found');
       const log = await db.logAction({

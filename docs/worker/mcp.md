@@ -23,7 +23,7 @@ Model Context Protocol (MCP) handler. Exposes Alongside task data and operations
 | `list_tasks` | Lists tasks filtered by status or search query |
 | `get_ready_tasks` | Returns unblocked tasks sorted by readiness score |
 | `add_task` | Creates a one-shot task in pending status (use `add_duty` for repeating work) |
-| `complete_task` | Marks a task done; for duty-derived tasks, schedule advancement is independent |
+| `complete_task` | Converts legacy recurrence first, then marks a task done; for duty-derived tasks, schedule advancement is independent |
 | `defer_task` | Hides a task. `kind: 'until'` (with `until` ISO date) or `kind: 'someday'` (indefinite) |
 | `update_task` | Updates fields on a task (including `status` and `focused_until`) |
 | `focus_task` | Sets `focused_until` on a task (task_id required, hours optional defaulting to 3) |
@@ -42,7 +42,7 @@ Model Context Protocol (MCP) handler. Exposes Alongside task data and operations
 | `update_preference` | Sets a user preference, including `timezone` for duty scheduling |
 | `get_action_log` | Returns recent operation history |
 
-Read tools (`list_tasks`, `get_ready_tasks`, `show_tasks`, `show_project`, `start_session`, `list_duties`) call `materializeDueDuties` first so legacy recurring tasks are converted and any duties whose `next_fire_at` has passed are turned into real tasks before the response goes out.
+Read tools (`list_tasks`, `get_ready_tasks`, `show_tasks`, `show_project`, `start_session`, `list_duties`) and `complete_task` call `materializeDueDuties` first so legacy recurring tasks are converted and any duties whose `next_fire_at` has passed are turned into real tasks before the response goes out.
 
 ## See Also
 

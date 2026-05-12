@@ -71,13 +71,12 @@ Hard-deletes a task.
 
 ### `POST /api/tasks/:id/complete`
 
-Mark a task done. If the task has `recurrence` + `due_date`, a new task is created for the next occurrence.
+Converts legacy recurrence first, then marks a task done. Duty-backed schedules advance independently of completion.
 
 **Response:**
 ```ts
 {
-  completed: Task,
-  next?: Task   // present if recurrence was spawned
+  completed: Task
 }
 ```
 404 if not found.
@@ -159,4 +158,4 @@ JSON polling endpoint used by the iframe. Returns active tasks.
 
 Complete a task from within the iframe widget.
 
-**Response:** `{ completed: Task, next?: Task }`
+**Response:** `{ completed: Task }`
