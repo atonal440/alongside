@@ -79,9 +79,13 @@ export async function flushPendingOps(config: ApiConfig): Promise<void> {
 }
 
 export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
+  const dutiesRaw = await apiFetch('/api/duties', {}, config);
+  if (!dutiesRaw) return { online: false };
+
   const remote = await apiFetch('/api/tasks/sync', {}, config);
   if (!remote) return { online: false };
 
+  const duties = dutiesRaw as Duty[];
   const remoteTasks = remote as Task[];
   const remoteMap = Object.fromEntries(remoteTasks.map(t => [t.id, t]));
   const pendingOps = await idbGetPendingOps();
@@ -103,15 +107,13 @@ export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
     await idbPutTask(rt);
   }
 
-  const [projectsRaw, linksRaw, dutiesRaw] = await Promise.all([
+  const [projectsRaw, linksRaw] = await Promise.all([
     apiFetch('/api/projects/sync', {}, config),
     apiFetch('/api/tasks/links', {}, config),
-    apiFetch('/api/duties', {}, config),
   ]);
 
   let projects: Project[] = [];
   let links: TaskLink[] = [];
-  let duties: Duty[] = [];
 
   if (projectsRaw) {
     projects = projectsRaw as Project[];
@@ -123,11 +125,8 @@ export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
     await idbClearLinks();
     for (const l of links) await idbPutLink(l);
   }
-  if (dutiesRaw) {
-    duties = dutiesRaw as Duty[];
-    await idbClearDuties();
-    for (const d of duties) await idbPutDuty(d);
-  }
+  await idbClearDuties();
+  for (const d of duties) await idbPutDuty(d);
 
   // Merge offline tasks back in (they survived deletion above)
   const finalTasks = await idbGetAllTasks();

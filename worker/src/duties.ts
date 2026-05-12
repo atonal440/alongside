@@ -142,43 +142,51 @@ export async function materializeDueDuties(db: DB, nowIso: string): Promise<{ ma
   let count = 0;
 
   for (const duty of dueDuties) {
-    const fireAt = duty.next_fire_at;
+    let fireAt = duty.next_fire_at;
 
-    // Idempotency: only create the task if no instance for this fire exists.
-    // A unique index backs this up when concurrent request paths race here.
-    const already = await db.findTaskByDutyFire(duty.id, fireAt);
-    if (!already) {
-      const dueDate = deriveDueDate(fireAt, duty.due_offset_days, tz);
-      try {
-        const task = await db.addTaskFromDuty({
-          title:        duty.title,
-          notes:        duty.notes ?? undefined,
-          kickoff_note: duty.kickoff_note ?? undefined,
-          task_type:    duty.task_type,
-          project_id:   duty.project_id ?? undefined,
-          due_date:     dueDate,
-          recurrence:   undefined,
-          duty_id:      duty.id,
-          duty_fire_at: fireAt,
-        });
-        await db.logAction({
-          tool_name: 'duty_fired',
-          task_id:   task.id,
-          title:     task.title,
-          detail:    duty.id,
-        });
-        count += 1;
-      } catch (error) {
-        if (!isDutyFireUniqueViolation(error)) throw error;
+    while (fireAt <= nowIso) {
+      // Idempotency: only create the task if no instance for this fire exists.
+      // A unique index backs this up when concurrent request paths race here.
+      const already = await db.findTaskByDutyFire(duty.id, fireAt);
+      if (!already) {
+        const dueDate = deriveDueDate(fireAt, duty.due_offset_days, tz);
+        try {
+          const task = await db.addTaskFromDuty({
+            title:        duty.title,
+            notes:        duty.notes ?? undefined,
+            kickoff_note: duty.kickoff_note ?? undefined,
+            task_type:    duty.task_type,
+            project_id:   duty.project_id ?? undefined,
+            due_date:     dueDate,
+            recurrence:   undefined,
+            duty_id:      duty.id,
+            duty_fire_at: fireAt,
+          });
+          await db.logAction({
+            tool_name: 'duty_fired',
+            task_id:   task.id,
+            title:     task.title,
+            detail:    duty.id,
+          });
+          count += 1;
+        } catch (error) {
+          if (!isDutyFireUniqueViolation(error)) throw error;
+        }
       }
-    }
 
-    const next = computeNextFire(duty.recurrence, fireAt, tz);
-    if (next) {
-      await db.markDutyFired(duty.id, fireAt, next, nowIso);
-    } else {
-      // Unparseable RRULE — pause the duty so we don't loop. Edit and re-activate.
-      await db.setDutyActive(duty.id, false, nowIso);
+      const next = computeNextFire(duty.recurrence, fireAt, tz);
+      if (next) {
+        if (next <= fireAt) {
+          await db.setDutyActive(duty.id, false, nowIso);
+          break;
+        }
+        await db.markDutyFired(duty.id, fireAt, next, nowIso);
+        fireAt = next;
+      } else {
+        // Unparseable RRULE — pause the duty so we don't loop. Edit and re-activate.
+        await db.setDutyActive(duty.id, false, nowIso);
+        break;
+      }
     }
   }
 

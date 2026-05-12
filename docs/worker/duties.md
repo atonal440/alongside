@@ -22,7 +22,7 @@ Before selecting due duties, the materializer also converts pending legacy task-
 
 **`getUserTimezone(db)`** — Reads `timezone` from `user_preferences`; returns `'UTC'` when unset or invalid.
 
-**`materializeDueDuties(db, nowIso)`** — Main loop. Selects every active duty with `next_fire_at <= nowIso`. For each, creates one task (skipped if a task with the same `duty_id + duty_fire_at` already exists) and advances `next_fire_at` via `computeNextFire`. Logs a `duty_fired` action log entry per materialized task. Idempotent: safe to call from multiple read paths concurrently.
+**`materializeDueDuties(db, nowIso)`** — Main loop. Selects every active duty with `next_fire_at <= nowIso`. For each due fire up through `nowIso`, creates one task (skipped if a task with the same `duty_id + duty_fire_at` already exists) and advances `next_fire_at` via `computeNextFire` until the duty is no longer overdue. Logs a `duty_fired` action log entry per materialized task. Idempotent: safe to call from multiple read paths concurrently.
 
 ## See Also
 
