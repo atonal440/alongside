@@ -8,7 +8,7 @@ Two-phase sync logic between IndexedDB and the Cloudflare Worker. Called by `use
 
 ## Functions
 
-**`syncBrowserTimezone(config)`** — Reads the browser's IANA timezone from `Intl.DateTimeFormat().resolvedOptions().timeZone` and sends it to `PUT /api/preferences/timezone` once per page load (and again if it changes). This runs before queued writes are flushed so duty migration triggered by offline completions uses the user's local calendar.
+**`syncBrowserTimezone(config)`** — Reads the browser's IANA timezone from `Intl.DateTimeFormat().resolvedOptions().timeZone` and sends it to `PUT /api/preferences/timezone` once per API target per page load (and again if it changes for that target). The cache is keyed by worker URL and token so switching databases still writes timezone before sync. This runs before queued writes are flushed so duty migration triggered by offline completions uses the user's local calendar.
 
 **`flushPendingOps(config, dispatch)`** — Reads all `PendingOps` from IndexedDB and replays them against the server in chronological order using `apiFetch`. On success, deletes each op and dispatches the server's response to update React state. Handles temp-ID remapping: if a `POST /api/tasks` succeeds, the server's real `id` replaces the locally generated nanoid in both IndexedDB and any subsequent pending ops that reference it.
 

@@ -24,11 +24,16 @@ export interface SyncResult {
   duties?: Duty[];
 }
 
-let lastSyncedTimezone: string | null = null;
+const syncedTimezonesByTarget = new Map<string, string>();
+
+function timezoneSyncKey(config: ApiConfig): string {
+  return `${config.apiBase}\n${config.authToken}`;
+}
 
 export async function syncBrowserTimezone(config: ApiConfig): Promise<void> {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  if (!timezone || timezone === lastSyncedTimezone) return;
+  const syncKey = timezoneSyncKey(config);
+  if (!timezone || syncedTimezonesByTarget.get(syncKey) === timezone) return;
 
   const result = await apiFetch(
     '/api/preferences/timezone',
@@ -36,7 +41,7 @@ export async function syncBrowserTimezone(config: ApiConfig): Promise<void> {
     config,
   );
   if (result !== null) {
-    lastSyncedTimezone = timezone;
+    syncedTimezonesByTarget.set(syncKey, timezone);
   }
 }
 
