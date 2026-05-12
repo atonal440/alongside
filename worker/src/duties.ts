@@ -3,6 +3,7 @@ import type { Duty } from '@shared/types';
 
 // Wall-clock parts in a given IANA timezone.
 interface TzParts { y: number; mo: number; d: number; h: number; mi: number; s: number; }
+interface TzResolution { iso: string; nonexistent: boolean; }
 
 function toTzParts(iso: string, tz: string): TzParts {
   const fmt = new Intl.DateTimeFormat('en-US', {
@@ -23,19 +24,33 @@ function toTzParts(iso: string, tz: string): TzParts {
   };
 }
 
+function wallTimeMs(p: TzParts): number {
+  return Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s);
+}
+
 // Treat (y, mo, d, h, mi, s) as wall-clock in `tz`; return UTC ISO timestamp.
 // Two-pass DST adjustment: guess the offset at one point in time, apply it, then
 // re-check in case the guess landed across a DST boundary.
-function fromTzParts(p: TzParts, tz: string): string {
-  const wall = Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s);
+function resolveTzParts(p: TzParts, tz: string): TzResolution {
+  const wall = wallTimeMs(p);
   const adjust = (utc: number): number => {
     const seen = toTzParts(new Date(utc).toISOString(), tz);
-    const seenWall = Date.UTC(seen.y, seen.mo - 1, seen.d, seen.h, seen.mi, seen.s);
+    const seenWall = wallTimeMs(seen);
     return wall - seenWall;
   };
   const utc1 = wall + adjust(wall);
   const utc2 = utc1 + adjust(utc1);
-  return new Date(utc2).toISOString();
+  const seen = toTzParts(new Date(utc2).toISOString(), tz);
+  const seenWall = wallTimeMs(seen);
+
+  if (seenWall < wall) {
+    return { iso: new Date(utc2 + (wall - seenWall)).toISOString(), nonexistent: true };
+  }
+  return { iso: new Date(utc2).toISOString(), nonexistent: false };
+}
+
+function fromTzParts(p: TzParts, tz: string): string {
+  return resolveTzParts(p, tz).iso;
 }
 
 interface RRuleParts { freq: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY'; interval: number; }
@@ -96,6 +111,15 @@ function parseRRule(rrule: string): RRuleParts | null {
   return { freq, interval };
 }
 
+function advanceTzParts(p: TzParts, r: RRuleParts): void {
+  switch (r.freq) {
+    case 'DAILY':   p.d  += r.interval; break;
+    case 'WEEKLY':  p.d  += 7 * r.interval; break;
+    case 'MONTHLY': addMonthsPreservingCalendarIntent(p, r.interval); break;
+    case 'YEARLY':  addYearsPreservingCalendarIntent(p, r.interval); break;
+  }
+}
+
 // Add `n` periods of `freq` to a wall-clock instant in `tz` and return the new
 // UTC ISO timestamp. Adding in tz parts (not UTC) prevents DST drift on the
 // anchor time of day.
@@ -103,13 +127,14 @@ export function computeNextFire(rrule: string, fromIso: string, tz: string): str
   const r = parseRRule(rrule);
   if (!r) return null;
   const p = toTzParts(fromIso, tz);
-  switch (r.freq) {
-    case 'DAILY':   p.d  += r.interval; break;
-    case 'WEEKLY':  p.d  += 7 * r.interval; break;
-    case 'MONTHLY': addMonthsPreservingCalendarIntent(p, r.interval); break;
-    case 'YEARLY':  addYearsPreservingCalendarIntent(p, r.interval); break;
+  for (let attempts = 0; attempts < 32; attempts += 1) {
+    advanceTzParts(p, r);
+    const resolved = resolveTzParts(p, tz);
+    // Spring-forward gaps can make a local time nonexistent; skip that fire
+    // rather than anchoring future recurrences to the browser's earlier guess.
+    if (!resolved.nonexistent) return resolved.iso;
   }
-  return fromTzParts(p, tz);
+  return null;
 }
 
 // Convert a UTC instant + offset (in days, in tz) to a YYYY-MM-DD wall-clock date.
