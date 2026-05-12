@@ -17,9 +17,9 @@ REST API handler for the PWA. Exposes CRUD endpoints for tasks, projects, and li
 - `DELETE /api/tasks/:id` — delete task
 - `POST /api/tasks/:id/complete` — converts legacy recurrence first, then marks task done; duty schedule advances independently
 - `GET /api/duties` — list all duties (active and paused)
-- `POST /api/duties` — create a duty (`title`, `recurrence` required; `first_fire_date` defaults to today in user tz)
+- `POST /api/duties` — create a duty (`title`, `recurrence` required; `first_fire_date` defaults to today in user tz and must be `YYYY-MM-DD`)
 - `GET /api/duties/:id` — get single duty
-- `PATCH /api/duties/:id` — update duty fields (`first_fire_date` shorthand resolves to `next_fire_at`; schedule edits are validated)
+- `PATCH /api/duties/:id` — update duty fields (`first_fire_date` shorthand resolves to `next_fire_at`; date and schedule edits are validated)
 - `DELETE /api/duties/:id` — delete a duty (materialized tasks survive)
 - `GET /api/projects` — list active projects
 - `GET /api/projects/sync` — list all projects including archived (for PWA sync)

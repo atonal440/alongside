@@ -18,6 +18,27 @@ function isSupportedDutySchedule(recurrence: string, nextFireAt: string, tz: str
   }
 }
 
+function isValidDateOnly(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const y = Number(match[1]);
+  const mo = Number(match[2]);
+  const d = Number(match[3]);
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  return date.getUTCFullYear() === y
+    && date.getUTCMonth() === mo - 1
+    && date.getUTCDate() === d;
+}
+
+function firstFireDateToNextFireAt(firstFireDate: string, tz: string): string | null {
+  if (!isValidDateOnly(firstFireDate)) return null;
+  try {
+    return dateAtMidnightInTz(firstFireDate, tz);
+  } catch {
+    return null;
+  }
+}
+
 export async function handleApiRequest(request: Request, url: URL, db: DB): Promise<Response> {
   const method = request.method;
   const path = url.pathname;
@@ -137,7 +158,14 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
     }>();
     if (!body.title || !body.recurrence) return json({ error: 'title and recurrence are required' }, 400);
     const tz = await getUserTimezone(db);
-    const nextFireAt = body.next_fire_at ?? dateAtMidnightInTz(body.first_fire_date ?? todayInTz(tz), tz);
+    let nextFireAt = body.next_fire_at;
+    if (nextFireAt === undefined) {
+      const firstFireDate = body.first_fire_date ?? todayInTz(tz);
+      nextFireAt = firstFireDateToNextFireAt(firstFireDate, tz) ?? undefined;
+      if (nextFireAt === undefined) {
+        return json({ error: 'first_fire_date must be a valid YYYY-MM-DD date' }, 400);
+      }
+    }
     if (!isSupportedDutySchedule(body.recurrence, nextFireAt, tz)) {
       return json({ error: `Unsupported recurrence "${body.recurrence}"` }, 400);
     }
@@ -168,9 +196,15 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
     const body = await request.json<DutyUpdate & { first_fire_date?: string }>();
     const updates: DutyUpdate = { ...body };
     let nextFireAt = updates.next_fire_at;
-    if (typeof body.first_fire_date === 'string' && body.first_fire_date.length > 0) {
+    if (body.first_fire_date !== undefined) {
+      if (typeof body.first_fire_date !== 'string') {
+        return json({ error: 'first_fire_date must be a valid YYYY-MM-DD date' }, 400);
+      }
       const tz = await getUserTimezone(db);
-      nextFireAt = dateAtMidnightInTz(body.first_fire_date, tz);
+      nextFireAt = firstFireDateToNextFireAt(body.first_fire_date, tz) ?? undefined;
+      if (nextFireAt === undefined) {
+        return json({ error: 'first_fire_date must be a valid YYYY-MM-DD date' }, 400);
+      }
       updates.next_fire_at = nextFireAt;
       delete (updates as { first_fire_date?: string }).first_fire_date;
     }

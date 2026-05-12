@@ -17,8 +17,8 @@ export function useSync() {
     async function doSync() {
       dispatch({ type: 'SET_SYNC_STATUS', status: 'syncing' });
       try {
-        await flushPendingOps(config);
         await syncBrowserTimezone(config);
+        await flushPendingOps(config);
         const result = await syncFromServer(config);
         if (result.online && result.tasks) {
           dispatch({
