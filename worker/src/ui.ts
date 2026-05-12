@@ -1,4 +1,4 @@
-import { DB } from './db';
+import { DB, LegacyRecurringTaskNeedsTimezoneError } from './db';
 import type { Task } from '@shared/types';
 import { materializeDueDuties } from './duties';
 
@@ -194,16 +194,26 @@ export async function handleUiRequest(request: Request, url: URL, db: DB): Promi
   const completeMatch = path.match(/^\/ui\/complete\/([^/]+)$/);
   if (request.method === 'POST' && completeMatch) {
     await materializeDueDuties(db, new Date().toISOString());
-    const result = await db.completeTask(completeMatch[1]);
-    if (!result) {
-      return new Response(JSON.stringify({ error: 'Not found' }), {
-        status: 404,
+    try {
+      const result = await db.completeTask(completeMatch[1]);
+      if (!result) {
+        return new Response(JSON.stringify({ error: 'Not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(result), {
         headers: { 'Content-Type': 'application/json' },
       });
+    } catch (error) {
+      if (error instanceof LegacyRecurringTaskNeedsTimezoneError) {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 409,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw error;
     }
-    return new Response(JSON.stringify(result), {
-      headers: { 'Content-Type': 'application/json' },
-    });
   }
 
   return new Response('Not found', { status: 404 });

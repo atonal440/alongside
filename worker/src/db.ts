@@ -18,6 +18,13 @@ import { isFocused, readinessScore } from '@shared/readiness';
 
 export type { ActionLog as ActionLogEntry };
 
+export class LegacyRecurringTaskNeedsTimezoneError extends Error {
+  constructor() {
+    super('Set a valid timezone preference before completing legacy recurring tasks');
+    this.name = 'LegacyRecurringTaskNeedsTimezoneError';
+  }
+}
+
 export interface ExportPayload {
   version: 1;
   exported_at: string;
@@ -144,6 +151,9 @@ export class DB {
   async completeTask(id: string): Promise<{ completed: Task } | null> {
     const task = await this.getTask(id);
     if (!task) return null;
+    if (task.recurrence && !task.duty_id) {
+      throw new LegacyRecurringTaskNeedsTimezoneError();
+    }
 
     const timestamp = now();
     await this.drizzle

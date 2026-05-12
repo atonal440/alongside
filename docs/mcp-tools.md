@@ -134,7 +134,7 @@ Update one or more fields on an existing task. Only provided fields are changed.
 
 ### `complete_task`
 
-Mark a task done. If the task has both `recurrence` and `due_date`, a new task is automatically created for the next occurrence. The completed task's `session_log` is carried forward as the new task's `kickoff_note`.
+Mark a task done. Duty-backed schedules advance independently of completion. If the target is an unconverted legacy recurring task and no explicit valid timezone preference exists yet, the tool fails so the recurring series remains pending for later timezone-aware migration.
 
 **Parameters:**
 

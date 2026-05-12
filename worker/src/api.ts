@@ -1,4 +1,4 @@
-import { DB } from './db';
+import { DB, LegacyRecurringTaskNeedsTimezoneError } from './db';
 import type { ExportPayload } from './db';
 import type { TaskLink, ProjectUpdate, DutyUpdate } from '@shared/types';
 import { materializeDueDuties, dateAtMidnightInTz, todayInTz, getUserTimezone, computeNextFire, isValidTimezone, isValidDateOnly } from './duties';
@@ -121,9 +121,16 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   const completeMatch = path.match(/^\/api\/tasks\/([^/]+)\/complete$/);
   if (method === 'POST' && completeMatch) {
     await materializeDueDuties(db, new Date().toISOString());
-    const result = await db.completeTask(completeMatch[1]);
-    if (!result) return json({ error: 'Not found' }, 404);
-    return json(result);
+    try {
+      const result = await db.completeTask(completeMatch[1]);
+      if (!result) return json({ error: 'Not found' }, 404);
+      return json(result);
+    } catch (error) {
+      if (error instanceof LegacyRecurringTaskNeedsTimezoneError) {
+        return json({ error: error.message }, 409);
+      }
+      throw error;
+    }
   }
 
   // ── Duties ────────────────────────────────────────────────────────────────

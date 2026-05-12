@@ -10,6 +10,6 @@ Serves the embeddable iframe widget at `/ui/*`. These routes skip bearer-token a
 - `GET /ui/active.json` — Returns the current focused tasks as JSON for widget polling.
 - `GET /ui/action-log` — Returns the action log widget HTML.
 - `GET /ui/action-log.json` — Returns recent action log entries as JSON.
-- `POST /ui/complete/:id` — Runs duty materialization to convert legacy recurrence, then marks a focused task complete from the iframe widget.
+- `POST /ui/complete/:id` — Runs duty materialization to convert legacy recurrence, then marks a focused task complete from the iframe widget; returns 409 if a legacy recurring task cannot be converted yet because timezone is unset.
 
 Signature verification delegates to `verifySignature` from `sign.ts`.

@@ -71,7 +71,7 @@ Hard-deletes a task.
 
 ### `POST /api/tasks/:id/complete`
 
-Converts legacy recurrence first, then marks a task done. Duty-backed schedules advance independently of completion.
+Converts legacy recurrence first, then marks a task done. Returns 409 if a legacy recurring task is still waiting on an explicit timezone preference. Duty-backed schedules advance independently of completion.
 
 **Response:**
 ```ts
