@@ -168,7 +168,7 @@ export async function handleOAuthRequest(request: Request, url: URL, env: Env): 
       }
 
       // Token valid — generate auth code and store in D1
-      const code = randomString(32);
+      const code = randomString(16);
       await env.DB.prepare(
         'INSERT INTO oauth_codes (code, client_id, redirect_uri, code_challenge, expires_at) VALUES (?, ?, ?, ?, ?)'
       ).bind(code, postClientId, postRedirectUri, postCodeChallenge || '', Date.now() + CODE_EXPIRY_MS).run();

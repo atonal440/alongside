@@ -3,7 +3,8 @@
     "paths": {
       "@shared/*": ["../shared/*"],
       "drizzle-orm": ["./node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["./node_modules/drizzle-orm/*"]
+      "drizzle-orm/*": ["./node_modules/drizzle-orm/*"],
+      "valibot": ["./node_modules/valibot"]
     },
     "target": "ES2022",
     "module": "ES2022",

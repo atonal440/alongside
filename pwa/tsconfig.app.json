@@ -20,7 +20,8 @@
     "paths": {
       "@shared/*": ["../shared/*"],
       "drizzle-orm": ["../worker/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../worker/node_modules/drizzle-orm/*"]
+      "drizzle-orm/*": ["../worker/node_modules/drizzle-orm/*"],
+      "valibot": ["./node_modules/valibot"]
     }
   },
   "include": ["src"],

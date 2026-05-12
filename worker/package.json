@@ -9,7 +9,9 @@
     "db:init": "wrangler d1 execute alongside-db --local --file=schema.sql && node scripts/seed-migrations.mjs --local",
     "db:seed-migrations:remote": "node scripts/seed-migrations.mjs --remote",
     "db:generate": "drizzle-kit generate",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build:dry": "wrangler deploy --dry-run"
   },
   "keywords": [],
   "author": "",
@@ -17,15 +19,19 @@
   "type": "commonjs",
   "dependencies": {
     "drizzle-orm": "^0.43.1",
-    "nanoid": "^3.3.11"
+    "nanoid": "^3.3.11",
+    "valibot": "^1.4.0"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.16.4",
     "@cloudflare/workers-types": "^4.20260317.1",
     "@typescript-eslint/eslint-plugin": "^8.58.0",
     "@typescript-eslint/parser": "^8.58.0",
     "drizzle-kit": "^0.31.1",
     "eslint": "^10.2.0",
+    "fast-check": "^4.8.0",
     "typescript": "^6.0.2",
+    "vitest": "^4.1.6",
     "wrangler": "^4.80.0"
   }
 }

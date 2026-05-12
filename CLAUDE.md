@@ -50,6 +50,8 @@ npm run dev:stop
 
 The runner keeps only transient process state in `.dev/`.
 
+Use Node.js 22 or newer for local installs and Cloudflare tooling.
+
 Run services manually only when you need isolated logs or flags:
 
 ```sh
