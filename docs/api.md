@@ -45,9 +45,8 @@ Create a new task.
 | `title` | `string` | yes | |
 | `notes` | `string` | no | |
 | `due_date` | `string` | no | ISO 8601 date |
-| `recurrence` | `string` | no | iCal RRULE |
 
-**Response:** `Task` — 201
+**Response:** `Task` — 201. New recurring work must use `POST /api/duties`; task-level `recurrence` is rejected.
 
 ---
 
@@ -55,7 +54,7 @@ Create a new task.
 
 Partial update. Only provided fields are changed.
 
-**Request body:** any subset of `{ title, notes, due_date, recurrence }`
+**Request body:** any subset of `{ title, notes, due_date }`. New recurring work must use duties; non-null task-level `recurrence` is rejected.
 
 **Response:** `Task` — 404 if not found.
 

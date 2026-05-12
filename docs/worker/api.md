@@ -12,8 +12,8 @@ REST API handler for the PWA. Exposes CRUD endpoints for tasks, projects, and li
 - `POST /api/tasks/links` — create a link
 - `DELETE /api/tasks/links` — remove a link (body: `{from_task_id, to_task_id, link_type}`)
 - `GET /api/tasks/:id` — get single task
-- `POST /api/tasks` — create task
-- `PATCH /api/tasks/:id` — update task fields (including `focused_until`, `defer_until`, `defer_kind`)
+- `POST /api/tasks` — create one-shot task; non-null `recurrence` is rejected, use duties for recurring work
+- `PATCH /api/tasks/:id` — update task fields (including `focused_until`, `defer_until`, `defer_kind`; non-null `recurrence` is rejected)
 - `DELETE /api/tasks/:id` — delete task
 - `POST /api/tasks/:id/complete` — converts legacy recurrence first, then marks task done; returns 409 if timezone-aware legacy migration is still blocked by a missing timezone preference; duty schedule advances independently
 - `GET /api/duties` — list all duties (active and paused)

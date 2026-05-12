@@ -16,11 +16,11 @@ Thin re-export layer consumed by both the worker and the PWA via the `@shared/ty
 
 **`PendingOp`** — PWA-only concept (no DB table). A write operation queued in IndexedDB for later sync when the app is offline. Fields: `id`, `method` (HTTP verb), `path`, `body`, `local_id`, `created_at`.
 
-**`TaskCreate`** — Input shape for creating a public task. `title` required; `notes`, `due_date`, `recurrence`, `task_type`, `project_id`, and `kickoff_note` optional. Duty materialization keys are intentionally excluded.
+**`TaskCreate`** — Input shape for creating a public one-shot task. `title` required; `notes`, `due_date`, `task_type`, `project_id`, and `kickoff_note` optional. Task-level `recurrence` is intentionally excluded because new recurring work is represented by duties.
 
 **`DutyTaskCreate`** — Internal task creation shape used only by duty materialization. Extends `TaskCreate` with required `duty_id` and `duty_fire_at` idempotency keys.
 
-**`TaskUpdate`** — Input shape for updating a task. All fields optional. Includes `focused_until`, `defer_until`, and `defer_kind`.
+**`TaskUpdate`** — Input shape for updating a task. All fields optional. Includes `focused_until`, `defer_until`, and `defer_kind`. `recurrence` remains only for clearing legacy rows; new schedules belong on duties.
 
 **`ProjectCreate`** — Input shape for creating a project. `title` required; `kickoff_note` and `notes` optional.
 

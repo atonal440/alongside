@@ -229,7 +229,6 @@ export async function materializeDueDuties(
             task_type:    duty.task_type,
             project_id:   duty.project_id ?? undefined,
             due_date:     dueDate,
-            recurrence:   undefined,
             duty_id:      duty.id,
             duty_fire_at: fireAt,
           });

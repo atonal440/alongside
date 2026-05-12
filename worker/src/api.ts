@@ -1,4 +1,4 @@
-import { DB, LegacyRecurringTaskNeedsTimezoneError } from './db';
+import { DB, LegacyRecurringTaskNeedsTimezoneError, TaskRecurrenceUnsupportedError } from './db';
 import type { ExportPayload } from './db';
 import type { TaskLink, ProjectUpdate, DutyUpdate } from '@shared/types';
 import { materializeDueDuties, dateAtMidnightInTz, todayInTz, getUserTimezone, computeNextFire, isValidTimezone, isValidDateOnly } from './duties';
@@ -85,7 +85,18 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   if (method === 'POST' && path === '/api/tasks') {
     const body = await request.json<{ title: string; notes?: string; due_date?: string; recurrence?: string }>();
     if (!body.title) return json({ error: 'title is required' }, 400);
-    const task = await db.addTask(body);
+    if (body.recurrence !== undefined && body.recurrence !== null) {
+      return json({ error: 'Use /api/duties for recurring work; tasks.recurrence is legacy-only' }, 400);
+    }
+    let task;
+    try {
+      task = await db.addTask(body);
+    } catch (error) {
+      if (error instanceof TaskRecurrenceUnsupportedError) {
+        return json({ error: error.message }, 400);
+      }
+      throw error;
+    }
     return json(task, 201);
   }
 
@@ -105,7 +116,15 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
       defer_kind?: 'none' | 'until' | 'someday';
       focused_until?: string | null;
     }>();
-    const task = await db.updateTask(singleMatch[1], body);
+    let task;
+    try {
+      task = await db.updateTask(singleMatch[1], body);
+    } catch (error) {
+      if (error instanceof TaskRecurrenceUnsupportedError) {
+        return json({ error: error.message }, 400);
+      }
+      throw error;
+    }
     if (!task) return json({ error: 'Not found' }, 404);
     return json(task);
   }

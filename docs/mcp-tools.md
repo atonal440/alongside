@@ -101,12 +101,11 @@ Create a new task.
 | `title` | `string` | yes | Task title. |
 | `notes` | `string` | no | Freeform notes. |
 | `due_date` | `string` | no | ISO 8601 date (e.g. `2026-04-15`). |
-| `recurrence` | `string` | no | iCal RRULE (e.g. `FREQ=WEEKLY;INTERVAL=1`). |
-| `task_type` | `'action'\|'plan'\|'recurring'` | no | Defaults to `'action'`. |
+| `task_type` | `'action'\|'plan'` | no | Defaults to `'action'`. |
 | `project_id` | `string` | no | Associate with a project. |
 | `kickoff_note` | `string` | no | Re-entry ramp — what to do next time. |
 
-**Returns:** `{ ...Task, action_log_entry }`
+**Returns:** `{ ...Task, action_log_entry }`. Use `add_duty` for recurring work; task-level `recurrence` is rejected.
 
 ---
 
@@ -122,7 +121,6 @@ Update one or more fields on an existing task. Only provided fields are changed.
 | `title` | `string` | no | |
 | `notes` | `string` | no | |
 | `due_date` | `string` | no | |
-| `recurrence` | `string` | no | |
 | `task_type` | `string` | no | |
 | `project_id` | `string` | no | |
 | `kickoff_note` | `string` | no | Overwrites existing kickoff_note. |
@@ -142,11 +140,7 @@ Mark a task done. Duty-backed schedules advance independently of completion. If 
 |---|---|---|---|
 | `task_id` | `string` | yes | |
 
-**Returns:** `{ completed: Task, next?: Task, action_log_entry }`
-
-`next` is present only when a recurrence was spawned.
-
-**Supported RRULE frequencies:** `DAILY`, `WEEKLY`, `MONTHLY`, `YEARLY` with optional `INTERVAL=N`. No `BYDAY` support.
+**Returns:** `{ completed: Task, action_log_entry }`
 
 ---
 
@@ -198,7 +192,7 @@ Permanently delete a task. This is a hard delete — there is no undo.
 
 ### `add_duty`
 
-Create a recurring task template. Duties materialize real tasks on the hourly Worker cron with request-path fallback; use this instead of `add_task.recurrence` for new recurring work.
+Create a recurring task template. Duties materialize real tasks on the hourly Worker cron with request-path fallback; use this instead of task-level recurrence for new recurring work.
 
 **Parameters:**
 

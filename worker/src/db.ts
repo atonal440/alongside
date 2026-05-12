@@ -25,6 +25,13 @@ export class LegacyRecurringTaskNeedsTimezoneError extends Error {
   }
 }
 
+export class TaskRecurrenceUnsupportedError extends Error {
+  constructor() {
+    super('Use duties for recurring work; tasks.recurrence is legacy-only');
+    this.name = 'TaskRecurrenceUnsupportedError';
+  }
+}
+
 export interface ExportPayload {
   version: 1;
   exported_at: string;
@@ -116,6 +123,9 @@ export class DB {
   }
 
   async addTask(input: TaskCreate): Promise<Task> {
+    if ('recurrence' in input && input.recurrence !== undefined && input.recurrence !== null) {
+      throw new TaskRecurrenceUnsupportedError();
+    }
     return this.insertTask(input, null, null);
   }
 
@@ -130,7 +140,7 @@ export class DB {
       notes: input.notes ?? null,
       status: 'pending',
       due_date: input.due_date ?? null,
-      recurrence: input.recurrence ?? null,
+      recurrence: null,
       created_at: now(),
       updated_at: now(),
       defer_until: null,
@@ -210,6 +220,9 @@ export class DB {
 
   async updateTask(id: string, updates: TaskUpdate): Promise<Task | null> {
     if (updates.status === 'done') throw new Error('Use completeTask() to mark a task done');
+    if (updates.recurrence !== undefined && updates.recurrence !== null) {
+      throw new TaskRecurrenceUnsupportedError();
+    }
 
     const patch: Partial<typeof tasksTable.$inferInsert> = {};
     if (updates.title !== undefined)        patch.title = updates.title;

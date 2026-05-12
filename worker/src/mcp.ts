@@ -490,11 +490,13 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'add_task': {
+      if (args.recurrence !== undefined && args.recurrence !== null) {
+        throw new Error('Use add_duty for recurring work; tasks.recurrence is legacy-only.');
+      }
       const task = await db.addTask({
         title: args.title as string,
         notes: args.notes as string | undefined,
         due_date: args.due_date as string | undefined,
-        recurrence: args.recurrence as string | undefined,
         task_type: args.task_type as 'action' | 'plan' | undefined,
         project_id: args.project_id as string | undefined,
         kickoff_note: args.kickoff_note as string | undefined,

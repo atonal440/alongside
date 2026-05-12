@@ -12,7 +12,7 @@ export interface PendingOp {
 import type { Task, Project, Duty } from './schema';
 
 export type TaskCreate = Pick<Task, 'title'> &
-  Partial<Pick<Task, 'notes' | 'due_date' | 'recurrence' | 'task_type' | 'project_id' | 'kickoff_note'>>;
+  Partial<Pick<Task, 'notes' | 'due_date' | 'task_type' | 'project_id' | 'kickoff_note'>>;
 
 export type DutyTaskCreate = TaskCreate & Pick<Task, 'duty_id' | 'duty_fire_at'>;
 

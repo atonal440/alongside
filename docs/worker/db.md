@@ -28,7 +28,9 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`getTask(id)`** — Fetches a single task row by primary key.
 
-**`addTask(data)`** — Inserts a new public task with a generated nanoid (`defer_kind` defaults to `'none'`). Always stores `duty_id` and `duty_fire_at` as null so callers cannot reserve a duty fire.
+**`TaskRecurrenceUnsupportedError`** — Thrown when public task create/update tries to set a non-null task-level `recurrence`. New recurring work must be represented by duties.
+
+**`addTask(data)`** — Inserts a new public task with a generated nanoid (`defer_kind` defaults to `'none'`). Rejects non-null `recurrence` input and always stores `recurrence`, `duty_id`, and `duty_fire_at` as null so callers cannot create legacy recurrence rows or reserve a duty fire.
 
 **`addTaskFromDuty(data)`** — Inserts a materialized duty task with required `duty_id` and `duty_fire_at` idempotency keys. This is the only task-creation path that can set those internal fields.
 
