@@ -27,6 +27,13 @@ function firstFireDateToNextFireAt(firstFireDate: string, tz: string): string | 
   }
 }
 
+function normalizeIsoInstant(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+  return new Date(timestamp).toISOString();
+}
+
 function isValidDutyOffsetDays(value: unknown): value is number {
   return Number.isInteger(value) && Number.isFinite(value);
 }
@@ -180,7 +187,12 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
     }
     const tz = await getUserTimezone(db);
     let nextFireAt = body.next_fire_at;
-    if (nextFireAt === undefined) {
+    if (nextFireAt !== undefined) {
+      nextFireAt = normalizeIsoInstant(nextFireAt) ?? undefined;
+      if (nextFireAt === undefined) {
+        return json({ error: 'next_fire_at must be a valid ISO 8601 instant' }, 400);
+      }
+    } else {
       const firstFireDate = body.first_fire_date ?? todayInTz(tz);
       nextFireAt = firstFireDateToNextFireAt(firstFireDate, tz) ?? undefined;
       if (nextFireAt === undefined) {
@@ -220,6 +232,14 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
       return json({ error: 'due_offset_days must be an integer' }, 400);
     }
     let nextFireAt = updates.next_fire_at;
+    if (nextFireAt !== undefined) {
+      const normalizedNextFireAt = normalizeIsoInstant(nextFireAt);
+      if (normalizedNextFireAt === null) {
+        return json({ error: 'next_fire_at must be a valid ISO 8601 instant' }, 400);
+      }
+      nextFireAt = normalizedNextFireAt;
+      updates.next_fire_at = nextFireAt;
+    }
     if (body.first_fire_date !== undefined) {
       if (typeof body.first_fire_date !== 'string') {
         return json({ error: 'first_fire_date must be a valid YYYY-MM-DD date' }, 400);

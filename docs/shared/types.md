@@ -26,6 +26,6 @@ Thin re-export layer consumed by both the worker and the PWA via the `@shared/ty
 
 **`ProjectUpdate`** — Input shape for updating a project. All fields optional (`title`, `notes`, `kickoff_note`, `status`).
 
-**`DutyCreate`** — Input shape for creating a duty. `title` and `recurrence` required; `notes`, `kickoff_note`, `task_type`, `project_id`, `due_offset_days`, `active`, `next_fire_at`, and `first_fire_date` optional. `first_fire_date` is a YYYY-MM-DD convenience input that the worker resolves to `next_fire_at` (midnight in user tz).
+**`DutyCreate`** — Input shape for creating a duty. `title` and `recurrence` required; `notes`, `kickoff_note`, `task_type`, `project_id`, `due_offset_days`, `active`, `next_fire_at`, and `first_fire_date` optional. `first_fire_date` is a YYYY-MM-DD convenience input that the worker resolves to `next_fire_at` (midnight in user tz); direct `next_fire_at` inputs are stored as canonical UTC ISO instants.
 
-**`DutyUpdate`** — Input shape for updating a duty. All fields optional (`title`, `notes`, `kickoff_note`, `task_type`, `project_id`, `recurrence`, `due_offset_days`, `active`, `next_fire_at`).
+**`DutyUpdate`** — Input shape for updating a duty. All fields optional (`title`, `notes`, `kickoff_note`, `task_type`, `project_id`, `recurrence`, `due_offset_days`, `active`, `next_fire_at`). Direct `next_fire_at` inputs are stored as canonical UTC ISO instants.

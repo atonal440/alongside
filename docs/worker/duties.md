@@ -10,7 +10,7 @@ Before selecting due duties, request-path materialization also converts pending 
 
 ## Exported functions
 
-**`computeNextFire(rrule, fromIso, tz)`** — Returns the next fire timestamp (UTC ISO) by adding one `INTERVAL` of the duty's `FREQ` to `fromIso` interpreted in `tz`. Supports `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY` with a positive integer `INTERVAL`. Monthly/yearly schedules avoid JavaScript date overflow: month-end anchors stay month-end, and non-month-end dates that do not exist in the target month skip forward to the next valid scheduled month. Returns `null` for unsupported or malformed RRULEs (caller pauses the duty).
+**`computeNextFire(rrule, fromIso, tz)`** — Returns the next fire timestamp (UTC ISO) by adding one `INTERVAL` of the duty's `FREQ` to `fromIso` interpreted in `tz`. Supports only `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY` plus an optional positive integer `INTERVAL`; unknown RRULE keys such as `BYDAY` are rejected instead of ignored. Monthly/yearly schedules avoid JavaScript date overflow: month-end anchors stay month-end, and non-month-end dates that do not exist in the target month skip forward to the next valid scheduled month. Returns `null` for unsupported or malformed RRULEs (caller pauses the duty).
 
 **`deriveDueDate(fireAtIso, offsetDays, tz)`** — Returns a `YYYY-MM-DD` string by converting `fireAtIso` to wall-clock in `tz` and adding `offsetDays`. Used to compute the materialized task's `due_date`.
 

@@ -36,6 +36,13 @@ function firstFireDateToNextFireAt(firstFireDate: string, tz: string): string | 
   }
 }
 
+function normalizeIsoInstant(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+  return new Date(timestamp).toISOString();
+}
+
 const TASK_DASHBOARD_URI = 'ui://alongside/task-dashboard';
 const ACTION_LOG_URI = 'ui://alongside/action-log';
 
@@ -357,6 +364,7 @@ const TOOLS = [
         kickoff_note: { type: 'string' },
         recurrence: { type: 'string' },
         first_fire_date: { type: 'string', description: 'YYYY-MM-DD. Replaces next_fire_at with midnight on this date in user tz.' },
+        next_fire_at: { type: 'string', description: 'ISO 8601 instant. Normalized to canonical UTC before storage.' },
         due_offset_days: { type: 'number' },
         task_type: { type: 'string', enum: ['action', 'plan'] },
         project_id: { type: 'string' },
@@ -686,6 +694,13 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       if (updates.due_offset_days !== undefined && !isValidDutyOffsetDays(updates.due_offset_days)) {
         throw new Error('due_offset_days must be an integer');
       }
+      if (updates.next_fire_at !== undefined) {
+        const normalizedNextFireAt = normalizeIsoInstant(updates.next_fire_at);
+        if (!normalizedNextFireAt) {
+          throw new Error('next_fire_at must be a valid ISO 8601 instant');
+        }
+        updates.next_fire_at = normalizedNextFireAt;
+      }
       if (first_fire_date !== undefined) {
         if (typeof first_fire_date !== 'string') {
           throw new Error('first_fire_date must be a valid YYYY-MM-DD date');
@@ -697,11 +712,14 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
         }
         updates.next_fire_at = nextFireAt;
       }
-      if (typeof updates.recurrence === 'string') {
+      if (updates.recurrence !== undefined || updates.next_fire_at !== undefined) {
         const tz = await getUserTimezone(db);
-        const probe = updates.next_fire_at ?? (await db.getDuty(duty_id))?.next_fire_at;
-        if (probe && !computeNextFire(updates.recurrence, probe, tz)) {
-          throw new Error(`Unsupported recurrence "${updates.recurrence}".`);
+        const existing = await db.getDuty(duty_id);
+        if (!existing) throw new Error('Duty not found');
+        const recurrence = updates.recurrence ?? existing.recurrence;
+        const probe = updates.next_fire_at ?? existing.next_fire_at;
+        if (!computeNextFire(recurrence, probe, tz)) {
+          throw new Error(`Unsupported recurrence "${recurrence}".`);
         }
       }
       const duty = await db.updateDuty(duty_id, updates);

@@ -81,9 +81,13 @@ function addYearsPreservingCalendarIntent(p: TzParts, interval: number): void {
 
 function parseRRule(rrule: string): RRuleParts | null {
   const map: Record<string, string> = {};
+  const supportedKeys = new Set(['FREQ', 'INTERVAL']);
   for (const part of rrule.split(';')) {
-    const [k, v] = part.split('=');
-    if (k && v) map[k] = v;
+    const pieces = part.split('=');
+    if (pieces.length !== 2) return null;
+    const [k, v] = pieces;
+    if (!k || !v || !supportedKeys.has(k) || map[k] !== undefined) return null;
+    map[k] = v;
   }
   const freq = map.FREQ;
   const interval = map.INTERVAL === undefined ? 1 : Number(map.INTERVAL);
