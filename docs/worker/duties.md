@@ -6,17 +6,17 @@ Materialization runs from an hourly Cloudflare cron handler and still has reques
 
 The user's timezone is read from the `user_preferences` table (`key = 'timezone'`); when absent it defaults to `UTC`. RRULE math runs on wall-clock parts in that timezone (not UTC), so DST transitions don't drift the anchor time.
 
-Before selecting due duties, the materializer also converts pending legacy task-level recurrence rows into duties. That conversion is intentionally done in worker code instead of the SQL migration because D1 migrations do not have IANA timezone support; date-only legacy due dates are translated with `dateAtMidnightInTz` so the original local calendar day is preserved.
+Before selecting due duties, the materializer also converts pending legacy task-level recurrence rows into duties. That conversion is intentionally done in worker code instead of the SQL migration because D1 migrations do not have IANA timezone support; legacy due dates are normalized to valid `YYYY-MM-DD` values before `dateAtMidnightInTz` so the original local calendar day is preserved when possible and malformed old data falls back safely.
 
 ## Exported functions
 
-**`computeNextFire(rrule, fromIso, tz)`** — Returns the next fire timestamp (UTC ISO) by adding one `INTERVAL` of the duty's `FREQ` to `fromIso` interpreted in `tz`. Supports `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY` with a positive integer `INTERVAL`. Returns `null` for unsupported or malformed RRULEs (caller pauses the duty).
+**`computeNextFire(rrule, fromIso, tz)`** — Returns the next fire timestamp (UTC ISO) by adding one `INTERVAL` of the duty's `FREQ` to `fromIso` interpreted in `tz`. Supports `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY` with a positive integer `INTERVAL`. Monthly/yearly schedules avoid JavaScript date overflow: month-end anchors stay month-end, and non-month-end dates that do not exist in the target month skip forward to the next valid scheduled month. Returns `null` for unsupported or malformed RRULEs (caller pauses the duty).
 
 **`deriveDueDate(fireAtIso, offsetDays, tz)`** — Returns a `YYYY-MM-DD` string by converting `fireAtIso` to wall-clock in `tz` and adding `offsetDays`. Used to compute the materialized task's `due_date`.
 
 **`isValidDateOnly(value)`** — Returns whether a string is an exact valid calendar date in `YYYY-MM-DD` form. Rejects overflow dates such as `2026-02-31` before `dateAtMidnightInTz` can normalize them.
 
-**`dateAtMidnightInTz(yyyymmdd, tz)`** — Inverse of `deriveDueDate`: takes a date and returns the UTC ISO timestamp at midnight on that date in `tz`. Used by `add_duty` / `update_duty` to translate a user-supplied `first_fire_date` into `next_fire_at`.
+**`dateAtMidnightInTz(yyyymmdd, tz)`** — Inverse of `deriveDueDate`: takes a valid date-only string and returns the UTC ISO timestamp at midnight on that date in `tz`. Used by `add_duty` / `update_duty` to translate a user-supplied `first_fire_date` into `next_fire_at`.
 
 **`todayInTz(tz)`** — Returns today's `YYYY-MM-DD` in `tz`. Default for `first_fire_date` when callers omit it.
 

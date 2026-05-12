@@ -40,6 +40,44 @@ function fromTzParts(p: TzParts, tz: string): string {
 
 interface RRuleParts { freq: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY'; interval: number; }
 
+function daysInMonth(y: number, mo: number): number {
+  return new Date(Date.UTC(y, mo, 0)).getUTCDate();
+}
+
+function isLastDayOfMonth(p: Pick<TzParts, 'y' | 'mo' | 'd'>): boolean {
+  return p.d === daysInMonth(p.y, p.mo);
+}
+
+function addMonthsPreservingCalendarIntent(p: TzParts, interval: number): void {
+  const monthEndAnchor = isLastDayOfMonth(p);
+  let monthIndex = p.y * 12 + (p.mo - 1) + interval;
+  let y = Math.floor(monthIndex / 12);
+  let mo = (monthIndex % 12) + 1;
+  let monthDays = daysInMonth(y, mo);
+
+  if (!monthEndAnchor) {
+    while (p.d > monthDays) {
+      monthIndex += interval;
+      y = Math.floor(monthIndex / 12);
+      mo = (monthIndex % 12) + 1;
+      monthDays = daysInMonth(y, mo);
+    }
+  }
+
+  p.y = y;
+  p.mo = mo;
+  p.d = monthEndAnchor ? monthDays : p.d;
+}
+
+function addYearsPreservingCalendarIntent(p: TzParts, interval: number): void {
+  const monthEndAnchor = isLastDayOfMonth(p);
+  p.y += interval;
+  const monthDays = daysInMonth(p.y, p.mo);
+  if (monthEndAnchor || p.d > monthDays) {
+    p.d = monthDays;
+  }
+}
+
 function parseRRule(rrule: string): RRuleParts | null {
   const map: Record<string, string> = {};
   for (const part of rrule.split(';')) {
@@ -63,8 +101,8 @@ export function computeNextFire(rrule: string, fromIso: string, tz: string): str
   switch (r.freq) {
     case 'DAILY':   p.d  += r.interval; break;
     case 'WEEKLY':  p.d  += 7 * r.interval; break;
-    case 'MONTHLY': p.mo += r.interval; break;
-    case 'YEARLY':  p.y  += r.interval; break;
+    case 'MONTHLY': addMonthsPreservingCalendarIntent(p, r.interval); break;
+    case 'YEARLY':  addYearsPreservingCalendarIntent(p, r.interval); break;
   }
   return fromTzParts(p, tz);
 }
@@ -94,6 +132,9 @@ export function isValidDateOnly(value: string): boolean {
 
 // Convert a YYYY-MM-DD date to a UTC ISO timestamp at midnight in `tz`.
 export function dateAtMidnightInTz(yyyymmdd: string, tz: string): string {
+  if (!isValidDateOnly(yyyymmdd)) {
+    throw new Error(`Invalid date-only value "${yyyymmdd}"`);
+  }
   const [yStr, moStr, dStr] = yyyymmdd.split('-');
   return fromTzParts(
     { y: Number(yStr), mo: Number(moStr), d: Number(dStr), h: 0, mi: 0, s: 0 },
@@ -132,10 +173,19 @@ export async function getUserTimezone(db: DB): Promise<string> {
   return tz && isValidTimezone(tz) ? tz : DEFAULT_TZ;
 }
 
+function normalizeLegacyDueDate(value: string | null, tz: string): string {
+  if (value) {
+    if (isValidDateOnly(value)) return value;
+    const datePart = value.slice(0, 10);
+    if (isValidDateOnly(datePart)) return datePart;
+  }
+  return todayInTz(tz);
+}
+
 async function migrateLegacyRecurringTasks(db: DB, tz: string, nowIso: string): Promise<void> {
   const tasks = await db.listLegacyRecurringTasks();
   for (const task of tasks) {
-    const fireDate = task.due_date ?? todayInTz(tz);
+    const fireDate = normalizeLegacyDueDate(task.due_date, tz);
     await db.convertLegacyRecurringTaskToDuty(task, dateAtMidnightInTz(fireDate, tz), nowIso);
   }
 }
