@@ -150,7 +150,7 @@ export async function materializeDueDuties(db: DB, nowIso: string): Promise<{ ma
     if (!already) {
       const dueDate = deriveDueDate(fireAt, duty.due_offset_days, tz);
       try {
-        const task = await db.addTask({
+        const task = await db.addTaskFromDuty({
           title:        duty.title,
           notes:        duty.notes ?? undefined,
           kickoff_note: duty.kickoff_note ?? undefined,

@@ -28,7 +28,9 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`getTask(id)`** — Fetches a single task row by primary key.
 
-**`addTask(data)`** — Inserts a new task with a generated nanoid (`defer_kind` defaults to `'none'`). Returns the created `Task`.
+**`addTask(data)`** — Inserts a new public task with a generated nanoid (`defer_kind` defaults to `'none'`). Always stores `duty_id` and `duty_fire_at` as null so callers cannot reserve a duty fire.
+
+**`addTaskFromDuty(data)`** — Inserts a materialized duty task with required `duty_id` and `duty_fire_at` idempotency keys. This is the only task-creation path that can set those internal fields.
 
 **`completeTask(id)`** — Marks a task `done` and clears `focused_until`. If the task came from a duty (`duty_id` is set) and has a `session_log`, copies the log onto the parent duty as its new `kickoff_note` so the next materialization carries forward the user's re-entry note. Schedule advancement is handled by the duty (not by completion), so accidental completion does not shift the schedule.
 

@@ -12,7 +12,7 @@ import {
 } from '@shared/schema';
 import type {
   Task, Project, TaskLink, ActionLog, Duty,
-  TaskCreate, TaskUpdate, ProjectCreate, ProjectUpdate, DutyUpdate,
+  TaskCreate, TaskUpdate, ProjectCreate, ProjectUpdate, DutyUpdate, DutyTaskCreate,
 } from '@shared/types';
 import { isFocused, readinessScore } from '@shared/readiness';
 
@@ -105,6 +105,14 @@ export class DB {
   }
 
   async addTask(input: TaskCreate): Promise<Task> {
+    return this.insertTask(input, null, null);
+  }
+
+  async addTaskFromDuty(input: DutyTaskCreate): Promise<Task> {
+    return this.insertTask(input, input.duty_id, input.duty_fire_at);
+  }
+
+  private async insertTask(input: TaskCreate, dutyId: string | null, dutyFireAt: string | null): Promise<Task> {
     const task: Task = {
       id: `t_${nanoid(5)}`,
       title: input.title,
@@ -121,8 +129,8 @@ export class DB {
       kickoff_note: input.kickoff_note ?? null,
       session_log: null,
       focused_until: null,
-      duty_id: input.duty_id ?? null,
-      duty_fire_at: input.duty_fire_at ?? null,
+      duty_id: dutyId,
+      duty_fire_at: dutyFireAt,
     };
 
     await this.drizzle.insert(tasksTable).values(task);
