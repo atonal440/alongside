@@ -1,0 +1,51 @@
+import * as v from 'valibot';
+import {
+  IsoDateTimeSchema,
+  IsoDateSchema,
+  LinkTypeSchema,
+  ProjectIdSchema,
+  ProjectStatusSchema,
+  RruleSchema,
+  DeferKindSchema,
+  TaskIdSchema,
+  TaskStatusSchema,
+  TaskTypeSchema,
+} from '../parse';
+
+export const ImportV1Schema = v.object({
+  version: v.literal(1),
+  exported_at: IsoDateTimeSchema,
+  projects: v.array(v.object({
+    id: ProjectIdSchema,
+    title: v.string(),
+    notes: v.nullable(v.string()),
+    kickoff_note: v.nullable(v.string()),
+    status: ProjectStatusSchema,
+    created_at: IsoDateTimeSchema,
+    updated_at: IsoDateTimeSchema,
+  })),
+  tasks: v.array(v.object({
+    id: TaskIdSchema,
+    title: v.string(),
+    notes: v.nullable(v.string()),
+    status: TaskStatusSchema,
+    due_date: v.nullable(IsoDateSchema),
+    recurrence: v.nullable(RruleSchema),
+    created_at: IsoDateTimeSchema,
+    updated_at: IsoDateTimeSchema,
+    defer_until: v.nullable(IsoDateTimeSchema),
+    defer_kind: DeferKindSchema,
+    task_type: TaskTypeSchema,
+    project_id: v.nullable(ProjectIdSchema),
+    kickoff_note: v.nullable(v.string()),
+    session_log: v.nullable(v.string()),
+    focused_until: v.nullable(IsoDateTimeSchema),
+  })),
+  links: v.array(v.object({
+    from_task_id: TaskIdSchema,
+    to_task_id: TaskIdSchema,
+    link_type: LinkTypeSchema,
+  })),
+  preferences: v.record(v.string(), v.string()),
+  action_log: v.optional(v.array(v.objectWithRest({}, v.unknown()))),
+});

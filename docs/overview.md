@@ -62,6 +62,9 @@ docs/
     schema.md              ← shared/schema.ts
     types.md               ← shared/types.ts
     readiness.md           ← shared/readiness.ts
+    brand.md               ← shared/brand.ts
+    result.md              ← shared/result.ts
+    parse/                 ← shared/parse/* branded parser scaffolding
   worker/
     index.md               ← worker/src/index.ts
     db.md                  ← worker/src/db.ts
@@ -72,6 +75,10 @@ docs/
     sign.md                ← worker/src/sign.ts
     app-ui.md              ← worker/src/app-ui.ts
     dev-harness.md         ← worker/src/dev-harness.ts
+    parse/                 ← worker/src/parse/* request/parser helpers
+    domain/                ← worker/src/domain/* domain type scaffolding
+    wire/                  ← worker/src/wire/* wire schema scaffolding
+    storage/               ← worker/src/storage/* storage codec/apply scaffolding
   pwa/
     overview.md            ← PWA code structure and design principles
     app.md                 ← pwa/src/App.tsx
