@@ -307,6 +307,7 @@ Update a user preference. Preferences are applied automatically on the next `sta
 | `session_log` | Whether to log session summaries |
 | `interruption_style` | How Claude should handle mid-session context switches |
 | `planning_prompt` | Prompt style for plan-type tasks |
+| `timezone` | IANA timezone used for duty scheduling, e.g. `America/Los_Angeles` |
 
 **Returns:** `{ updated: true, key, value }`
 

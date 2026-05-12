@@ -99,6 +99,15 @@ export function todayInTz(tz: string): string {
 
 const DEFAULT_TZ = 'UTC';
 
+function isValidTimezone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function isDutyFireUniqueViolation(error: unknown): boolean {
   return error instanceof Error
     && error.message.includes('UNIQUE constraint failed')
@@ -108,7 +117,7 @@ function isDutyFireUniqueViolation(error: unknown): boolean {
 
 export async function getUserTimezone(db: DB): Promise<string> {
   const tz = await db.getPreference('timezone');
-  return tz || DEFAULT_TZ;
+  return tz && isValidTimezone(tz) ? tz : DEFAULT_TZ;
 }
 
 async function migrateLegacyRecurringTasks(db: DB, tz: string, nowIso: string): Promise<void> {

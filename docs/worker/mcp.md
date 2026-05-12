@@ -39,7 +39,7 @@ Model Context Protocol (MCP) handler. Exposes Alongside task data and operations
 | `get_project_context` | Returns project details and ready tasks |
 | `link_tasks` | Creates a dependency between two tasks |
 | `unlink_tasks` | Removes a dependency between two tasks |
-| `update_preference` | Sets a user preference (note: `timezone` is read by the duties engine) |
+| `update_preference` | Sets a user preference, including `timezone` for duty scheduling |
 | `get_action_log` | Returns recent operation history |
 
 Read tools (`list_tasks`, `get_ready_tasks`, `show_tasks`, `show_project`, `start_session`) call `materializeDueDuties` first so any duties whose `next_fire_at` has passed are turned into real tasks before the response goes out.

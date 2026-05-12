@@ -371,7 +371,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        key: { type: 'string', enum: ['sort_by', 'urgency_visibility', 'kickoff_nudge', 'session_log', 'interruption_style', 'planning_prompt'] },
+        key: { type: 'string', enum: ['sort_by', 'urgency_visibility', 'kickoff_nudge', 'session_log', 'interruption_style', 'planning_prompt', 'timezone'] },
         value: { type: 'string' },
       },
       required: ['key', 'value'],
@@ -682,6 +682,16 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'update_preference': {
+      if (args.key === 'timezone') {
+        if (typeof args.value !== 'string') {
+          throw new Error('timezone must be an IANA timezone string.');
+        }
+        try {
+          new Intl.DateTimeFormat('en-US', { timeZone: args.value }).format(new Date());
+        } catch {
+          throw new Error(`Unsupported timezone "${args.value}". Use an IANA timezone like "America/Los_Angeles".`);
+        }
+      }
       await db.setPreference(args.key as string, args.value as string);
       return { updated: true, key: args.key, value: args.value };
     }

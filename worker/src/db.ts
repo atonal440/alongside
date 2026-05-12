@@ -43,6 +43,7 @@ const DEFAULT_PREFERENCES: Record<string, string> = {
   session_log: 'ask_at_end',
   interruption_style: 'proactive',
   urgency_visibility: 'hide',
+  timezone: 'UTC',
 };
 
 function now(): string {
