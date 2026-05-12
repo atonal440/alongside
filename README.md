@@ -50,6 +50,8 @@ npm run dev:stop   # optional: stop tracked detached dev processes
 
 Run the worker and the PWA manually only when you need isolated logs or custom flags.
 
+Use Node.js 22 or newer for local installs and Cloudflare tooling.
+
 ### Worker Backend
 
 ```sh

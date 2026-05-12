@@ -41,6 +41,8 @@ pwa/
 
 ## Local Dev
 
+Use Node.js 22 or newer for local installs and Cloudflare tooling.
+
 From the repo root, use the combined dev runner for day-to-day work:
 
 ```sh

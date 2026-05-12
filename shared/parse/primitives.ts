@@ -24,6 +24,7 @@ const ISO_DATE_TIME_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
 let timezoneSet: Set<string> | null = null;
+const CANONICAL_UTC_TIMEZONE = 'UTC';
 
 function issuePath(issue: BaseIssue<unknown>): string[] {
   return issue.path?.map(item => String(item.key)) ?? [];
@@ -102,6 +103,8 @@ function getTimezoneSet(): Set<string> {
 }
 
 export function isIanaTimezoneString(input: string): boolean {
+  if (input === CANONICAL_UTC_TIMEZONE) return true;
+
   const supported = getTimezoneSet();
   if (supported.size > 0) return supported.has(input);
 

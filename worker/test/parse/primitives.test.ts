@@ -23,6 +23,7 @@ describe('primitive parsers', () => {
   });
 
   it('parses IANA timezones case-sensitively', () => {
+    expect(parseIanaTimezone('UTC').ok).toBe(true);
     expect(parseIanaTimezone('America/Los_Angeles').ok).toBe(true);
     expect(parseIanaTimezone('PDT').ok).toBe(false);
     expect(parseIanaTimezone('etc/utc').ok).toBe(false);
