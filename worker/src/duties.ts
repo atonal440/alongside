@@ -99,7 +99,7 @@ export function todayInTz(tz: string): string {
 
 const DEFAULT_TZ = 'UTC';
 
-function isValidTimezone(tz: string): boolean {
+export function isValidTimezone(tz: string): boolean {
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date());
     return true;

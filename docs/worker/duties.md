@@ -18,6 +18,8 @@ Before selecting due duties, the materializer also converts pending legacy task-
 
 **`todayInTz(tz)`** — Returns today's `YYYY-MM-DD` in `tz`. Default for `first_fire_date` when callers omit it.
 
+**`isValidTimezone(tz)`** — Returns whether a string is accepted by `Intl.DateTimeFormat` as an IANA timezone. Used by REST and MCP preference writers before saving `user_preferences.timezone`.
+
 **`getUserTimezone(db)`** — Reads `timezone` from `user_preferences`; returns `'UTC'` when unset or invalid.
 
 **`materializeDueDuties(db, nowIso)`** — Main loop. Selects every active duty with `next_fire_at <= nowIso`. For each, creates one task (skipped if a task with the same `duty_id + duty_fire_at` already exists) and advances `next_fire_at` via `computeNextFire`. Logs a `duty_fired` action log entry per materialized task. Idempotent: safe to call from multiple read paths concurrently.

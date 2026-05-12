@@ -2,7 +2,7 @@ import { DB } from './db';
 import type { Task, Project } from '@shared/types';
 import type { Env } from './index';
 import { getAppHtml, getActionLogHtml } from './app-ui';
-import { materializeDueDuties, dateAtMidnightInTz, todayInTz, getUserTimezone, computeNextFire } from './duties';
+import { materializeDueDuties, dateAtMidnightInTz, todayInTz, getUserTimezone, computeNextFire, isValidTimezone } from './duties';
 
 interface McpRequest {
   jsonrpc: '2.0';
@@ -686,9 +686,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
         if (typeof args.value !== 'string') {
           throw new Error('timezone must be an IANA timezone string.');
         }
-        try {
-          new Intl.DateTimeFormat('en-US', { timeZone: args.value }).format(new Date());
-        } catch {
+        if (!isValidTimezone(args.value)) {
           throw new Error(`Unsupported timezone "${args.value}". Use an IANA timezone like "America/Los_Angeles".`);
         }
       }

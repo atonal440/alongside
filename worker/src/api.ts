@@ -1,7 +1,7 @@
 import { DB } from './db';
 import type { ExportPayload } from './db';
 import type { TaskLink, ProjectUpdate, DutyUpdate } from '@shared/types';
-import { materializeDueDuties, dateAtMidnightInTz, todayInTz, getUserTimezone, computeNextFire } from './duties';
+import { materializeDueDuties, dateAtMidnightInTz, todayInTz, getUserTimezone, computeNextFire, isValidTimezone } from './duties';
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -223,6 +223,16 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   if (method === 'GET' && path === '/api/action-log') {
     const entries = await db.getActionLog();
     return json(entries);
+  }
+
+  // PUT /api/preferences/timezone — set browser/user IANA timezone for duty scheduling
+  if (method === 'PUT' && path === '/api/preferences/timezone') {
+    const body = await request.json<{ timezone?: string }>();
+    if (typeof body.timezone !== 'string' || !isValidTimezone(body.timezone)) {
+      return json({ error: 'timezone must be a valid IANA timezone like "America/Los_Angeles"' }, 400);
+    }
+    await db.setPreference('timezone', body.timezone);
+    return json({ updated: true, key: 'timezone', value: body.timezone });
   }
 
   // GET /api/export — full data dump as JSON

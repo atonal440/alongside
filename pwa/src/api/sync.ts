@@ -24,6 +24,22 @@ export interface SyncResult {
   duties?: Duty[];
 }
 
+let lastSyncedTimezone: string | null = null;
+
+export async function syncBrowserTimezone(config: ApiConfig): Promise<void> {
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (!timezone || timezone === lastSyncedTimezone) return;
+
+  const result = await apiFetch(
+    '/api/preferences/timezone',
+    { method: 'PUT', body: JSON.stringify({ timezone }) },
+    config,
+  );
+  if (result !== null) {
+    lastSyncedTimezone = timezone;
+  }
+}
+
 export async function flushPendingOps(config: ApiConfig): Promise<void> {
   const ops = await idbGetPendingOps();
   for (const op of ops) {

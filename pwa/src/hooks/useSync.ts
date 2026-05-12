@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useAppState } from './useAppState';
-import { flushPendingOps, syncFromServer } from '../api/sync';
+import { flushPendingOps, syncBrowserTimezone, syncFromServer } from '../api/sync';
 
 export function useSync() {
   const { state, dispatch } = useAppState();
@@ -18,6 +18,7 @@ export function useSync() {
       dispatch({ type: 'SET_SYNC_STATUS', status: 'syncing' });
       try {
         await flushPendingOps(config);
+        await syncBrowserTimezone(config);
         const result = await syncFromServer(config);
         if (result.online && result.tasks) {
           dispatch({
