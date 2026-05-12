@@ -4,7 +4,7 @@ REST API handler for the PWA. Exposes CRUD endpoints for tasks, projects, and li
 
 ## Functions
 
-**`handleApiRequest(request, url, db)`** — Main dispatcher. Parses the URL path and HTTP method, then calls the appropriate `DB` method and returns a JSON `Response`. The two task-list reads (`GET /api/tasks` and `GET /api/tasks/sync`) call `materializeDueDuties` first so any due duties become real tasks before the response is computed. Covers:
+**`handleApiRequest(request, url, db)`** — Main dispatcher. Parses the URL path and HTTP method, then calls the appropriate `DB` method and returns a JSON `Response`. Task-list reads (`GET /api/tasks`, `GET /api/tasks/sync`) and the duty list (`GET /api/duties`) call `materializeDueDuties` first so legacy recurring tasks are converted and any due duties become real tasks before the response is computed. Covers:
 
 - `GET /api/tasks` — list actionable pending tasks (excludes currently-deferred)
 - `GET /api/tasks/sync` — list all tasks including done and deferred-pending (for full PWA sync)

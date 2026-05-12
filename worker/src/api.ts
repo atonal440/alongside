@@ -108,6 +108,7 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
 
   // GET /api/duties — list all duties (active and paused)
   if (method === 'GET' && path === '/api/duties') {
+    await materializeDueDuties(db, new Date().toISOString());
     const duties = await db.listDuties();
     return json(duties);
   }

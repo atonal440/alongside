@@ -649,6 +649,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'list_duties': {
+      await materializeDueDuties(db, new Date().toISOString());
       const duties = await db.listDuties();
       return { duties };
     }
