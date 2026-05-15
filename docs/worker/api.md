@@ -25,3 +25,5 @@ REST API handler for the PWA. Exposes CRUD endpoints for tasks, projects, and li
 - `GET /api/action-log` — recent action log entries
 - `GET /api/export` — full data export as a dated JSON file (`?include_log=true` to also export action log)
 - `POST /api/import` — restore data from an export payload; `?dry_run=true` returns row counts without writing
+
+Task create, update, and complete routes map typed `DomainOperationError` failures from the DB layer into JSON errors. Validation failures, such as malformed RRULEs or recurrence without a due date, return HTTP 400 with issue details; lifecycle failures, such as completing an already-done task, return HTTP 409.

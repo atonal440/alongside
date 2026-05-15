@@ -1,5 +1,6 @@
-import { DB } from './db';
+import { DB, DomainOperationError } from './db';
 import type { Task } from '@shared/types';
+import { appErrorMessage, appErrorStatus } from './domain/errors';
 
 function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
   const taskRows = tasks.map(t => `
@@ -192,16 +193,26 @@ export async function handleUiRequest(request: Request, url: URL, db: DB): Promi
   // Unauthenticated complete endpoint for the iframe widget
   const completeMatch = path.match(/^\/ui\/complete\/([^/]+)$/);
   if (request.method === 'POST' && completeMatch) {
-    const result = await db.completeTask(completeMatch[1]);
-    if (!result) {
-      return new Response(JSON.stringify({ error: 'Not found' }), {
-        status: 404,
+    try {
+      const result = await db.completeTask(completeMatch[1]);
+      if (!result) {
+        return new Response(JSON.stringify({ error: 'Not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(result), {
         headers: { 'Content-Type': 'application/json' },
       });
+    } catch (error) {
+      if (error instanceof DomainOperationError) {
+        return new Response(JSON.stringify({ error: appErrorMessage(error.appError) }), {
+          status: appErrorStatus(error.appError),
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw error;
     }
-    return new Response(JSON.stringify(result), {
-      headers: { 'Content-Type': 'application/json' },
-    });
   }
 
   return new Response('Not found', { status: 404 });
