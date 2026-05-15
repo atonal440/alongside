@@ -9,6 +9,7 @@ describe('recurrence parser', () => {
 
   it('rejects malformed or unsupported RRULEs', () => {
     expect(parseRrule('FREQ=WEEKL').ok).toBe(false);
+    expect(parseRrule('FREQ=WEEKLY;INTERVAL=two').ok).toBe(false);
     expect(parseRrule('FREQ=WEEKLY;INTERVAL=0').ok).toBe(false);
     expect(parseRrule('FREQ=WEEKLY;INTERVAL=-1').ok).toBe(false);
     expect(parseRrule('FREQ=WEEKLY;INTERVAL=1000').ok).toBe(false);

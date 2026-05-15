@@ -10,6 +10,8 @@ Database abstraction layer over Cloudflare D1 (SQLite). Uses the Drizzle ORM que
 
 **`ImportResult`** — Response shape for `POST /api/import`. In dry-run mode: `would_delete` and `would_insert` counts. On commit: `inserted` counts per table.
 
+**`DomainOperationError`** — Error wrapper for typed `AppError` values raised by storage-facing methods when validation or lifecycle checks fail.
+
 ## Class: `DB`
 
 Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle(d1)`) alongside the raw `d1` reference. Every method is `async` and returns typed results.
@@ -28,9 +30,9 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`getTask(id)`** — Fetches a single task row by primary key.
 
-**`addTask(data)`** — Inserts a new task with a generated nanoid (`defer_kind` defaults to `'none'`). Returns the created `Task`.
+**`addTask(data)`** — Inserts a new task with a generated nanoid (`defer_kind` defaults to `'none'`). Validates the `due_date`/`recurrence` pair before writing: RRULEs must parse successfully and any recurring task must have a due date. Returns the created `Task`.
 
-**`completeTask(id)`** — Marks a task `done` and clears `focused_until`. If the task has a `recurrence` rule, creates the next occurrence with a computed `due_date` and carries `session_log` forward as `kickoff_note`.
+**`completeTask(id)`** — Loads the task as a `PendingTaskDomain`, plans completion through `completeTaskPlan`, then executes the generated task update/insert operations. Marks the task `done`, clears focus and deferral fields, and for recurring tasks creates the next occurrence with a computed `due_date` and carries `session_log` forward as `kickoff_note`.
 
 **`reopenTask(id)`** — Clears `defer_kind`/`defer_until`, making the task immediately actionable again. Does not modify `status`.
 
@@ -38,7 +40,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`clearDeferTask(id)`** — Resets `defer_kind` to `'none'` and clears `defer_until`. Equivalent to `reopenTask` for currently-pending tasks.
 
-**`updateTask(id, data)`** — Partial update: only columns present in `data` are written (including `focused_until`, `defer_until`, and `defer_kind`). Updates `updated_at` automatically.
+**`updateTask(id, data)`** — Partial update: only columns present in `data` are written (including `focused_until`, `defer_until`, and `defer_kind`). Updates that touch `due_date` or `recurrence` are validated before persistence so malformed RRULEs and recurrence-without-due-date states are rejected. Updates `updated_at` automatically.
 
 **`deleteTask(id)`** — Hard-deletes a task row (cascade removes links).
 

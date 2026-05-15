@@ -2,7 +2,7 @@
 
 This is the handoff checklist for implementing `docs/plans/type-driven-safety.md`. Keep this file current as slices land so another agent can resume without re-deriving the plan.
 
-## Current Slice: Foundations
+## Completed Slice: Foundations
 
 - [x] Add worker dependency scaffolding: `valibot`, `vitest`, `@cloudflare/vitest-pool-workers`, `fast-check`.
 - [x] Add scripts: worker `test`, worker `build:dry`, root `verify`.
@@ -13,13 +13,13 @@ This is the handoff checklist for implementing `docs/plans/type-driven-safety.md
 - [x] Add docs for new exported modules.
 - [x] Run final worker checks for this slice.
 
-## Next Slice: Recurrence Vertical
+## Completed Slice: Recurrence Vertical
 
-- [ ] Move `parseNextOccurrence` out of `worker/src/db.ts` and onto `shared/parse/recurrence.ts`.
-- [ ] Introduce the first real task row/domain codec for recurrence-bearing tasks.
-- [ ] Rewrite `DB.completeTask` to use parsed `Recurrence` and `PendingTaskDomain`.
-- [ ] Parse recurrence at worker write boundaries before persistence.
-- [ ] Add tests for recurring completion and invalid RRULE rejection.
+- [x] Move `parseNextOccurrence` out of `worker/src/db.ts` and onto `shared/parse/recurrence.ts`.
+- [x] Introduce the first real task row/domain codec for recurrence-bearing tasks.
+- [x] Rewrite `DB.completeTask` to use parsed `Recurrence` and `PendingTaskDomain`.
+- [x] Parse recurrence at worker write boundaries before persistence.
+- [x] Add tests for recurring completion and invalid RRULE rejection.
 
 ## Later Slices
 

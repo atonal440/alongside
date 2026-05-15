@@ -11,6 +11,11 @@ import {
 } from '@shared/schema';
 import type { Task, Project, TaskLink, ActionLog, TaskCreate, TaskUpdate, ProjectCreate, ProjectUpdate } from '@shared/types';
 import { isFocused, readinessScore } from '@shared/readiness';
+import { unsafeBrand } from '@shared/brand';
+import type { IsoDateTime, MintedTaskId } from './parse';
+import { parseIsoDateTime } from './parse';
+import { appErrorMessage, validationErrorResult, type AppError } from './domain/errors';
+import { completeTaskPlan, pendingTaskFromRow, recurrenceFromRow } from './domain';
 
 export type { ActionLog as ActionLogEntry };
 
@@ -40,39 +45,35 @@ const DEFAULT_PREFERENCES: Record<string, string> = {
   urgency_visibility: 'hide',
 };
 
-function now(): string {
-  return new Date().toISOString();
+export class DomainOperationError extends Error {
+  constructor(readonly appError: AppError) {
+    super(appErrorMessage(appError));
+    this.name = 'DomainOperationError';
+  }
 }
 
-function parseNextOccurrence(rrule: string, fromDate: string): string | null {
-  const parts: Record<string, string> = {};
-  for (const part of rrule.split(';')) {
-    const [key, val] = part.split('=');
-    if (key && val) parts[key] = val;
+function now(): IsoDateTime {
+  const parsed = parseIsoDateTime(new Date().toISOString());
+  if (!parsed.ok) {
+    throw new DomainOperationError({
+      kind: 'invariant_violation',
+      message: 'System clock produced an invalid ISO timestamp.',
+    });
   }
+  return parsed.value;
+}
 
-  const freq = parts['FREQ'];
-  const interval = parseInt(parts['INTERVAL'] || '1', 10);
-  const date = new Date(fromDate);
+function mintTaskId(): MintedTaskId {
+  return unsafeBrand<string, 'MintedTaskId'>(`t_${nanoid(5)}`) as MintedTaskId;
+}
 
-  switch (freq) {
-    case 'DAILY':
-      date.setDate(date.getDate() + interval);
-      break;
-    case 'WEEKLY':
-      date.setDate(date.getDate() + 7 * interval);
-      break;
-    case 'MONTHLY':
-      date.setMonth(date.getMonth() + interval);
-      break;
-    case 'YEARLY':
-      date.setFullYear(date.getFullYear() + interval);
-      break;
-    default:
-      return null;
-  }
+function assertValidRecurrenceState(dueDate: string | null, recurrence: string | null): void {
+  const parsed = recurrenceFromRow(dueDate, recurrence);
+  if (!parsed.ok) throw new DomainOperationError(validationErrorResult(parsed.error));
+}
 
-  return date.toISOString().split('T')[0];
+function throwAppError(error: AppError): never {
+  throw new DomainOperationError(error);
 }
 
 // Mirrors shared/readiness.ts isDeferred for SQL: a task is "not currently
@@ -130,15 +131,20 @@ export class DB {
   }
 
   async addTask(input: TaskCreate): Promise<Task> {
+    const dueDate = input.due_date ?? null;
+    const recurrence = input.recurrence ?? null;
+    assertValidRecurrenceState(dueDate, recurrence);
+
+    const timestamp = now();
     const task: Task = {
-      id: `t_${nanoid(5)}`,
+      id: mintTaskId(),
       title: input.title,
       notes: input.notes ?? null,
       status: 'pending',
-      due_date: input.due_date ?? null,
-      recurrence: input.recurrence ?? null,
-      created_at: now(),
-      updated_at: now(),
+      due_date: dueDate,
+      recurrence,
+      created_at: timestamp,
+      updated_at: timestamp,
       defer_until: null,
       defer_kind: 'none',
       task_type: input.task_type ?? 'action',
@@ -157,32 +163,45 @@ export class DB {
     if (!task) return null;
 
     const timestamp = now();
-    await this.drizzle
-      .update(tasksTable)
-      .set({ status: 'done', focused_until: null, updated_at: timestamp })
-      .where(eq(tasksTable.id, id));
+    const domainTask = pendingTaskFromRow(task);
+    if (!domainTask.ok) throwAppError(domainTask.error);
 
-    const completed = { ...task, status: 'done' as const, focused_until: null, updated_at: timestamp };
+    const plan = completeTaskPlan(domainTask.value, {
+      completedAt: timestamp,
+      nextTaskId: domainTask.value.recurrence.kind === 'recurring' ? mintTaskId() : undefined,
+    });
+    if (!plan.ok) throwAppError(plan.error);
 
-    if (task.recurrence && task.due_date) {
-      const nextDue = parseNextOccurrence(task.recurrence, task.due_date);
-      if (nextDue) {
-        // Carry kickoff_note forward from session_log for recurring tasks
-        const nextKickoff = task.session_log ?? task.kickoff_note ?? null;
-        const next = await this.addTask({
-          title: task.title,
-          notes: task.notes ?? undefined,
-          due_date: nextDue,
-          recurrence: task.recurrence,
-          task_type: task.task_type,
-          project_id: task.project_id ?? undefined,
-          kickoff_note: nextKickoff ?? undefined,
-        });
-        return { completed, next };
+    let completed: Task | null = null;
+    let next: Task | undefined;
+
+    for (const op of plan.value.ops) {
+      switch (op.kind) {
+        case 'task.update': {
+          await this.drizzle
+            .update(tasksTable)
+            .set(op.patch)
+            .where(eq(tasksTable.id, op.id));
+          completed = { ...task, ...op.patch };
+          break;
+        }
+        case 'task.insert':
+          await this.drizzle.insert(tasksTable).values(op.row);
+          next = op.row;
+          break;
+        default:
+          throwAppError({
+            kind: 'invariant_violation',
+            message: `Unexpected op in completeTask plan: ${op.kind}`,
+          });
       }
     }
 
-    return { completed };
+    if (!completed) {
+      throwAppError({ kind: 'invariant_violation', message: 'completeTask plan did not update the completed task.' });
+    }
+
+    return next ? { completed, next } : { completed };
   }
 
   async reopenTask(id: string): Promise<Task | null> {
@@ -218,7 +237,19 @@ export class DB {
   }
 
   async updateTask(id: string, updates: TaskUpdate): Promise<Task | null> {
-    if (updates.status === 'done') throw new Error('Use completeTask() to mark a task done');
+    if (updates.status === 'done') {
+      throwAppError({ kind: 'invalid_transition', message: 'Use completeTask() to mark a task done.' });
+    }
+
+    let existing: Task | null | undefined;
+    if (updates.due_date !== undefined || updates.recurrence !== undefined) {
+      existing = await this.getTask(id);
+      if (!existing) return null;
+
+      const nextDueDate = updates.due_date !== undefined ? updates.due_date : existing.due_date;
+      const nextRecurrence = updates.recurrence !== undefined ? updates.recurrence : existing.recurrence;
+      assertValidRecurrenceState(nextDueDate, nextRecurrence);
+    }
 
     const patch: Partial<typeof tasksTable.$inferInsert> = {};
     if (updates.title !== undefined)        patch.title = updates.title;

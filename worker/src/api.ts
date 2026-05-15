@@ -1,12 +1,20 @@
-import { DB } from './db';
+import { DB, DomainOperationError } from './db';
 import type { ExportPayload } from './db';
 import type { TaskLink, ProjectUpdate } from '@shared/types';
+import { appErrorMessage, appErrorStatus } from './domain/errors';
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+function domainErrorJson(error: DomainOperationError): Response {
+  const body = error.appError.kind === 'validation'
+    ? { error: appErrorMessage(error.appError), details: error.appError.errors }
+    : { error: appErrorMessage(error.appError) };
+  return json(body, appErrorStatus(error.appError));
 }
 
 export async function handleApiRequest(request: Request, url: URL, db: DB): Promise<Response> {
@@ -61,8 +69,13 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   if (method === 'POST' && path === '/api/tasks') {
     const body = await request.json<{ title: string; notes?: string; due_date?: string; recurrence?: string }>();
     if (!body.title) return json({ error: 'title is required' }, 400);
-    const task = await db.addTask(body);
-    return json(task, 201);
+    try {
+      const task = await db.addTask(body);
+      return json(task, 201);
+    } catch (error) {
+      if (error instanceof DomainOperationError) return domainErrorJson(error);
+      throw error;
+    }
   }
 
   // PATCH /api/tasks/:id — update task
@@ -81,9 +94,14 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
       defer_kind?: 'none' | 'until' | 'someday';
       focused_until?: string | null;
     }>();
-    const task = await db.updateTask(singleMatch[1], body);
-    if (!task) return json({ error: 'Not found' }, 404);
-    return json(task);
+    try {
+      const task = await db.updateTask(singleMatch[1], body);
+      if (!task) return json({ error: 'Not found' }, 404);
+      return json(task);
+    } catch (error) {
+      if (error instanceof DomainOperationError) return domainErrorJson(error);
+      throw error;
+    }
   }
 
   // DELETE /api/tasks/:id — hard delete
@@ -96,9 +114,14 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   // POST /api/tasks/:id/complete — complete + handle recurrence
   const completeMatch = path.match(/^\/api\/tasks\/([^/]+)\/complete$/);
   if (method === 'POST' && completeMatch) {
-    const result = await db.completeTask(completeMatch[1]);
-    if (!result) return json({ error: 'Not found' }, 404);
-    return json(result);
+    try {
+      const result = await db.completeTask(completeMatch[1]);
+      if (!result) return json({ error: 'Not found' }, 404);
+      return json(result);
+    } catch (error) {
+      if (error instanceof DomainOperationError) return domainErrorJson(error);
+      throw error;
+    }
   }
 
   // GET /api/projects — list active projects
