@@ -152,13 +152,12 @@ http://127.0.0.1:8787/ui/active
 
 ## Documentation Rule
 
-Per-file documentation lives in `docs/` and mirrors TypeScript source paths.
+Documentation should help a human reader understand the code at the level of intent, invariants, and usage. Prefer reader docs over mechanical mirror docs.
 
-When adding, removing, or significantly changing an exported function, hook, component, class, or module contract in any `.ts` or `.tsx` file, update the corresponding doc file in `docs/`.
+Update behavior/reference docs when user-facing contracts, API shapes, workflow behavior, architecture, or directory structure change. Keep `docs/overview.md`, `docs/api.md`, and `docs/mcp-tools.md` current when those surfaces change.
 
-Examples:
+Per-file documentation still lives in `docs/` and mirrors TypeScript source paths, but it should be updated when it adds real explanatory value: a file has a new responsibility, a module contract changes, important invariants are introduced, or the usage pattern would not be obvious from the code. Do not create or churn per-file docs just because a small helper was exported.
 
-- `worker/src/foo.ts` -> `docs/worker/foo.md`
-- `pwa/src/bar/baz.tsx` -> `docs/pwa/bar/baz.md`
+For substantial work, prefer a narrative slice note or grouped docs update that explains the design: why the module exists, how data flows through it, key invariants, sharp edges, examples, and what remains intentionally out of scope. These notes are often more useful than one-sentence symbol inventories.
 
-Keep `docs/overview.md` current if the architecture or directory structure changes.
+When docs changes are large, put them in a separate commit after implementation/tests where practical. This keeps code review readable while preserving the docs as a guided tour.
