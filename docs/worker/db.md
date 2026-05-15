@@ -30,7 +30,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`getTask(id)`** — Fetches a single task row by primary key.
 
-**`addTask(data)`** — Inserts a new task with a generated nanoid (`defer_kind` defaults to `'none'`). Validates the `due_date`/`recurrence` pair before writing: RRULEs must parse successfully and any recurring task must have a due date. Returns the created `Task`.
+**`addTask(data)`** — Inserts a new task with a generated nanoid (`defer_kind` defaults to `'none'`). Builds the final row and validates it through the task row/domain codec before writing, including RRULE parsing and the invariant that recurring tasks must have a due date. Returns the created `Task`.
 
 **`completeTask(id)`** — Loads the task as a `PendingTaskDomain`, plans completion through `completeTaskPlan`, then executes the generated task update/insert operations. Marks the task `done`, clears focus and deferral fields, and for recurring tasks creates the next occurrence with a computed `due_date` and carries `session_log` forward as `kickoff_note`.
 
@@ -40,7 +40,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`clearDeferTask(id)`** — Resets `defer_kind` to `'none'` and clears `defer_until`. Equivalent to `reopenTask` for currently-pending tasks.
 
-**`updateTask(id, data)`** — Partial update: only columns present in `data` are written (including `focused_until`, `defer_until`, and `defer_kind`). Updates that touch `due_date` or `recurrence` are validated before persistence so malformed RRULEs and recurrence-without-due-date states are rejected. Updates `updated_at` automatically.
+**`updateTask(id, data)`** — Partial update: only columns present in `data` are written (including `focused_until`, `defer_until`, and `defer_kind`). Loads the existing row, applies the patch in memory, validates the final row through the task row/domain codec, then writes it with a fresh `updated_at`.
 
 **`deleteTask(id)`** — Hard-deletes a task row (cascade removes links).
 

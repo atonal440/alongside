@@ -15,7 +15,7 @@ import { unsafeBrand } from '@shared/brand';
 import type { IsoDateTime, MintedTaskId } from './parse';
 import { parseIsoDateTime } from './parse';
 import { appErrorMessage, validationErrorResult, type AppError } from './domain/errors';
-import { completeTaskPlan, pendingTaskFromRow, recurrenceFromRow } from './domain';
+import { completeTaskPlan, pendingTaskFromRow, taskFromRow } from './domain';
 
 export type { ActionLog as ActionLogEntry };
 
@@ -67,8 +67,8 @@ function mintTaskId(): MintedTaskId {
   return unsafeBrand<string, 'MintedTaskId'>(`t_${nanoid(5)}`) as MintedTaskId;
 }
 
-function assertValidRecurrenceState(dueDate: string | null, recurrence: string | null): void {
-  const parsed = recurrenceFromRow(dueDate, recurrence);
+function assertWritableTaskRow(task: Task): void {
+  const parsed = taskFromRow(task);
   if (!parsed.ok) throw new DomainOperationError(validationErrorResult(parsed.error));
 }
 
@@ -133,7 +133,6 @@ export class DB {
   async addTask(input: TaskCreate): Promise<Task> {
     const dueDate = input.due_date ?? null;
     const recurrence = input.recurrence ?? null;
-    assertValidRecurrenceState(dueDate, recurrence);
 
     const timestamp = now();
     const task: Task = {
@@ -153,6 +152,7 @@ export class DB {
       session_log: null,
       focused_until: null,
     };
+    assertWritableTaskRow(task);
 
     await this.drizzle.insert(tasksTable).values(task);
     return task;
@@ -241,16 +241,6 @@ export class DB {
       throwAppError({ kind: 'invalid_transition', message: 'Use completeTask() to mark a task done.' });
     }
 
-    let existing: Task | null | undefined;
-    if (updates.due_date !== undefined || updates.recurrence !== undefined) {
-      existing = await this.getTask(id);
-      if (!existing) return null;
-
-      const nextDueDate = updates.due_date !== undefined ? updates.due_date : existing.due_date;
-      const nextRecurrence = updates.recurrence !== undefined ? updates.recurrence : existing.recurrence;
-      assertValidRecurrenceState(nextDueDate, nextRecurrence);
-    }
-
     const patch: Partial<typeof tasksTable.$inferInsert> = {};
     if (updates.title !== undefined)        patch.title = updates.title;
     if (updates.notes !== undefined)        patch.notes = updates.notes;
@@ -268,6 +258,11 @@ export class DB {
     if (Object.keys(patch).length === 0) return this.getTask(id);
 
     patch.updated_at = now();
+    const existing = await this.getTask(id);
+    if (!existing) return null;
+
+    assertWritableTaskRow({ ...existing, ...patch });
+
     await this.drizzle.update(tasksTable).set(patch).where(eq(tasksTable.id, id));
     return this.getTask(id);
   }
