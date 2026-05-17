@@ -329,7 +329,6 @@ export class DB {
     const timestamp = now();
     const plan = focusTaskPlan(domainTask, {
       focus: { kind: 'focused', until: focusedUntil },
-      now: timestamp,
       updatedAt: timestamp,
     });
     if (!plan.ok) throwAppError(plan.error);
@@ -367,7 +366,6 @@ export class DB {
       const focusedUntil = parseRequiredDateTime('focused_until', updates.focused_until);
       const plan = focusTaskPlan(domainTask, {
         focus: { kind: 'focused', until: focusedUntil },
-        now: timestamp,
         updatedAt: timestamp,
       });
       if (!plan.ok) throwAppError(plan.error);

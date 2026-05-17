@@ -110,35 +110,21 @@ export function clearDeferTaskPlan(
 
 export interface FocusTaskPlanInput {
   focus: FocusedState;
-  now: IsoDateTime;
   updatedAt: IsoDateTime;
 }
 
-function timedDeferHasElapsed(defer: ActiveDeferState, now: IsoDateTime): boolean {
-  return defer.kind === 'until' && Date.parse(defer.until) <= Date.parse(now);
-}
-
 export function focusTaskPlan(task: PendingTaskDomain, input: FocusTaskPlanInput): TaskPlanResult {
-  if (task.defer.kind === 'none') {
-    return ok(singleUpdatePlan(task, {
-      focused_until: input.focus.until,
-      updated_at: input.updatedAt,
-    }));
-  }
-
-  if (!timedDeferHasElapsed(task.defer, input.now)) {
-    return err({
-      kind: 'invalid_transition',
-      message: 'Clear the task deferral before focusing it.',
-    });
-  }
-
-  return ok(singleUpdatePlan(task, {
-    defer_kind: 'none',
-    defer_until: null,
+  const patch: TaskRowUpdatePatch = {
     focused_until: input.focus.until,
     updated_at: input.updatedAt,
-  }));
+  };
+
+  if (task.defer.kind !== 'none') {
+    patch.defer_kind = 'none';
+    patch.defer_until = null;
+  }
+
+  return ok(singleUpdatePlan(task, patch));
 }
 
 export interface ReopenTaskPlanInput {

@@ -24,7 +24,7 @@ Task planner helpers for task lifecycle mutations.
 
 **`clearDeferTaskPlan(task, input)`** — Plans `defer_kind = 'none'` and `defer_until = null` for a pending task.
 
-**`focusTaskPlan(task, input)`** — Plans a focused timestamp for a pending task. Non-deferred tasks are focused directly; elapsed timed deferrals are cleared as stale while focusing. Future timed deferrals and someday deferrals return an `invalid_transition` error instead of becoming hidden-but-focused.
+**`focusTaskPlan(task, input)`** — Plans a focused timestamp for a pending task. If the task is deferred, the plan clears `defer_kind` and `defer_until` while setting focus, because focusing is an explicit bring-forward action.
 
 **`isReopenableTask(task)`** — Type guard for the tasks accepted by `reopenTaskPlan`.
 
