@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { Task } from '@shared/types';
+import type { Project, Task } from '@shared/types';
 import type { Plan, TaskRowPatch } from '../../src/domain/Op';
 import { applyPlan } from '../../src/storage/apply';
+
+const TASK_EXISTS_GUARD_SQL =
+  "INSERT INTO tasks (title,status,created_at,updated_at,defer_kind,task_type) SELECT NULL,'pending','','','none','action' WHERE NOT EXISTS (SELECT 1 FROM tasks WHERE id = ?)";
+
+const PROJECT_EXISTS_GUARD_SQL =
+  "INSERT INTO projects (title,status,created_at,updated_at) SELECT NULL,'active','','' WHERE NOT EXISTS (SELECT 1 FROM projects WHERE id = ?)";
 
 interface FakeStatement {
   sql: string;
@@ -32,18 +38,35 @@ function taskRow(overrides: Partial<Task> = {}): Task {
   };
 }
 
+function projectRow(overrides: Partial<Project> = {}): Project {
+  return {
+    id: 'p_abc12',
+    title: 'Project',
+    notes: null,
+    kickoff_note: null,
+    status: 'active',
+    created_at: '2026-05-15T12:00:00.000Z',
+    updated_at: '2026-05-15T12:00:00.000Z',
+    ...overrides,
+  };
+}
+
 function fakeD1(options: {
   tasks?: string[];
   projects?: string[];
+  deleteTasksBeforeBatch?: string[];
+  deleteProjectsBeforeBatch?: string[];
 } = {}): {
   d1: D1Database;
   prepared: FakeStatement[];
   batches: FakeStatement[][];
+  executedStatements: FakeStatement[];
 } {
   const tasks = new Set(options.tasks ?? []);
   const projects = new Set(options.projects ?? []);
   const prepared: FakeStatement[] = [];
   const batches: FakeStatement[][] = [];
+  const executedStatements: FakeStatement[] = [];
 
   const d1 = {
     prepare(sql: string): FakeStatement {
@@ -69,11 +92,28 @@ function fakeD1(options: {
     },
     async batch(statements: FakeStatement[]) {
       batches.push(statements);
+      for (const id of options.deleteTasksBeforeBatch ?? []) tasks.delete(id);
+      for (const id of options.deleteProjectsBeforeBatch ?? []) projects.delete(id);
+
+      for (const statement of statements) {
+        if (statement.sql === TASK_EXISTS_GUARD_SQL) {
+          const id = String(statement.args[0]);
+          if (!tasks.has(id)) throw new Error('NOT NULL constraint failed: tasks.title');
+          continue;
+        }
+        if (statement.sql === PROJECT_EXISTS_GUARD_SQL) {
+          const id = String(statement.args[0]);
+          if (!projects.has(id)) throw new Error('NOT NULL constraint failed: projects.title');
+          continue;
+        }
+        executedStatements.push(statement);
+      }
+
       return statements.map(() => ({ success: true, meta: {} }) as D1Result);
     },
   } as unknown as D1Database;
 
-  return { d1, prepared, batches };
+  return { d1, prepared, batches, executedStatements };
 }
 
 describe('applyPlan', () => {
@@ -97,6 +137,8 @@ describe('applyPlan', () => {
     expect(result).toEqual({ ok: true, value: { appliedOps: 2 } });
     expect(batches).toHaveLength(1);
     expect(batches[0].map(statement => statement.sql)).toEqual([
+      TASK_EXISTS_GUARD_SQL,
+      TASK_EXISTS_GUARD_SQL,
       'UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?',
       'INSERT INTO tasks (id,title,notes,status,due_date,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     ]);
@@ -113,6 +155,52 @@ describe('applyPlan', () => {
 
     expect(result).toEqual({ ok: false, error: { kind: 'not_found', entity: 'task', id: 't_missing' } });
     expect(batches).toHaveLength(0);
+  });
+
+  it('aborts with not found when an asserted row disappears before the batch mutates', async () => {
+    const { d1, batches, executedStatements } = fakeD1({
+      tasks: ['t_abc12'],
+      deleteTasksBeforeBatch: ['t_abc12'],
+    });
+    const plan: Plan = {
+      assertions: [{ kind: 'task.exists', id: 't_abc12' }],
+      ops: [
+        { kind: 'project.insert', row: projectRow() },
+        {
+          kind: 'task.update',
+          id: 't_abc12',
+          patch: { project_id: 'p_abc12', updated_at: '2026-05-15T13:00:00.000Z' },
+        },
+      ],
+    };
+
+    const result = await applyPlan(d1, plan);
+
+    expect(result).toEqual({ ok: false, error: { kind: 'not_found', entity: 'task', id: 't_abc12' } });
+    expect(batches).toHaveLength(1);
+    expect(batches[0][0].sql).toBe(TASK_EXISTS_GUARD_SQL);
+    expect(executedStatements).toHaveLength(0);
+  });
+
+  it('guards update targets even when a planner omitted the explicit precheck', async () => {
+    const { d1, batches, executedStatements } = fakeD1();
+    const plan: Plan = {
+      assertions: [],
+      ops: [
+        {
+          kind: 'task.update',
+          id: 't_missing',
+          patch: { status: 'done', updated_at: '2026-05-15T13:00:00.000Z' },
+        },
+      ],
+    };
+
+    const result = await applyPlan(d1, plan);
+
+    expect(result).toEqual({ ok: false, error: { kind: 'not_found', entity: 'task', id: 't_missing' } });
+    expect(batches).toHaveLength(1);
+    expect(batches[0][0].sql).toBe(TASK_EXISTS_GUARD_SQL);
+    expect(executedStatements).toHaveLength(0);
   });
 
   it('returns not found for missing project prechecks', async () => {
@@ -145,7 +233,7 @@ describe('applyPlan', () => {
   });
 
   it('only emits allowlisted task update columns', async () => {
-    const { d1, batches } = fakeD1();
+    const { d1, batches } = fakeD1({ tasks: ['t_abc12'] });
     const patch = {
       title: 'Renamed',
       id: 't_hacked',
@@ -159,7 +247,8 @@ describe('applyPlan', () => {
     const result = await applyPlan(d1, plan);
 
     expect(result.ok).toBe(true);
-    expect(batches[0][0].sql).toBe('UPDATE tasks SET title = ? WHERE id = ?');
-    expect(batches[0][0].args).toEqual(['Renamed', 't_abc12']);
+    const updateStatement = batches[0].find(statement => statement.sql.startsWith('UPDATE tasks SET'));
+    expect(updateStatement?.sql).toBe('UPDATE tasks SET title = ? WHERE id = ?');
+    expect(updateStatement?.args).toEqual(['Renamed', 't_abc12']);
   });
 });

@@ -139,12 +139,18 @@ function parseDeferInput(kind: 'until' | 'someday', until?: string | null): Acti
   return { kind: 'until', until: parseRequiredDateTime('until', until) };
 }
 
-function singleTaskUpdatePatchFromPlan(plan: Plan, plannerName: string) {
+function singleTaskUpdatePatchFromPlan(plan: Plan, plannerName: string, expectedTaskId?: string) {
   const [op] = plan.ops;
   if (plan.ops.length !== 1 || !op || op.kind !== 'task.update') {
     throwAppError({
       kind: 'invariant_violation',
       message: `${plannerName} produced an unexpected operation.`,
+    });
+  }
+  if (expectedTaskId !== undefined && op.id !== expectedTaskId) {
+    throwAppError({
+      kind: 'invariant_violation',
+      message: `${plannerName} produced an update for an unexpected task.`,
     });
   }
   return op.patch;
@@ -190,7 +196,7 @@ export class DB {
   }
 
   private async applySingleTaskUpdate(original: Task, plan: Plan): Promise<Task> {
-    singleTaskUpdatePatchFromPlan(plan, 'task transition planner');
+    singleTaskUpdatePatchFromPlan(plan, 'task transition planner', original.id);
     await this.applyPlanOrThrow(plan);
 
     const updated = await this.getTask(original.id);
@@ -381,7 +387,7 @@ export class DB {
         updatedAt: timestamp,
       });
       if (!plan.ok) throwAppError(plan.error);
-      Object.assign(patch, singleTaskUpdatePatchFromPlan(plan.value, 'deferTaskPlan'));
+      Object.assign(patch, singleTaskUpdatePatchFromPlan(plan.value, 'deferTaskPlan', existing.id));
     }
 
     if (updates.focused_until !== undefined && updates.focused_until !== null) {
@@ -392,7 +398,7 @@ export class DB {
         updatedAt: timestamp,
       });
       if (!plan.ok) throwAppError(plan.error);
-      Object.assign(patch, singleTaskUpdatePatchFromPlan(plan.value, 'focusTaskPlan'));
+      Object.assign(patch, singleTaskUpdatePatchFromPlan(plan.value, 'focusTaskPlan', existing.id));
     }
 
     assertWritableTaskRow({ ...existing, ...patch });

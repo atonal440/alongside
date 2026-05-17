@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Task, TaskUpdate } from '@shared/types';
+import type { Plan } from '../src/domain/Op';
 import { DB, DomainOperationError } from '../src/db';
+
+const TASK_EXISTS_GUARD_SQL =
+  "INSERT INTO tasks (title,status,created_at,updated_at,defer_kind,task_type) SELECT NULL,'pending','','','none','action' WHERE NOT EXISTS (SELECT 1 FROM tasks WHERE id = ?)";
 
 function dbWithoutStorage(): DB {
   return new DB({} as ConstructorParameters<typeof DB>[0]);
@@ -60,12 +64,16 @@ function dbWithTask(initialTask: Task): { db: DB; getStoredTask: () => Task } {
   return { db, getStoredTask: () => storedTask };
 }
 
-function d1WithExistingTasks(taskIds: string[]): {
+function d1WithExistingTasks(taskIds: string[], options: {
+  deleteTasksBeforeBatch?: string[];
+} = {}): {
   d1: D1Database;
   batches: FakeStatement[][];
+  executedStatements: FakeStatement[];
 } {
   const tasks = new Set(taskIds);
   const batches: FakeStatement[][] = [];
+  const executedStatements: FakeStatement[] = [];
 
   const d1 = {
     prepare(sql: string): FakeStatement {
@@ -89,11 +97,28 @@ function d1WithExistingTasks(taskIds: string[]): {
     },
     async batch(statements: FakeStatement[]) {
       batches.push(statements);
+      for (const id of options.deleteTasksBeforeBatch ?? []) tasks.delete(id);
+
+      for (const statement of statements) {
+        if (statement.sql === TASK_EXISTS_GUARD_SQL) {
+          const id = String(statement.args[0]);
+          if (!tasks.has(id)) throw new Error('NOT NULL constraint failed: tasks.title');
+          continue;
+        }
+        executedStatements.push(statement);
+      }
+
       return statements.map(() => ({ success: true, meta: {} }) as D1Result);
     },
   } as unknown as D1Database;
 
-  return { d1, batches };
+  return { d1, batches, executedStatements };
+}
+
+function mutationSqls(statements: FakeStatement[]): string[] {
+  return statements
+    .map(statement => statement.sql)
+    .filter(sql => sql !== TASK_EXISTS_GUARD_SQL);
 }
 
 describe('DB task recurrence boundaries', () => {
@@ -138,7 +163,7 @@ describe('DB plan application paths', () => {
       status: 'pending',
     });
     expect(batches).toHaveLength(1);
-    expect(batches[0].map(statement => statement.sql)).toEqual([
+    expect(mutationSqls(batches[0])).toEqual([
       'UPDATE tasks SET status = ?, updated_at = ?, defer_until = ?, defer_kind = ?, focused_until = ? WHERE id = ?',
       'INSERT INTO tasks (id,title,notes,status,due_date,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     ]);
@@ -155,13 +180,14 @@ describe('DB plan application paths', () => {
 
     expect(project.id).toMatch(/^p_[0-9A-Za-z_-]{5,}$/);
     expect(batches).toHaveLength(1);
-    expect(batches[0].map(statement => statement.sql)).toEqual([
+    expect(mutationSqls(batches[0])).toEqual([
       'INSERT INTO projects (id,title,notes,kickoff_note,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)',
       'UPDATE tasks SET updated_at = ?, project_id = ? WHERE id = ?',
       'UPDATE tasks SET updated_at = ?, project_id = ? WHERE id = ?',
     ]);
-    expect(batches[0][1].args.slice(-2)).toEqual([project.id, 't_abc12']);
-    expect(batches[0][2].args.slice(-2)).toEqual([project.id, 't_other1']);
+    const updateStatements = batches[0].filter(statement => statement.sql.startsWith('UPDATE tasks SET'));
+    expect(updateStatements[0].args.slice(-2)).toEqual([project.id, 't_abc12']);
+    expect(updateStatements[1].args.slice(-2)).toEqual([project.id, 't_other1']);
   });
 
   it('does not create a project when an assigned task is missing', async () => {
@@ -170,6 +196,41 @@ describe('DB plan application paths', () => {
 
     await expect(db.createProject({ title: 'Launch' }, ['t_missing'])).rejects.toMatchObject({
       appError: { kind: 'not_found', entity: 'task', id: 't_missing' },
+    });
+    expect(batches).toHaveLength(0);
+  });
+
+  it('does not create a project when an assigned task disappears before the batch mutates', async () => {
+    const { d1, batches, executedStatements } = d1WithExistingTasks(['t_abc12'], {
+      deleteTasksBeforeBatch: ['t_abc12'],
+    });
+    const db = new DB(d1);
+
+    await expect(db.createProject({ title: 'Launch' }, ['t_abc12'])).rejects.toMatchObject({
+      appError: { kind: 'not_found', entity: 'task', id: 't_abc12' },
+    });
+    expect(batches).toHaveLength(1);
+    expect(batches[0][0].sql).toBe(TASK_EXISTS_GUARD_SQL);
+    expect(executedStatements).toHaveLength(0);
+  });
+
+  it('rejects single-task transition plans that target a different task', async () => {
+    const task = taskRow();
+    const { d1, batches } = d1WithExistingTasks([task.id, 't_other1']);
+    const db = new DB(d1);
+    const plan = {
+      assertions: [{ kind: 'task.exists', id: 't_other1' }],
+      ops: [{
+        kind: 'task.update',
+        id: 't_other1',
+        patch: { focused_until: '2026-05-15T16:00:00.000Z', updated_at: '2026-05-15T13:00:00.000Z' },
+      }],
+    } as Plan;
+
+    await expect((db as unknown as {
+      applySingleTaskUpdate(original: Task, plan: Plan): Promise<Task>;
+    }).applySingleTaskUpdate(task, plan)).rejects.toMatchObject({
+      appError: { kind: 'invariant_violation' },
     });
     expect(batches).toHaveLength(0);
   });

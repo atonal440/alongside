@@ -13,6 +13,16 @@ export interface PlanApplier {
   apply(plan: Plan): Promise<ApplyResult>;
 }
 
+interface ExistingRowGuard {
+  entity: 'task' | 'project';
+  id: string;
+}
+
+interface PlannedStatement {
+  statement: D1PreparedStatement;
+  guard?: ExistingRowGuard;
+}
+
 const TASK_INSERT_COLUMNS = [
   'id',
   'title',
@@ -65,6 +75,12 @@ const PROJECT_UPDATE_COLUMNS = [
   'updated_at',
 ] as const satisfies readonly (keyof ProjectRowPatch)[];
 
+const TASK_EXISTS_GUARD_SQL =
+  "INSERT INTO tasks (title,status,created_at,updated_at,defer_kind,task_type) SELECT NULL,'pending','','','none','action' WHERE NOT EXISTS (SELECT 1 FROM tasks WHERE id = ?)";
+
+const PROJECT_EXISTS_GUARD_SQL =
+  "INSERT INTO projects (title,status,created_at,updated_at) SELECT NULL,'active','','' WHERE NOT EXISTS (SELECT 1 FROM projects WHERE id = ?)";
+
 function storageError(message: string, cause: unknown): AppError {
   return { kind: 'storage', message, cause };
 }
@@ -73,38 +89,63 @@ function assertNever(value: never): never {
   throw new Error(`Unhandled plan variant: ${JSON.stringify(value)}`);
 }
 
-async function runPreCheck(d1: D1Database, check: PreCheck): Promise<Result<void, AppError>> {
+async function runExistingRowCheck(d1: D1Database, guard: ExistingRowGuard): Promise<Result<void, AppError>> {
   try {
-    switch (check.kind) {
-      case 'task.exists': {
+    switch (guard.entity) {
+      case 'task': {
         const row = await d1
           .prepare('SELECT id FROM tasks WHERE id = ? LIMIT 1')
-          .bind(check.id)
+          .bind(guard.id)
           .first<{ id: string }>();
-        return row ? ok(undefined) : err({ kind: 'not_found', entity: 'task', id: check.id });
+        return row ? ok(undefined) : err({ kind: 'not_found', entity: 'task', id: guard.id });
       }
-      case 'project.exists': {
+      case 'project': {
         const row = await d1
           .prepare('SELECT id FROM projects WHERE id = ? LIMIT 1')
-          .bind(check.id)
+          .bind(guard.id)
           .first<{ id: string }>();
-        return row ? ok(undefined) : err({ kind: 'not_found', entity: 'project', id: check.id });
+        return row ? ok(undefined) : err({ kind: 'not_found', entity: 'project', id: guard.id });
       }
-      case 'link.blocks_acyclic':
-        return err({
-          kind: 'invariant_violation',
-          message: 'link.blocks_acyclic prechecks are not supported until the link graph slice.',
-        });
-      case 'custom':
-        return err({
-          kind: 'invariant_violation',
-          message: `Custom precheck is not supported by applyPlan: ${check.description}`,
-        });
       default:
-        return assertNever(check);
+        return assertNever(guard.entity);
     }
   } catch (cause) {
-    return err(storageError(`Failed to run ${check.kind} precheck.`, cause));
+    return err(storageError(`Failed to run ${guard.entity} existence check.`, cause));
+  }
+}
+
+async function runPreCheck(d1: D1Database, check: PreCheck): Promise<Result<void, AppError>> {
+  switch (check.kind) {
+    case 'task.exists':
+      return runExistingRowCheck(d1, { entity: 'task', id: check.id });
+    case 'project.exists':
+      return runExistingRowCheck(d1, { entity: 'project', id: check.id });
+    case 'link.blocks_acyclic':
+      return err({
+        kind: 'invariant_violation',
+        message: 'link.blocks_acyclic prechecks are not supported until the link graph slice.',
+      });
+    case 'custom':
+      return err({
+        kind: 'invariant_violation',
+        message: `Custom precheck is not supported by applyPlan: ${check.description}`,
+      });
+    default:
+      return assertNever(check);
+  }
+}
+
+function guardForPreCheck(check: PreCheck): ExistingRowGuard | null {
+  switch (check.kind) {
+    case 'task.exists':
+      return { entity: 'task', id: check.id };
+    case 'project.exists':
+      return { entity: 'project', id: check.id };
+    case 'link.blocks_acyclic':
+    case 'custom':
+      return null;
+    default:
+      return assertNever(check);
   }
 }
 
@@ -139,59 +180,95 @@ function bindUpdate<Patch extends Record<string, unknown>>(
     .bind(...values, id);
 }
 
-function opStatements(d1: D1Database, op: Op): D1PreparedStatement[] {
+function bindExistingRowGuard(d1: D1Database, guard: ExistingRowGuard): PlannedStatement {
+  const sql = guard.entity === 'task' ? TASK_EXISTS_GUARD_SQL : PROJECT_EXISTS_GUARD_SQL;
+  return {
+    statement: d1.prepare(sql).bind(guard.id),
+    guard,
+  };
+}
+
+function guardedStatement(statement: D1PreparedStatement, guard?: ExistingRowGuard): PlannedStatement {
+  return guard ? { statement, guard } : { statement };
+}
+
+function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
   switch (op.kind) {
     case 'task.insert':
-      return [bindInsert(d1, 'tasks', TASK_INSERT_COLUMNS, op.row)];
+      return [guardedStatement(bindInsert(d1, 'tasks', TASK_INSERT_COLUMNS, op.row))];
     case 'task.update': {
+      const guard = { entity: 'task' as const, id: op.id };
       const statement = bindUpdate(d1, 'tasks', 'id', op.id, TASK_UPDATE_COLUMNS, op.patch);
-      return statement ? [statement] : [];
+      return statement ? [bindExistingRowGuard(d1, guard), guardedStatement(statement, guard)] : [];
     }
     case 'task.delete':
-      return [d1.prepare('DELETE FROM tasks WHERE id = ?').bind(op.id)];
+      return [
+        bindExistingRowGuard(d1, { entity: 'task', id: op.id }),
+        guardedStatement(d1.prepare('DELETE FROM tasks WHERE id = ?').bind(op.id), { entity: 'task', id: op.id }),
+      ];
     case 'project.insert':
-      return [bindInsert(d1, 'projects', PROJECT_INSERT_COLUMNS, op.row)];
+      return [guardedStatement(bindInsert(d1, 'projects', PROJECT_INSERT_COLUMNS, op.row))];
     case 'project.update': {
+      const guard = { entity: 'project' as const, id: op.id };
       const statement = bindUpdate(d1, 'projects', 'id', op.id, PROJECT_UPDATE_COLUMNS, op.patch);
-      return statement ? [statement] : [];
+      return statement ? [bindExistingRowGuard(d1, guard), guardedStatement(statement, guard)] : [];
     }
     case 'project.delete':
-      return [d1.prepare('DELETE FROM projects WHERE id = ?').bind(op.id)];
+      return [
+        bindExistingRowGuard(d1, { entity: 'project', id: op.id }),
+        guardedStatement(d1.prepare('DELETE FROM projects WHERE id = ?').bind(op.id), { entity: 'project', id: op.id }),
+      ];
     case 'link.upsert':
       return [
-        d1
-          .prepare('INSERT OR REPLACE INTO task_links (from_task_id,to_task_id,link_type) VALUES (?,?,?)')
-          .bind(op.row.from_task_id, op.row.to_task_id, op.row.link_type),
+        guardedStatement(
+          d1
+            .prepare('INSERT OR REPLACE INTO task_links (from_task_id,to_task_id,link_type) VALUES (?,?,?)')
+            .bind(op.row.from_task_id, op.row.to_task_id, op.row.link_type),
+        ),
       ];
     case 'link.delete':
       return [
-        d1
-          .prepare('DELETE FROM task_links WHERE from_task_id = ? AND to_task_id = ? AND link_type = ?')
-          .bind(op.from, op.to, op.linkType),
+        guardedStatement(
+          d1
+            .prepare('DELETE FROM task_links WHERE from_task_id = ? AND to_task_id = ? AND link_type = ?')
+            .bind(op.from, op.to, op.linkType),
+        ),
       ];
     case 'pref.upsert':
       return [
-        d1
-          .prepare('INSERT OR REPLACE INTO user_preferences (key,value) VALUES (?,?)')
-          .bind(op.entry.key, op.entry.value),
+        guardedStatement(
+          d1
+            .prepare('INSERT OR REPLACE INTO user_preferences (key,value) VALUES (?,?)')
+            .bind(op.entry.key, op.entry.value),
+        ),
       ];
     case 'log.insert':
       return [
-        d1
-          .prepare('INSERT INTO action_log (tool_name,task_id,title,detail,created_at) VALUES (?,?,?,?,?)')
-          .bind(op.entry.tool_name, op.entry.task_id, op.entry.title, op.entry.detail, op.entry.created_at),
+        guardedStatement(
+          d1
+            .prepare('INSERT INTO action_log (tool_name,task_id,title,detail,created_at) VALUES (?,?,?,?,?)')
+            .bind(op.entry.tool_name, op.entry.task_id, op.entry.title, op.entry.detail, op.entry.created_at),
+        ),
       ];
     case 'wipe':
       return [
-        d1.prepare('DELETE FROM task_links'),
-        d1.prepare('DELETE FROM action_log'),
-        d1.prepare('DELETE FROM tasks'),
-        d1.prepare('DELETE FROM projects'),
-        d1.prepare('DELETE FROM user_preferences'),
+        guardedStatement(d1.prepare('DELETE FROM task_links')),
+        guardedStatement(d1.prepare('DELETE FROM action_log')),
+        guardedStatement(d1.prepare('DELETE FROM tasks')),
+        guardedStatement(d1.prepare('DELETE FROM projects')),
+        guardedStatement(d1.prepare('DELETE FROM user_preferences')),
       ];
     default:
       return assertNever(op);
   }
+}
+
+async function findMissingGuard(d1: D1Database, guards: ExistingRowGuard[]): Promise<AppError | null> {
+  for (const guard of guards) {
+    const checked = await runExistingRowCheck(d1, guard);
+    if (!checked.ok) return checked.error;
+  }
+  return null;
 }
 
 export async function applyPlan(d1: D1Database, plan: Plan): Promise<ApplyResult> {
@@ -200,11 +277,26 @@ export async function applyPlan(d1: D1Database, plan: Plan): Promise<ApplyResult
     if (!checked.ok) return checked;
   }
 
+  if (plan.ops.length === 0) return ok({ appliedOps: 0 });
+
+  let guards: ExistingRowGuard[] = [];
   try {
-    const statements = plan.ops.flatMap(op => opStatements(d1, op));
+    const assertionGuards = plan.assertions.flatMap(assertion => {
+      const guard = guardForPreCheck(assertion);
+      return guard ? [bindExistingRowGuard(d1, guard)] : [];
+    });
+    const plannedStatements = [
+      ...assertionGuards,
+      ...plan.ops.flatMap(op => opStatements(d1, op)),
+    ];
+    const statements = plannedStatements.map(item => item.statement);
+    guards = plannedStatements.flatMap(item => item.guard ? [item.guard] : []);
+
     if (statements.length > 0) await d1.batch(statements);
     return ok({ appliedOps: plan.ops.length });
   } catch (cause) {
+    const missing = await findMissingGuard(d1, guards);
+    if (missing) return err(missing);
     return err(storageError('Failed to apply mutation plan.', cause));
   }
 }
