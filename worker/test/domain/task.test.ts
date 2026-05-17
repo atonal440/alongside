@@ -5,7 +5,13 @@ import type { Task } from '@shared/types';
 import type { IsoDateTime, MintedTaskId } from '../../src/parse';
 import { parseIsoDateTime } from '@shared/parse';
 import type { AppError } from '../../src/domain/errors';
-import { completeTaskPlan } from '../../src/domain/ops/task';
+import {
+  clearDeferTaskPlan,
+  completeTaskPlan,
+  deferTaskPlan,
+  focusTaskPlan,
+  reopenTaskPlan,
+} from '../../src/domain/ops/task';
 import { pendingTaskFromRow, recurrenceFromRow, taskFromRow } from '../../src/domain/task';
 
 function expectOk<T, E>(result: Result<T, E>): T {
@@ -81,6 +87,81 @@ describe('task recurrence domain codec', () => {
   });
 });
 
+describe('task defer/focus lifecycle codec', () => {
+  it('rejects defer_until when defer_kind is none', () => {
+    const result = taskFromRow(taskRow({
+      defer_kind: 'none',
+      defer_until: '2026-05-16T09:00:00.000Z',
+    }));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContainEqual(expect.objectContaining({
+        path: ['defer_until'],
+        code: 'invalid_state',
+      }));
+    }
+  });
+
+  it('rejects defer_until when defer_kind is someday', () => {
+    const result = taskFromRow(taskRow({
+      defer_kind: 'someday',
+      defer_until: '2026-05-16T09:00:00.000Z',
+    }));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContainEqual(expect.objectContaining({
+        path: ['defer_until'],
+        code: 'invalid_state',
+      }));
+    }
+  });
+
+  it('rejects until deferrals without a timestamp', () => {
+    const result = taskFromRow(taskRow({ defer_kind: 'until', defer_until: null }));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContainEqual(expect.objectContaining({
+        path: ['defer_until'],
+        code: 'required',
+      }));
+    }
+  });
+
+  it('rejects focused deferred tasks', () => {
+    const result = taskFromRow(taskRow({
+      defer_kind: 'someday',
+      focused_until: '2026-05-16T09:00:00.000Z',
+    }));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContainEqual(expect.objectContaining({
+        path: ['focused_until'],
+        code: 'invalid_state',
+      }));
+    }
+  });
+
+  it('rejects done tasks with active focus or deferral fields', () => {
+    const result = taskFromRow(taskRow({
+      status: 'done',
+      defer_kind: 'someday',
+      focused_until: '2026-05-16T09:00:00.000Z',
+    }));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toEqual(expect.arrayContaining([
+        expect.objectContaining({ path: ['defer_kind'], code: 'invalid_state' }),
+        expect.objectContaining({ path: ['focused_until'], code: 'invalid_state' }),
+      ]));
+    }
+  });
+});
+
 describe('completeTaskPlan', () => {
   it('plans a one-shot completion as a single task update', () => {
     const task = expectOk(pendingTaskFromRow(taskRow()));
@@ -141,5 +222,112 @@ describe('completeTaskPlan', () => {
     if (!result.ok) {
       expect((result.error as AppError).kind).toBe('invalid_transition');
     }
+  });
+});
+
+describe('defer/focus lifecycle planners', () => {
+  it('plans a timed deferral and clears focus atomically', () => {
+    const task = expectOk(pendingTaskFromRow(taskRow({
+      focused_until: '2026-05-15T16:00:00.000Z',
+    })));
+    const until = expectOk(parseIsoDateTime('2026-05-16T09:00:00.000Z'));
+    const plan = expectOk(deferTaskPlan(task, {
+      defer: { kind: 'until', until },
+      updatedAt: timestamp(),
+    }));
+
+    expect(plan.ops).toEqual([{
+      kind: 'task.update',
+      id: 't_abc12',
+      patch: {
+        defer_kind: 'until',
+        defer_until: '2026-05-16T09:00:00.000Z',
+        focused_until: null,
+        updated_at: '2026-05-15T13:00:00.000Z',
+      },
+    }]);
+  });
+
+  it('plans clearing a deferral without touching focus', () => {
+    const task = expectOk(pendingTaskFromRow(taskRow({ defer_kind: 'someday' })));
+    const plan = expectOk(clearDeferTaskPlan(task, { updatedAt: timestamp() }));
+
+    expect(plan.ops).toEqual([{
+      kind: 'task.update',
+      id: 't_abc12',
+      patch: {
+        defer_kind: 'none',
+        defer_until: null,
+        updated_at: '2026-05-15T13:00:00.000Z',
+      },
+    }]);
+  });
+
+  it('plans focus for an active pending task', () => {
+    const task = expectOk(pendingTaskFromRow(taskRow()));
+    const focusedUntil = expectOk(parseIsoDateTime('2026-05-15T16:00:00.000Z'));
+    const plan = expectOk(focusTaskPlan(task, {
+      focus: { kind: 'focused', until: focusedUntil },
+      updatedAt: timestamp(),
+    }));
+
+    expect(plan.ops).toEqual([{
+      kind: 'task.update',
+      id: 't_abc12',
+      patch: {
+        focused_until: '2026-05-15T16:00:00.000Z',
+        updated_at: '2026-05-15T13:00:00.000Z',
+      },
+    }]);
+  });
+
+  it('rejects focusing a deferred task', () => {
+    const task = expectOk(pendingTaskFromRow(taskRow({ defer_kind: 'someday' })));
+    const focusedUntil = expectOk(parseIsoDateTime('2026-05-15T16:00:00.000Z'));
+    const result = focusTaskPlan(task, {
+      focus: { kind: 'focused', until: focusedUntil },
+      updatedAt: timestamp(),
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect((result.error as AppError).kind).toBe('invalid_transition');
+    }
+  });
+
+  it('plans reopening a done task as pending and active', () => {
+    const task = expectOk(taskFromRow(taskRow({ status: 'done' })));
+    if (task.lifecycle !== 'done') throw new Error('Expected done task.');
+
+    const plan = expectOk(reopenTaskPlan(task, { updatedAt: timestamp() }));
+
+    expect(plan.ops).toEqual([{
+      kind: 'task.update',
+      id: 't_abc12',
+      patch: {
+        status: 'pending',
+        defer_kind: 'none',
+        defer_until: null,
+        focused_until: null,
+        updated_at: '2026-05-15T13:00:00.000Z',
+      },
+    }]);
+  });
+
+  it('plans reopening a deferred pending task as active', () => {
+    const task = expectOk(pendingTaskFromRow(taskRow({ defer_kind: 'someday' })));
+    const plan = expectOk(reopenTaskPlan(task, { updatedAt: timestamp() }));
+
+    expect(plan.ops).toEqual([{
+      kind: 'task.update',
+      id: 't_abc12',
+      patch: {
+        status: 'pending',
+        defer_kind: 'none',
+        defer_until: null,
+        focused_until: null,
+        updated_at: '2026-05-15T13:00:00.000Z',
+      },
+    }]);
   });
 });

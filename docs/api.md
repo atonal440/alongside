@@ -120,9 +120,9 @@ Full field reference for the task object returned by all endpoints:
 | `project_id` | `string` | yes | FK to projects table |
 | `kickoff_note` | `string` | yes | Forward-looking re-entry note |
 | `session_log` | `string` | yes | Appended session history |
-| `defer_until` | `string` | yes | ISO 8601 timestamp; meaningful only when `defer_kind = 'until'` |
+| `defer_until` | `string` | yes | ISO 8601 timestamp; required when `defer_kind = 'until'`, otherwise null |
 | `defer_kind` | `string` | no | `none` (default), `until` (timed), or `someday` (indefinite) |
-| `focused_until` | `string` | yes | ISO 8601 timestamp; task is "focused" while now < this value |
+| `focused_until` | `string` | yes | ISO 8601 timestamp; task is "focused" while now < this value. Deferred and done tasks must keep this null |
 | `created_at` | `string` | no | ISO 8601 datetime |
 | `updated_at` | `string` | no | ISO 8601 datetime |
 

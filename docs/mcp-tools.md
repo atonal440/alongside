@@ -159,8 +159,8 @@ Hide a task. Use `kind: 'until'` (with a future ISO date in `until`) to defer te
 | Name | Type | Required | Description |
 |---|---|---|---|
 | `task_id` | `string` | yes | |
-| `kind` | `'until'\|'someday'` | yes | `'until'` requires `until`; `'someday'` ignores it. |
-| `until` | `string` | when `kind='until'` | ISO 8601 date when task should resurface. |
+| `kind` | `'until'\|'someday'` | yes | `'until'` requires `until`; `'someday'` rejects it. |
+| `until` | `string` | when `kind='until'` | ISO 8601 timestamp when task should resurface. |
 
 **Returns:** `{ ...Task, action_log_entry }`
 
@@ -168,13 +168,28 @@ Hide a task. Use `kind: 'until'` (with a future ISO date in `until`) to defer te
 
 ### `reopen_task`
 
-Revert a completed or deferred task back to `pending`. Clears `defer_kind`/`defer_until`.
+Revert a completed or deferred task back to active `pending`. Clears `defer_kind`/`defer_until` and `focused_until`.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |---|---|---|---|
 | `task_id` | `string` | yes | |
+
+**Returns:** `{ ...Task, action_log_entry }`
+
+---
+
+### `focus_task`
+
+Put a non-deferred pending task front-of-mind for a bounded time window. Deferred tasks must be reopened before they can be focused.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `task_id` | `string` | yes | |
+| `hours` | `number` | no | Positive finite number, maximum 24. Defaults to 3. |
 
 **Returns:** `{ ...Task, action_log_entry }`
 

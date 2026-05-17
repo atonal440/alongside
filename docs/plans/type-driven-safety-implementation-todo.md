@@ -21,9 +21,16 @@ This is the handoff checklist for implementing `docs/plans/type-driven-safety.md
 - [x] Parse recurrence at worker write boundaries before persistence.
 - [x] Add tests for recurring completion and invalid RRULE rejection.
 
+## Completed Slice: Defer, Focus, and Task Lifecycle
+
+- [x] Tighten `taskFromRow` so impossible defer/focus/lifecycle row combinations are rejected instead of normalized.
+- [x] Add planners for defer, clear defer, focus, and reopen transitions.
+- [x] Route `DB.deferTask`, `DB.clearDeferTask`, `DB.focusTask`, and `DB.reopenTask` through the task lifecycle planners.
+- [x] Cap and parse MCP `focus_task.hours` before computing `focused_until`.
+- [x] Add regression tests for defer/focus invariants and transition plans.
+
 ## Later Slices
 
-- [ ] Defer + focus lifecycle unions.
 - [ ] `Op`/`Plan`/`apply` execution path.
 - [ ] Link domain and dependency cycle checks.
 - [ ] REST + UI route schemas.

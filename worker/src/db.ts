@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, ne, inArray, isNull, lte, or, asc, desc, gt, and, sql } from 'drizzle-orm';
+import { eq, ne, inArray, lte, or, asc, desc, gt, and, sql } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import {
   tasks as tasksTable,
@@ -10,12 +10,22 @@ import {
   actionLog as actionLogTable,
 } from '@shared/schema';
 import type { Task, Project, TaskLink, ActionLog, TaskCreate, TaskUpdate, ProjectCreate, ProjectUpdate } from '@shared/types';
-import { isFocused, readinessScore } from '@shared/readiness';
+import { readinessScore } from '@shared/readiness';
 import { unsafeBrand } from '@shared/brand';
+import type { ActiveDeferState, Plan, PendingTaskDomain, TaskDomain } from './domain';
 import type { IsoDateTime, MintedTaskId } from './parse';
 import { parseIsoDateTime } from './parse';
 import { appErrorMessage, validationErrorResult, type AppError } from './domain/errors';
-import { completeTaskPlan, pendingTaskFromRow, taskFromRow } from './domain';
+import {
+  clearDeferTaskPlan,
+  completeTaskPlan,
+  deferTaskPlan,
+  focusTaskPlan,
+  isReopenableTask,
+  pendingTaskFromRow,
+  reopenTaskPlan,
+  taskFromRow,
+} from './domain';
 
 export type { ActionLog as ActionLogEntry };
 
@@ -78,14 +88,49 @@ function throwAppError(error: AppError): never {
 
 // Mirrors shared/readiness.ts isDeferred for SQL: a task is "not currently
 // deferred" if its kind is 'none', or kind = 'until' with a non-future date.
-function notDeferredCondition(nowIso: string) {
+// Invalid timed deferrals without defer_until are not treated as actionable.
+function notDeferredCondition(nowIso: IsoDateTime) {
   return or(
     eq(tasksTable.defer_kind, 'none'),
-    and(
-      eq(tasksTable.defer_kind, 'until'),
-      or(isNull(tasksTable.defer_until), lte(tasksTable.defer_until, nowIso)),
-    ),
+    and(eq(tasksTable.defer_kind, 'until'), lte(tasksTable.defer_until, nowIso)),
   );
+}
+
+function withPath(path: string, errors: AppError): AppError {
+  if (errors.kind !== 'validation') return errors;
+  return validationErrorResult(errors.errors.map(error => ({
+    ...error,
+    path: [path, ...error.path],
+  })));
+}
+
+function parseRequiredDateTime(path: string, input: string): IsoDateTime {
+  const parsed = parseIsoDateTime(input);
+  if (!parsed.ok) throwAppError(withPath(path, validationErrorResult(parsed.error)));
+  return parsed.value;
+}
+
+function parseDeferInput(kind: 'until' | 'someday', until?: string | null): ActiveDeferState {
+  if (kind === 'someday') {
+    if (until !== undefined && until !== null) {
+      throwAppError(validationErrorResult([{
+        path: ['until'],
+        code: 'invalid_state',
+        message: 'until must be omitted when kind is someday.',
+      }]));
+    }
+    return { kind: 'someday' };
+  }
+
+  if (!until) {
+    throwAppError(validationErrorResult([{
+      path: ['until'],
+      code: 'required',
+      message: 'until is required when kind is until.',
+    }]));
+  }
+
+  return { kind: 'until', until: parseRequiredDateTime('until', until) };
 }
 
 
@@ -94,6 +139,37 @@ export class DB {
 
   constructor(private d1: D1Database) {
     this.drizzle = drizzle(d1);
+  }
+
+  private parseTaskDomain(row: Task): TaskDomain {
+    const parsed = taskFromRow(row);
+    if (!parsed.ok) throwAppError(validationErrorResult(parsed.error));
+    return parsed.value;
+  }
+
+  private parsePendingTaskDomain(row: Task): PendingTaskDomain {
+    const parsed = pendingTaskFromRow(row);
+    if (!parsed.ok) throwAppError(parsed.error);
+    return parsed.value;
+  }
+
+  private async applySingleTaskUpdate(original: Task, plan: Plan): Promise<Task> {
+    const [op] = plan.ops;
+    if (plan.ops.length !== 1 || !op || op.kind !== 'task.update') {
+      throwAppError({
+        kind: 'invariant_violation',
+        message: 'Expected a single task.update operation.',
+      });
+    }
+
+    await this.drizzle
+      .update(tasksTable)
+      .set(op.patch)
+      .where(eq(tasksTable.id, op.id));
+
+    const updated = await this.getTask(original.id);
+    if (!updated) throwAppError({ kind: 'not_found', entity: 'task', id: original.id });
+    return updated;
   }
 
   // ── Tasks ──────────────────────────────────────────────────────────────────
@@ -205,35 +281,57 @@ export class DB {
   }
 
   async reopenTask(id: string): Promise<Task | null> {
-    const timestamp = now();
-    await this.drizzle
-      .update(tasksTable)
-      .set({ status: 'pending', defer_kind: 'none', defer_until: null, updated_at: timestamp })
-      .where(eq(tasksTable.id, id));
-    return this.getTask(id);
+    const task = await this.getTask(id);
+    if (!task) return null;
+
+    const domainTask = this.parseTaskDomain(task);
+    if (!isReopenableTask(domainTask)) {
+      throwAppError({
+        kind: 'invalid_transition',
+        message: 'Only done or deferred pending tasks can be reopened.',
+      });
+    }
+
+    const plan = reopenTaskPlan(domainTask, { updatedAt: now() });
+    if (!plan.ok) throwAppError(plan.error);
+    return this.applySingleTaskUpdate(task, plan.value);
   }
 
   async deferTask(id: string, kind: 'until' | 'someday', until?: string | null): Promise<Task | null> {
-    const timestamp = now();
-    await this.drizzle
-      .update(tasksTable)
-      .set({
-        defer_kind: kind,
-        defer_until: kind === 'until' ? (until ?? null) : null,
-        focused_until: null,
-        updated_at: timestamp,
-      })
-      .where(eq(tasksTable.id, id));
-    return this.getTask(id);
+    const task = await this.getTask(id);
+    if (!task) return null;
+
+    const domainTask = this.parsePendingTaskDomain(task);
+    const plan = deferTaskPlan(domainTask, {
+      defer: parseDeferInput(kind, until),
+      updatedAt: now(),
+    });
+    if (!plan.ok) throwAppError(plan.error);
+    return this.applySingleTaskUpdate(task, plan.value);
   }
 
   async clearDeferTask(id: string): Promise<Task | null> {
-    const timestamp = now();
-    await this.drizzle
-      .update(tasksTable)
-      .set({ defer_kind: 'none', defer_until: null, updated_at: timestamp })
-      .where(eq(tasksTable.id, id));
-    return this.getTask(id);
+    const task = await this.getTask(id);
+    if (!task) return null;
+
+    const domainTask = this.parsePendingTaskDomain(task);
+    const plan = clearDeferTaskPlan(domainTask, { updatedAt: now() });
+    if (!plan.ok) throwAppError(plan.error);
+    return this.applySingleTaskUpdate(task, plan.value);
+  }
+
+  async focusTask(id: string, focusedUntilInput: string): Promise<Task | null> {
+    const task = await this.getTask(id);
+    if (!task) return null;
+
+    const domainTask = this.parsePendingTaskDomain(task);
+    const focusedUntil = parseRequiredDateTime('focused_until', focusedUntilInput);
+    const plan = focusTaskPlan(domainTask, {
+      focus: { kind: 'focused', until: focusedUntil },
+      updatedAt: now(),
+    });
+    if (!plan.ok) throwAppError(plan.error);
+    return this.applySingleTaskUpdate(task, plan.value);
   }
 
   async updateTask(id: string, updates: TaskUpdate): Promise<Task | null> {

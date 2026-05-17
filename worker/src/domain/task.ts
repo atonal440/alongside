@@ -69,6 +69,10 @@ export type DeferredPendingTaskDomain = PendingTaskDomain & {
   defer: Exclude<DeferState, { kind: 'none' }>;
 };
 
+export type NonDeferredPendingTaskDomain = PendingTaskDomain & {
+  defer: { kind: 'none' };
+};
+
 export type DoneTaskDomain = TaskBase & {
   lifecycle: 'done';
   status: DoneTaskStatus;
@@ -116,8 +120,22 @@ function nullableProjectId(path: string, input: string | null): Result<ProjectId
 function deferStateFromRow(kind: DeferKind, until: IsoDateTime | null): Result<DeferState, ValidationError[]> {
   switch (kind as string) {
     case 'none':
+      if (until !== null) {
+        return err([{
+          path: ['defer_until'],
+          code: 'invalid_state',
+          message: 'defer_until must be null when defer_kind is none.',
+        }]);
+      }
       return ok({ kind: 'none' });
     case 'someday':
+      if (until !== null) {
+        return err([{
+          path: ['defer_until'],
+          code: 'invalid_state',
+          message: 'defer_until must be null when defer_kind is someday.',
+        }]);
+      }
       return ok({ kind: 'someday' });
     case 'until':
       return until
@@ -213,6 +231,39 @@ export function taskFromRow(row: Task): Result<TaskDomain, ValidationError[]> {
   const focusedUntil = nullableIsoDateTime('focused_until', row.focused_until);
   if (!focusedUntil.ok) errors.push(...focusedUntil.error);
 
+  const defer = deferKind.ok && deferUntil.ok
+    ? deferStateFromRow(deferKind.value, deferUntil.value)
+    : null;
+  if (defer && !defer.ok) errors.push(...defer.error);
+
+  const focus = focusedUntil.ok ? focusFromRow(focusedUntil.value) : null;
+
+  if (status.ok && defer?.ok && focus) {
+    const parsedStatus = status.value as TaskStatus;
+    if ((parsedStatus as string) === 'done') {
+      if (defer.value.kind !== 'none') {
+        errors.push({
+          path: ['defer_kind'],
+          code: 'invalid_state',
+          message: 'Done tasks cannot be deferred.',
+        });
+      }
+      if (focus.kind !== 'unfocused') {
+        errors.push({
+          path: ['focused_until'],
+          code: 'invalid_state',
+          message: 'Done tasks cannot be focused.',
+        });
+      }
+    } else if (defer.value.kind !== 'none' && focus.kind === 'focused') {
+      errors.push({
+        path: ['focused_until'],
+        code: 'invalid_state',
+        message: 'focused_until must be null when a task is deferred.',
+      });
+    }
+  }
+
   if (
     !id.ok ||
     !title.ok ||
@@ -229,6 +280,9 @@ export function taskFromRow(row: Task): Result<TaskDomain, ValidationError[]> {
     !deferUntil.ok ||
     !deferKind.ok ||
     !focusedUntil.ok ||
+    !defer ||
+    !defer.ok ||
+    !focus ||
     errors.length > 0
   ) {
     return err(errors);
@@ -259,15 +313,12 @@ export function taskFromRow(row: Task): Result<TaskDomain, ValidationError[]> {
     });
   }
 
-  const defer = deferStateFromRow(deferKind.value, deferUntil.value);
-  if (!defer.ok) return err(defer.error);
-
   return ok({
     ...base,
     lifecycle: 'pending',
     status: parsedStatus as PendingTaskStatus,
     defer: defer.value,
-    focus: focusFromRow(focusedUntil.value),
+    focus,
   });
 }
 
@@ -275,7 +326,7 @@ export function pendingTaskFromRow(row: Task): Result<PendingTaskDomain, AppErro
   const parsed = taskFromRow(row);
   if (!parsed.ok) return err(validationErrorResult(parsed.error));
   if (parsed.value.lifecycle !== 'pending') {
-    return err({ kind: 'invalid_transition', message: 'Only pending tasks can be completed.' });
+    return err({ kind: 'invalid_transition', message: 'Only pending tasks can use this transition.' });
   }
   return ok(parsed.value);
 }
