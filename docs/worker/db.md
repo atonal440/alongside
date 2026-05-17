@@ -32,15 +32,15 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`addTask(data)`** — Inserts a new task with a generated nanoid (`defer_kind` defaults to `'none'`). Builds the final row and validates it through the task row/domain codec before writing, including RRULE parsing and the invariant that recurring tasks must have a due date. Returns the created `Task`.
 
-**`completeTask(id)`** — Loads the task as a `PendingTaskDomain`, plans completion through `completeTaskPlan`, then executes the generated task update/insert operations. Marks the task `done`, clears focus and deferral fields, and for recurring tasks creates the next occurrence with a computed `due_date` and carries `session_log` forward as `kickoff_note`.
+**`completeTask(id)`** — Loads the task as a `PendingTaskDomain`, plans completion through `completeTaskPlan`, then applies the plan through `applyPlan`. Marks the task `done`, clears focus and deferral fields, and for recurring tasks creates the next occurrence with a computed `due_date` and carries `session_log` forward as `kickoff_note`.
 
-**`reopenTask(id)`** — Loads the row as `TaskDomain`, accepts only done tasks or deferred pending tasks, then plans the reopen transition. Writes `status = 'pending'`, clears deferral, clears focus, and refreshes `updated_at`.
+**`reopenTask(id)`** — Loads the row as `TaskDomain`, accepts only done tasks or deferred pending tasks, then applies the reopen plan through `applyPlan`. Writes `status = 'pending'`, clears deferral, clears focus, and refreshes `updated_at`.
 
-**`deferTask(id, kind, until?)`** — Loads the row as `PendingTaskDomain`, parses the defer input, and plans the deferral transition. For `'until'`, `until` is required and must be an ISO timestamp; for `'someday'`, `until` must be omitted. Both variants clear `focused_until`.
+**`deferTask(id, kind, until?)`** — Loads the row as `PendingTaskDomain`, parses the defer input, and applies the deferral plan through `applyPlan`. For `'until'`, `until` is required and must be an ISO timestamp; for `'someday'`, `until` must be omitted. Both variants clear `focused_until`.
 
-**`clearDeferTask(id)`** — Loads the row as `PendingTaskDomain`, then plans `defer_kind = 'none'` and `defer_until = null`.
+**`clearDeferTask(id)`** — Loads the row as `PendingTaskDomain`, then applies the clear-defer plan through `applyPlan`.
 
-**`focusTask(id, focusedUntil)`** — Loads the row as `PendingTaskDomain`, parses the focus timestamp, and plans the focus transition. Any existing pending deferral is cleared while focusing.
+**`focusTask(id, focusedUntil)`** — Loads the row as `PendingTaskDomain`, parses the focus timestamp, and applies the focus plan through `applyPlan`. Any existing pending deferral is cleared while focusing.
 
 **`updateTask(id, data)`** — Partial update: only columns present in `data` are written (including `focused_until`, `defer_until`, and `defer_kind`). Loads the existing row, routes non-null `focused_until` through `focusTaskPlan`, applies the patch in memory, validates the final row through the task row/domain codec, then writes it with a fresh `updated_at`.
 
@@ -54,7 +54,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 ## Project operations
 
-**`createProject(data)`** — Inserts a new project row (with `notes` and `kickoff_note`) and returns it.
+**`createProject(data, taskIds?)`** — Mints a project id, builds a project row, and applies `createProjectPlan`. When task ids are provided, the plan asserts each unique task exists before inserting the project and assigning those tasks in the same batch.
 
 **`getProject(id)`** — Fetches a single project by primary key.
 

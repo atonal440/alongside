@@ -506,22 +506,24 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'create_project': {
+      const taskIds = args.task_ids as string[] | undefined;
+      const linkedTaskCount = new Set(taskIds ?? []).size;
       const project = await db.createProject({
         title: args.title as string,
         notes: args.notes as string | undefined,
         kickoff_note: args.kickoff_note as string | undefined,
+      }, taskIds ?? []);
+
+      const log = await db.logAction({
+        tool_name: 'create_project',
+        title: project.title,
+        detail: linkedTaskCount > 0 ? `${linkedTaskCount} tasks` : undefined,
       });
-
-      // Associate any provided task IDs with the new project
-      const taskIds = args.task_ids as string[] | undefined;
-      if (taskIds && taskIds.length > 0) {
-        await Promise.all(
-          taskIds.map(id => db.updateTask(id, { project_id: project.id }))
-        );
-      }
-
-      const log = await db.logAction({ tool_name: 'create_project', title: project.title, detail: taskIds?.length ? `${taskIds.length} tasks` : undefined });
-      return { project, linked_task_count: taskIds?.length ?? 0, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
+      return {
+        project,
+        linked_task_count: linkedTaskCount,
+        action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail },
+      };
     }
 
     case 'get_project_context': {

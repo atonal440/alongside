@@ -29,9 +29,15 @@ This is the handoff checklist for implementing `docs/plans/type-driven-safety.md
 - [x] Cap and parse MCP `focus_task.hours` before computing `focused_until`.
 - [x] Add regression tests for defer/focus invariants and transition plans.
 
+## Completed Slice: Op Plan + Apply
+
+- [x] Implement `worker/src/storage/apply.ts` with typed prechecks and D1 batch execution for `Plan` values.
+- [x] Route `DB.completeTask` and single-task lifecycle transitions through `applyPlan`.
+- [x] Add `createProjectPlan` and route project creation with task assignment through one plan batch.
+- [x] Add storage executor tests and DB regression tests for recurring completion and project assignment prechecks.
+
 ## Later Slices
 
-- [ ] `Op`/`Plan`/`apply` execution path.
 - [ ] Link domain and dependency cycle checks.
 - [ ] REST + UI route schemas.
 - [ ] MCP typed registry.
