@@ -79,7 +79,7 @@ SESSION CLOSE: If session_log is "ask_at_end", offer to write one. If "auto_gene
 PREFERENCES: When the user states a preference, call update_preference immediately — no confirmation needed.
 `.trim();
 
-const TOOLS = [
+export const TOOLS = [
   {
     name: 'start_session',
     description: 'Call at the start of every session. Returns ready tasks, preferences, and session instructions.',
@@ -176,13 +176,13 @@ const TOOLS = [
   },
   {
     name: 'defer_task',
-    description: 'Hides a task. Use kind="until" with an ISO date to defer temporarily, or kind="someday" to defer indefinitely.',
+    description: 'Hides a task. Use kind="until" with an ISO timestamp to defer temporarily, or kind="someday" to defer indefinitely.',
     inputSchema: {
       type: 'object',
       properties: {
         task_id: { type: 'string' },
-        kind: { type: 'string', enum: ['until', 'someday'], description: '"until" reappears at the given date; "someday" hides indefinitely.' },
-        until: { type: 'string', description: 'ISO 8601 date. Required when kind="until".' },
+        kind: { type: 'string', enum: ['until', 'someday'], description: '"until" reappears at the given timestamp; "someday" hides indefinitely.' },
+        until: { type: 'string', description: 'ISO 8601 timestamp with timezone. Required when kind="until".' },
       },
       required: ['task_id', 'kind'],
     },

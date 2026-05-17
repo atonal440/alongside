@@ -326,9 +326,11 @@ export class DB {
 
     const domainTask = this.parsePendingTaskDomain(task);
     const focusedUntil = parseRequiredDateTime('focused_until', focusedUntilInput);
+    const timestamp = now();
     const plan = focusTaskPlan(domainTask, {
       focus: { kind: 'focused', until: focusedUntil },
-      updatedAt: now(),
+      now: timestamp,
+      updatedAt: timestamp,
     });
     if (!plan.ok) throwAppError(plan.error);
     return this.applySingleTaskUpdate(task, plan.value);
@@ -355,9 +357,30 @@ export class DB {
 
     if (Object.keys(patch).length === 0) return this.getTask(id);
 
-    patch.updated_at = now();
+    const timestamp = now();
+    patch.updated_at = timestamp;
     const existing = await this.getTask(id);
     if (!existing) return null;
+
+    if (updates.focused_until !== undefined && updates.focused_until !== null) {
+      const domainTask = this.parsePendingTaskDomain(existing);
+      const focusedUntil = parseRequiredDateTime('focused_until', updates.focused_until);
+      const plan = focusTaskPlan(domainTask, {
+        focus: { kind: 'focused', until: focusedUntil },
+        now: timestamp,
+        updatedAt: timestamp,
+      });
+      if (!plan.ok) throwAppError(plan.error);
+
+      const [op] = plan.value.ops;
+      if (!op || op.kind !== 'task.update') {
+        throwAppError({
+          kind: 'invariant_violation',
+          message: 'focusTaskPlan produced an unexpected operation.',
+        });
+      }
+      Object.assign(patch, op.patch);
+    }
 
     assertWritableTaskRow({ ...existing, ...patch });
 

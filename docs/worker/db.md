@@ -40,9 +40,9 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`clearDeferTask(id)`** — Loads the row as `PendingTaskDomain`, then plans `defer_kind = 'none'` and `defer_until = null`.
 
-**`focusTask(id, focusedUntil)`** — Loads the row as `PendingTaskDomain`, parses the focus timestamp, and plans the focus transition. Deferred tasks return an `invalid_transition` error.
+**`focusTask(id, focusedUntil)`** — Loads the row as `PendingTaskDomain`, parses the focus timestamp, and plans the focus transition. Elapsed timed deferrals are cleared while focusing; future timed deferrals and someday deferrals return an `invalid_transition` error.
 
-**`updateTask(id, data)`** — Partial update: only columns present in `data` are written (including `focused_until`, `defer_until`, and `defer_kind`). Loads the existing row, applies the patch in memory, validates the final row through the task row/domain codec, then writes it with a fresh `updated_at`.
+**`updateTask(id, data)`** — Partial update: only columns present in `data` are written (including `focused_until`, `defer_until`, and `defer_kind`). Loads the existing row, routes non-null `focused_until` through `focusTaskPlan`, applies the patch in memory, validates the final row through the task row/domain codec, then writes it with a fresh `updated_at`.
 
 **`deleteTask(id)`** — Hard-deletes a task row (cascade removes links).
 
