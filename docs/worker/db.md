@@ -18,7 +18,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 ## Helper functions
 
-**`notDeferredCondition(nowIso)`** — Drizzle SQL fragment expressing the "not currently deferred" predicate (mirrors `isDeferred` from `shared/readiness.ts`). Used by all read paths that should hide deferred tasks.
+**`notDeferredCondition(nowIso)`** — Drizzle SQL fragment expressing the "not currently deferred" predicate for valid rows. Used by all read paths that should hide deferred tasks; invalid timed deferrals without `defer_until` are not treated as actionable.
 
 `isFocused` and `readinessScore` are imported from [[readiness|shared/readiness.ts]] — see that doc for the canonical scoring table and weights.
 
@@ -34,13 +34,15 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`completeTask(id)`** — Loads the task as a `PendingTaskDomain`, plans completion through `completeTaskPlan`, then executes the generated task update/insert operations. Marks the task `done`, clears focus and deferral fields, and for recurring tasks creates the next occurrence with a computed `due_date` and carries `session_log` forward as `kickoff_note`.
 
-**`reopenTask(id)`** — Clears `defer_kind`/`defer_until`, making the task immediately actionable again. Does not modify `status`.
+**`reopenTask(id)`** — Loads the row as `TaskDomain`, accepts only done tasks or deferred pending tasks, then plans the reopen transition. Writes `status = 'pending'`, clears deferral, clears focus, and refreshes `updated_at`.
 
-**`deferTask(id, kind, until?)`** — Sets `defer_kind` to `'until'` or `'someday'` and clears `focused_until`. For `'until'`, also writes the supplied ISO timestamp to `defer_until`; for `'someday'`, clears `defer_until`. Does not modify `status`.
+**`deferTask(id, kind, until?)`** — Loads the row as `PendingTaskDomain`, parses the defer input, and plans the deferral transition. For `'until'`, `until` is required and must be an ISO timestamp; for `'someday'`, `until` must be omitted. Both variants clear `focused_until`.
 
-**`clearDeferTask(id)`** — Resets `defer_kind` to `'none'` and clears `defer_until`. Equivalent to `reopenTask` for currently-pending tasks.
+**`clearDeferTask(id)`** — Loads the row as `PendingTaskDomain`, then plans `defer_kind = 'none'` and `defer_until = null`.
 
-**`updateTask(id, data)`** — Partial update: only columns present in `data` are written (including `focused_until`, `defer_until`, and `defer_kind`). Loads the existing row, applies the patch in memory, validates the final row through the task row/domain codec, then writes it with a fresh `updated_at`.
+**`focusTask(id, focusedUntil)`** — Loads the row as `PendingTaskDomain`, parses the focus timestamp, and plans the focus transition. Any existing pending deferral is cleared while focusing.
+
+**`updateTask(id, data)`** — Partial update: only columns present in `data` are written (including `focused_until`, `defer_until`, and `defer_kind`). Loads the existing row, routes non-null `focused_until` through `focusTaskPlan`, applies the patch in memory, validates the final row through the task row/domain codec, then writes it with a fresh `updated_at`.
 
 **`deleteTask(id)`** — Hard-deletes a task row (cascade removes links).
 
@@ -97,6 +99,6 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 ## See Also
 
 - [[schema]] — table definitions this module queries
-- [[readiness|shared/readiness.ts]] — `isDeferred` predicate mirrored by `notDeferredCondition`
+- [[readiness|shared/readiness.ts]] — frontend readiness predicates that correspond to the worker query filters for valid rows
 - [[api|worker/api.ts]] — REST handler that calls these methods
 - [[mcp|worker/mcp.ts]] — MCP handler that calls these methods

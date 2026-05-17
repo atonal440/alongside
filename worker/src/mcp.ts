@@ -2,6 +2,7 @@ import { DB } from './db';
 import type { Task, Project } from '@shared/types';
 import type { Env } from './index';
 import { getAppHtml, getActionLogHtml } from './app-ui';
+import { parsePositiveFinite } from './parse';
 
 interface McpRequest {
   jsonrpc: '2.0';
@@ -24,6 +25,25 @@ function mcpError(id: string | number, code: number, message: string) {
 
 const TASK_DASHBOARD_URI = 'ui://alongside/task-dashboard';
 const ACTION_LOG_URI = 'ui://alongside/action-log';
+const DEFAULT_FOCUS_HOURS = 3;
+const MAX_FOCUS_HOURS = 24;
+
+function formatValidationErrors(errors: { path: string[]; message: string }[]): string {
+  return errors
+    .map(error => error.path.length > 0 ? `${error.path.join('.')}: ${error.message}` : error.message)
+    .join('; ');
+}
+
+function parseFocusHours(input: unknown): number {
+  if (input === undefined) return DEFAULT_FOCUS_HOURS;
+
+  const parsed = parsePositiveFinite(MAX_FOCUS_HOURS, input);
+  if (!parsed.ok) {
+    throw new Error(`hours must be a finite positive number no greater than ${MAX_FOCUS_HOURS}: ${formatValidationErrors(parsed.error)}`);
+  }
+
+  return parsed.value;
+}
 
 // Helper: build _meta with both modern and legacy keys (SDK compat)
 function uiMeta(resourceUri: string, extra?: Record<string, unknown>) {
@@ -59,7 +79,7 @@ SESSION CLOSE: If session_log is "ask_at_end", offer to write one. If "auto_gene
 PREFERENCES: When the user states a preference, call update_preference immediately — no confirmation needed.
 `.trim();
 
-const TOOLS = [
+export const TOOLS = [
   {
     name: 'start_session',
     description: 'Call at the start of every session. Returns ready tasks, preferences, and session instructions.',
@@ -156,13 +176,13 @@ const TOOLS = [
   },
   {
     name: 'defer_task',
-    description: 'Hides a task. Use kind="until" with an ISO date to defer temporarily, or kind="someday" to defer indefinitely.',
+    description: 'Hides a task. Use kind="until" with an ISO timestamp to defer temporarily, or kind="someday" to defer indefinitely.',
     inputSchema: {
       type: 'object',
       properties: {
         task_id: { type: 'string' },
-        kind: { type: 'string', enum: ['until', 'someday'], description: '"until" reappears at the given date; "someday" hides indefinitely.' },
-        until: { type: 'string', description: 'ISO 8601 date. Required when kind="until".' },
+        kind: { type: 'string', enum: ['until', 'someday'], description: '"until" reappears at the given timestamp; "someday" hides indefinitely.' },
+        until: { type: 'string', description: 'ISO 8601 timestamp with timezone. Required when kind="until".' },
       },
       required: ['task_id', 'kind'],
     },
@@ -209,7 +229,7 @@ const TOOLS = [
       type: 'object',
       properties: {
         task_id: { type: 'string' },
-        hours: { type: 'number', description: 'How long to keep focus. Defaults to 3.' },
+        hours: { type: 'number', description: 'How long to keep focus, greater than 0 and no more than 24 hours. Defaults to 3.' },
       },
       required: ['task_id'],
     },
@@ -469,9 +489,9 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'focus_task': {
-      const hours = (args.hours as number) || 3;
+      const hours = parseFocusHours(args.hours);
       const focusedUntil = new Date(Date.now() + hours * 3600000).toISOString();
-      const task = await db.updateTask(args.task_id as string, { focused_until: focusedUntil });
+      const task = await db.focusTask(args.task_id as string, focusedUntil);
       if (!task) throw new Error('Task not found');
       const log = await db.logAction({ tool_name: 'focus_task', task_id: task.id, title: task.title, detail: `${hours}h` });
       return { ...task, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
