@@ -133,6 +133,17 @@ function parseDeferInput(kind: 'until' | 'someday', until?: string | null): Acti
   return { kind: 'until', until: parseRequiredDateTime('until', until) };
 }
 
+function singleTaskUpdatePatchFromPlan(plan: Plan, plannerName: string) {
+  const [op] = plan.ops;
+  if (plan.ops.length !== 1 || !op || op.kind !== 'task.update') {
+    throwAppError({
+      kind: 'invariant_violation',
+      message: `${plannerName} produced an unexpected operation.`,
+    });
+  }
+  return op.patch;
+}
+
 
 export class DB {
   private drizzle: DrizzleD1Database;
@@ -154,18 +165,12 @@ export class DB {
   }
 
   private async applySingleTaskUpdate(original: Task, plan: Plan): Promise<Task> {
-    const [op] = plan.ops;
-    if (plan.ops.length !== 1 || !op || op.kind !== 'task.update') {
-      throwAppError({
-        kind: 'invariant_violation',
-        message: 'Expected a single task.update operation.',
-      });
-    }
+    const patch = singleTaskUpdatePatchFromPlan(plan, 'task transition planner');
 
     await this.drizzle
       .update(tasksTable)
-      .set(op.patch)
-      .where(eq(tasksTable.id, op.id));
+      .set(patch)
+      .where(eq(tasksTable.id, original.id));
 
     const updated = await this.getTask(original.id);
     if (!updated) throwAppError({ kind: 'not_found', entity: 'task', id: original.id });
@@ -361,6 +366,16 @@ export class DB {
     const existing = await this.getTask(id);
     if (!existing) return null;
 
+    if (updates.defer_kind === 'until' || updates.defer_kind === 'someday') {
+      const domainTask = this.parsePendingTaskDomain(existing);
+      const plan = deferTaskPlan(domainTask, {
+        defer: parseDeferInput(updates.defer_kind, updates.defer_until),
+        updatedAt: timestamp,
+      });
+      if (!plan.ok) throwAppError(plan.error);
+      Object.assign(patch, singleTaskUpdatePatchFromPlan(plan.value, 'deferTaskPlan'));
+    }
+
     if (updates.focused_until !== undefined && updates.focused_until !== null) {
       const domainTask = this.parsePendingTaskDomain(existing);
       const focusedUntil = parseRequiredDateTime('focused_until', updates.focused_until);
@@ -369,15 +384,7 @@ export class DB {
         updatedAt: timestamp,
       });
       if (!plan.ok) throwAppError(plan.error);
-
-      const [op] = plan.value.ops;
-      if (!op || op.kind !== 'task.update') {
-        throwAppError({
-          kind: 'invariant_violation',
-          message: 'focusTaskPlan produced an unexpected operation.',
-        });
-      }
-      Object.assign(patch, op.patch);
+      Object.assign(patch, singleTaskUpdatePatchFromPlan(plan.value, 'focusTaskPlan'));
     }
 
     assertWritableTaskRow({ ...existing, ...patch });
