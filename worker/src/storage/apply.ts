@@ -216,6 +216,7 @@ function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
     case 'project.delete':
       return [
         bindExistingRowGuard(d1, { entity: 'project', id: op.id }),
+        guardedStatement(d1.prepare('UPDATE tasks SET project_id = NULL WHERE project_id = ?').bind(op.id)),
         guardedStatement(d1.prepare('DELETE FROM projects WHERE id = ?').bind(op.id), { entity: 'project', id: op.id }),
       ];
     case 'link.upsert':

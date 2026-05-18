@@ -216,6 +216,29 @@ describe('applyPlan', () => {
     expect(batches).toHaveLength(0);
   });
 
+  it('clears task assignments before deleting a project', async () => {
+    const { d1, batches } = fakeD1({ projects: ['p_abc12'] });
+    const plan: Plan = {
+      assertions: [],
+      ops: [{ kind: 'project.delete', id: 'p_abc12' }],
+    };
+
+    const result = await applyPlan(d1, plan);
+
+    expect(result).toEqual({ ok: true, value: { appliedOps: 1 } });
+    expect(batches).toHaveLength(1);
+    expect(batches[0].map(statement => statement.sql)).toEqual([
+      PROJECT_EXISTS_GUARD_SQL,
+      'UPDATE tasks SET project_id = NULL WHERE project_id = ?',
+      'DELETE FROM projects WHERE id = ?',
+    ]);
+    expect(batches[0].map(statement => statement.args)).toEqual([
+      ['p_abc12'],
+      ['p_abc12'],
+      ['p_abc12'],
+    ]);
+  });
+
   it('rejects unsupported prechecks before applying mutations', async () => {
     const { d1, batches } = fakeD1();
     const plan: Plan = {
