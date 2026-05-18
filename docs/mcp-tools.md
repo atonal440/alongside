@@ -245,7 +245,7 @@ Render a project and all its tasks as an inline widget.
 
 ### `create_project`
 
-Create a new project and optionally link existing tasks to it.
+Create a new project and optionally link existing tasks to it. Task assignment is applied in the same batch as project creation; duplicate task ids are counted once, and a missing task id rejects the whole operation.
 
 **Parameters:**
 

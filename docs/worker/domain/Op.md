@@ -1,10 +1,10 @@
 # worker/src/domain/Op.ts
 
-Operation and plan scaffolding for the future mutation pipeline.
+Operation and plan types for the mutation pipeline.
 
 ## Types
 
-**`Op`** — Discriminated union for task, project, link, preference, log, and wipe mutations.
+**`Op`** — Discriminated union for task, project, link, preference, log, and wipe mutations. `worker/src/storage/apply.ts` exhaustively translates these into D1 statements.
 
 **`PreCheck`** — Read-only assertions that must pass before a plan is applied.
 
@@ -12,4 +12,4 @@ Operation and plan scaffolding for the future mutation pipeline.
 
 ## Functions
 
-**`emptyPlan()`** — Returns an empty plan for tests and future planner scaffolding.
+**`emptyPlan()`** — Returns an empty plan for tests and planner composition.

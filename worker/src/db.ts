@@ -13,12 +13,13 @@ import type { Task, Project, TaskLink, ActionLog, TaskCreate, TaskUpdate, Projec
 import { readinessScore } from '@shared/readiness';
 import { unsafeBrand } from '@shared/brand';
 import type { ActiveDeferState, Plan, PendingTaskDomain, TaskDomain } from './domain';
-import type { IsoDateTime, MintedTaskId } from './parse';
-import { parseIsoDateTime } from './parse';
+import type { IsoDateTime, MintedProjectId, MintedTaskId, TaskId, ValidationError } from './parse';
+import { parseIsoDateTime, parseTaskId } from './parse';
 import { appErrorMessage, validationErrorResult, type AppError } from './domain/errors';
 import {
   clearDeferTaskPlan,
   completeTaskPlan,
+  createProjectPlan,
   deferTaskPlan,
   focusTaskPlan,
   isReopenableTask,
@@ -26,6 +27,7 @@ import {
   reopenTaskPlan,
   taskFromRow,
 } from './domain';
+import { applyPlan } from './storage';
 
 export type { ActionLog as ActionLogEntry };
 
@@ -75,6 +77,10 @@ function now(): IsoDateTime {
 
 function mintTaskId(): MintedTaskId {
   return unsafeBrand<string, 'MintedTaskId'>(`t_${nanoid(5)}`) as MintedTaskId;
+}
+
+function mintProjectId(): MintedProjectId {
+  return unsafeBrand<string, 'MintedProjectId'>(`p_${nanoid(5)}`) as MintedProjectId;
 }
 
 function assertWritableTaskRow(task: Task): void {
@@ -133,7 +139,7 @@ function parseDeferInput(kind: 'until' | 'someday', until?: string | null): Acti
   return { kind: 'until', until: parseRequiredDateTime('until', until) };
 }
 
-function singleTaskUpdatePatchFromPlan(plan: Plan, plannerName: string) {
+function singleTaskUpdatePatchFromPlan(plan: Plan, plannerName: string, expectedTaskId?: string) {
   const [op] = plan.ops;
   if (plan.ops.length !== 1 || !op || op.kind !== 'task.update') {
     throwAppError({
@@ -141,7 +147,32 @@ function singleTaskUpdatePatchFromPlan(plan: Plan, plannerName: string) {
       message: `${plannerName} produced an unexpected operation.`,
     });
   }
+  if (expectedTaskId !== undefined && op.id !== expectedTaskId) {
+    throwAppError({
+      kind: 'invariant_violation',
+      message: `${plannerName} produced an update for an unexpected task.`,
+    });
+  }
   return op.patch;
+}
+
+function parseTaskIds(inputs: string[]): TaskId[] {
+  const ids: TaskId[] = [];
+  const errors: ValidationError[] = [];
+  for (const [index, input] of inputs.entries()) {
+    const parsed = parseTaskId(input);
+    if (parsed.ok) {
+      ids.push(parsed.value);
+    } else {
+      errors.push(...parsed.error.map(error => ({
+        ...error,
+        path: ['task_ids', String(index), ...error.path],
+      })));
+    }
+  }
+
+  if (errors.length > 0) throwAppError(validationErrorResult(errors));
+  return ids;
 }
 
 
@@ -165,16 +196,17 @@ export class DB {
   }
 
   private async applySingleTaskUpdate(original: Task, plan: Plan): Promise<Task> {
-    const patch = singleTaskUpdatePatchFromPlan(plan, 'task transition planner');
-
-    await this.drizzle
-      .update(tasksTable)
-      .set(patch)
-      .where(eq(tasksTable.id, original.id));
+    singleTaskUpdatePatchFromPlan(plan, 'task transition planner', original.id);
+    await this.applyPlanOrThrow(plan);
 
     const updated = await this.getTask(original.id);
     if (!updated) throwAppError({ kind: 'not_found', entity: 'task', id: original.id });
     return updated;
+  }
+
+  private async applyPlanOrThrow(plan: Plan): Promise<void> {
+    const applied = await applyPlan(this.d1, plan);
+    if (!applied.ok) throwAppError(applied.error);
   }
 
   // ── Tasks ──────────────────────────────────────────────────────────────────
@@ -253,30 +285,12 @@ export class DB {
     });
     if (!plan.ok) throwAppError(plan.error);
 
-    let completed: Task | null = null;
-    let next: Task | undefined;
+    await this.applyPlanOrThrow(plan.value);
 
-    for (const op of plan.value.ops) {
-      switch (op.kind) {
-        case 'task.update': {
-          await this.drizzle
-            .update(tasksTable)
-            .set(op.patch)
-            .where(eq(tasksTable.id, op.id));
-          completed = { ...task, ...op.patch };
-          break;
-        }
-        case 'task.insert':
-          await this.drizzle.insert(tasksTable).values(op.row);
-          next = op.row;
-          break;
-        default:
-          throwAppError({
-            kind: 'invariant_violation',
-            message: `Unexpected op in completeTask plan: ${op.kind}`,
-          });
-      }
-    }
+    const completedOp = plan.value.ops.find(op => op.kind === 'task.update' && op.id === task.id);
+    const completed = completedOp?.kind === 'task.update' ? { ...task, ...completedOp.patch } : null;
+    const nextOp = plan.value.ops.find(op => op.kind === 'task.insert');
+    const next = nextOp?.kind === 'task.insert' ? nextOp.row : undefined;
 
     if (!completed) {
       throwAppError({ kind: 'invariant_violation', message: 'completeTask plan did not update the completed task.' });
@@ -373,7 +387,7 @@ export class DB {
         updatedAt: timestamp,
       });
       if (!plan.ok) throwAppError(plan.error);
-      Object.assign(patch, singleTaskUpdatePatchFromPlan(plan.value, 'deferTaskPlan'));
+      Object.assign(patch, singleTaskUpdatePatchFromPlan(plan.value, 'deferTaskPlan', existing.id));
     }
 
     if (updates.focused_until !== undefined && updates.focused_until !== null) {
@@ -384,7 +398,7 @@ export class DB {
         updatedAt: timestamp,
       });
       if (!plan.ok) throwAppError(plan.error);
-      Object.assign(patch, singleTaskUpdatePatchFromPlan(plan.value, 'focusTaskPlan'));
+      Object.assign(patch, singleTaskUpdatePatchFromPlan(plan.value, 'focusTaskPlan', existing.id));
     }
 
     assertWritableTaskRow({ ...existing, ...patch });
@@ -442,18 +456,21 @@ export class DB {
 
   // ── Projects ───────────────────────────────────────────────────────────────
 
-  async createProject(input: ProjectCreate): Promise<Project> {
+  async createProject(input: ProjectCreate, taskIds: string[] = []): Promise<Project> {
+    const timestamp = now();
     const project: Project = {
-      id: `p_${nanoid(5)}`,
+      id: mintProjectId(),
       title: input.title,
       notes: input.notes ?? null,
       kickoff_note: input.kickoff_note ?? null,
       status: 'active',
-      created_at: now(),
-      updated_at: now(),
+      created_at: timestamp,
+      updated_at: timestamp,
     };
 
-    await this.drizzle.insert(projectsTable).values(project);
+    const plan = createProjectPlan(project, parseTaskIds(taskIds), timestamp);
+    if (!plan.ok) throwAppError(plan.error);
+    await this.applyPlanOrThrow(plan.value);
     return project;
   }
 
