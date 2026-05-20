@@ -43,9 +43,16 @@ This is the handoff checklist for implementing `docs/plans/type-driven-safety.md
 - [x] Route `DB.importAll` through `parseImport`, `planImport`, and `applyPlan`.
 - [x] Add import regression tests for duplicate IDs, missing references, invalid recurrence rows, invalid preferences, and pre-wipe failure.
 
+## Completed Slice: Link Domain And Dependency Checks
+
+- [x] Parse link inputs into `TaskLinkDomain` before storage writes.
+- [x] Add `linkTasksPlan` and `unlinkTasksPlan` with self-link rejection and endpoint prechecks.
+- [x] Implement `link.blocks_acyclic` in `applyPlan` with a recursive D1 graph query.
+- [x] Reject self-links and cyclic `blocks` graphs during import planning.
+- [x] Add link planner, storage executor, DB, and import regression tests.
+
 ## Later Slices
 
-- [ ] Link domain and dependency cycle checks.
 - [ ] REST + UI route schemas.
 - [ ] MCP typed registry.
 - [ ] OAuth, preferences, and action-log policy.

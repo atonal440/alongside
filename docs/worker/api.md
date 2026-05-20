@@ -26,4 +26,4 @@ REST API handler for the PWA. Exposes CRUD endpoints for tasks, projects, and li
 - `GET /api/export` — full data export as a dated JSON file (`?include_log=true` to also export action log)
 - `POST /api/import` — restore data from an export payload; `?dry_run=true` returns row counts without writing
 
-Task create, update, complete, and import routes map typed `DomainOperationError` failures from the DB layer into JSON errors. Validation failures, such as malformed RRULEs, recurrence without a due date, or invalid import rows, return HTTP 400 with issue details; lifecycle failures, such as completing an already-done task, return HTTP 409.
+Task create, update, complete, link, unlink, and import routes map typed `DomainOperationError` failures from the DB layer into JSON errors. Validation failures, such as malformed RRULEs, recurrence without a due date, self-links, or invalid import rows, return HTTP 400 with issue details; lifecycle/conflict failures, such as completing an already-done task or creating a dependency cycle, return HTTP 409.

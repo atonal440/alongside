@@ -66,9 +66,9 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 ## Link operations
 
-**`linkTasks(fromId, toId, linkType)`** — Creates a dependency edge between two tasks. `linkType` is `'blocks'` or `'related'`.
+**`linkTasks(fromId, toId, linkType)`** — Parses a typed link domain value, rejects self-links, asserts both endpoint tasks exist, and applies `linkTasksPlan`. `blocks` links also run an acyclic graph precheck so a task cannot indirectly block itself.
 
-**`unlinkTasks(fromId, toId, linkType)`** — Removes a specific link between two tasks.
+**`unlinkTasks(fromId, toId, linkType)`** — Parses a typed link domain value and applies `unlinkTasksPlan` to remove a specific link. Missing rows remain a no-op.
 
 **`getTaskLinks(taskId)`** — Returns all links where the task is either the source or target.
 

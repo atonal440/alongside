@@ -23,10 +23,13 @@ import {
   deferTaskPlan,
   focusTaskPlan,
   isReopenableTask,
+  linkTasksPlan,
   pendingTaskFromRow,
   planImport,
   reopenTaskPlan,
+  taskLinkFromParts,
   taskFromRow,
+  unlinkTasksPlan,
 } from './domain';
 import { applyPlan } from './storage';
 import { parseImport } from './wire/importPayload';
@@ -528,20 +531,21 @@ export class DB {
   // ── Task Links ─────────────────────────────────────────────────────────────
 
   async linkTasks(fromTaskId: string, toTaskId: string, linkType: TaskLink['link_type']): Promise<void> {
-    await this.d1
-      .prepare('INSERT OR REPLACE INTO task_links (from_task_id, to_task_id, link_type) VALUES (?, ?, ?)')
-      .bind(fromTaskId, toTaskId, linkType)
-      .run();
+    const link = taskLinkFromParts(fromTaskId, toTaskId, linkType);
+    if (!link.ok) throwAppError(validationErrorResult(link.error));
+
+    const plan = linkTasksPlan(link.value);
+    if (!plan.ok) throwAppError(plan.error);
+    await this.applyPlanOrThrow(plan.value);
   }
 
   async unlinkTasks(fromTaskId: string, toTaskId: string, linkType: TaskLink['link_type']): Promise<void> {
-    await this.drizzle
-      .delete(taskLinksTable)
-      .where(and(
-        eq(taskLinksTable.from_task_id, fromTaskId),
-        eq(taskLinksTable.to_task_id, toTaskId),
-        eq(taskLinksTable.link_type, linkType),
-      ));
+    const link = taskLinkFromParts(fromTaskId, toTaskId, linkType);
+    if (!link.ok) throwAppError(validationErrorResult(link.error));
+
+    const plan = unlinkTasksPlan(link.value);
+    if (!plan.ok) throwAppError(plan.error);
+    await this.applyPlanOrThrow(plan.value);
   }
 
   async getTaskLinks(taskId: string): Promise<TaskLink[]> {

@@ -115,6 +115,43 @@ async function runExistingRowCheck(d1: D1Database, guard: ExistingRowGuard): Pro
   }
 }
 
+async function runBlocksAcyclicCheck(d1: D1Database, from: string, to: string): Promise<Result<void, AppError>> {
+  if (from === to) {
+    return err({
+      kind: 'conflict',
+      message: 'A task cannot block itself.',
+    });
+  }
+
+  try {
+    const cycle = await d1
+      .prepare(`
+        WITH RECURSIVE downstream(id) AS (
+          SELECT to_task_id
+          FROM task_links
+          WHERE from_task_id = ? AND link_type = 'blocks'
+          UNION
+          SELECT task_links.to_task_id
+          FROM task_links
+          JOIN downstream ON task_links.from_task_id = downstream.id
+          WHERE task_links.link_type = 'blocks'
+        )
+        SELECT id FROM downstream WHERE id = ? LIMIT 1
+      `)
+      .bind(to, from)
+      .first<{ id: string }>();
+
+    return cycle
+      ? err({
+        kind: 'conflict',
+        message: `Adding a blocks link from ${from} to ${to} would create a cycle.`,
+      })
+      : ok(undefined);
+  } catch (cause) {
+    return err(storageError('Failed to run link cycle check.', cause));
+  }
+}
+
 async function runPreCheck(d1: D1Database, check: PreCheck): Promise<Result<void, AppError>> {
   switch (check.kind) {
     case 'task.exists':
@@ -122,10 +159,7 @@ async function runPreCheck(d1: D1Database, check: PreCheck): Promise<Result<void
     case 'project.exists':
       return runExistingRowCheck(d1, { entity: 'project', id: check.id });
     case 'link.blocks_acyclic':
-      return err({
-        kind: 'invariant_violation',
-        message: 'link.blocks_acyclic prechecks are not supported until the link graph slice.',
-      });
+      return runBlocksAcyclicCheck(d1, check.from, check.to);
     case 'custom':
       return err({
         kind: 'invariant_violation',

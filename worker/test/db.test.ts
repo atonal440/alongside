@@ -65,6 +65,7 @@ function dbWithTask(initialTask: Task): { db: DB; getStoredTask: () => Task } {
 }
 
 function d1WithExistingTasks(taskIds: string[], options: {
+  blockLinks?: Array<[string, string]>;
   deleteTasksBeforeBatch?: string[];
 } = {}): {
   d1: D1Database;
@@ -72,8 +73,24 @@ function d1WithExistingTasks(taskIds: string[], options: {
   executedStatements: FakeStatement[];
 } {
   const tasks = new Set(taskIds);
+  const blockLinks = options.blockLinks ?? [];
   const batches: FakeStatement[][] = [];
   const executedStatements: FakeStatement[] = [];
+
+  function hasBlocksPath(from: string, to: string): boolean {
+    const seen = new Set<string>();
+    const queue = [from];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current || seen.has(current)) continue;
+      if (current === to) return true;
+      seen.add(current);
+      for (const [source, target] of blockLinks) {
+        if (source === current) queue.push(target);
+      }
+    }
+    return false;
+  }
 
   const d1 = {
     prepare(sql: string): FakeStatement {
@@ -85,6 +102,12 @@ function d1WithExistingTasks(taskIds: string[], options: {
           return statement;
         },
         async first<T>() {
+          if (sql.includes('WITH RECURSIVE downstream')) {
+            const from = String(statement.args[0]);
+            const to = String(statement.args[1]);
+            return (hasBlocksPath(from, to) ? { id: to } : null) as T | null;
+          }
+
           const id = String(statement.args[0]);
           if (sql.includes('FROM tasks')) return (tasks.has(id) ? { id } : null) as T | null;
           return null;
@@ -232,6 +255,51 @@ describe('DB plan application paths', () => {
     expect(batches).toHaveLength(1);
     expect(batches[0][0].sql).toBe(TASK_EXISTS_GUARD_SQL);
     expect(executedStatements).toHaveLength(0);
+  });
+
+  it('creates blocks links through applyPlan with endpoint and cycle prechecks', async () => {
+    const { d1, batches } = d1WithExistingTasks(['t_from1', 't_to222']);
+    const db = new DB(d1);
+
+    await db.linkTasks('t_from1', 't_to222', 'blocks');
+
+    expect(batches).toHaveLength(1);
+    expect(mutationSqls(batches[0])).toEqual([
+      'INSERT OR REPLACE INTO task_links (from_task_id,to_task_id,link_type) VALUES (?,?,?)',
+    ]);
+    expect(batches[0].at(-1)?.args).toEqual(['t_from1', 't_to222', 'blocks']);
+  });
+
+  it('rejects links when an endpoint task is missing', async () => {
+    const { d1, batches } = d1WithExistingTasks(['t_from1']);
+    const db = new DB(d1);
+
+    await expect(db.linkTasks('t_from1', 't_to222', 'blocks')).rejects.toMatchObject({
+      appError: { kind: 'not_found', entity: 'task', id: 't_to222' },
+    });
+    expect(batches).toHaveLength(0);
+  });
+
+  it('rejects blocks links that would introduce a dependency cycle', async () => {
+    const { d1, batches } = d1WithExistingTasks(['t_from1', 't_to222', 't_mid33'], {
+      blockLinks: [['t_to222', 't_mid33'], ['t_mid33', 't_from1']],
+    });
+    const db = new DB(d1);
+
+    await expect(db.linkTasks('t_from1', 't_to222', 'blocks')).rejects.toMatchObject({
+      appError: { kind: 'conflict' },
+    });
+    expect(batches).toHaveLength(0);
+  });
+
+  it('rejects self-links before storage', async () => {
+    const { d1, batches } = d1WithExistingTasks(['t_same1']);
+    const db = new DB(d1);
+
+    await expect(db.linkTasks('t_same1', 't_same1', 'related')).rejects.toMatchObject({
+      appError: { kind: 'validation' },
+    });
+    expect(batches).toHaveLength(0);
   });
 
   it('rejects single-task transition plans that target a different task', async () => {

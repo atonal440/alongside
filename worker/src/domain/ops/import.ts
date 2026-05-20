@@ -12,6 +12,7 @@ import type { AppError } from '../errors';
 import { validationErrorResult } from '../errors';
 import type { Plan } from '../Op';
 import type { PreferenceEntry } from '../preference';
+import { findBlocksCycle } from '../link';
 import { taskFromRow } from '../task';
 
 export type ImportPlanResult = Result<Plan, AppError>;
@@ -202,6 +203,14 @@ function validatePayloadRows(payload: ImportPayload): Result<PreferenceEntry[], 
   });
 
   payload.links.forEach((link, index) => {
+    if (link.from_task_id === link.to_task_id) {
+      errors.push(validationError(
+        ['links', String(index), 'to_task_id'],
+        'invalid_state',
+        'A task cannot be linked to itself.',
+      ));
+    }
+
     if (!taskIds.has(link.from_task_id)) {
       errors.push(validationError(
         ['links', String(index), 'from_task_id'],
@@ -217,6 +226,15 @@ function validatePayloadRows(payload: ImportPayload): Result<PreferenceEntry[], 
       ));
     }
   });
+
+  const cycle = findBlocksCycle(payload.links);
+  if (cycle) {
+    errors.push(validationError(
+      ['links'],
+      'cycle',
+      `Blocks links must be acyclic. Cycle: ${cycle.join(' -> ')}.`,
+    ));
+  }
 
   const parsedPreferences = preferenceEntries(payload.preferences);
   if (!parsedPreferences.ok) {

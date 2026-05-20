@@ -193,6 +193,32 @@ describe('planImport', () => {
       ]));
     }
   });
+
+  it('rejects self-links and blocks cycles in imported links', () => {
+    const parsed = expectOk(parseImport(exportPayload({
+      tasks: [
+        taskRow({ id: 't_one11' }),
+        taskRow({ id: 't_two22', title: 'Two' }),
+        taskRow({ id: 't_thr33', title: 'Three' }),
+      ],
+      links: [
+        { from_task_id: 't_one11', to_task_id: 't_one11', link_type: 'related' },
+        { from_task_id: 't_one11', to_task_id: 't_two22', link_type: 'blocks' },
+        { from_task_id: 't_two22', to_task_id: 't_thr33', link_type: 'blocks' },
+        { from_task_id: 't_thr33', to_task_id: 't_one11', link_type: 'blocks' },
+      ],
+    })));
+
+    const result = planImport(parsed);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.kind === 'validation') {
+      expect(result.error.errors).toEqual(expect.arrayContaining([
+        expect.objectContaining({ path: ['links', '0', 'to_task_id'], code: 'invalid_state' }),
+        expect.objectContaining({ path: ['links'], code: 'cycle' }),
+      ]));
+    }
+  });
 });
 
 describe('DB.importAll', () => {

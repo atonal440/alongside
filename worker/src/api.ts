@@ -43,8 +43,13 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
     const body = await request.json<{ from_task_id: string; to_task_id: string; link_type: string }>();
     if (!body.from_task_id || !body.to_task_id || !body.link_type)
       return json({ error: 'from_task_id, to_task_id, link_type are required' }, 400);
-    await db.linkTasks(body.from_task_id, body.to_task_id, body.link_type as TaskLink['link_type']);
-    return json({ ok: true }, 201);
+    try {
+      await db.linkTasks(body.from_task_id, body.to_task_id, body.link_type as TaskLink['link_type']);
+      return json({ ok: true }, 201);
+    } catch (error) {
+      if (error instanceof DomainOperationError) return domainErrorJson(error);
+      throw error;
+    }
   }
 
   // DELETE /api/tasks/links — remove a link
@@ -52,8 +57,13 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
     const body = await request.json<{ from_task_id: string; to_task_id: string; link_type: string }>();
     if (!body.from_task_id || !body.to_task_id || !body.link_type)
       return json({ error: 'from_task_id, to_task_id, link_type are required' }, 400);
-    await db.unlinkTasks(body.from_task_id, body.to_task_id, body.link_type as TaskLink['link_type']);
-    return json({ ok: true });
+    try {
+      await db.unlinkTasks(body.from_task_id, body.to_task_id, body.link_type as TaskLink['link_type']);
+      return json({ ok: true });
+    } catch (error) {
+      if (error instanceof DomainOperationError) return domainErrorJson(error);
+      throw error;
+    }
   }
 
   // GET /api/tasks/:id — get one task
