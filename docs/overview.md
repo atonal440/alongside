@@ -18,7 +18,7 @@ Alongside is a lightweight, offline-first task manager built around conversation
 - **Review view** — the [[ReviewView]] is an end-of-day close-out surface with four panels: Current Focus, Done Today, Carry Forward, and Next Suggestion
 - **OAuth 2.1 / PKCE** — the [[oauth|worker/oauth.ts]] module implements dynamic client registration and the full PKCE authorization code flow so Claude.ai and other external MCP clients can authenticate without sharing the static `AUTH_TOKEN`
 - **User preferences** — key-value store for per-user settings: `sort_by`, `urgency_visibility`, `kickoff_nudge`, `session_log`, `interruption_style`, `planning_prompt`; applied at session start
-- **Recurrence (iCal RRULE)** — tasks can carry a `recurrence` field (e.g. `FREQ=WEEKLY;INTERVAL=1`); completing a recurring task auto-creates the next occurrence and carries the `session_log` forward as `kickoff_note`
+- **Recurrence (iCal RRULE)** — tasks can carry an infinite date-only `recurrence` field (e.g. `FREQ=WEEKLY;INTERVAL=1`, `FREQ=MONTHLY;BYDAY=3FR`, or `FREQ=YEARLY;BYMONTH=11;BYDAY=TH;BYSETPOS=4`); completing a recurring task auto-creates the next occurrence and carries the `session_log` forward as `kickoff_note`
 - **Import / export** — `GET /api/export` returns a full JSON snapshot; `POST /api/import` (with optional `?dry_run=true`) restores from a snapshot
 - **MCP integration** — 20 tools over JSON-RPC at `/mcp` for Claude and other MCP clients; see [[mcp-tools]] for the full reference
 

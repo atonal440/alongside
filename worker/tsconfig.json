@@ -4,6 +4,8 @@
       "@shared/*": ["../shared/*"],
       "drizzle-orm": ["./node_modules/drizzle-orm"],
       "drizzle-orm/*": ["./node_modules/drizzle-orm/*"],
+      "rrule": ["./node_modules/rrule"],
+      "rrule/*": ["./node_modules/rrule/*"],
       "valibot": ["./node_modules/valibot"]
     },
     "target": "ES2022",

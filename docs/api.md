@@ -45,7 +45,7 @@ Create a new task.
 | `title` | `string` | yes | |
 | `notes` | `string` | no | |
 | `due_date` | `string` | no | ISO 8601 date |
-| `recurrence` | `string` | no | iCal RRULE |
+| `recurrence` | `string` | no | Infinite date-only RRULE |
 
 **Response:** `Task` — 201
 
@@ -81,6 +81,8 @@ Mark a task done. If the task has `recurrence` + `due_date`, a new task is creat
 }
 ```
 404 if not found.
+
+Supported recurrence rules are infinite, date-only RRULEs: `DAILY`, `WEEKLY`, `MONTHLY`, and `YEARLY` with optional `INTERVAL`, date-level filters (`BYDAY`, `BYMONTHDAY`, `BYYEARDAY`, `BYWEEKNO`, `BYMONTH`, `BYSETPOS`, `WKST`), and no `COUNT`, `UNTIL`, time parts, recurrence sets, or exception dates. RRULE calendar semantics are used: invalid target dates are skipped rather than clipped, and the rule must produce a next occurrence after the task's current `due_date`.
 
 ---
 

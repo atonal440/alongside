@@ -21,6 +21,8 @@
       "@shared/*": ["../shared/*"],
       "drizzle-orm": ["../worker/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../worker/node_modules/drizzle-orm/*"],
+      "rrule": ["./node_modules/rrule"],
+      "rrule/*": ["./node_modules/rrule/*"],
       "valibot": ["./node_modules/valibot"]
     }
   },

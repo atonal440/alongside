@@ -85,6 +85,18 @@ describe('task recurrence domain codec', () => {
       }));
     }
   });
+
+  it('rejects recurrence rules that cannot produce a next date from the task due date', () => {
+    const result = recurrenceFromRow('2025-01-01', 'FREQ=YEARLY;INTERVAL=2;BYMONTH=2;BYMONTHDAY=29');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContainEqual(expect.objectContaining({
+        path: ['recurrence'],
+        code: 'invalid_state',
+      }));
+    }
+  });
 });
 
 describe('task defer/focus lifecycle codec', () => {
@@ -211,6 +223,28 @@ describe('completeTaskPlan', () => {
         kickoff_note: 'Finished the deep watering pass.',
         session_log: null,
         focused_until: null,
+      },
+    });
+  });
+
+  it('plans monthly positional BYDAY recurrence completion with a next occurrence row', () => {
+    const task = expectOk(pendingTaskFromRow(taskRow({
+      title: 'Publish meeting minutes',
+      due_date: '2026-05-15',
+      recurrence: 'FREQ=MONTHLY;BYDAY=3FR',
+    })));
+    const plan = expectOk(completeTaskPlan(task, {
+      completedAt: timestamp(),
+      nextTaskId: nextTaskId(),
+    }));
+
+    expect(plan.ops[1]).toMatchObject({
+      kind: 'task.insert',
+      row: {
+        title: 'Publish meeting minutes',
+        due_date: '2026-06-19',
+        recurrence: 'FREQ=MONTHLY;BYDAY=3FR',
+        status: 'pending',
       },
     });
   });
