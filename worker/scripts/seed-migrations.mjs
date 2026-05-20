@@ -9,6 +9,7 @@
  *   node scripts/seed-migrations.mjs --remote
  */
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 
 const mode = process.argv[2] ?? '--local';
 if (!['--remote', '--local', '--preview'].includes(mode)) {
@@ -41,7 +42,10 @@ CREATE TABLE IF NOT EXISTS d1_migrations (
 ${inserts}
 `;
 
-execFileSync('npx', ['wrangler', 'd1', 'execute', 'alongside-db', mode, '--command', sql], {
+const require = createRequire(import.meta.url);
+const wranglerBin = require.resolve('wrangler/bin/wrangler.js');
+
+execFileSync(process.execPath, [wranglerBin, 'd1', 'execute', 'alongside-db', mode, '--command', sql], {
   stdio: 'inherit',
 });
 

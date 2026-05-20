@@ -6,13 +6,14 @@ import readline from 'node:readline';
 const root = path.resolve(import.meta.dirname, '..');
 const stateDir = path.join(root, '.dev');
 const stateFile = path.join(stateDir, 'dev-env.json');
+const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 const processes = [
   {
     name: 'worker',
     color: '\x1b[35m',
     cwd: path.join(root, 'worker'),
-    command: 'npm',
+    command: npmCommand,
     args: ['run', 'dev'],
     url: 'http://127.0.0.1:8787',
   },
@@ -20,7 +21,7 @@ const processes = [
     name: 'pwa',
     color: '\x1b[36m',
     cwd: path.join(root, 'pwa'),
-    command: 'npm',
+    command: npmCommand,
     args: ['run', 'dev', '--', '--host', '127.0.0.1'],
     url: 'http://127.0.0.1:5173',
   },
@@ -89,6 +90,7 @@ function startProcess(proc) {
     cwd: proc.cwd,
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32',
   });
 
   prefixStream(child.stdout, proc);
