@@ -25,6 +25,7 @@ import {
   parseTaskId,
   parseTaskStatus,
   parseTaskType,
+  nextOccurrence,
 } from '../parse';
 import { err, ok, type Result } from '@shared/result';
 import type { Task } from '@shared/types';
@@ -174,6 +175,16 @@ export function recurrenceFromRow(
   }
 
   if (!parsedRule.ok || !dueDate.ok || dueDate.value === null || errors.length > 0) return err(errors);
+
+  try {
+    nextOccurrence(parsedRule.value.parts, dueDate.value);
+  } catch {
+    return err([{
+      path: ['recurrence'],
+      code: 'invalid_state',
+      message: 'recurrence must produce a next occurrence after due_date.',
+    }]);
+  }
 
   return ok({
     kind: 'recurring',

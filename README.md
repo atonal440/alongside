@@ -12,7 +12,7 @@ A lightweight task manager built around conversational workflow. Tasks live in a
 - **Action log** — append-only audit trail of every create, update, complete, defer, and delete
 - **Search / command palette** — `Cmd K` opens a global palette for search, inline actions, project navigation, and fast task creation
 - **Review view** — end-of-day close-out screen (Current Focus / Done Today / Carry Forward / Next Suggestion)
-- **Recurrence** — iCal RRULE on any task; completing it spawns the next occurrence automatically
+- **Recurrence** — infinite date-only iCal RRULE on any task; completing it spawns the next occurrence automatically
 - **Import / export** — full JSON snapshot backup and restore (with optional `dry_run`)
 - **MCP integration** — 20 tools over JSON-RPC for Claude and other MCP clients
 - **OAuth 2.1 / PKCE** — external MCP clients (e.g. Claude.ai) authenticate via a proper authorization code flow; no static token sharing required

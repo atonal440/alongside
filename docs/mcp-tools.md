@@ -101,7 +101,7 @@ Create a new task.
 | `title` | `string` | yes | Task title. |
 | `notes` | `string` | no | Freeform notes. |
 | `due_date` | `string` | no | ISO 8601 date (e.g. `2026-04-15`). |
-| `recurrence` | `string` | no | iCal RRULE (e.g. `FREQ=WEEKLY;INTERVAL=1`). |
+| `recurrence` | `string` | no | Infinite date-only RRULE (e.g. `FREQ=WEEKLY;INTERVAL=1`, `FREQ=MONTHLY;BYDAY=3FR`). |
 | `task_type` | `'action'\|'plan'\|'recurring'` | no | Defaults to `'action'`. |
 | `project_id` | `string` | no | Associate with a project. |
 | `kickoff_note` | `string` | no | Re-entry ramp — what to do next time. |
@@ -146,7 +146,7 @@ Mark a task done. If the task has both `recurrence` and `due_date`, a new task i
 
 `next` is present only when a recurrence was spawned.
 
-**Supported RRULE frequencies:** `DAILY`, `WEEKLY`, `MONTHLY`, `YEARLY` with optional `INTERVAL=N`. No `BYDAY` support.
+**Supported RRULE subset:** infinite date-only `DAILY`, `WEEKLY`, `MONTHLY`, and `YEARLY` rules with optional `INTERVAL=N`, plus date-level filters (`BYDAY`, `BYMONTHDAY`, `BYYEARDAY`, `BYWEEKNO`, `BYMONTH`, `BYSETPOS`, `WKST`). `COUNT`, `UNTIL`, time parts, recurrence sets, and exception dates are not supported. RRULE calendar semantics are used: invalid target dates are skipped rather than clipped, and the rule must produce a next occurrence after the task's current `due_date`.
 
 ---
 

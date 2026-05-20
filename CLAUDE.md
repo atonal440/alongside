@@ -75,7 +75,7 @@ Fresh worker checkouts need `worker/.dev.vars`; copy `worker/.dev.vars.example` 
 
 - **nanoid v3** is used in the worker (not v4+) because v3 supports CommonJS which wrangler bundles more reliably.
 - **Auth** is a single static bearer token in `wrangler.toml` vars (`AUTH_TOKEN`). The `/ui/*` routes skip auth so the iframe can be embedded.
-- **Recurrence** uses a minimal RRULE parser in `db.ts` (DAILY/WEEKLY/MONTHLY/YEARLY + INTERVAL). No BYDAY support yet.
+- **Recurrence** uses an `rrule`-backed, infinite date-only RRULE profile: `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY`, optional `INTERVAL`, and date-level `BY*` filters. `COUNT`, `UNTIL`, time parts, recurrence sets, and exceptions are intentionally unsupported until recurrence has a series anchor model.
 - **MCP endpoint** is at `/mcp` and expects JSON-RPC POST requests.
 - **PWA sync** is local-first: writes go to IndexedDB immediately, then flush to the worker. Merge is last-write-wins on `updated_at`.
 - **State management** is `useReducer` + React context. No external state library. Async ops are plain async functions in `context/actions.ts` that take `dispatch` as a parameter.

@@ -169,6 +169,26 @@ describe('DB plan application paths', () => {
     ]);
   });
 
+  it('completes a monthly positional BYDAY task through applyPlan', async () => {
+    const task = taskRow({
+      title: 'Publish meeting minutes',
+      due_date: '2026-05-15',
+      recurrence: 'FREQ=MONTHLY;BYDAY=3FR',
+    });
+    const { d1 } = d1WithExistingTasks([task.id]);
+    const db = new DB(d1);
+    db.getTask = async (id: string) => id === task.id ? task : null;
+
+    const result = await db.completeTask(task.id);
+
+    expect(result?.next).toMatchObject({
+      title: 'Publish meeting minutes',
+      due_date: '2026-06-19',
+      recurrence: 'FREQ=MONTHLY;BYDAY=3FR',
+      status: 'pending',
+    });
+  });
+
   it('creates a project and assigns unique existing tasks in one plan batch', async () => {
     const { d1, batches } = d1WithExistingTasks(['t_abc12', 't_other1']);
     const db = new DB(d1);
@@ -237,6 +257,35 @@ describe('DB plan application paths', () => {
 });
 
 describe('DB task lifecycle patch boundaries', () => {
+  it('accepts monthly positional BYDAY recurrence updates before persistence', async () => {
+    const { db, getStoredTask } = dbWithTask(taskRow({
+      due_date: '2026-05-15',
+    }));
+
+    const result = await db.updateTask('t_abc12', {
+      recurrence: 'FREQ=MONTHLY;BYDAY=3FR',
+    });
+
+    expect(result).toMatchObject({
+      recurrence: 'FREQ=MONTHLY;BYDAY=3FR',
+    });
+    expect(getStoredTask()).toMatchObject({
+      recurrence: 'FREQ=MONTHLY;BYDAY=3FR',
+    });
+  });
+
+  it('rejects recurrence updates that cannot advance from the task due date', async () => {
+    const { db } = dbWithTask(taskRow({
+      due_date: '2025-01-01',
+    }));
+
+    await expect(db.updateTask('t_abc12', {
+      recurrence: 'FREQ=YEARLY;INTERVAL=2;BYMONTH=2;BYMONTHDAY=29',
+    })).rejects.toMatchObject({
+      appError: { kind: 'validation' },
+    });
+  });
+
   it.each([
     {
       label: 'someday deferral',

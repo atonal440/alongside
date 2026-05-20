@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@shared': path.resolve(__dirname, '../shared'),
+      rrule: path.resolve(__dirname, 'node_modules/rrule/dist/esm/index.js'),
     },
   },
   plugins: [

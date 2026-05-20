@@ -55,7 +55,7 @@ Every public entry point (`api.ts`, `mcp.ts`, `ui.ts`, `oauth.ts`, `importAll`) 
 | --- | --- | --- |
 | Runtime schema + brands | **valibot** (`^1.x`) | Tree-shakeable (~1–4 KB used vs Zod's ~50 KB minified), first-class `brand()`, `pipe()` and `transform()` cover parse-not-validate, fits Workers 1 MB ceiling. Alternative: `zod` 4 mini if engineers already know Zod. |
 | Result/Either | tiny inline helper in `shared/result.ts` | Adding `neverthrow` or `effect` is overkill; a 30-line discriminated union covers the worker. |
-| RRULE | hand-rolled parser in `worker/src/parse/recurrence.ts` | `rrule.js` is ~70 KB and supports far more than we use; a typed FREQ/INTERVAL/BYDAY parser is ~80 lines and we control the surface. Revisit when BYDAY+BYMONTHDAY are needed. |
+| RRULE | `rrule` behind `shared/parse/recurrence.ts` | RRULE calendar expansion is easy to get subtly wrong. Alongside keeps a typed, date-only profile validator at the boundary and delegates occurrence generation to the library. |
 | Timezone | `Intl.supportedValuesOf('timeZone')` (ES2023, available in Workers) cached at module load | No 80 KB tz database needed for membership. For date math, use `Intl.DateTimeFormat` `formatToParts` — Temporal is not yet stable in Workers. |
 | Test runner | **vitest** + `@cloudflare/vitest-pool-workers` | First-party Cloudflare integration, runs against `workerd` so D1 + bindings behave like prod. |
 | Property-based testing | `fast-check` | Used for parser round-trips and RRULE/date invariants — small dep, optional. |
@@ -588,7 +588,7 @@ Each step keeps the worker green; `npm run verify` passes after every PR.
 - **PWA refactor** — out of scope. The PWA will continue to send today's wire shapes; the worker accepts them after parsing. Once the worker is stable the PWA can import `shared/parse/*` and reuse the same brands client-side. Note explicitly: PWA reducers and IndexedDB modules keep their current row-shaped types until a later plan addresses them. Do not break the PWA while cleaning up shared types: keep temporary compatibility aliases in `shared/types.ts`, or move PWA-local wire aliases into `pwa/src/types.ts` before removing `TaskCreate` / `TaskUpdate` / `ProjectUpdate`.
 - **Wire-shape changes** — REST and MCP payloads keep their current JSON field names so existing clients (Claude.ai MCP, the PWA, any external scripts using REST) keep working. Only the *internal* types change.
 - **Switching ORMs or DBs** — Drizzle + D1 stay. Row types remain `$inferSelect`.
-- **Full RRULE compliance** — BYDAY, BYMONTHDAY, COUNT, UNTIL stay unsupported in v1. The parser is structured so adding them is contained.
+- **Full RRULE compliance** — COUNT, UNTIL, time-of-day parts, recurrence sets, and exception dates stay unsupported in v1. The parser supports the infinite date-only subset Alongside currently uses and is structured so finite series can be added when recurrence has a series anchor model.
 - **Authentication redesign** — bearer-token + OAuth flow stays as is; only its inputs get parsed.
 
 ## Critical Files to Modify
