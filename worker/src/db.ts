@@ -24,10 +24,12 @@ import {
   focusTaskPlan,
   isReopenableTask,
   pendingTaskFromRow,
+  planImport,
   reopenTaskPlan,
   taskFromRow,
 } from './domain';
 import { applyPlan } from './storage';
+import { parseImport } from './wire/importPayload';
 
 export type { ActionLog as ActionLogEntry };
 
@@ -643,8 +645,12 @@ export class DB {
     return payload;
   }
 
-  async importAll(payload: ExportPayload, dryRun = false): Promise<ImportResult> {
-    validateExportPayload(payload);
+  async importAll(payload: unknown, dryRun = false): Promise<ImportResult> {
+    const parsedPayload = parseImport(payload);
+    if (!parsedPayload.ok) throwAppError(validationErrorResult(parsedPayload.error));
+
+    const importPlan = planImport(parsedPayload.value);
+    if (!importPlan.ok) throwAppError(importPlan.error);
 
     if (dryRun) {
       const [taskCount, projectCount] = await Promise.all([
@@ -654,140 +660,23 @@ export class DB {
       return {
         dry_run: true,
         would_delete: { tasks: taskCount[0].n, projects: projectCount[0].n },
-        would_insert: { tasks: payload.tasks.length, projects: payload.projects.length },
+        would_insert: { tasks: parsedPayload.value.tasks.length, projects: parsedPayload.value.projects.length },
       };
     }
 
-    // Build all statements: wipe then insert in FK-safe order
-    const stmts: D1PreparedStatement[] = [
-      this.d1.prepare('DELETE FROM task_links'),
-      this.d1.prepare('DELETE FROM action_log'),
-      this.d1.prepare('DELETE FROM tasks'),
-      this.d1.prepare('DELETE FROM projects'),
-      this.d1.prepare('DELETE FROM user_preferences'),
-    ];
+    await this.applyPlanOrThrow(importPlan.value);
 
-    for (const p of payload.projects) {
-      stmts.push(
-        this.d1
-          .prepare('INSERT INTO projects (id,title,notes,kickoff_note,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
-          .bind(p.id, p.title, p.notes, p.kickoff_note, p.status, p.created_at, p.updated_at)
-      );
-    }
-
-    for (const t of payload.tasks) {
-      // Legacy translation: exports created before migration 006 carry
-      // `snoozed_until` instead of `defer_kind`/`defer_until`. Both shapes
-      // claim `version: 1`, so we detect the old shape by the absence of
-      // `defer_kind` and rewrite a non-null `snoozed_until` as a timed
-      // defer. Without this, restoring an old backup silently un-snoozes
-      // every previously-snoozed task.
-      const legacy = t as Task & { snoozed_until?: string | null };
-      const hasNewFields = legacy.defer_kind !== undefined;
-      const deferKind: 'none' | 'until' | 'someday' = hasNewFields
-        ? (legacy.defer_kind ?? 'none')
-        : (legacy.snoozed_until ? 'until' : 'none');
-      const deferUntil: string | null = hasNewFields
-        ? (legacy.defer_until ?? null)
-        : (legacy.snoozed_until ?? null);
-
-      stmts.push(
-        this.d1
-          .prepare('INSERT INTO tasks (id,title,notes,status,due_date,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-          .bind(t.id, t.title, t.notes, t.status, t.due_date, t.recurrence, t.created_at, t.updated_at, deferUntil, deferKind, t.task_type, t.project_id, t.kickoff_note, t.session_log, t.focused_until)
-      );
-    }
-
-    for (const l of payload.links) {
-      stmts.push(
-        this.d1
-          .prepare('INSERT INTO task_links (from_task_id,to_task_id,link_type) VALUES (?,?,?)')
-          .bind(l.from_task_id, l.to_task_id, l.link_type)
-      );
-    }
-
-    for (const [key, value] of Object.entries(payload.preferences)) {
-      stmts.push(
-        this.d1.prepare('INSERT INTO user_preferences (key,value) VALUES (?,?)').bind(key, value)
-      );
-    }
-
-    const logEntries = payload.action_log ?? [];
-    for (const e of logEntries) {
-      stmts.push(
-        this.d1
-          .prepare('INSERT INTO action_log (tool_name,task_id,title,detail,created_at) VALUES (?,?,?,?,?)')
-          .bind(e.tool_name, e.task_id, e.title, e.detail, e.created_at)
-      );
-    }
-
-    // Execute atomically when possible; chunk when the batch is too large.
-    // D1 has no cross-batch transaction primitive, so the chunked path is not
-    // fully atomic. We validate payload integrity first to eliminate the most
-    // likely mid-import failure cause (bad references / duplicates). A D1
-    // network error mid-chunk would still leave the DB partially restored —
-    // callers should keep their export file as a backup.
-    const CHUNK = 100;
-    if (stmts.length <= CHUNK) {
-      await this.d1.batch(stmts);
-    } else {
-      validatePayloadIntegrity(payload);
-      await this.d1.batch(stmts.slice(0, 5)); // wipe
-      for (let i = 5; i < stmts.length; i += CHUNK) {
-        await this.d1.batch(stmts.slice(i, i + CHUNK));
-      }
-    }
+    const logEntries = parsedPayload.value.action_log ?? [];
 
     return {
       dry_run: false,
       inserted: {
-        projects: payload.projects.length,
-        tasks: payload.tasks.length,
-        links: payload.links.length,
-        preferences: Object.keys(payload.preferences).length,
+        projects: parsedPayload.value.projects.length,
+        tasks: parsedPayload.value.tasks.length,
+        links: parsedPayload.value.links.length,
+        preferences: Object.keys(parsedPayload.value.preferences).length,
         action_log: logEntries.length,
       },
     };
-  }
-}
-
-// Deep integrity check run before the chunked (non-atomic) import path.
-// Catches bad references and duplicates so the wipe-then-insert sequence
-// is unlikely to fail partway through.
-function validatePayloadIntegrity(payload: ExportPayload): void {
-  const projectIds = new Set(payload.projects.map(p => p.id));
-  const taskIds = new Set(payload.tasks.map(t => t.id));
-
-  const dupProjects = payload.projects.length - projectIds.size;
-  if (dupProjects > 0) throw new Error(`Payload contains ${dupProjects} duplicate project id(s)`);
-
-  const dupTasks = payload.tasks.length - taskIds.size;
-  if (dupTasks > 0) throw new Error(`Payload contains ${dupTasks} duplicate task id(s)`);
-
-  for (const task of payload.tasks) {
-    if (task.project_id !== null && !projectIds.has(task.project_id)) {
-      throw new Error(`Task ${task.id} references unknown project ${task.project_id}`);
-    }
-  }
-
-  for (const link of payload.links) {
-    if (!taskIds.has(link.from_task_id)) {
-      throw new Error(`Link references unknown task ${link.from_task_id}`);
-    }
-    if (!taskIds.has(link.to_task_id)) {
-      throw new Error(`Link references unknown task ${link.to_task_id}`);
-    }
-  }
-}
-
-function validateExportPayload(payload: unknown): asserts payload is ExportPayload {
-  if (typeof payload !== 'object' || payload === null) throw new Error('Payload must be a JSON object');
-  const p = payload as Record<string, unknown>;
-  if (p['version'] !== 1) throw new Error('Unsupported export version (expected 1)');
-  if (!Array.isArray(p['projects'])) throw new Error('Missing or invalid projects array');
-  if (!Array.isArray(p['tasks'])) throw new Error('Missing or invalid tasks array');
-  if (!Array.isArray(p['links'])) throw new Error('Missing or invalid links array');
-  if (typeof p['preferences'] !== 'object' || p['preferences'] === null || Array.isArray(p['preferences'])) {
-    throw new Error('Missing or invalid preferences object');
   }
 }

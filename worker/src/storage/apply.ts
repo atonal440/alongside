@@ -80,6 +80,7 @@ const TASK_EXISTS_GUARD_SQL =
 
 const PROJECT_EXISTS_GUARD_SQL =
   "INSERT INTO projects (title,status,created_at,updated_at) SELECT NULL,'active','','' WHERE NOT EXISTS (SELECT 1 FROM projects WHERE id = ?)";
+const MAX_BATCH_STATEMENTS = 100;
 
 function storageError(message: string, cause: unknown): AppError {
   return { kind: 'storage', message, cause };
@@ -272,6 +273,23 @@ async function findMissingGuard(d1: D1Database, guards: ExistingRowGuard[]): Pro
   return null;
 }
 
+async function runPlannedStatements(
+  d1: D1Database,
+  statements: D1PreparedStatement[],
+  canChunk: boolean,
+): Promise<void> {
+  if (statements.length <= MAX_BATCH_STATEMENTS || !canChunk) {
+    await d1.batch(statements);
+    return;
+  }
+
+  // D1 has no transaction primitive across batches. Chunk only plans with no
+  // row-existence guards so guard+mutation pairs stay atomic for normal flows.
+  for (let index = 0; index < statements.length; index += MAX_BATCH_STATEMENTS) {
+    await d1.batch(statements.slice(index, index + MAX_BATCH_STATEMENTS));
+  }
+}
+
 export async function applyPlan(d1: D1Database, plan: Plan): Promise<ApplyResult> {
   for (const assertion of plan.assertions) {
     const checked = await runPreCheck(d1, assertion);
@@ -293,7 +311,7 @@ export async function applyPlan(d1: D1Database, plan: Plan): Promise<ApplyResult
     const statements = plannedStatements.map(item => item.statement);
     guards = plannedStatements.flatMap(item => item.guard ? [item.guard] : []);
 
-    if (statements.length > 0) await d1.batch(statements);
+    if (statements.length > 0) await runPlannedStatements(d1, statements, guards.length === 0);
     return ok({ appliedOps: plan.ops.length });
   } catch (cause) {
     const missing = await findMissingGuard(d1, guards);

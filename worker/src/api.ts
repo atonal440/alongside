@@ -1,5 +1,4 @@
 import { DB, DomainOperationError } from './db';
-import type { ExportPayload } from './db';
 import type { TaskLink, ProjectUpdate } from '@shared/types';
 import { appErrorMessage, appErrorStatus } from './domain/errors';
 
@@ -198,9 +197,10 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
       return json({ error: 'Invalid JSON body' }, 400);
     }
     try {
-      const result = await db.importAll(body as ExportPayload, dryRun);
+      const result = await db.importAll(body, dryRun);
       return json(result, dryRun ? 200 : 201);
     } catch (e) {
+      if (e instanceof DomainOperationError) return domainErrorJson(e);
       return json({ error: e instanceof Error ? e.message : 'Import failed' }, 400);
     }
   }

@@ -216,6 +216,23 @@ describe('applyPlan', () => {
     expect(batches).toHaveLength(0);
   });
 
+  it('chunks large unguarded plans for D1 batch limits', async () => {
+    const { d1, batches } = fakeD1();
+    const plan: Plan = {
+      assertions: [],
+      ops: Array.from({ length: 105 }, (_, index) => ({
+        kind: 'project.insert' as const,
+        row: projectRow({ id: `p_${String(index).padStart(5, '0')}` }),
+      })),
+    };
+
+    const result = await applyPlan(d1, plan);
+
+    expect(result).toEqual({ ok: true, value: { appliedOps: 105 } });
+    expect(batches).toHaveLength(2);
+    expect(batches.map(batch => batch.length)).toEqual([100, 5]);
+  });
+
   it('clears task assignments before deleting a project', async () => {
     const { d1, batches } = fakeD1({ projects: ['p_abc12'] });
     const plan: Plan = {

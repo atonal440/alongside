@@ -36,12 +36,18 @@ This is the handoff checklist for implementing `docs/plans/type-driven-safety.md
 - [x] Add `createProjectPlan` and route project creation with task assignment through one plan batch.
 - [x] Add storage executor tests and DB regression tests for recurring completion and project assignment prechecks.
 
+## Completed Slice: Import Pipeline
+
+- [x] Parse import payloads through row schemas with branded IDs, enums, timestamps, RRULEs, and bounded text.
+- [x] Normalize legacy `snoozed_until` rows before planning restore operations.
+- [x] Route `DB.importAll` through `parseImport`, `planImport`, and `applyPlan`.
+- [x] Add import regression tests for duplicate IDs, missing references, invalid recurrence rows, invalid preferences, and pre-wipe failure.
+
 ## Later Slices
 
 - [ ] Link domain and dependency cycle checks.
 - [ ] REST + UI route schemas.
 - [ ] MCP typed registry.
-- [ ] Import pipeline.
 - [ ] OAuth, preferences, and action-log policy.
 - [ ] D1 check constraints.
 - [ ] Cleanup, compiler hardening, and PWA compatibility aliases.
