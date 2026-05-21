@@ -8,7 +8,6 @@ import {
   IsoDateTimeSchema,
   IsoDateSchema,
   LinkTypeSchema,
-  nonEmptyStringSchema,
   parseSchema,
   ProjectIdSchema,
   ProjectStatusSchema,
@@ -19,6 +18,7 @@ import {
   TaskStatusSchema,
   TaskTypeSchema,
   ToolNameSchema,
+  type NonEmptyString,
   type ValidationError,
 } from '../parse';
 
@@ -36,10 +36,19 @@ function prefixErrors(path: string, errors: ValidationError[]): ValidationError[
   return errors.map(error => ({ ...error, path: [path, ...error.path] }));
 }
 
+function importTitleSchema<const Max extends number>(max: Max) {
+  return v.pipe(
+    v.string(),
+    v.check(value => value.trim().length > 0, 'Expected a non-empty string.'),
+    v.maxLength(max, `Expected at most ${max} characters.`),
+    v.transform(value => value as NonEmptyString<Max>),
+  );
+}
+
 export const ProjectRowSchema = v.pipe(
   v.object({
     id: ProjectIdSchema,
-    title: nonEmptyStringSchema(PROJECT_TITLE_MAX),
+    title: importTitleSchema(PROJECT_TITLE_MAX),
     notes: v.nullable(boundedStringSchema(PROJECT_NOTES_MAX)),
     kickoff_note: v.nullable(boundedStringSchema(PROJECT_KICKOFF_MAX)),
     status: ProjectStatusSchema,
@@ -52,7 +61,7 @@ export const ProjectRowSchema = v.pipe(
 export const TaskRowSchema = v.pipe(
   v.object({
     id: TaskIdSchema,
-    title: nonEmptyStringSchema(TASK_TITLE_MAX),
+    title: importTitleSchema(TASK_TITLE_MAX),
     notes: v.nullable(boundedStringSchema(TASK_NOTES_MAX)),
     status: TaskStatusSchema,
     due_date: v.nullable(IsoDateSchema),

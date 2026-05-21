@@ -98,6 +98,21 @@ function fakeD1(): {
 }
 
 describe('import payload parsing', () => {
+  it('preserves title whitespace while still requiring non-blank titles', () => {
+    const parsed = expectOk(parseImport(exportPayload({
+      projects: [projectRow({ title: '  Launch  ' })],
+      tasks: [taskRow({ title: '  Draft launch checklist  ', project_id: 'p_abc12' })],
+    })));
+
+    expect(parsed.projects[0].title).toBe('  Launch  ');
+    expect(parsed.tasks[0].title).toBe('  Draft launch checklist  ');
+
+    const invalid = parseImport(exportPayload({
+      tasks: [taskRow({ title: '   ', project_id: 'p_abc12' })],
+    }));
+    expect(invalid.ok).toBe(false);
+  });
+
   it('normalizes legacy snoozed_until task rows into current defer fields', () => {
     const { defer_kind: _deferKind, defer_until: _deferUntil, ...legacyTask } = taskRow({
       project_id: 'p_abc12',
