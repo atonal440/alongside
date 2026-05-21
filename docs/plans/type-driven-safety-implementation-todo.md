@@ -62,3 +62,4 @@ This is the handoff checklist for implementing `docs/plans/type-driven-safety.md
 ## Future PWA Type System Notes
 
 - [ ] When the type-driven safety work reaches the frontend, distinguish durable 4xx validation failures from transient offline/network failures in the PWA sync layer. Today `apiFetch` collapses all non-OK responses to `null`, so rejected writes can be queued like offline retries; the frontend migration should parse validation errors, surface them to the user, and avoid retry loops.
+- [ ] Link mutations need the same treatment specifically: `createLinkAction` writes optimistically to IndexedDB before the server can reject self-links, missing endpoints, or `blocks` cycles. The PWA pass should roll back or annotate durable link rejections instead of leaving invalid local graph state and retrying the rejected op forever.
