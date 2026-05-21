@@ -54,6 +54,8 @@ function projectRow(overrides: Partial<Project> = {}): Project {
 function fakeD1(options: {
   tasks?: string[];
   projects?: string[];
+  blockLinks?: Array<[string, string]>;
+  addBlockLinksBeforeBatch?: Array<[string, string]>;
   deleteTasksBeforeBatch?: string[];
   deleteProjectsBeforeBatch?: string[];
 } = {}): {
@@ -64,9 +66,25 @@ function fakeD1(options: {
 } {
   const tasks = new Set(options.tasks ?? []);
   const projects = new Set(options.projects ?? []);
+  const blockLinks = [...(options.blockLinks ?? [])];
   const prepared: FakeStatement[] = [];
   const batches: FakeStatement[][] = [];
   const executedStatements: FakeStatement[] = [];
+
+  function hasBlocksPath(from: string, to: string): boolean {
+    const seen = new Set<string>();
+    const queue = [from];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current || seen.has(current)) continue;
+      if (current === to) return true;
+      seen.add(current);
+      for (const [source, target] of blockLinks) {
+        if (source === current) queue.push(target);
+      }
+    }
+    return false;
+  }
 
   const d1 = {
     prepare(sql: string): FakeStatement {
@@ -78,6 +96,12 @@ function fakeD1(options: {
           return statement;
         },
         async first<T>() {
+          if (sql.includes('WITH RECURSIVE downstream')) {
+            const from = String(statement.args[0]);
+            const to = String(statement.args[1]);
+            return (hasBlocksPath(from, to) ? { id: to } : null) as T | null;
+          }
+
           const id = String(statement.args[0]);
           if (sql.includes('FROM tasks')) return (tasks.has(id) ? { id } : null) as T | null;
           if (sql.includes('FROM projects')) return (projects.has(id) ? { id } : null) as T | null;
@@ -94,6 +118,7 @@ function fakeD1(options: {
       batches.push(statements);
       for (const id of options.deleteTasksBeforeBatch ?? []) tasks.delete(id);
       for (const id of options.deleteProjectsBeforeBatch ?? []) projects.delete(id);
+      blockLinks.push(...(options.addBlockLinksBeforeBatch ?? []));
 
       for (const statement of statements) {
         if (statement.sql === TASK_EXISTS_GUARD_SQL) {
@@ -104,6 +129,13 @@ function fakeD1(options: {
         if (statement.sql === PROJECT_EXISTS_GUARD_SQL) {
           const id = String(statement.args[0]);
           if (!projects.has(id)) throw new Error('NOT NULL constraint failed: projects.title');
+          continue;
+        }
+        if (statement.sql.includes("SELECT NULL,NULL,'blocks'")) {
+          const [from, to, pathFrom, pathTo] = statement.args.map(String);
+          if (from === to || hasBlocksPath(pathFrom, pathTo)) {
+            throw new Error('NOT NULL constraint failed: task_links.from_task_id');
+          }
           continue;
         }
         executedStatements.push(statement);
@@ -214,6 +246,102 @@ describe('applyPlan', () => {
 
     expect(result).toEqual({ ok: false, error: { kind: 'not_found', entity: 'project', id: 'p_missing' } });
     expect(batches).toHaveLength(0);
+  });
+
+  it('runs blocks cycle prechecks before linking tasks', async () => {
+    const { d1, batches } = fakeD1({ tasks: ['t_from1', 't_to222'] });
+    const plan: Plan = {
+      assertions: [
+        { kind: 'task.exists', id: 't_from1' },
+        { kind: 'task.exists', id: 't_to222' },
+        { kind: 'link.blocks_acyclic', from: 't_from1', to: 't_to222' },
+      ],
+      ops: [{
+        kind: 'link.upsert',
+        row: { from_task_id: 't_from1', to_task_id: 't_to222', link_type: 'blocks' },
+      }],
+    };
+
+    const result = await applyPlan(d1, plan);
+
+    expect(result).toEqual({ ok: true, value: { appliedOps: 1 } });
+    expect(batches).toHaveLength(1);
+    expect(batches[0].map(statement => statement.sql)).toEqual([
+      TASK_EXISTS_GUARD_SQL,
+      TASK_EXISTS_GUARD_SQL,
+      expect.stringContaining("SELECT NULL,NULL,'blocks'"),
+      'INSERT OR REPLACE INTO task_links (from_task_id,to_task_id,link_type) VALUES (?,?,?)',
+    ]);
+  });
+
+  it('rejects blocks links that would create a cycle before mutation', async () => {
+    const { d1, batches } = fakeD1({
+      tasks: ['t_from1', 't_to222', 't_mid33'],
+      blockLinks: [['t_to222', 't_mid33'], ['t_mid33', 't_from1']],
+    });
+    const plan: Plan = {
+      assertions: [
+        { kind: 'task.exists', id: 't_from1' },
+        { kind: 'task.exists', id: 't_to222' },
+        { kind: 'link.blocks_acyclic', from: 't_from1', to: 't_to222' },
+      ],
+      ops: [{
+        kind: 'link.upsert',
+        row: { from_task_id: 't_from1', to_task_id: 't_to222', link_type: 'blocks' },
+      }],
+    };
+
+    const result = await applyPlan(d1, plan);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatchObject({ kind: 'conflict' });
+    }
+    expect(batches).toHaveLength(0);
+  });
+
+  it('aborts blocks links when the graph changes before the batch mutates', async () => {
+    const { d1, batches, executedStatements } = fakeD1({
+      tasks: ['t_from1', 't_to222', 't_mid33'],
+      addBlockLinksBeforeBatch: [['t_to222', 't_mid33'], ['t_mid33', 't_from1']],
+    });
+    const plan: Plan = {
+      assertions: [
+        { kind: 'task.exists', id: 't_from1' },
+        { kind: 'task.exists', id: 't_to222' },
+        { kind: 'link.blocks_acyclic', from: 't_from1', to: 't_to222' },
+      ],
+      ops: [{
+        kind: 'link.upsert',
+        row: { from_task_id: 't_from1', to_task_id: 't_to222', link_type: 'blocks' },
+      }],
+    };
+
+    const result = await applyPlan(d1, plan);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatchObject({ kind: 'conflict' });
+    }
+    expect(batches).toHaveLength(1);
+    expect(executedStatements).toHaveLength(0);
+  });
+
+  it('chunks large unguarded plans for D1 batch limits', async () => {
+    const { d1, batches } = fakeD1();
+    const plan: Plan = {
+      assertions: [],
+      ops: Array.from({ length: 105 }, (_, index) => ({
+        kind: 'project.insert' as const,
+        row: projectRow({ id: `p_${String(index).padStart(5, '0')}` }),
+      })),
+    };
+
+    const result = await applyPlan(d1, plan);
+
+    expect(result).toEqual({ ok: true, value: { appliedOps: 105 } });
+    expect(batches).toHaveLength(2);
+    expect(batches.map(batch => batch.length)).toEqual([100, 5]);
   });
 
   it('clears task assignments before deleting a project', async () => {

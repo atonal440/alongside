@@ -1,6 +1,6 @@
 # worker/src/db.ts
 
-Database abstraction layer over Cloudflare D1 (SQLite). Uses the Drizzle ORM query builder for all reads and most writes; raw D1 batch API is used for import and for operations that need `last_row_id`. No other file issues queries directly.
+Database abstraction layer over Cloudflare D1 (SQLite). Uses the Drizzle ORM query builder for all reads and most writes; typed mutation plans go through `applyPlan`, and raw D1 is used where the platform API is required (such as `last_row_id`). No other file issues queries directly.
 
 ## Types
 
@@ -60,15 +60,15 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`listProjects(status?)`** — Lists projects, optionally filtered by status.
 
-**`updateProject(id, data)`** — Partial update of project fields (`title`, `notes`, `kickoff_note`, `status`).
+**`updateProject(id, data)`** — Partial update of project fields (`title`, `notes`, `kickoff_note`, `status`). The final row is validated through `projectFromRow` before writing so project exports remain importable.
 
 **`deleteProject(id)`** — Unlinks all tasks from the project (sets `project_id = NULL`), then deletes the project row.
 
 ## Link operations
 
-**`linkTasks(fromId, toId, linkType)`** — Creates a dependency edge between two tasks. `linkType` is `'blocks'` or `'related'`.
+**`linkTasks(fromId, toId, linkType)`** — Parses a typed link domain value, rejects self-links, asserts both endpoint tasks exist, and applies `linkTasksPlan`. `blocks` links also run an acyclic graph precheck so a task cannot indirectly block itself.
 
-**`unlinkTasks(fromId, toId, linkType)`** — Removes a specific link between two tasks.
+**`unlinkTasks(fromId, toId, linkType)`** — Parses a typed link domain value and applies `unlinkTasksPlan` to remove a specific link. Missing rows remain a no-op.
 
 **`getTaskLinks(taskId)`** — Returns all links where the task is either the source or target.
 
@@ -78,7 +78,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`getPreference(key)`** — Reads a single preference value by key.
 
-**`setPreference(key, value)`** — Upserts a preference row.
+**`setPreference(key, value)`** — Parses a key-specific preference entry, then upserts the row. Invalid keys or values are rejected before storage so preference exports remain importable.
 
 **`getAllPreferences()`** — Returns all preference rows merged with built-in defaults.
 
@@ -94,7 +94,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`exportAll(includeLog?)`** — Reads all tables in parallel and returns an `ExportPayload`. Action log is excluded by default (`includeLog = false`) since it can be large.
 
-**`importAll(payload, dryRun?)`** — Validates the payload, then either returns a preview of what would change (`dryRun = true`) or wipes all data and restores from the payload. Translates legacy `snoozed_until` (from pre-006 exports) into `defer_kind = 'until'` so previously-snoozed tasks remain hidden after restore. Uses D1 `batch()` for atomic execution when statement count ≤ 100; falls back to chunked batches for larger datasets.
+**`importAll(payload, dryRun?)`** — Parses unknown JSON through `parseImport`, validates cross-row integrity with `planImport`, then either returns a preview of what would change (`dryRun = true`) or applies the planned wipe-and-restore through `applyPlan`. The parser translates legacy `snoozed_until` (from pre-006 exports) into `defer_kind = 'until'` so previously-snoozed tasks remain hidden after restore. Small restores run as one D1 batch; large unguarded restore plans are chunked by the shared plan executor after validation.
 
 ## See Also
 

@@ -36,12 +36,25 @@ This is the handoff checklist for implementing `docs/plans/type-driven-safety.md
 - [x] Add `createProjectPlan` and route project creation with task assignment through one plan batch.
 - [x] Add storage executor tests and DB regression tests for recurring completion and project assignment prechecks.
 
+## Completed Slice: Import Pipeline
+
+- [x] Parse import payloads through row schemas with branded IDs, enums, timestamps, RRULEs, and bounded text.
+- [x] Normalize legacy `snoozed_until` rows before planning restore operations.
+- [x] Route `DB.importAll` through `parseImport`, `planImport`, and `applyPlan`.
+- [x] Add import regression tests for duplicate IDs, missing references, invalid recurrence rows, invalid preferences, and pre-wipe failure.
+
+## Completed Slice: Link Domain And Dependency Checks
+
+- [x] Parse link inputs into `TaskLinkDomain` before storage writes.
+- [x] Add `linkTasksPlan` and `unlinkTasksPlan` with self-link rejection and endpoint prechecks.
+- [x] Implement `link.blocks_acyclic` in `applyPlan` with a recursive D1 graph query.
+- [x] Reject self-links and cyclic `blocks` graphs during import planning.
+- [x] Add link planner, storage executor, DB, and import regression tests.
+
 ## Later Slices
 
-- [ ] Link domain and dependency cycle checks.
 - [ ] REST + UI route schemas.
 - [ ] MCP typed registry.
-- [ ] Import pipeline.
 - [ ] OAuth, preferences, and action-log policy.
 - [ ] D1 check constraints.
 - [ ] Cleanup, compiler hardening, and PWA compatibility aliases.
@@ -49,3 +62,4 @@ This is the handoff checklist for implementing `docs/plans/type-driven-safety.md
 ## Future PWA Type System Notes
 
 - [ ] When the type-driven safety work reaches the frontend, distinguish durable 4xx validation failures from transient offline/network failures in the PWA sync layer. Today `apiFetch` collapses all non-OK responses to `null`, so rejected writes can be queued like offline retries; the frontend migration should parse validation errors, surface them to the user, and avoid retry loops.
+- [ ] Link mutations need the same treatment specifically: `createLinkAction` writes optimistically to IndexedDB before the server can reject self-links, missing endpoints, or `blocks` cycles. The PWA pass should roll back or annotate durable link rejections instead of leaving invalid local graph state and retrying the rejected op forever.

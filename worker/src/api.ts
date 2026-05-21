@@ -1,5 +1,4 @@
 import { DB, DomainOperationError } from './db';
-import type { ExportPayload } from './db';
 import type { TaskLink, ProjectUpdate } from '@shared/types';
 import { appErrorMessage, appErrorStatus } from './domain/errors';
 
@@ -44,8 +43,13 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
     const body = await request.json<{ from_task_id: string; to_task_id: string; link_type: string }>();
     if (!body.from_task_id || !body.to_task_id || !body.link_type)
       return json({ error: 'from_task_id, to_task_id, link_type are required' }, 400);
-    await db.linkTasks(body.from_task_id, body.to_task_id, body.link_type as TaskLink['link_type']);
-    return json({ ok: true }, 201);
+    try {
+      await db.linkTasks(body.from_task_id, body.to_task_id, body.link_type as TaskLink['link_type']);
+      return json({ ok: true }, 201);
+    } catch (error) {
+      if (error instanceof DomainOperationError) return domainErrorJson(error);
+      throw error;
+    }
   }
 
   // DELETE /api/tasks/links — remove a link
@@ -53,8 +57,13 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
     const body = await request.json<{ from_task_id: string; to_task_id: string; link_type: string }>();
     if (!body.from_task_id || !body.to_task_id || !body.link_type)
       return json({ error: 'from_task_id, to_task_id, link_type are required' }, 400);
-    await db.unlinkTasks(body.from_task_id, body.to_task_id, body.link_type as TaskLink['link_type']);
-    return json({ ok: true });
+    try {
+      await db.unlinkTasks(body.from_task_id, body.to_task_id, body.link_type as TaskLink['link_type']);
+      return json({ ok: true });
+    } catch (error) {
+      if (error instanceof DomainOperationError) return domainErrorJson(error);
+      throw error;
+    }
   }
 
   // GET /api/tasks/:id — get one task
@@ -140,8 +149,13 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   if (method === 'POST' && path === '/api/projects') {
     const body = await request.json<{ title: string; kickoff_note?: string; notes?: string }>();
     if (!body.title) return json({ error: 'title is required' }, 400);
-    const project = await db.createProject(body);
-    return json(project, 201);
+    try {
+      const project = await db.createProject(body);
+      return json(project, 201);
+    } catch (error) {
+      if (error instanceof DomainOperationError) return domainErrorJson(error);
+      throw error;
+    }
   }
 
   // Project single-item routes
@@ -157,9 +171,14 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   // PATCH /api/projects/:id
   if (method === 'PATCH' && projectMatch) {
     const body = await request.json<ProjectUpdate>();
-    const project = await db.updateProject(projectMatch[1], body);
-    if (!project) return json({ error: 'Not found' }, 404);
-    return json(project);
+    try {
+      const project = await db.updateProject(projectMatch[1], body);
+      if (!project) return json({ error: 'Not found' }, 404);
+      return json(project);
+    } catch (error) {
+      if (error instanceof DomainOperationError) return domainErrorJson(error);
+      throw error;
+    }
   }
 
   // DELETE /api/projects/:id
@@ -198,9 +217,10 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
       return json({ error: 'Invalid JSON body' }, 400);
     }
     try {
-      const result = await db.importAll(body as ExportPayload, dryRun);
+      const result = await db.importAll(body, dryRun);
       return json(result, dryRun ? 200 : 201);
     } catch (e) {
+      if (e instanceof DomainOperationError) return domainErrorJson(e);
       return json({ error: e instanceof Error ? e.message : 'Import failed' }, 400);
     }
   }
