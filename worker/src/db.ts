@@ -26,6 +26,8 @@ import {
   linkTasksPlan,
   pendingTaskFromRow,
   planImport,
+  preferenceEntryFromParts,
+  projectFromRow,
   reopenTaskPlan,
   taskLinkFromParts,
   taskFromRow,
@@ -90,6 +92,11 @@ function mintProjectId(): MintedProjectId {
 
 function assertWritableTaskRow(task: Task): void {
   const parsed = taskFromRow(task);
+  if (!parsed.ok) throw new DomainOperationError(validationErrorResult(parsed.error));
+}
+
+function assertWritableProjectRow(project: Project): void {
+  const parsed = projectFromRow(project);
   if (!parsed.ok) throw new DomainOperationError(validationErrorResult(parsed.error));
 }
 
@@ -472,6 +479,7 @@ export class DB {
       created_at: timestamp,
       updated_at: timestamp,
     };
+    assertWritableProjectRow(project);
 
     const plan = createProjectPlan(project, parseTaskIds(taskIds), timestamp);
     if (!plan.ok) throwAppError(plan.error);
@@ -512,6 +520,10 @@ export class DB {
     if (Object.keys(patch).length === 0) return this.getProject(id);
 
     patch.updated_at = now();
+    const existing = await this.getProject(id);
+    if (!existing) return null;
+    assertWritableProjectRow({ ...existing, ...patch });
+
     await this.drizzle.update(projectsTable).set(patch).where(eq(projectsTable.id, id));
     return this.getProject(id);
   }
@@ -572,6 +584,9 @@ export class DB {
   }
 
   async setPreference(key: string, value: string): Promise<void> {
+    const parsedPreference = preferenceEntryFromParts(key, value);
+    if (!parsedPreference.ok) throwAppError(validationErrorResult(parsedPreference.error));
+
     await this.d1
       .prepare('INSERT OR REPLACE INTO user_preferences (key, value) VALUES (?, ?)')
       .bind(key, value)

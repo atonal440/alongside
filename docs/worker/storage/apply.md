@@ -12,7 +12,7 @@ Typed mutation plan executor for D1.
 
 ## Functions
 
-**`applyPlan(d1, plan)`** — Runs every precheck before mutation, converts each `Op` into D1 prepared statements, and executes the statements in planner-provided order. `task.exists` and `project.exists` return typed `not_found` errors before any batch runs. `link.blocks_acyclic` uses a recursive D1 query to reject a new `blocks` edge when the target can already reach the source. Custom prechecks currently return `invariant_violation` until a future slice gives them semantics.
+**`applyPlan(d1, plan)`** — Runs every precheck before mutation, converts each `Op` into D1 prepared statements, and executes the statements in planner-provided order. `task.exists` and `project.exists` return typed `not_found` errors before any batch runs. `link.blocks_acyclic` uses a recursive D1 query to reject a new `blocks` edge when the target can already reach the source. It also emits an in-batch cycle guard so concurrent graph changes can abort the mutation batch instead of creating a cycle. Custom prechecks currently return `invariant_violation` until a future slice gives them semantics.
 
 The executor also emits in-batch existence guards for task/project prechecks and task/project update/delete targets, so a row that disappears between precheck and mutation aborts the batch and is reported as `not_found` instead of becoming a silent zero-row write.
 

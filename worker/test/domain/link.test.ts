@@ -106,6 +106,21 @@ describe('link planners', () => {
       }],
     });
   });
+
+  it('allows unlinking legacy self-link rows', () => {
+    const link = expectOk(taskLinkFromParts('t_same1', 't_same1', 'related'));
+    const plan = expectAppOk(unlinkTasksPlan(link));
+
+    expect(plan).toEqual({
+      assertions: [],
+      ops: [{
+        kind: 'link.delete',
+        from: 't_same1',
+        to: 't_same1',
+        linkType: 'related',
+      }],
+    });
+  });
 });
 
 describe('blocks graph helpers', () => {

@@ -55,6 +55,7 @@ function fakeD1(options: {
   tasks?: string[];
   projects?: string[];
   blockLinks?: Array<[string, string]>;
+  addBlockLinksBeforeBatch?: Array<[string, string]>;
   deleteTasksBeforeBatch?: string[];
   deleteProjectsBeforeBatch?: string[];
 } = {}): {
@@ -65,7 +66,7 @@ function fakeD1(options: {
 } {
   const tasks = new Set(options.tasks ?? []);
   const projects = new Set(options.projects ?? []);
-  const blockLinks = options.blockLinks ?? [];
+  const blockLinks = [...(options.blockLinks ?? [])];
   const prepared: FakeStatement[] = [];
   const batches: FakeStatement[][] = [];
   const executedStatements: FakeStatement[] = [];
@@ -117,6 +118,7 @@ function fakeD1(options: {
       batches.push(statements);
       for (const id of options.deleteTasksBeforeBatch ?? []) tasks.delete(id);
       for (const id of options.deleteProjectsBeforeBatch ?? []) projects.delete(id);
+      blockLinks.push(...(options.addBlockLinksBeforeBatch ?? []));
 
       for (const statement of statements) {
         if (statement.sql === TASK_EXISTS_GUARD_SQL) {
@@ -127,6 +129,13 @@ function fakeD1(options: {
         if (statement.sql === PROJECT_EXISTS_GUARD_SQL) {
           const id = String(statement.args[0]);
           if (!projects.has(id)) throw new Error('NOT NULL constraint failed: projects.title');
+          continue;
+        }
+        if (statement.sql.includes("SELECT NULL,NULL,'blocks'")) {
+          const [from, to, pathFrom, pathTo] = statement.args.map(String);
+          if (from === to || hasBlocksPath(pathFrom, pathTo)) {
+            throw new Error('NOT NULL constraint failed: task_links.from_task_id');
+          }
           continue;
         }
         executedStatements.push(statement);
@@ -260,6 +269,7 @@ describe('applyPlan', () => {
     expect(batches[0].map(statement => statement.sql)).toEqual([
       TASK_EXISTS_GUARD_SQL,
       TASK_EXISTS_GUARD_SQL,
+      expect.stringContaining("SELECT NULL,NULL,'blocks'"),
       'INSERT OR REPLACE INTO task_links (from_task_id,to_task_id,link_type) VALUES (?,?,?)',
     ]);
   });
@@ -288,6 +298,33 @@ describe('applyPlan', () => {
       expect(result.error).toMatchObject({ kind: 'conflict' });
     }
     expect(batches).toHaveLength(0);
+  });
+
+  it('aborts blocks links when the graph changes before the batch mutates', async () => {
+    const { d1, batches, executedStatements } = fakeD1({
+      tasks: ['t_from1', 't_to222', 't_mid33'],
+      addBlockLinksBeforeBatch: [['t_to222', 't_mid33'], ['t_mid33', 't_from1']],
+    });
+    const plan: Plan = {
+      assertions: [
+        { kind: 'task.exists', id: 't_from1' },
+        { kind: 'task.exists', id: 't_to222' },
+        { kind: 'link.blocks_acyclic', from: 't_from1', to: 't_to222' },
+      ],
+      ops: [{
+        kind: 'link.upsert',
+        row: { from_task_id: 't_from1', to_task_id: 't_to222', link_type: 'blocks' },
+      }],
+    };
+
+    const result = await applyPlan(d1, plan);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatchObject({ kind: 'conflict' });
+    }
+    expect(batches).toHaveLength(1);
+    expect(executedStatements).toHaveLength(0);
   });
 
   it('chunks large unguarded plans for D1 batch limits', async () => {

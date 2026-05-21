@@ -80,6 +80,22 @@ const TASK_EXISTS_GUARD_SQL =
 
 const PROJECT_EXISTS_GUARD_SQL =
   "INSERT INTO projects (title,status,created_at,updated_at) SELECT NULL,'active','','' WHERE NOT EXISTS (SELECT 1 FROM projects WHERE id = ?)";
+const BLOCKS_ACYCLIC_GUARD_SQL = `
+INSERT INTO task_links (from_task_id,to_task_id,link_type)
+SELECT NULL,NULL,'blocks'
+WHERE ? = ? OR EXISTS (
+  WITH RECURSIVE downstream(id) AS (
+    SELECT to_task_id
+    FROM task_links
+    WHERE from_task_id = ? AND link_type = 'blocks'
+    UNION
+    SELECT task_links.to_task_id
+    FROM task_links
+    JOIN downstream ON task_links.from_task_id = downstream.id
+    WHERE task_links.link_type = 'blocks'
+  )
+  SELECT 1 FROM downstream WHERE id = ? LIMIT 1
+)`;
 const MAX_BATCH_STATEMENTS = 100;
 
 function storageError(message: string, cause: unknown): AppError {
@@ -170,15 +186,20 @@ async function runPreCheck(d1: D1Database, check: PreCheck): Promise<Result<void
   }
 }
 
-function guardForPreCheck(check: PreCheck): ExistingRowGuard | null {
+function bindBlocksAcyclicGuard(d1: D1Database, from: string, to: string): PlannedStatement {
+  return guardedStatement(d1.prepare(BLOCKS_ACYCLIC_GUARD_SQL).bind(from, to, to, from));
+}
+
+function bindPreCheckGuard(d1: D1Database, check: PreCheck): PlannedStatement[] {
   switch (check.kind) {
     case 'task.exists':
-      return { entity: 'task', id: check.id };
+      return [bindExistingRowGuard(d1, { entity: 'task', id: check.id })];
     case 'project.exists':
-      return { entity: 'project', id: check.id };
+      return [bindExistingRowGuard(d1, { entity: 'project', id: check.id })];
     case 'link.blocks_acyclic':
+      return [bindBlocksAcyclicGuard(d1, check.from, check.to)];
     case 'custom':
-      return null;
+      return [];
     default:
       return assertNever(check);
   }
@@ -307,6 +328,14 @@ async function findMissingGuard(d1: D1Database, guards: ExistingRowGuard[]): Pro
   return null;
 }
 
+async function findFailedPreCheck(d1: D1Database, checks: PreCheck[]): Promise<AppError | null> {
+  for (const check of checks) {
+    const checked = await runPreCheck(d1, check);
+    if (!checked.ok) return checked.error;
+  }
+  return null;
+}
+
 async function runPlannedStatements(
   d1: D1Database,
   statements: D1PreparedStatement[],
@@ -334,10 +363,7 @@ export async function applyPlan(d1: D1Database, plan: Plan): Promise<ApplyResult
 
   let guards: ExistingRowGuard[] = [];
   try {
-    const assertionGuards = plan.assertions.flatMap(assertion => {
-      const guard = guardForPreCheck(assertion);
-      return guard ? [bindExistingRowGuard(d1, guard)] : [];
-    });
+    const assertionGuards = plan.assertions.flatMap(assertion => bindPreCheckGuard(d1, assertion));
     const plannedStatements = [
       ...assertionGuards,
       ...plan.ops.flatMap(op => opStatements(d1, op)),
@@ -350,6 +376,8 @@ export async function applyPlan(d1: D1Database, plan: Plan): Promise<ApplyResult
   } catch (cause) {
     const missing = await findMissingGuard(d1, guards);
     if (missing) return err(missing);
+    const failedPreCheck = await findFailedPreCheck(d1, plan.assertions);
+    if (failedPreCheck) return err(failedPreCheck);
     return err(storageError('Failed to apply mutation plan.', cause));
   }
 }

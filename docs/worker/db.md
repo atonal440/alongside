@@ -60,7 +60,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`listProjects(status?)`** — Lists projects, optionally filtered by status.
 
-**`updateProject(id, data)`** — Partial update of project fields (`title`, `notes`, `kickoff_note`, `status`).
+**`updateProject(id, data)`** — Partial update of project fields (`title`, `notes`, `kickoff_note`, `status`). The final row is validated through `projectFromRow` before writing so project exports remain importable.
 
 **`deleteProject(id)`** — Unlinks all tasks from the project (sets `project_id = NULL`), then deletes the project row.
 
@@ -78,7 +78,7 @@ Constructed with a `D1Database` instance. Initializes a Drizzle client (`drizzle
 
 **`getPreference(key)`** — Reads a single preference value by key.
 
-**`setPreference(key, value)`** — Upserts a preference row.
+**`setPreference(key, value)`** — Parses a key-specific preference entry, then upserts the row. Invalid keys or values are rejected before storage so preference exports remain importable.
 
 **`getAllPreferences()`** — Returns all preference rows merged with built-in defaults.
 

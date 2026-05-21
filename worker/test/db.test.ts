@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Task, TaskUpdate } from '@shared/types';
+import type { Project, Task, TaskUpdate } from '@shared/types';
 import type { Plan } from '../src/domain/Op';
 import { DB, DomainOperationError } from '../src/db';
 
@@ -39,6 +39,19 @@ function taskRow(overrides: Partial<Task> = {}): Task {
   };
 }
 
+function projectRow(overrides: Partial<Project> = {}): Project {
+  return {
+    id: 'p_abc12',
+    title: 'Launch',
+    notes: null,
+    kickoff_note: null,
+    status: 'active',
+    created_at: '2026-05-15T12:00:00.000Z',
+    updated_at: '2026-05-15T12:00:00.000Z',
+    ...overrides,
+  };
+}
+
 function dbWithTask(initialTask: Task): { db: DB; getStoredTask: () => Task } {
   let storedTask = initialTask;
   const db = new DB({} as ConstructorParameters<typeof DB>[0]);
@@ -64,6 +77,31 @@ function dbWithTask(initialTask: Task): { db: DB; getStoredTask: () => Task } {
   return { db, getStoredTask: () => storedTask };
 }
 
+function dbWithProject(initialProject: Project): { db: DB; getStoredProject: () => Project } {
+  let storedProject = initialProject;
+  const db = new DB({} as ConstructorParameters<typeof DB>[0]);
+  db.getProject = async (id: string) => storedProject.id === id ? storedProject : null;
+
+  (db as unknown as {
+    drizzle: {
+      update: () => {
+        set: (patch: Partial<Project>) => {
+          where: () => Promise<void>;
+        };
+      };
+    };
+  }).drizzle = {
+    update: () => ({
+      set: (patch: Partial<Project>) => {
+        storedProject = { ...storedProject, ...patch };
+        return { where: async () => undefined };
+      },
+    }),
+  };
+
+  return { db, getStoredProject: () => storedProject };
+}
+
 function d1WithExistingTasks(taskIds: string[], options: {
   blockLinks?: Array<[string, string]>;
   deleteTasksBeforeBatch?: string[];
@@ -73,7 +111,7 @@ function d1WithExistingTasks(taskIds: string[], options: {
   executedStatements: FakeStatement[];
 } {
   const tasks = new Set(taskIds);
-  const blockLinks = options.blockLinks ?? [];
+  const blockLinks = [...(options.blockLinks ?? [])];
   const batches: FakeStatement[][] = [];
   const executedStatements: FakeStatement[] = [];
 
@@ -128,6 +166,13 @@ function d1WithExistingTasks(taskIds: string[], options: {
           if (!tasks.has(id)) throw new Error('NOT NULL constraint failed: tasks.title');
           continue;
         }
+        if (statement.sql.includes("SELECT NULL,NULL,'blocks'")) {
+          const [from, to, pathFrom, pathTo] = statement.args.map(String);
+          if (from === to || hasBlocksPath(pathFrom, pathTo)) {
+            throw new Error('NOT NULL constraint failed: task_links.from_task_id');
+          }
+          continue;
+        }
         executedStatements.push(statement);
       }
 
@@ -141,7 +186,7 @@ function d1WithExistingTasks(taskIds: string[], options: {
 function mutationSqls(statements: FakeStatement[]): string[] {
   return statements
     .map(statement => statement.sql)
-    .filter(sql => sql !== TASK_EXISTS_GUARD_SQL);
+    .filter(sql => sql !== TASK_EXISTS_GUARD_SQL && !sql.includes("SELECT NULL,NULL,'blocks'"));
 }
 
 describe('DB task recurrence boundaries', () => {
@@ -160,6 +205,31 @@ describe('DB task recurrence boundaries', () => {
       title: 'Undated repeat',
       recurrence: 'FREQ=DAILY',
     })).rejects.toBeInstanceOf(DomainOperationError);
+  });
+});
+
+describe('DB project and preference write boundaries', () => {
+  it('rejects project titles that export/import would reject', async () => {
+    await expect(dbWithoutStorage().createProject({ title: '' })).rejects.toMatchObject({
+      appError: { kind: 'validation' },
+    });
+  });
+
+  it('rejects project updates that would create non-restorable rows', async () => {
+    const { db, getStoredProject } = dbWithProject(projectRow());
+
+    await expect(db.updateProject('p_abc12', {
+      title: 'x'.repeat(201),
+    })).rejects.toMatchObject({
+      appError: { kind: 'validation' },
+    });
+    expect(getStoredProject().title).toBe('Launch');
+  });
+
+  it('rejects preference values that export/import would reject', async () => {
+    await expect(dbWithoutStorage().setPreference('sort_by', 'alphabetical')).rejects.toMatchObject({
+      appError: { kind: 'validation' },
+    });
   });
 });
 

@@ -42,8 +42,6 @@ export function linkTasksPlan(link: TaskLinkDomain): LinkPlanResult {
 }
 
 export function unlinkTasksPlan(link: TaskLinkDomain): LinkPlanResult {
-  if (link.from === link.to) return err(selfLinkError());
-
   return ok({
     assertions: [],
     ops: [{

@@ -189,7 +189,7 @@ describe('planImport', () => {
         expect.objectContaining({ path: ['tasks', '0', 'due_date'], code: 'required' }),
         expect.objectContaining({ path: ['tasks', '0', 'project_id'], code: 'unknown_reference' }),
         expect.objectContaining({ path: ['links', '0', 'to_task_id'], code: 'unknown_reference' }),
-        expect.objectContaining({ path: ['preferences', 'sort_by'], code: 'picklist' }),
+        expect.objectContaining({ path: ['preferences', 'sort_by', 'value'], code: 'picklist' }),
       ]));
     }
   });
