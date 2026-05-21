@@ -40,7 +40,7 @@ function importTitleSchema<const Max extends number>(max: Max) {
   return v.pipe(
     v.string(),
     v.check(value => value.trim().length > 0, 'Expected a non-empty string.'),
-    v.maxLength(max, `Expected at most ${max} characters.`),
+    v.check(value => value.trim().length <= max, `Expected at most ${max} characters.`),
     v.transform(value => value as NonEmptyString<Max>),
   );
 }

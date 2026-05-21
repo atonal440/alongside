@@ -99,13 +99,15 @@ function fakeD1(): {
 
 describe('import payload parsing', () => {
   it('preserves title whitespace while still requiring non-blank titles', () => {
+    const paddedTaskTitle = `${'x'.repeat(200)}  `;
+    const paddedProjectTitle = `  ${'y'.repeat(200)}`;
     const parsed = expectOk(parseImport(exportPayload({
-      projects: [projectRow({ title: '  Launch  ' })],
-      tasks: [taskRow({ title: '  Draft launch checklist  ', project_id: 'p_abc12' })],
+      projects: [projectRow({ title: paddedProjectTitle })],
+      tasks: [taskRow({ title: paddedTaskTitle, project_id: 'p_abc12' })],
     })));
 
-    expect(parsed.projects[0].title).toBe('  Launch  ');
-    expect(parsed.tasks[0].title).toBe('  Draft launch checklist  ');
+    expect(parsed.projects[0].title).toBe(paddedProjectTitle);
+    expect(parsed.tasks[0].title).toBe(paddedTaskTitle);
 
     const invalid = parseImport(exportPayload({
       tasks: [taskRow({ title: '   ', project_id: 'p_abc12' })],
