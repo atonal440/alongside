@@ -149,8 +149,13 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   if (method === 'POST' && path === '/api/projects') {
     const body = await request.json<{ title: string; kickoff_note?: string; notes?: string }>();
     if (!body.title) return json({ error: 'title is required' }, 400);
-    const project = await db.createProject(body);
-    return json(project, 201);
+    try {
+      const project = await db.createProject(body);
+      return json(project, 201);
+    } catch (error) {
+      if (error instanceof DomainOperationError) return domainErrorJson(error);
+      throw error;
+    }
   }
 
   // Project single-item routes
@@ -166,9 +171,14 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   // PATCH /api/projects/:id
   if (method === 'PATCH' && projectMatch) {
     const body = await request.json<ProjectUpdate>();
-    const project = await db.updateProject(projectMatch[1], body);
-    if (!project) return json({ error: 'Not found' }, 404);
-    return json(project);
+    try {
+      const project = await db.updateProject(projectMatch[1], body);
+      if (!project) return json({ error: 'Not found' }, 404);
+      return json(project);
+    } catch (error) {
+      if (error instanceof DomainOperationError) return domainErrorJson(error);
+      throw error;
+    }
   }
 
   // DELETE /api/projects/:id
