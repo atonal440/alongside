@@ -1,7 +1,7 @@
 # worker/src/wire/rest.ts
 
-Initial REST route schema scaffolding.
+REST route schemas for the PWA-facing API.
 
-Exports empty schemas, task/project path-param schemas, and a starter `RestRouteSpecs` registry for `GET /api/tasks/:task_id` and `GET /api/projects/:project_id`.
+Exports reusable empty schemas, branded task/project path-param schemas, strict boolean query schemas for `include_log` and `dry_run`, and JSON body schemas for task, link, and project routes. The import route treats the request body as untrusted JSON at the route layer and deliberately hands it to the existing export-v1 import parser so validation detail paths stay under `payload`.
 
-This module is not wired into `api.ts` yet.
+`RestRouteSpecs` is the registry consumed by `api.ts`. It covers task CRUD, task completion, task links, project CRUD, action-log, export, and import routes so handlers receive parsed params and query values, plus parsed JSON bodies where the route owns body validation.

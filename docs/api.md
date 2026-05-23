@@ -14,7 +14,7 @@ The Alongside worker exposes a REST API used by the PWA. All endpoints require a
 
 ### `GET /api/tasks`
 
-Returns all tasks with status `pending` or `active`, ordered by `due_date` then `created_at`.
+Returns actionable pending tasks, excluding currently deferred tasks, ordered by `due_date` then `created_at`.
 
 **Response:** `Task[]`
 
@@ -44,8 +44,11 @@ Create a new task.
 |---|---|---|---|
 | `title` | `string` | yes | |
 | `notes` | `string` | no | |
-| `due_date` | `string` | no | ISO 8601 date |
+| `due_date` | `string \| null` | no | ISO 8601 date |
 | `recurrence` | `string` | no | Infinite date-only RRULE |
+| `task_type` | `string` | no | `action` or `plan` |
+| `project_id` | `string \| null` | no | Existing project ID |
+| `kickoff_note` | `string \| null` | no | Forward-looking re-entry note |
 
 **Response:** `Task` — 201
 
@@ -55,7 +58,7 @@ Create a new task.
 
 Partial update. Only provided fields are changed.
 
-**Request body:** any subset of `{ title, notes, due_date, recurrence }`
+**Request body:** any subset of `{ title, notes, due_date, recurrence, kickoff_note, session_log, task_type, project_id, status, defer_until, defer_kind, focused_until }`. Use `POST /api/tasks/:id/complete` to mark a task done; direct `status: "done"` updates are rejected.
 
 **Response:** `Task` — 404 if not found.
 
@@ -83,6 +86,90 @@ Mark a task done. If the task has `recurrence` + `due_date`, a new task is creat
 404 if not found.
 
 Supported recurrence rules are infinite, date-only RRULEs: `DAILY`, `WEEKLY`, `MONTHLY`, and `YEARLY` with optional `INTERVAL`, date-level filters (`BYDAY`, `BYMONTHDAY`, `BYYEARDAY`, `BYWEEKNO`, `BYMONTH`, `BYSETPOS`, `WKST`), and no `COUNT`, `UNTIL`, time parts, recurrence sets, or exception dates. RRULE calendar semantics are used: invalid target dates are skipped rather than clipped, and the rule must produce a next occurrence after the task's current `due_date`.
+
+---
+
+## Task Link Endpoints
+
+### `GET /api/tasks/links`
+
+Returns all task links.
+
+**Response:** `TaskLink[]`
+
+### `POST /api/tasks/links`
+
+Create or replace a task link.
+
+**Request body:** `{ from_task_id: string, to_task_id: string, link_type: "blocks" | "related" }`
+
+**Response:** `{ ok: true }` — 201
+
+### `DELETE /api/tasks/links`
+
+Remove a task link.
+
+**Request body:** `{ from_task_id: string, to_task_id: string, link_type: "blocks" | "related" }`
+
+**Response:** `{ ok: true }`
+
+---
+
+## Project Endpoints
+
+### `GET /api/projects`
+
+Returns active projects.
+
+**Response:** `Project[]`
+
+### `GET /api/projects/sync`
+
+Returns all projects, including archived projects, for PWA sync.
+
+**Response:** `Project[]`
+
+### `GET /api/projects/:id`
+
+**Response:** `Project` — 404 if not found.
+
+### `POST /api/projects`
+
+Create a project.
+
+**Request body:** `{ title: string, notes?: string | null, kickoff_note?: string | null }`
+
+**Response:** `Project` — 201
+
+### `PATCH /api/projects/:id`
+
+Partial update for `{ title, notes, kickoff_note, status }`.
+
+**Response:** `Project` — 404 if not found.
+
+### `DELETE /api/projects/:id`
+
+Delete a project and clear that project from assigned tasks.
+
+**Response:** `{ ok: true }` — 404 if not found.
+
+---
+
+## Export / Import
+
+### `GET /api/export`
+
+Returns a full export payload. Optional `include_log=true` includes action-log rows; if present, `include_log` must be `true` or `false`.
+
+**Response:** export JSON with `Content-Disposition` attachment filename.
+
+### `POST /api/import`
+
+Restore from an export payload. Optional `dry_run=true` validates and returns counts without writing; if present, `dry_run` must be `true` or `false`.
+
+Invalid import payload details keep the `payload` path prefix used by the import parser.
+
+**Response:** dry-run counts with status 200, or inserted counts with status 201.
 
 ---
 
@@ -132,14 +219,14 @@ Full field reference for the task object returned by all endpoints:
 
 ## Error Responses
 
-All errors return `{ error: string }` with an appropriate HTTP status code.
+All errors return `{ error: string }` with an appropriate HTTP status code. Validation errors may also include `details`, an array of field/path issues.
 
 | Status | Meaning |
 |---|---|
 | 401 | Missing or invalid bearer token |
 | 403 | Invalid UI signature |
 | 404 | Resource not found |
-| 400 | Malformed request body |
+| 400 | Malformed route param, query param, or request body |
 
 ---
 

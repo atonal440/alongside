@@ -51,9 +51,16 @@ This is the handoff checklist for implementing `docs/plans/type-driven-safety.md
 - [x] Reject self-links and cyclic `blocks` graphs during import planning.
 - [x] Add link planner, storage executor, DB, and import regression tests.
 
+## Completed Slice: REST + UI Route Schemas
+
+- [x] Define REST route specs for task, link, project, action-log, export, and import endpoints, including path params, strict boolean query params, JSON body schemas for route-owned bodies, and an import body handoff to the existing export-v1 parser.
+- [x] Define the UI complete route spec and parse `/ui/complete/:task_id` before dispatch.
+- [x] Route `worker/src/api.ts` and `worker/src/ui.ts` through shared wire parsing helpers instead of regex path parsing and typed `request.json<T>()`.
+- [x] Add focused REST/UI tests for strict path matching, malformed IDs, invalid bodies, invalid query params, import error path compatibility, domain error mapping, and representative happy-path dispatch.
+- [x] Run worker typecheck and test suite.
+
 ## Later Slices
 
-- [ ] REST + UI route schemas.
 - [ ] MCP typed registry.
 - [ ] OAuth, preferences, and action-log policy.
 - [ ] D1 check constraints.
