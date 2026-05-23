@@ -4,7 +4,7 @@ REST API handler for the PWA. Exposes CRUD endpoints for tasks, projects, and li
 
 ## Functions
 
-**`handleApiRequest(request, url, db)`** — Main dispatcher. Parses the URL path and HTTP method, then calls the appropriate `DB` method and returns a JSON `Response`. Covers:
+**`handleApiRequest(request, url, db)`** — Main dispatcher. Matches exact route specs from `wire/rest.ts`, parses params/query/body values through the route schemas, then calls the appropriate `DB` method and returns a JSON `Response`. Import body validation is intentionally delegated to the existing import parser to preserve its `payload`-prefixed error paths, and malformed import JSON keeps the legacy `{ error: "Invalid JSON body" }` response. Covers:
 
 - `GET /api/tasks` — list actionable pending tasks (excludes currently-deferred)
 - `GET /api/tasks/sync` — list all tasks including done and deferred-pending (for full PWA sync)
@@ -23,7 +23,7 @@ REST API handler for the PWA. Exposes CRUD endpoints for tasks, projects, and li
 - `PATCH /api/projects/:id` — update project (title, notes, kickoff_note, status)
 - `DELETE /api/projects/:id` — delete project (unlinks tasks first)
 - `GET /api/action-log` — recent action log entries
-- `GET /api/export` — full data export as a dated JSON file (`?include_log=true` to also export action log)
-- `POST /api/import` — restore data from an export payload; `?dry_run=true` returns row counts without writing
+- `GET /api/export` — full data export as a dated JSON file (`?include_log=true` to also export action log; the query value must be `true` or `false` when present)
+- `POST /api/import` — restore data from an export payload; `?dry_run=true` returns row counts without writing (the query value must be `true` or `false` when present)
 
-Task create, update, complete, link, unlink, and import routes map typed `DomainOperationError` failures from the DB layer into JSON errors. Validation failures, such as malformed RRULEs, recurrence without a due date, self-links, or invalid import rows, return HTTP 400 with issue details; lifecycle/conflict failures, such as completing an already-done task or creating a dependency cycle, return HTTP 409.
+Malformed route params, query params, and route-owned JSON bodies return HTTP 400 with issue details before DB methods run. Task create, update, complete, link, unlink, and import routes still map typed `DomainOperationError` failures from the DB layer into JSON errors. Lifecycle/conflict failures, such as completing an already-done task or creating a dependency cycle, return HTTP 409.

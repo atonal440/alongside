@@ -1,6 +1,9 @@
 import { DB, DomainOperationError } from './db';
 import type { Task } from '@shared/types';
+import type { ValidationError } from '@shared/parse';
 import { appErrorMessage, appErrorStatus } from './domain/errors';
+import { UiRouteSpecs } from './wire/ui';
+import { parseRoute } from './wire/route';
 
 function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
   const taskRows = tasks.map(t => `
@@ -163,6 +166,20 @@ function escapeHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function json(data: unknown, status = 200, headers: HeadersInit = {}): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...headers },
+  });
+}
+
+function validationJson(errors: ValidationError[]): Response {
+  return json({
+    error: errors.map(error => error.message).join('; '),
+    details: errors,
+  }, 400);
+}
+
 export async function handleUiRequest(request: Request, url: URL, db: DB): Promise<Response> {
   const path = url.pathname;
   const baseUrl = url.origin;
@@ -191,25 +208,18 @@ export async function handleUiRequest(request: Request, url: URL, db: DB): Promi
   }
 
   // Unauthenticated complete endpoint for the iframe widget
-  const completeMatch = path.match(/^\/ui\/complete\/([^/]+)$/);
-  if (request.method === 'POST' && completeMatch) {
+  const completeRoute = parseRoute(UiRouteSpecs.completeTask, request, url);
+  if (!completeRoute.ok) return validationJson(completeRoute.error);
+  if (completeRoute.value) {
     try {
-      const result = await db.completeTask(completeMatch[1]);
+      const result = await db.completeTask(completeRoute.value.params.task_id);
       if (!result) {
-        return new Response(JSON.stringify({ error: 'Not found' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return json({ error: 'Not found' }, 404);
       }
-      return new Response(JSON.stringify(result), {
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return json(result);
     } catch (error) {
       if (error instanceof DomainOperationError) {
-        return new Response(JSON.stringify({ error: appErrorMessage(error.appError) }), {
-          status: appErrorStatus(error.appError),
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return json({ error: appErrorMessage(error.appError) }, appErrorStatus(error.appError));
       }
       throw error;
     }
