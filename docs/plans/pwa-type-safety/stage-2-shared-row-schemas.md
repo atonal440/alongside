@@ -23,11 +23,14 @@ Move the field-level row schemas that already exist in the worker's import pipel
    - `TaskRowSchema = v.pipe(v.object(taskRowEntries), v.transform((row): Task => ({ ...row })))`, plus `ProjectRowSchema` and `TaskLinkRowSchema` moved as-is, and inferred output types (`ParsedTaskRow`, …).
    - Convenience parsers in the house style — `parseTaskRow(input: unknown): Result<ParsedTaskRow, ValidationError[]>` etc. — using the same valibot-issue→`ValidationError` mapping as `shared/parse/primitives.ts`.
    - `shared/wire/index.ts` re-exporting the module.
-3. **Assignability guard.** The parsed output types must remain structurally assignable to the Drizzle row types so PWA state/IDB can store parsed rows as `Task`/`Project`/`TaskLink` (brands are assignable to their base primitives). Add a compile-time assertion:
+3. **Assignability guard.** The parsed output types must remain structurally assignable to the Drizzle row types so PWA state/IDB can store parsed rows as `Task`/`Project`/`TaskLink` (brands are assignable to their base primitives). Add a compile-time assertion — it must be **type-level and exported**, because `shared/wire/rows.ts` is checked under the PWA's `noUnusedLocals: true` config, which flags unused value-level locals (underscore prefixes do not exempt them):
    ```ts
-   const _assertTask: (r: ParsedTaskRow) => Task = r => r;
+   type Expect<T extends true> = T;
+   export type AssertTaskRowAssignable = Expect<ParsedTaskRow extends Task ? true : false>;
+   export type AssertProjectRowAssignable = Expect<ParsedProjectRow extends Project ? true : false>;
+   export type AssertTaskLinkRowAssignable = Expect<ParsedTaskLinkRow extends TaskLink ? true : false>;
    ```
-   If a field mismatches, fix the schema's output shape, not the row type.
+   If assignability breaks, `Expect<false>` fails the typecheck; fix the schema's output shape, not the row type.
 4. **Repoint the worker.** `worker/src/wire/importPayload.ts` imports `ProjectRowSchema`/`TaskLinkRowSchema`, the bounds constants, and `taskRowEntries` from `@shared/wire/rows` (mirror however `@shared/parse` is aliased in the worker tsconfig). Its import task schema becomes a locally-composed `ImportTaskRowSchema`: spread `taskRowEntries`, override `defer_kind`/`defer_until` to optional, add the `snoozed_until` entry, and keep the existing normalization transform verbatim. Import behavior must be bit-identical; the existing worker import tests are the proof.
 5. **Worker verification.** Run `npm --prefix worker run typecheck && npm --prefix worker run test` — the existing import/wire suites must pass unchanged. Then `npm --prefix worker run build:dry` (`wrangler deploy --dry-run`): the `CLAUDE.md` testing note calls this out for changes touching shared modules, because wrangler's bundler catches resolver issues typechecks miss. Record the reported bundle size before/after in the PR description; expected delta ≈ 0.
 6. **PWA smoke test.** Add `pwa/test/shared/rows.test.ts`, **field-level cases only** (the schemas have no cross-field checks — do not write tests expecting them):

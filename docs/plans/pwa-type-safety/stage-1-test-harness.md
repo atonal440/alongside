@@ -55,11 +55,11 @@ And `pwa/test/helpers/idb.ts`: import `fake-indexeddb/auto` and export a `resetI
 
 ### 4. Testability refactors (minimal, no behavior change)
 
-Several pure functions read the clock internally, which makes them untestable:
+Several pure functions read the clock internally, which makes them untestable. When fixing this, respect that the codebase has **two distinct time vocabularies**: `today` is a date-only `YYYY-MM-DD` string used for calendar comparisons (`formatDue`, due-date scoring), while `nowIso` is a full ISO datetime that `shared/readiness.ts` compares lexicographically against `focused_until`/`defer_until`. **Never pass a `today` value where a `nowIso` is expected** — a date-only string compares like midnight, so a focus that expired at 10:00 would stay "focused" until tomorrow. Keep the two as separate parameters:
 
-- `pwa/src/utils/design.ts:11-17` — `isFocused`/`isDeferred` call `new Date().toISOString()`. Give each a trailing `nowIso = new Date().toISOString()` parameter (isDeferred already has one — keep it).
-- `pwa/src/utils/design.ts:44-46` — `readinessScore` ignores its `_today` parameter and calls `new Date()` itself; make it pass through an injectable `nowIso` instead. Verify call sites (`taskFlow.ts`, views) still compile; do **not** change what callers pass yet.
-- `pwa/src/utils/taskFlow.ts` — `deriveTaskFlow` takes `context.today`; check whether focus/defer predicates inside it use injected time after the design.ts change. Thread `nowIso` through `TaskFlowContext` if needed (optional field defaulting to now).
+- `pwa/src/utils/design.ts:11-17` — `isFocused`/`isDeferred`: give each a trailing `nowIso = new Date().toISOString()` parameter (`isDeferred` already has one — keep it).
+- `pwa/src/utils/design.ts:44-46` — `readinessScore(task, _today, links, tasks)` ignores `_today` and calls `new Date()` itself. Do **not** repurpose the `_today` slot for `nowIso`: existing callers (`taskSort`, views, `taskFlow.ts`) pass date-only strings in that position. Add a *new* trailing `nowIso = new Date().toISOString()` parameter after `tasks`, pass it through to the shared scorer, and leave `_today` and every existing call site untouched.
+- `pwa/src/utils/taskFlow.ts` — `deriveTaskFlow` takes `context.today` (date-only, feeding `formatDue` — correct as is). Add a separate optional `nowIso` field to `TaskFlowContext` (defaulting to now) and thread it into the focus/defer/readiness calls; `context.today` must never be forwarded into those.
 
 Keep these changes to default parameters and pass-throughs so production behavior is identical.
 
@@ -68,7 +68,8 @@ Keep these changes to default parameters and pass-throughs so production behavio
 All in `node` env unless noted. Use fixed timestamps (e.g. `2026-06-09T12:00:00.000Z`) throughout.
 
 - `test/shared/readiness.test.ts` — `shared/readiness.ts`:
-  - `isDeferred`: someday → true; until in future → true; until in past → false; kind none with stale `defer_until` set → false (documents current lenient behavior).
+  - `isDeferred`: someday → true; until in future → true; until in past → false (include an "expired earlier the same day" case — `defer_until` at 09:00, `nowIso` at 12:00 same day → false — which fails if a date-only value is ever fed as `nowIso`); kind none with stale `defer_until` set → false (documents current lenient behavior).
+  - `isFocused`: same same-day-expiry case (`focused_until` 09:00, `nowIso` 12:00 → false).
   - `hasActiveBlocker`: blocker pending → true; blocker done → false; `related` links ignored; blocker missing from task list → false.
   - `isReady`: each gate (done status, deferred, blocked) flips it false.
   - `readinessScore`: done → 0; blocked → 5; additive components (kickoff +20, session log +15, focused +12, recent update +8, overdue +10 / today +7 / within-week +3) each asserted independently from a minimal base task; property test (fast-check): score is always ≥ 0 and ≤ the sum of all bonuses.
