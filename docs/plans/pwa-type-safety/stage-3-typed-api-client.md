@@ -69,7 +69,9 @@ Request body types (`TaskCreateBody`, `TaskUpdateBody`, `LinkBody`) are defined 
 
 ### Call-site migration
 
-Update `actions.ts` and `sync.ts` mechanically: replace each `apiFetch` call with the endpoint function and replace `if (result)` truthiness with `if (result.kind === 'ok')`. **Preserve current behavior**: any non-`ok` result takes the old `null` path (queue the op / report offline). The richer kinds are consumed in stage 5. This keeps the stage reviewable as "types in, behavior identical".
+Update `actions.ts` and `sync.ts` mechanically: replace each `apiFetch` call with the endpoint function and replace `if (result)` truthiness with `if (result.kind === 'ok')`. **Preserve current behavior for every failure mode that exists today**: `http`, `network`, and `unconfigured` results take the old `null` path (queue the op / report offline — yes, including 4xx; that is today's bug, and stage 5 fixes it deliberately). The richer kinds are consumed in stage 5. This keeps the stage reviewable as "types in, behavior identical".
+
+**Exception — `contract` results must not enqueue, even in this stage.** Contract violations are a failure class that does not exist today (today a malformed 2xx body casts straight through), so there is no "old behavior" to preserve — and routing them into the queue would be a new bug: on a write like `POST /api/tasks` the server has already applied the change, so a queued retry would duplicate it. Instead: `console.error` the issues, skip queueing, and leave the optimistic local write in place. The periodic `syncFromServer` reconciles it (for creates, the unprotected temp task is replaced by the server's copy on the next pull). On read paths (`sync.ts` pulls), `contract` behaves like the old `null` path — report offline, queue nothing — since reads never enqueue anyway.
 
 One intentional fix is allowed: `result !== null` vs `if (result)` inconsistencies collapse to `kind === 'ok'`, which is what both meant.
 
@@ -80,7 +82,7 @@ Use `pwa/test/helpers/fetchStub.ts` and fixtures.
 - `client.test.ts` — `apiRequest`: ok JSON parses through schema; non-OK with `{error, details}` body → `http` with parsed details; non-OK with HTML body → `http` with degraded message; fetch rejection → `network`; empty apiBase → `unconfigured` without calling fetch; OK-but-malformed body (task missing `id`) → `contract` result, console.error called.
 - `endpoints.test.ts` — table-driven per endpoint: correct method/path/body recorded by the stub; response parsed with the schema each endpoint declares — row schemas where the worker returns rows, `ConfirmationSchema` for deletes and link writes (a stubbed `{ ok: true }` must yield `kind: 'ok'`, not `contract`); `completeTask` handles present and absent `next`.
 - `result.test.ts` — `isDurableFailure` / `isTransientFailure` truth table (400, 404, 409, 422, 500, 503, contract, network, unconfigured; the two classifiers must be mutually exclusive and leave only `ok`/`unconfigured` unclassified).
-- Update nothing in `test/context/` yet — actions keep their behavior.
+- One targeted regression test for the contract exception (fetch stub + fake-indexeddb): `createTaskAction` against a stubbed OK-but-malformed response leaves the pending-ops store empty and the optimistic task in place. Otherwise update nothing in `test/context/` — actions keep their behavior.
 
 ## Docs
 
