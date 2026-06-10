@@ -1,6 +1,6 @@
 # Alongside Agent Notes
 
-This file is the Codex-readable companion to `CLAUDE.md`. Keep both files aligned when project conventions change.
+This file is the canonical agent instruction file for Alongside. `CLAUDE.md` intentionally points here so assistant clients share one source of truth instead of maintaining duplicate guidance. See `alongside-design.md` for the full design doc.
 
 ## What This Is
 
@@ -26,6 +26,7 @@ worker/
   src/ui.ts        Iframe/widget UI route handlers
   src/app-ui.ts    MCP App widget UI
   schema.sql       Reference/local D1 schema
+  drizzle.config.ts Drizzle-kit config for generating migrations
   wrangler.toml    Worker configuration
 
 pwa/
@@ -100,6 +101,18 @@ localStorage.setItem('alongside_token', 'dev-token-change-me');
 
 Then reload the PWA.
 
+## Key Decisions
+
+- `nanoid` v3 is used in the worker because v3 supports CommonJS, which Wrangler bundles more reliably than v4+ in this project.
+- Auth is a single static bearer token from `AUTH_TOKEN`. The `/ui/*` routes skip auth so the iframe widget can be embedded.
+- Recurrence uses an `rrule`-backed, infinite date-only RRULE profile: `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY`, optional `INTERVAL`, and date-level `BY*` filters. `COUNT`, `UNTIL`, time parts, recurrence sets, and exceptions are intentionally unsupported until recurrence has a series anchor model.
+- The MCP endpoint is `/mcp` and expects JSON-RPC POST requests.
+- PWA sync is local-first: writes go to IndexedDB immediately, then flush to the worker. Merge is last-write-wins on `updated_at`.
+- State management is `useReducer` plus React context. Async ops are plain async functions in `pwa/src/context/actions.ts` that take `dispatch` as a parameter.
+- IndexedDB is a module layer, not hooks: pure async I/O functions with no React dependency.
+- The service worker uses Workbox through `vite-plugin-pwa` with the `injectManifest` strategy so the app keeps control of service worker logic.
+- Shared types live in `shared/types.ts` and are imported in both worker and PWA through the `@shared/*` path alias.
+
 ## Verification Commands
 
 Use the narrowest verification command that matches the change.
@@ -139,6 +152,12 @@ Widget route:
 ```text
 http://127.0.0.1:8787/ui/active
 ```
+
+## Cloudflare Pages Deployment
+
+Build command: `npm run build` from `pwa/`.
+
+Output directory: `pwa/dist`.
 
 ## Implementation Conventions
 
