@@ -23,15 +23,16 @@ export type ApiErrorBody = { error: string; details?: ValidationError[] };
 
 export type ApiResult<T> =
   | { kind: 'ok'; value: T }
-  | { kind: 'http'; status: number; body: ApiErrorBody }   // server answered, refused
-  | { kind: 'network' }                                    // fetch threw / no connectivity
-  | { kind: 'unconfigured' };                              // no apiBase set
+  | { kind: 'http'; status: number; body: ApiErrorBody }            // server answered, refused
+  | { kind: 'contract'; status: number; issues: ValidationError[] } // server said OK but the body failed our schema
+  | { kind: 'network' }                                             // fetch threw / no connectivity
+  | { kind: 'unconfigured' };                                       // no apiBase set
 
-export function isDurableFailure(r: ApiResult<unknown>): r is Extract<...> // http && 400 <= status < 500
-export function isTransientFailure(r: ApiResult<unknown>): boolean         // network || http 5xx
+export function isDurableFailure(r: ApiResult<unknown>): boolean   // (http && 400 <= status < 500) || contract
+export function isTransientFailure(r: ApiResult<unknown>): boolean // network || (http && status >= 500)
 ```
 
-Decision (from the master plan): 4xx is durable, network errors and 5xx are transient. `unconfigured` is its own kind — it currently masquerades as offline.
+Decision (from the master plan): 4xx is durable, network errors and 5xx are transient. `unconfigured` is its own kind — it currently masquerades as offline. `contract` is a distinct kind, **classified durable**: a response that parses wrong today will parse wrong on every retry, so queueing it would loop forever. It cannot be an `http` result — the status was 200, and the 4xx-based classifier would misfile it.
 
 ### Low-level request (rewrite `pwa/src/api/client.ts`)
 
@@ -40,7 +41,7 @@ Decision (from the master plan): 4xx is durable, network errors and 5xx are tran
 - Returns `{ kind: 'unconfigured' }` when `config.apiBase` is empty (preserves current short-circuit).
 - On fetch throw → `{ kind: 'network' }`.
 - On `!res.ok` → parse the body as `ApiErrorBody` leniently: malformed/non-JSON error bodies degrade to `{ error: 'HTTP <status>' }`. Never throw.
-- On OK → run `parseBody(unknown)`; a parse failure is a **client-visible contract violation**: return it as `{ kind: 'http', status: 200, body: { error: 'unparseable response', details } }` and `console.error` the issues. The caller treats it as durable (do not queue a retry that can never succeed).
+- On OK → run `parseBody(unknown)`; a parse failure is a **client-visible contract violation**: return `{ kind: 'contract', status: res.status, issues }` and `console.error` the issues. `isDurableFailure` returns true for it (do not queue a retry that can never succeed).
 
 Keep `verifyApiConfig` (typed: `Promise<boolean>` is fine for a banner).
 
@@ -74,9 +75,9 @@ One intentional fix is allowed: `result !== null` vs `if (result)` inconsistenci
 
 Use `pwa/test/helpers/fetchStub.ts` and fixtures.
 
-- `client.test.ts` — `apiRequest`: ok JSON parses through schema; non-OK with `{error, details}` body → `http` with parsed details; non-OK with HTML body → `http` with degraded message; fetch rejection → `network`; empty apiBase → `unconfigured` without calling fetch; OK-but-malformed body (task missing `id`) → durable contract-violation result, console.error called.
+- `client.test.ts` — `apiRequest`: ok JSON parses through schema; non-OK with `{error, details}` body → `http` with parsed details; non-OK with HTML body → `http` with degraded message; fetch rejection → `network`; empty apiBase → `unconfigured` without calling fetch; OK-but-malformed body (task missing `id`) → `contract` result, console.error called.
 - `endpoints.test.ts` — table-driven per endpoint: correct method/path/body recorded by the stub; response parsed to typed rows; `completeTask` handles present and absent `next`.
-- `result.test.ts` — `isDurableFailure` / `isTransientFailure` truth table (400, 404, 409, 422, 500, 503, network, unconfigured).
+- `result.test.ts` — `isDurableFailure` / `isTransientFailure` truth table (400, 404, 409, 422, 500, 503, contract, network, unconfigured; the two classifiers must be mutually exclusive and leave only `ok`/`unconfigured` unclassified).
 - Update nothing in `test/context/` yet — actions keep their behavior.
 
 ## Docs

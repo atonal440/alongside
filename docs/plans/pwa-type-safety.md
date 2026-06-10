@@ -23,9 +23,9 @@ Adapted from the worker plan to a client that is an *optimistic mirror* of the s
 
 1. **Parse at every boundary, trust inside.** Four untrusted edges: HTTP responses, IndexedDB reads, the pending-op queue, and form input. Each gets a valibot parser returning `Result<T, ValidationError[]>` from the existing `shared/result.ts` / `shared/parse/` toolkit. Inside the app, data is row-shaped and assumed valid.
 2. **Rows stay in state; invariants live in functions.** `AppState.tasks` keeps the `Task` row shape (`shared/schema.ts` `$inferSelect`). We do *not* convert React state to the worker's lifecycle-union domain types — every render touches state, and the conversion tax outweighs the benefit in a thin client. Instead, all local mutations go through pure, tested functions in `pwa/src/domain/` that enforce the same invariants the worker enforces (defer/focus atomicity, no completing done tasks, recurrence requires due date). Branded types appear in function signatures, not in stored state — `Brand<string, K>` is assignable to `string`, so parsed values flow into row shapes for free.
-3. **Errors are data; failure has kinds.** `apiRequest` returns a discriminated `ApiResult<T>`: `ok`, `http` (status + parsed `{ error, details? }` body), `network`, `unconfigured`. Policy is uniform: **network errors and 5xx are transient** (queue and retry), **4xx is durable** (never queue; surface a toast and re-sync from the server, which is the rollback mechanism for optimistic writes).
+3. **Errors are data; failure has kinds.** `apiRequest` returns a discriminated `ApiResult<T>`: `ok`, `http` (status + parsed `{ error, details? }` body), `contract` (a 2xx response whose body failed our schema), `network`, `unconfigured`. Policy is uniform: **network errors and 5xx are transient** (queue and retry), **4xx and contract violations are durable** (never queue — a retry cannot succeed; surface a toast and re-sync from the server, which is the rollback mechanism for optimistic writes).
 4. **Operations are values, client edition.** The pending-op queue becomes a discriminated union of typed ops (`task.create`, `task.update`, `task.complete`, `task.delete`, `link.create`, `link.delete`) with typed payloads. Serialization to method/path/body happens in exactly one place at flush time. Temp-ID rebinding becomes a total function over the union instead of string surgery.
-5. **One schema per row, shared.** The worker already validates full task/project/link rows in `worker/src/wire/importPayload.ts`. Those row schemas move to `shared/wire/rows.ts` so the worker's import pipeline and the PWA's response/IDB parsers consume a single source of truth. Wire field names never change.
+5. **One schema per row, shared.** The worker already validates task/project/link rows field by field in `worker/src/wire/importPayload.ts`. Those field-level schemas move to `shared/wire/rows.ts` so the worker's import pipeline and the PWA's response/IDB parsers consume a single source of truth. Cross-field invariants are deliberately *not* in these schemas — they live in the worker's `taskFromRow` and, PWA-side, in the stage-6 mutation guards and stage-8 decode checks. Wire field names never change.
 6. **Tests mirror the worker suite.** `pwa/test/` mirrors `worker/test/` in layout and tone: table-driven parser tests, invariant tests on pure logic, fake-indexeddb tests for the IDB layer, stubbed-fetch tests for the client and sync engine, and a small number of React Testing Library tests where behavior lives in components. `fast-check` covers sort/score invariants. Everything runs in `npm run verify`.
 
 ## Boundary Map
@@ -38,8 +38,8 @@ Adapted from the worker plan to a client that is an *optimistic mirror* of the s
         (wire body) │                          ▼ parse: shared/wire/rows
 ┌───────────────────┴───────┐        ┌─────────────────────────┐
 │ pwa/src/api/  (client,    │        │ ApiResult<T>            │
-│ endpoints, sync engine)   │◄───────│ ok | http | network |   │
-└───────▲───────────┬───────┘        │ unconfigured            │
+│ endpoints, sync engine)   │◄───────│ ok | http | contract |  │
+└───────▲───────────┬───────┘        │ network | unconfigured  │
         │           │                └─────────────────────────┘
  typed PendingOp    │ rows
  (discriminated)    ▼

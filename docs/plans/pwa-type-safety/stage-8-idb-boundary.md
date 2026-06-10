@@ -26,6 +26,7 @@ export function decodeTaskRows(raw: unknown[]): { rows: Task[]; report: DecodeRe
 ```
 
 - Each raw record: try `parseTaskRow`; on failure, run the repair pipeline (start with `migrateLegacyDeferShape`, extracted/exported from `db.ts` so it has one definition; add repairs only for shapes you can actually demonstrate in a test) and re-parse; on second failure, quarantine.
+- The shared row schemas are **field-level only** (stage 2 deliberately kept them relocation-pure). After a successful field parse, apply decode-local cross-field checks mirroring `taskFromRow` in `worker/src/domain/task.ts` — read its error paths and copy the rules exactly: `defer_kind === 'until'` ⇔ `defer_until` set (null otherwise), recurrence requires `due_date`, done tasks are neither deferred nor focused, deferred tasks are not focused. Violations **quarantine** (there is no canonical repair — guessing which field is the lie would corrupt data). Keep these checks in `decode.ts`, not in `shared/wire/` — the worker enforces the same rules via `taskFromRow` and, eventually, D1 CHECKs; if those CHECK constraints land, consider unifying then.
 - **Quarantined rows are excluded from the returned set but left untouched in the store.** Deleting user data on a parse bug in *our* schema would be worse than the drift; leaving it lets a fixed build recover it. Log one structured `console.error` per boot with the report. (If a quarantined task id is referenced by links, those links will dangle — `shared/readiness.ts` `hasActiveBlocker` already tolerates missing tasks; verify the other consumers do too and note findings.)
 - Repaired rows are written back (`put`) so repair happens once, not on every read.
 
@@ -44,6 +45,7 @@ Surface to the user only when material: if any rows were quarantined, one toast 
 - Round-trip: fixture rows decode clean, report empty.
 - Legacy repair: plant a `snoozed_until`-era task → repaired, re-parse clean, written back (second read needs no repair), report counts it.
 - Quarantine: plant a task with `status: 'archived'` and one with `updated_at: 'yesterday'` → excluded from rows, still present in the raw store, report lists keys + issues.
+- Cross-field quarantine: `defer_kind: 'until'` with `defer_until: null`; `recurrence` set with `due_date: null`; done task with `focused_until` in the future — each excluded with the matching issue, store untouched.
 - Mixed store: 2 valid + 1 reparable + 1 junk → exactly the right 3 returned.
 - Link/project decoders: one happy + one quarantine case each.
 - Boot integration: seed a drifted store, run the real load path (whatever `AppContext`/`App` uses), assert state contains only valid rows and the toast/report fired once.

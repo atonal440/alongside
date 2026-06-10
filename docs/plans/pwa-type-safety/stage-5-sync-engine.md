@@ -31,7 +31,7 @@ export type WriteOutcome =
   | { kind: 'rejected'; message: string };    // durable — dropped, caller must surface + resync
 ```
 
-`settleWrite(result: ApiResult<T>, op: PendingOpPayload, …): Promise<WriteOutcome>` — applied on ok; enqueue on transient/unconfigured (unconfigured behaves like offline, as today); rejected on durable, formatting the message from `ApiErrorBody` (`error` plus first `details` message when present).
+`settleWrite(result: ApiResult<T>, op: PendingOpPayload, …): Promise<WriteOutcome>` — applied on ok; enqueue on transient/unconfigured (unconfigured behaves like offline, as today); rejected on durable — both `http` 4xx (message from `ApiErrorBody`: `error` plus first `details` message when present) and `contract` (generic "app/server version mismatch" message; the issues went to `console.error` in the client).
 
 ### Action creators
 
@@ -56,7 +56,7 @@ Return a summary `{ flushed: number; rejected: string[]; halted: boolean }` for 
 ### `syncFromServer`
 
 - Replace title-based protection: a local task survives server-absence iff a queued `task.create` op carries its id as `localId`.
-- Parse-failures from the typed endpoints (`syncTasks` etc. returning non-ok) → `{ online: false }` as today, except durable contract violations should `console.error` loudly.
+- Non-ok results from the typed endpoints (`syncTasks` etc.) → `{ online: false }` as today; `contract` results additionally `console.error` loudly (the client already logs the issues — don't retry-spam, the 30s cycle will re-attempt naturally).
 - Keep LWW semantics and the clear-and-rewrite of projects/links (unchanged scope).
 
 ### `useSync`

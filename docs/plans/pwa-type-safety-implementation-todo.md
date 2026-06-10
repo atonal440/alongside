@@ -72,7 +72,7 @@ Rules for implementing agents:
 
 ## Stage 8 — IDB Read Boundary (`stage-8-idb-boundary.md`)
 
-- [ ] `pwa/src/idb/decode.ts`: parse → repair (shared `migrateLegacyDeferShape`) → quarantine-in-place; write-back of repairs; boot report + single toast.
+- [ ] `pwa/src/idb/decode.ts`: parse → repair (shared `migrateLegacyDeferShape`) → quarantine-in-place; decode-local cross-field checks mirroring `taskFromRow`; write-back of repairs; boot report + single toast.
 - [ ] Decode wired into tasks/projects/links reads (report mechanism documented).
 - [ ] Tests: repair, quarantine, mixed store, boot integration.
 - [ ] Docs: `docs/pwa/idb/` boundary contract + migration↔repair rule.
