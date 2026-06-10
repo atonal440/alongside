@@ -5,6 +5,7 @@
     "dev": "node scripts/dev.mjs",
     "dev:stop": "node scripts/dev.mjs stop",
     "dev:status": "node scripts/dev.mjs status",
-    "verify": "npm --prefix worker run typecheck && npm --prefix worker run test && npm --prefix worker run build:dry && npm --prefix pwa run typecheck && npm --prefix pwa run build"
+    "verify": "npm --prefix worker run typecheck && npm --prefix worker run test && npm --prefix worker run build:dry && npm --prefix pwa run typecheck && npm --prefix pwa run build",
+    "skill:zip": "cd .claude/skills && rm -f alongside-daily.zip && zip -rq alongside-daily.zip alongside-daily -x '*.DS_Store' && echo 'Wrote .claude/skills/alongside-daily.zip — upload at claude.ai/settings/capabilities'"
   }
 }
