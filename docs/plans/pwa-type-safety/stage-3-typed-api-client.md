@@ -11,7 +11,7 @@ Replace the PWA's untyped `apiFetch` (which returns `unknown` on success and `nu
 - `pwa/src/api/client.ts` — `apiFetch(path, options, config)`: returns `null` if unconfigured, throws-and-catches any non-OK status into `null` (line 21), returns `res.json()` as `unknown` otherwise. `verifyApiConfig` pings `/` for the settings banner.
 - Call sites: `pwa/src/context/actions.ts` (8 action creators, each `apiFetch(...)` + truthiness check + cast) and `pwa/src/api/sync.ts` (sync pulls + pending-op flush).
 - Worker error contract (`worker/src/api.ts:12-16`): error responses are JSON `{ error: string }` or, for validation failures, `{ error: string, details: ValidationError[] }` with `ValidationError = { path, code, message }` from `shared/parse/primitives.ts`. Statuses: 400 validation, 404 not found, 409 conflict/invalid_transition/invariant_violation, 500 storage (`worker/src/domain/errors.ts`). Some legacy routes return hand-rolled `{ error: string }` 400s.
-- Endpoints the PWA consumes today (verify against `worker/src/api.ts` — it is the source of truth, this list may drift): `POST /api/tasks` → task row; `PATCH /api/tasks/:id` → task row; `DELETE /api/tasks/:id` → confirmation; `POST /api/tasks/:id/complete` → `{ completed: Task, next?: Task }`; `GET /api/tasks/sync` → task rows; `GET /api/projects/sync` → project rows; `GET/POST/DELETE /api/tasks/links` → link rows / confirmations.
+- Endpoints the PWA consumes today (verify against `worker/src/api.ts` — it is the source of truth, this list may drift): `POST /api/tasks` → task row; `PATCH /api/tasks/:id` → task row; `DELETE /api/tasks/:id` → `{ ok: true }`; `POST /api/tasks/:id/complete` → `{ completed: Task, next?: Task }`; `GET /api/tasks/sync` → task rows; `GET /api/projects/sync` → project rows; `GET /api/tasks/links` → link rows; `POST /api/tasks/links` → `{ ok: true }` (201); `DELETE /api/tasks/links` → `{ ok: true }`. Note the confirmation endpoints: deletes and link writes return `{ ok: true }`, **not** rows — parsing them with row schemas would turn every successful write into a `contract` failure.
 - Shared schemas from stage 2: `shared/wire/rows.ts` (`TaskRowSchema`, `ProjectRowSchema`, `TaskLinkRowSchema`, `parseTaskRow`, …). Result helpers: `shared/result.ts`.
 
 ## Design
@@ -50,16 +50,18 @@ Keep `verifyApiConfig` (typed: `Promise<boolean>` is fine for a banner).
 One typed function per endpoint, the only place paths/methods/response schemas are written:
 
 ```ts
+const ConfirmationSchema = v.object({ ok: v.literal(true) }); // worker confirmation shape for deletes + link writes
+
 export const api = {
   createTask:   (body: TaskCreateBody, c: ApiConfig) => apiRequest('/api/tasks', POST(body), c, parseTaskRow),
-  updateTask:   (id: string, body: TaskUpdateBody, c) => …,
-  deleteTask:   (id: string, c) => …,
-  completeTask: (id: string, c) => …, // schema: { completed: TaskRowSchema, next: optional(TaskRowSchema) }
-  syncTasks:    (c) => …,            // v.array(TaskRowSchema)
-  syncProjects: (c) => …,
-  listLinks:    (c) => …,
-  createLink:   (body: LinkBody, c) => …,
-  deleteLink:   (body: LinkBody, c) => …,
+  updateTask:   (id: string, body: TaskUpdateBody, c) => …, // TaskRowSchema
+  deleteTask:   (id: string, c) => …,                       // ConfirmationSchema
+  completeTask: (id: string, c) => …,                       // { completed: TaskRowSchema, next: optional(TaskRowSchema) }
+  syncTasks:    (c) => …,                                   // v.array(TaskRowSchema)
+  syncProjects: (c) => …,                                   // v.array(ProjectRowSchema)
+  listLinks:    (c) => …,                                   // v.array(TaskLinkRowSchema)
+  createLink:   (body: LinkBody, c) => …,                   // ConfirmationSchema
+  deleteLink:   (body: LinkBody, c) => …,                   // ConfirmationSchema
 };
 ```
 
@@ -76,7 +78,7 @@ One intentional fix is allowed: `result !== null` vs `if (result)` inconsistenci
 Use `pwa/test/helpers/fetchStub.ts` and fixtures.
 
 - `client.test.ts` — `apiRequest`: ok JSON parses through schema; non-OK with `{error, details}` body → `http` with parsed details; non-OK with HTML body → `http` with degraded message; fetch rejection → `network`; empty apiBase → `unconfigured` without calling fetch; OK-but-malformed body (task missing `id`) → `contract` result, console.error called.
-- `endpoints.test.ts` — table-driven per endpoint: correct method/path/body recorded by the stub; response parsed to typed rows; `completeTask` handles present and absent `next`.
+- `endpoints.test.ts` — table-driven per endpoint: correct method/path/body recorded by the stub; response parsed with the schema each endpoint declares — row schemas where the worker returns rows, `ConfirmationSchema` for deletes and link writes (a stubbed `{ ok: true }` must yield `kind: 'ok'`, not `contract`); `completeTask` handles present and absent `next`.
 - `result.test.ts` — `isDurableFailure` / `isTransientFailure` truth table (400, 404, 409, 422, 500, 503, contract, network, unconfigured; the two classifiers must be mutually exclusive and leave only `ok`/`unconfigured` unclassified).
 - Update nothing in `test/context/` yet — actions keep their behavior.
 
