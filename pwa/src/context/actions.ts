@@ -1,12 +1,19 @@
 import type { Dispatch } from 'react';
-import type { Task, TaskLink, TaskUpdate } from '../types';
+import type { TaskLink, TaskUpdate } from '../types';
 import type { AppAction } from './reducer';
 import type { ApiConfig } from '../api/client';
-import { apiFetch } from '../api/client';
+import { api } from '../api/endpoints';
 import { idbGetAllTasks, idbPutTask, idbDeleteTask } from '../idb/tasks';
 import { idbPutLink, idbDeleteLink } from '../idb/links';
 import { idbQueueOp } from '../idb/pendingOps';
 import { genId } from '../utils/genId';
+
+// Failure classification used for pending-op queueing in this stage.
+// `contract` must not enqueue — the server has already applied the write and
+// a retry would duplicate it. Stage 5 handles durable vs. transient policy.
+function shouldQueue(kind: string): boolean {
+  return kind === 'http' || kind === 'network' || kind === 'unconfigured';
+}
 
 export async function createTaskAction(
   title: string,
@@ -14,18 +21,18 @@ export async function createTaskAction(
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
   const now = new Date().toISOString();
-  const task: Task = {
+  const task = {
     id: genId('t'),
     title,
     notes: null,
-    status: 'pending',
+    status: 'pending' as const,
     due_date: null,
     recurrence: null,
     created_at: now,
     updated_at: now,
     defer_until: null,
-    defer_kind: 'none',
-    task_type: 'action',
+    defer_kind: 'none' as const,
+    task_type: 'action' as const,
     project_id: null,
     kickoff_note: null,
     session_log: null,
@@ -34,16 +41,17 @@ export async function createTaskAction(
   await idbPutTask(task);
   dispatch({ type: 'UPSERT_TASK', task });
 
-  const result = await apiFetch('/api/tasks', { method: 'POST', body: JSON.stringify({ title }) }, config);
-  if (result) {
-    const serverTask = result as Task;
+  const result = await api.createTask({ title }, config);
+  if (result.kind === 'ok') {
+    const serverTask = result.value;
     await idbDeleteTask(task.id);
     await idbPutTask(serverTask);
     dispatch({ type: 'DELETE_TASK', id: task.id });
     dispatch({ type: 'UPSERT_TASK', task: serverTask });
-  } else {
+  } else if (shouldQueue(result.kind)) {
     await idbQueueOp('POST', '/api/tasks', { title }, task.id);
   }
+  // contract: server applied the write; skip queue, leave optimistic task in place
 }
 
 export async function updateTaskAction(
@@ -55,12 +63,12 @@ export async function updateTaskAction(
   const tasks = await idbGetAllTasks();
   const task = tasks.find(t => t.id === id);
   if (!task) return;
-  const updated: Task = { ...task, ...updates, updated_at: new Date().toISOString() };
+  const updated = { ...task, ...updates, updated_at: new Date().toISOString() };
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
-  const result = await apiFetch(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(updates) }, config);
-  if (!result) await idbQueueOp('PATCH', `/api/tasks/${id}`, updates);
+  const result = await api.updateTask(id, updates, config);
+  if (shouldQueue(result.kind)) await idbQueueOp('PATCH', `/api/tasks/${id}`, updates);
 }
 
 export async function deleteTaskAction(
@@ -71,8 +79,8 @@ export async function deleteTaskAction(
   await idbDeleteTask(id);
   dispatch({ type: 'DELETE_TASK', id });
 
-  const result = await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' }, config);
-  if (!result) await idbQueueOp('DELETE', `/api/tasks/${id}`, null);
+  const result = await api.deleteTask(id, config);
+  if (shouldQueue(result.kind)) await idbQueueOp('DELETE', `/api/tasks/${id}`, null);
 }
 
 export async function completeTaskAction(
@@ -85,19 +93,18 @@ export async function completeTaskAction(
   if (!task) return null;
 
   const wasRecurring = !!task.recurrence;
-  const updated: Task = { ...task, status: 'done', updated_at: new Date().toISOString() };
+  const updated = { ...task, status: 'done' as const, updated_at: new Date().toISOString() };
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
-  const result = await apiFetch(`/api/tasks/${id}/complete`, { method: 'POST' }, config);
-  if (result) {
-    const res = result as { completed: Task; next?: Task };
-    if (res.next) {
-      await idbPutTask(res.next);
-      dispatch({ type: 'UPSERT_TASK', task: res.next });
-      return `Done! Next: <span class="next-date">${res.next.due_date}</span>`;
+  const result = await api.completeTask(id, config);
+  if (result.kind === 'ok') {
+    if (result.value.next) {
+      await idbPutTask(result.value.next);
+      dispatch({ type: 'UPSERT_TASK', task: result.value.next });
+      return `Done! Next: <span class="next-date">${result.value.next.due_date}</span>`;
     }
-  } else {
+  } else if (shouldQueue(result.kind)) {
     await idbQueueOp('POST', `/api/tasks/${id}/complete`, null);
     if (wasRecurring) return 'Done! Next occurrence will sync when online.';
   }
@@ -119,12 +126,12 @@ export async function deferTaskAction(
     defer_until: kind === 'until' ? untilIso : null,
     focused_until: null,
   };
-  const updated: Task = { ...task, ...updates, updated_at: new Date().toISOString() };
+  const updated = { ...task, ...updates, updated_at: new Date().toISOString() };
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
-  const result = await apiFetch(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(updates) }, config);
-  if (!result) await idbQueueOp('PATCH', `/api/tasks/${id}`, updates);
+  const result = await api.updateTask(id, updates, config);
+  if (shouldQueue(result.kind)) await idbQueueOp('PATCH', `/api/tasks/${id}`, updates);
 }
 
 export async function clearDeferAction(
@@ -136,11 +143,12 @@ export async function clearDeferAction(
   const task = tasks.find(t => t.id === id);
   if (!task) return;
   const updates: TaskUpdate = { defer_kind: 'none', defer_until: null };
-  const updated: Task = { ...task, ...updates, updated_at: new Date().toISOString() };
+  const updated = { ...task, ...updates, updated_at: new Date().toISOString() };
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
-  const result = await apiFetch(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(updates) }, config);
-  if (!result) await idbQueueOp('PATCH', `/api/tasks/${id}`, updates);
+
+  const result = await api.updateTask(id, updates, config);
+  if (shouldQueue(result.kind)) await idbQueueOp('PATCH', `/api/tasks/${id}`, updates);
 }
 
 export async function focusTaskAction(
@@ -153,7 +161,7 @@ export async function focusTaskAction(
   const task = tasks.find(t => t.id === id);
   if (!task) return;
   const focusedUntil = new Date(Date.now() + hours * 3600000).toISOString();
-  const updated: Task = {
+  const updated = {
     ...task,
     focused_until: focusedUntil,
     updated_at: new Date().toISOString(),
@@ -161,8 +169,9 @@ export async function focusTaskAction(
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
-  const result = await apiFetch(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify({ focused_until: focusedUntil }) }, config);
-  if (!result) await idbQueueOp('PATCH', `/api/tasks/${id}`, { focused_until: focusedUntil });
+  const body = { focused_until: focusedUntil };
+  const result = await api.updateTask(id, body, config);
+  if (shouldQueue(result.kind)) await idbQueueOp('PATCH', `/api/tasks/${id}`, body);
 }
 
 export async function createLinkAction(
@@ -176,11 +185,9 @@ export async function createLinkAction(
   await idbPutLink(link);
   dispatch({ type: 'UPSERT_LINK', link });
 
-  const result = await apiFetch('/api/tasks/links', {
-    method: 'POST',
-    body: JSON.stringify({ from_task_id: fromId, to_task_id: toId, link_type: linkType }),
-  }, config);
-  if (!result) await idbQueueOp('POST', '/api/tasks/links', { from_task_id: fromId, to_task_id: toId, link_type: linkType });
+  const body = { from_task_id: fromId, to_task_id: toId, link_type: linkType };
+  const result = await api.createLink(body, config);
+  if (shouldQueue(result.kind)) await idbQueueOp('POST', '/api/tasks/links', body);
 }
 
 export async function deleteLinkAction(
@@ -193,9 +200,7 @@ export async function deleteLinkAction(
   await idbDeleteLink(fromId, toId, linkType);
   dispatch({ type: 'DELETE_LINK', from: fromId, to: toId, linkType });
 
-  const result = await apiFetch('/api/tasks/links', {
-    method: 'DELETE',
-    body: JSON.stringify({ from_task_id: fromId, to_task_id: toId, link_type: linkType }),
-  }, config);
-  if (!result) await idbQueueOp('DELETE', '/api/tasks/links', { from_task_id: fromId, to_task_id: toId, link_type: linkType });
+  const body = { from_task_id: fromId, to_task_id: toId, link_type: linkType };
+  const result = await api.deleteLink(body, config);
+  if (shouldQueue(result.kind)) await idbQueueOp('DELETE', '/api/tasks/links', body);
 }

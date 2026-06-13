@@ -1,5 +1,9 @@
+import * as v from 'valibot';
 import type { Task, Project, TaskLink } from '@shared/types';
-import { apiFetch, type ApiConfig } from './client';
+import { parseSchema } from '@shared/parse';
+import { parseTaskRow } from '@shared/wire/rows';
+import { apiRequest, type ApiConfig } from './client';
+import { api } from './endpoints';
 import {
   idbGetAllTasks, idbPutTask, idbDeleteTask,
 } from '../idb/tasks';
@@ -20,20 +24,26 @@ export interface SyncResult {
   links?: TaskLink[];
 }
 
+// Passthrough parser for the generic pending-op replay loop.
+const anyJson = (raw: unknown) => parseSchema(v.unknown(), raw);
+
 export async function flushPendingOps(config: ApiConfig): Promise<void> {
   const ops = await idbGetPendingOps();
   for (const op of ops) {
-    const result = await apiFetch(
+    const result = await apiRequest(
       op.path,
       { method: op.method, body: op.body ? JSON.stringify(op.body) : undefined },
       config,
+      anyJson,
     );
-    if (result !== null) {
+    if (result.kind === 'ok') {
       await idbDeletePendingOp(op.id!);
 
       // If an offline-created task just synced, rewrite queued ops referencing the temp ID
       if (op.method === 'POST' && op.path === '/api/tasks' && op.local_id) {
-        const serverTask = result as Task;
+        const parsed = parseTaskRow(result.value);
+        if (!parsed.ok) continue;
+        const serverTask = parsed.value;
         const oldId = op.local_id;
         const newId = serverTask.id;
         await idbDeleteTask(oldId);
@@ -59,10 +69,10 @@ export async function flushPendingOps(config: ApiConfig): Promise<void> {
 }
 
 export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
-  const remote = await apiFetch('/api/tasks/sync', {}, config);
-  if (!remote) return { online: false };
+  const remote = await api.syncTasks(config);
+  if (remote.kind !== 'ok') return { online: false };
 
-  const remoteTasks = remote as Task[];
+  const remoteTasks = remote.value;
   const remoteMap = Object.fromEntries(remoteTasks.map(t => [t.id, t]));
   const pendingOps = await idbGetPendingOps();
 
@@ -83,21 +93,21 @@ export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
     await idbPutTask(rt);
   }
 
-  const [projectsRaw, linksRaw] = await Promise.all([
-    apiFetch('/api/projects/sync', {}, config),
-    apiFetch('/api/tasks/links', {}, config),
+  const [projectsResult, linksResult] = await Promise.all([
+    api.syncProjects(config),
+    api.listLinks(config),
   ]);
 
   let projects: Project[] = [];
   let links: TaskLink[] = [];
 
-  if (projectsRaw) {
-    projects = projectsRaw as Project[];
+  if (projectsResult.kind === 'ok') {
+    projects = projectsResult.value;
     await idbClearProjects();
     for (const p of projects) await idbPutProject(p);
   }
-  if (linksRaw) {
-    links = linksRaw as TaskLink[];
+  if (linksResult.kind === 'ok') {
+    links = linksResult.value;
     await idbClearLinks();
     for (const l of links) await idbPutLink(l);
   }

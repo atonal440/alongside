@@ -43,12 +43,21 @@ Rules for implementing agents:
 
 ## Stage 3 — Typed API Client (`stage-3-typed-api-client.md`)
 
-- [ ] `pwa/src/api/result.ts` (`ApiResult`, durable/transient classifiers).
-- [ ] Rewrite `client.ts` as `apiRequest` (lenient error-body parsing, contract-violation handling).
-- [ ] `pwa/src/api/endpoints.ts` — typed endpoint per route, PWA-local wire body types; verify endpoint inventory against `worker/src/api.ts` and record corrections here.
-- [ ] Migrate `actions.ts` / `sync.ts` call sites mechanically (`kind === 'ok'`), behavior unchanged.
-- [ ] Tests: client, endpoints, result truth table.
+- [x] `pwa/src/api/result.ts` (`ApiResult`, durable/transient classifiers).
+- [x] Rewrite `client.ts` as `apiRequest` (lenient error-body parsing, contract-violation handling).
+- [x] `pwa/src/api/endpoints.ts` — typed endpoint per route, PWA-local wire body types; verify endpoint inventory against `worker/src/api.ts` and record corrections here.
+- [x] Migrate `actions.ts` / `sync.ts` call sites mechanically (`kind === 'ok'`), behavior unchanged.
+- [x] Tests: client, endpoints, result truth table, createTask contract regression.
 - [ ] Docs: `docs/pwa/api/` failure-kind contract.
+
+**Deviations:**
+- `apiFetch` is fully deleted (not retained as a deprecated wrapper) — no callers remained.
+- `flushPendingOps` uses a `v.unknown()` passthrough parser since it replays generic ops; the `POST /api/tasks + local_id` path now calls `parseTaskRow` on the result to safely extract the server task.
+- The three array parser lambdas in `endpoints.ts` (syncTasks, syncProjects, listLinks) simplify to direct `parseSchema` calls — no cast needed because valibot infers `Task[]`/`Project[]`/`TaskLink[]` from the transforms.
+- Docs update not yet done (separate commit per AGENTS.md convention for large doc changes).
+
+**Endpoint inventory (verified against `worker/src/api.ts`):**
+All 9 endpoints match plan description. No schema/response mismatches found.
 
 ## Stage 4 — Typed Pending Ops (`stage-4-typed-pending-ops.md`)
 
