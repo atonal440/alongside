@@ -10,12 +10,17 @@ Rules for implementing agents:
 
 ## Stage 1 — Test Harness (`stage-1-test-harness.md`)
 
-- [ ] Add pwa test dependencies (vitest, jsdom, RTL trio, fake-indexeddb, fast-check) and `test` script; extend root `verify`.
-- [ ] Add `pwa/vitest.config.ts` (node default, jsdom globs, `@shared`/rrule aliases) and test-tsconfig coverage.
-- [ ] Add `pwa/test/helpers/` (fixtures, fetchStub, idb).
-- [ ] Injectable-time refactors in `design.ts` / `taskFlow.ts` (no behavior change).
-- [ ] Tests: shared/readiness, utils/design, utils/taskFlow, context/reducer, small utils.
-- [ ] Docs: testing note in `docs/pwa/overview.md`; Commands table in `CLAUDE.md`/`AGENTS.md`.
+- [x] Add pwa test dependencies (vitest, jsdom, RTL trio, fake-indexeddb, fast-check) and `test` script; extend root `verify`.
+- [x] Add `pwa/vitest.config.ts` (node default, jsdom globs, `@shared`/rrule aliases) and test-tsconfig coverage (`pwa/tsconfig.test.json` added to `pwa/tsconfig.json` references).
+- [x] Add `pwa/test/helpers/` (fixtures, fetchStub, idb).
+- [x] Injectable-time refactors in `design.ts` / `taskFlow.ts` (no behavior change). Also added `nowIso` to `taskSort` for consistency.
+- [x] Tests: shared/readiness, utils/design, utils/taskFlow, context/reducer, small utils. 109 tests, all green.
+- [x] Docs: testing note in `docs/pwa/overview.md`; Commands table in `AGENTS.md`.
+
+**Deviations**:
+- `taskSort` also got `nowIso` injectable parameter (not listed in plan but follows same pattern as `readinessScore`).
+- Worker node_modules were not installed in the worktree; `npm install` in `worker/` was needed before `pwa typecheck` passed (drizzle-orm path alias).
+- `CLAUDE.md` points to `AGENTS.md`; verification commands updated there only.
 
 ## Stage 2 — Shared Row Schemas (`stage-2-shared-row-schemas.md`)
 

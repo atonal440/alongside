@@ -128,6 +128,37 @@ Components are organized into four groups:
 | [[design]] | `readinessScore`, `taskSort`, `isBlocked` — shared scoring/sort logic |
 | [[genId]] | Nanoid wrapper for locally-generated temp IDs |
 
+## Testing
+
+The PWA has a vitest suite at `pwa/test/`. Run it with:
+
+```sh
+npm --prefix pwa run test
+```
+
+The root `npm run verify` runs the suite as part of the full pipeline (after pwa typecheck, before pwa build).
+
+**Layout**:
+
+```
+pwa/
+  vitest.config.ts          node default env; jsdom for test/components/** and test/hooks/**;
+                            @shared + rrule aliases; test/setup.ts for jest-dom matchers
+  test/
+    setup.ts                global: import @testing-library/jest-dom/vitest
+    helpers/
+      fixtures.ts           makeTask / makeProject / makeLink row factories (all test literals here)
+      fetchStub.ts          install/restore fetch; queue typed responses; record calls (used from stage 3)
+      idb.ts                fake-indexeddb/auto + resetIdb() (used from stage 4)
+    shared/                 readiness.test.ts — shared/readiness.ts (isDeferred, isFocused, readinessScore…)
+    utils/                  design.test.ts, taskFlow.test.ts, small.test.ts
+    context/                reducer.test.ts
+    components/             RTL tests (jsdom env, added in later stages)
+  type-tests/               @ts-expect-error fixtures (added in later stages)
+```
+
+Pure-logic tests run in the `node` environment; DOM-dependent tests in `test/components/` and `test/hooks/` run in `jsdom`.
+
 ## Key design decisions
 
 **IDB is a module layer, not hooks.** The `pwa/src/idb/` modules are pure async functions with no React dependency. They are called from action creators and the sync hook — never from component render paths. This makes them independently testable and avoids the complexity of React-aware IDB abstractions.
