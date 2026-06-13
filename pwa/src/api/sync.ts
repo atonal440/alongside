@@ -27,6 +27,25 @@ export interface SyncResult {
 // Passthrough parser for the generic pending-op replay loop.
 const anyJson = (raw: unknown) => parseSchema(v.unknown(), raw);
 
+// Rewrite all queued ops that reference oldId (in paths or body fields) to newId.
+async function rebindTempId(oldId: string, newId: string): Promise<void> {
+  const pending = await idbGetPendingOps();
+  for (const op of pending) {
+    let changed = false;
+    if (typeof op.path === 'string' && op.path.includes(oldId)) {
+      op.path = op.path.replace(oldId, newId);
+      changed = true;
+    }
+    if (op.body && typeof op.body === 'object') {
+      const body = op.body as Record<string, unknown>;
+      if (body.from_task_id === oldId) { body.from_task_id = newId; changed = true; }
+      if (body.to_task_id === oldId) { body.to_task_id = newId; changed = true; }
+      if (body.task_id === oldId) { body.task_id = newId; changed = true; }
+    }
+    if (changed) await idbPutPendingOp(op);
+  }
+}
+
 export async function flushPendingOps(config: ApiConfig): Promise<void> {
   const ops = await idbGetPendingOps();
   for (const op of ops) {
@@ -41,35 +60,32 @@ export async function flushPendingOps(config: ApiConfig): Promise<void> {
       // that a validation failure doesn't leave the op gone with no rebinding done.
       if (op.method === 'POST' && op.path === '/api/tasks' && op.local_id) {
         const parsed = parseTaskRow(result.value);
+        const oldId = op.local_id;
+
         if (!parsed.ok) {
           // Server created the task but returned an unrecognisable body.
-          // Drop the op anyway — retrying would duplicate the server-side task.
-          // syncFromServer will reconcile the temp task on the next pull.
-          console.error('[sync] offline-create response failed schema check; dropping op', parsed.error);
+          // Retrying would duplicate the server-side task, so drop the op.
+          // Best-effort rebind: extract the raw `id` field so that any queued
+          // PATCH/link ops are repointed to the real server ID rather than left
+          // permanently targeting the stale temp ID.
+          console.error('[sync] offline-create response failed schema check', parsed.error);
           await idbDeletePendingOp(op.id!);
+          const raw = result.value as Record<string, unknown>;
+          const serverId = typeof raw?.['id'] === 'string' ? raw['id'] : null;
+          if (serverId) {
+            await rebindTempId(oldId, serverId);
+          }
+          // If we couldn't extract an id at all, dependent ops will 404 on the
+          // server; stage 5 durable-failure handling will clean them up.
           continue;
         }
+
         const serverTask = parsed.value;
-        const oldId = op.local_id;
         const newId = serverTask.id;
         await idbDeletePendingOp(op.id!);
         await idbDeleteTask(oldId);
         await idbPutTask(serverTask);
-        const remaining = await idbGetPendingOps();
-        for (const pending of remaining) {
-          let changed = false;
-          if (typeof pending.path === 'string' && pending.path.includes(oldId)) {
-            pending.path = pending.path.replace(oldId, newId);
-            changed = true;
-          }
-          if (pending.body && typeof pending.body === 'object') {
-            const body = pending.body as Record<string, unknown>;
-            if (body.from_task_id === oldId) { body.from_task_id = newId; changed = true; }
-            if (body.to_task_id === oldId) { body.to_task_id = newId; changed = true; }
-            if (body.task_id === oldId) { body.task_id = newId; changed = true; }
-          }
-          if (changed) await idbPutPendingOp(pending);
-        }
+        await rebindTempId(oldId, newId);
       } else {
         await idbDeletePendingOp(op.id!);
       }
