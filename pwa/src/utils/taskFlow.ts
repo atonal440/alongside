@@ -60,6 +60,7 @@ export interface TaskFlow {
 
 export interface TaskFlowContext {
   today: string;
+  nowIso?: string;
   projects: Project[];
   links: TaskLink[];
   tasks?: Task[];
@@ -156,10 +157,11 @@ export function deriveTaskFlow(task: Task, context: TaskFlowContext): TaskFlow {
     .filter(link => link.link_type === 'blocks' && link.from_task_id === task.id)
     .map(link => link.to_task_id);
 
+  const nowIso = context.nowIso ?? new Date().toISOString();
   const dueLabel = formatDue(task, context.today);
-  const focused = isFocused(task);
+  const focused = isFocused(task, nowIso);
   const someday = isSomeday(task);
-  const deferred = isDeferred(task);
+  const deferred = isDeferred(task, nowIso);
   const allTasks = context.tasks ?? [];
   const blocked = isBlocked(task, context.links, allTasks);
   const done = task.status === 'done';
@@ -189,7 +191,7 @@ export function deriveTaskFlow(task: Task, context: TaskFlowContext): TaskFlow {
     projectLabel: projectTitle(task, context.projects),
     projectColor: projectColor(task.project_id),
     dueLabel,
-    readiness: readinessScore(task, context.today, context.links, allTasks),
+    readiness: readinessScore(task, context.today, context.links, allTasks, nowIso),
     title: task.title,
     kickoff: task.kickoff_note ?? '',
     notePreview: firstNoteEntry(task.notes),

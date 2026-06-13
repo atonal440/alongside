@@ -8,8 +8,8 @@ import {
 
 const PROJECT_COLORS = ['#3A6280', '#4A7C5A', '#8B6BAE', '#9C8472', '#C0622A'];
 
-export function isFocused(task: Pick<Task, 'focused_until'>): boolean {
-  return sharedIsFocused(task, new Date().toISOString());
+export function isFocused(task: Pick<Task, 'focused_until'>, nowIso = new Date().toISOString()): boolean {
+  return sharedIsFocused(task, nowIso);
 }
 
 export function isDeferred(task: Pick<Task, 'defer_kind' | 'defer_until'>, nowIso = new Date().toISOString()): boolean {
@@ -41,8 +41,8 @@ export function formatDue(task: Pick<Task, 'due_date'>, today: string): string {
   return `Due ${task.due_date}`;
 }
 
-export function readinessScore(task: Task, _today: string, links: TaskLink[] = [], tasks: Task[] = []): number {
-  return sharedReadinessScore(task, new Date().toISOString(), links, tasks);
+export function readinessScore(task: Task, _today: string, links: TaskLink[] = [], tasks: Task[] = [], nowIso = new Date().toISOString()): number {
+  return sharedReadinessScore(task, nowIso, links, tasks);
 }
 
 export function isBlocked(task: Task, links: TaskLink[], tasks: Task[] = []): boolean {
@@ -50,8 +50,8 @@ export function isBlocked(task: Task, links: TaskLink[], tasks: Task[] = []): bo
   return hasActiveBlocker(task, links, tasks);
 }
 
-export function taskSort(a: Task, b: Task, today: string, links: TaskLink[], tasks: Task[] = []): number {
-  return readinessScore(b, today, links, tasks) - readinessScore(a, today, links, tasks)
+export function taskSort(a: Task, b: Task, today: string, links: TaskLink[], tasks: Task[] = [], nowIso = new Date().toISOString()): number {
+  return readinessScore(b, today, links, tasks, nowIso) - readinessScore(a, today, links, tasks, nowIso)
     || (a.due_date ?? '9999-99-99').localeCompare(b.due_date ?? '9999-99-99')
     || a.title.localeCompare(b.title);
 }

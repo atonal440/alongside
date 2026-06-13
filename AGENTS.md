@@ -126,6 +126,7 @@ wrangler deploy --dry-run
 # PWA
 cd pwa
 npm run typecheck
+npm run test
 npm run build
 ```
 
