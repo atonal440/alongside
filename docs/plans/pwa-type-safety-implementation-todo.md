@@ -24,12 +24,22 @@ Rules for implementing agents:
 
 ## Stage 2 — Shared Row Schemas (`stage-2-shared-row-schemas.md`)
 
-- [ ] Create `shared/wire/rows.ts` (+ index) with Task/Project/TaskLink row schemas, parse fns, assignability guard.
-- [ ] Repoint `worker/src/wire/importPayload.ts` to shared schemas; delete duplicates.
-- [ ] Worker verification: typecheck, test, `build:dry` (record bundle delta).
-- [ ] `pwa/test/shared/rows.test.ts` (fixtures validated against real schemas).
-- [ ] Docs: `docs/shared/` wire page.
-- [ ] Record any import-schema vs REST-response mismatches here for stage 3.
+- [x] Create `shared/wire/rows.ts` (+ index) with Task/Project/TaskLink row schemas, parse fns, assignability guard.
+- [x] Repoint `worker/src/wire/importPayload.ts` to shared schemas; delete duplicates.
+- [x] Worker verification: typecheck, test, `build:dry` (record bundle delta).
+- [x] `pwa/test/shared/rows.test.ts` (fixtures validated against real schemas).
+- [x] Docs: `docs/shared/wire.md` page; `docs/worker/wire/importPayload.md` updated.
+- [x] Record any import-schema vs REST-response mismatches here for stage 3.
+
+**Bundle delta:** 688.31 KiB / gzip 115.61 KiB (unchanged — pure relocation).
+
+**Deviations:**
+- `t_to1` fixture ID fixed to `t_to001` — only 3 chars after `t_`, fails `TaskIdSchema` regex.
+- Worker node_modules required `npm install` in worktree before typecheck (same as stage 1).
+- `ImportTaskRowSchema` is unexported (worker-internal only); `ProjectRowSchema`/`TaskLinkRowSchema` are re-exported from `importPayload.ts` via the existing `wire/index.ts` chain.
+
+**Stage 3 notes (REST-response mismatches):**
+- No schema/API mismatches discovered during this relocation. Stage 3 should verify the REST response shapes in `worker/src/api.ts` against `TaskRowSchema`/`ProjectRowSchema` before assuming they match.
 
 ## Stage 3 — Typed API Client (`stage-3-typed-api-client.md`)
 

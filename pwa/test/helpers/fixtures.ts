@@ -37,7 +37,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
 export function makeLink(overrides: Partial<TaskLink> = {}): TaskLink {
   return {
     from_task_id: 't_from1',
-    to_task_id: 't_to1',
+    to_task_id: 't_to001',
     link_type: 'blocks',
     ...overrides,
   };

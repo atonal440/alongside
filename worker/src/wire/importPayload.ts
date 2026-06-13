@@ -1,34 +1,26 @@
 import * as v from 'valibot';
 import type { InferOutput } from 'valibot';
-import type { ActionLog, Project, Task, TaskLink } from '@shared/types';
+import type { ActionLog, Task } from '@shared/types';
 import type { Result } from '@shared/result';
 import { err, ok } from '@shared/result';
 import {
-  boundedStringSchema,
   IsoDateTimeSchema,
-  IsoDateSchema,
-  LinkTypeSchema,
   parseSchema,
-  ProjectIdSchema,
-  ProjectStatusSchema,
   positiveIntSchema,
-  RruleSchema,
   DeferKindSchema,
   TaskIdSchema,
-  TaskStatusSchema,
-  TaskTypeSchema,
   ToolNameSchema,
-  type NonEmptyString,
+  boundedStringSchema,
   type ValidationError,
 } from '../parse';
+import {
+  ProjectRowSchema,
+  TaskLinkRowSchema,
+  taskRowEntries,
+} from '@shared/wire/rows';
 
-const TASK_TITLE_MAX = 200;
-const TASK_NOTES_MAX = 10_000;
-const TASK_KICKOFF_MAX = 2_000;
-const TASK_SESSION_LOG_MAX = 10_000;
-const PROJECT_TITLE_MAX = 200;
-const PROJECT_NOTES_MAX = 10_000;
-const PROJECT_KICKOFF_MAX = 2_000;
+export { ProjectRowSchema, TaskLinkRowSchema };
+
 const ACTION_TITLE_MAX = 500;
 const ACTION_DETAIL_MAX = 2_000;
 
@@ -36,46 +28,14 @@ function prefixErrors(path: string, errors: ValidationError[]): ValidationError[
   return errors.map(error => ({ ...error, path: [path, ...error.path] }));
 }
 
-function importTitleSchema<const Max extends number>(max: Max) {
-  return v.pipe(
-    v.string(),
-    v.check(value => value.trim().length > 0, 'Expected a non-empty string.'),
-    v.check(value => value.trim().length <= max, `Expected at most ${max} characters.`),
-    v.transform(value => value as NonEmptyString<Max>),
-  );
-}
-
-export const ProjectRowSchema = v.pipe(
+// Import-only task schema: tolerates pre-006 legacy snoozed_until rows and
+// normalizes them into the current defer_kind / defer_until shape.
+const ImportTaskRowSchema = v.pipe(
   v.object({
-    id: ProjectIdSchema,
-    title: importTitleSchema(PROJECT_TITLE_MAX),
-    notes: v.nullable(boundedStringSchema(PROJECT_NOTES_MAX)),
-    kickoff_note: v.nullable(boundedStringSchema(PROJECT_KICKOFF_MAX)),
-    status: ProjectStatusSchema,
-    created_at: IsoDateTimeSchema,
-    updated_at: IsoDateTimeSchema,
-  }),
-  v.transform((row): Project => ({ ...row })),
-);
-
-export const TaskRowSchema = v.pipe(
-  v.object({
-    id: TaskIdSchema,
-    title: importTitleSchema(TASK_TITLE_MAX),
-    notes: v.nullable(boundedStringSchema(TASK_NOTES_MAX)),
-    status: TaskStatusSchema,
-    due_date: v.nullable(IsoDateSchema),
-    recurrence: v.nullable(RruleSchema),
-    created_at: IsoDateTimeSchema,
-    updated_at: IsoDateTimeSchema,
+    ...taskRowEntries,
     defer_until: v.optional(v.nullable(IsoDateTimeSchema), null),
     defer_kind: v.optional(DeferKindSchema),
     snoozed_until: v.optional(v.nullable(IsoDateTimeSchema), null),
-    task_type: TaskTypeSchema,
-    project_id: v.nullable(ProjectIdSchema),
-    kickoff_note: v.nullable(boundedStringSchema(TASK_KICKOFF_MAX)),
-    session_log: v.nullable(boundedStringSchema(TASK_SESSION_LOG_MAX)),
-    focused_until: v.nullable(IsoDateTimeSchema),
   }),
   v.transform((row): Task => {
     const hasCurrentDeferFields = row.defer_kind !== undefined;
@@ -106,15 +66,6 @@ export const TaskRowSchema = v.pipe(
   }),
 );
 
-export const TaskLinkRowSchema = v.pipe(
-  v.object({
-    from_task_id: TaskIdSchema,
-    to_task_id: TaskIdSchema,
-    link_type: LinkTypeSchema,
-  }),
-  v.transform((row): TaskLink => ({ ...row })),
-);
-
 export const ActionLogRowSchema = v.pipe(
   v.object({
     id: positiveIntSchema(Number.MAX_SAFE_INTEGER),
@@ -131,7 +82,7 @@ export const ImportV1Schema = v.object({
   version: v.literal(1),
   exported_at: IsoDateTimeSchema,
   projects: v.array(ProjectRowSchema),
-  tasks: v.array(TaskRowSchema),
+  tasks: v.array(ImportTaskRowSchema),
   links: v.array(TaskLinkRowSchema),
   preferences: v.record(v.string(), v.string()),
   action_log: v.optional(v.array(ActionLogRowSchema)),

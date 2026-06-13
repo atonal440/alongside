@@ -4,15 +4,13 @@ Wire parser for `POST /api/import` payloads. The parser treats import JSON as un
 
 ## Schemas
 
-**`ProjectRowSchema`** — Validates project row fields from an export file: project id, non-empty title, bounded notes/kickoff text, status, and timestamps.
+**`ProjectRowSchema`**, **`TaskLinkRowSchema`** — Re-exported from `shared/wire/rows`. Field-level validation only; see `docs/shared/wire.md`.
 
-**`TaskRowSchema`** — Validates task row fields with branded ID, enum, date, timestamp, and RRULE parsers. It accepts the pre-006 legacy `snoozed_until` field and normalizes it into `defer_kind = 'until'` plus `defer_until`; current defer fields win when present.
+**`ImportTaskRowSchema`** *(local, not exported)* — Wraps `taskRowEntries` from `shared/wire/rows` with import-specific legacy tolerance: `defer_kind` and `defer_until` become optional, and the pre-006 `snoozed_until` field is accepted and normalized into the current defer shape (`defer_kind = 'until'`, `defer_until = snoozed_until`). Current defer fields win when both are present.
 
-**`TaskLinkRowSchema`** — Validates link endpoint IDs and link type.
+**`ActionLogRowSchema`** — Validates imported action-log rows: numeric id, known tool name, optional task id, bounded title/detail, and timestamp. Import-only; the PWA does not receive action-log rows.
 
-**`ActionLogRowSchema`** — Validates imported action-log rows, including numeric id, known tool name, optional task id, bounded title/detail, and timestamp.
-
-**`ImportV1Schema`** — Validates the top-level export/import shape: `version`, `exported_at`, `projects`, `tasks`, `links`, `preferences`, and optional `action_log`.
+**`ImportV1Schema`** — Validates the top-level export/import shape: `version`, `exported_at`, `projects`, `tasks` (via `ImportTaskRowSchema`), `links`, `preferences`, and optional `action_log`.
 
 ## Functions
 
