@@ -37,15 +37,22 @@ export async function flushPendingOps(config: ApiConfig): Promise<void> {
       anyJson,
     );
     if (result.kind === 'ok') {
-      await idbDeletePendingOp(op.id!);
-
-      // If an offline-created task just synced, rewrite queued ops referencing the temp ID
+      // For offline-created tasks, parse the server row BEFORE deleting the op so
+      // that a validation failure doesn't leave the op gone with no rebinding done.
       if (op.method === 'POST' && op.path === '/api/tasks' && op.local_id) {
         const parsed = parseTaskRow(result.value);
-        if (!parsed.ok) continue;
+        if (!parsed.ok) {
+          // Server created the task but returned an unrecognisable body.
+          // Drop the op anyway — retrying would duplicate the server-side task.
+          // syncFromServer will reconcile the temp task on the next pull.
+          console.error('[sync] offline-create response failed schema check; dropping op', parsed.error);
+          await idbDeletePendingOp(op.id!);
+          continue;
+        }
         const serverTask = parsed.value;
         const oldId = op.local_id;
         const newId = serverTask.id;
+        await idbDeletePendingOp(op.id!);
         await idbDeleteTask(oldId);
         await idbPutTask(serverTask);
         const remaining = await idbGetPendingOps();
@@ -63,6 +70,8 @@ export async function flushPendingOps(config: ApiConfig): Promise<void> {
           }
           if (changed) await idbPutPendingOp(pending);
         }
+      } else {
+        await idbDeletePendingOp(op.id!);
       }
     }
   }
