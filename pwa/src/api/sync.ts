@@ -140,4 +140,3 @@ export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
 
   return { online: true, tasks: finalTasks, projects, links };
 }
-
