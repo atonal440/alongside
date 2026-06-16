@@ -55,6 +55,17 @@ export async function flushPendingOps(config: ApiConfig): Promise<void> {
       config,
       anyJson,
     );
+    if (result.kind === 'contract') {
+      // 2xx response with a non-JSON body (invalid_json contract): the server
+      // applied the write but the response body is completely unusable. Drop the
+      // op to prevent retry duplication. No server ID is available (raw is
+      // undefined when JSON parsing itself fails), so dependent ops can't be
+      // rebound here — stage 5 durable-failure handling will clean them up.
+      console.error('[sync] 2xx with non-JSON body; dropping op to avoid retry', op.path);
+      await idbDeletePendingOp(op.id!);
+      continue;
+    }
+
     if (result.kind === 'ok') {
       // For offline-created tasks, parse the server row BEFORE deleting the op so
       // that a validation failure doesn't leave the op gone with no rebinding done.
