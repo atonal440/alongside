@@ -37,13 +37,18 @@ export async function flushPendingOps(config: ApiConfig): Promise<void> {
   for (const op of ops) {
     const result = await toRequest(op, config);
     if (result.kind === 'contract') {
-      // 2xx response with a non-JSON body (invalid_json contract): the server
-      // applied the write but the response body is completely unusable. Drop the
-      // op to prevent retry duplication. No server ID is available (raw is
-      // undefined when JSON parsing itself fails), so dependent ops can't be
-      // rebound here — stage 5 durable-failure handling will clean them up.
-      console.error('[sync] 2xx with non-JSON body; dropping op to avoid retry', op.op);
+      // 2xx response whose body either wasn't valid JSON or failed the schema
+      // check. The server has already applied the write, so drop the op to
+      // prevent retry duplication. For offline creates, attempt to extract the
+      // server id from the raw body so dependent queued ops can be rebound;
+      // raw is undefined only when JSON parsing itself failed.
+      console.error('[sync] contract violation on queued op; dropping', op.op);
       await idbDeletePendingOp(op.id!);
+      if (op.op === 'task.create') {
+        const raw = result.raw as Record<string, unknown> | undefined;
+        const serverId = typeof raw?.['id'] === 'string' ? raw['id'] : null;
+        if (serverId) await rebindTempId(op.localId, serverId);
+      }
       continue;
     }
 
