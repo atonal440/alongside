@@ -1,27 +1,28 @@
-import type { PendingOp } from '@shared/types';
+import { type PendingOp, type PendingOpPayload, parsePendingOp } from '../api/pendingOps';
 import { getDB } from './db';
 
 export async function idbGetPendingOps(): Promise<PendingOp[]> {
   const db = await getDB();
-  return new Promise((resolve, reject) => {
+  const raw = await new Promise<unknown[]>((resolve, reject) => {
     const req = db.transaction('pending_ops', 'readonly').objectStore('pending_ops').getAll();
-    req.onsuccess = () => resolve(req.result as PendingOp[]);
+    req.onsuccess = () => resolve(req.result as unknown[]);
     req.onerror = () => reject(req.error);
+  });
+  return raw.flatMap(item => {
+    const parsed = parsePendingOp(item);
+    if (!parsed.ok) {
+      console.warn('[idb] malformed pending op skipped', item, parsed.error);
+      return [];
+    }
+    return [parsed.value];
   });
 }
 
-export async function idbQueueOp(
-  method: string,
-  path: string,
-  body: unknown,
-  localId: string | null = null,
-): Promise<void> {
+export async function idbQueueOp(payload: PendingOpPayload): Promise<void> {
   const op: PendingOp = {
-    method,
-    path,
-    body,
-    local_id: localId,
+    ...payload,
     created_at: new Date().toISOString(),
+    attempts: 0,
   };
   const db = await getDB();
   return new Promise((resolve, reject) => {

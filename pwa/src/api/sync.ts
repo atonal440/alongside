@@ -1,9 +1,8 @@
-import * as v from 'valibot';
 import type { Task, Project, TaskLink } from '@shared/types';
-import { parseSchema } from '@shared/parse';
 import { parseTaskRow } from '@shared/wire/rows';
-import { apiRequest, type ApiConfig } from './client';
+import type { ApiConfig } from './client';
 import { api } from './endpoints';
+import { toRequest, rebindTaskId } from './pendingOps';
 import {
   idbGetAllTasks, idbPutTask, idbDeleteTask,
 } from '../idb/tasks';
@@ -24,54 +23,36 @@ export interface SyncResult {
   links?: TaskLink[];
 }
 
-// Passthrough parser for the generic pending-op replay loop.
-const anyJson = (raw: unknown) => parseSchema(v.unknown(), raw);
-
-// Rewrite all queued ops that reference oldId (in paths or body fields) to newId.
+// Rebind all queued ops that reference oldId to newId.
 async function rebindTempId(oldId: string, newId: string): Promise<void> {
   const pending = await idbGetPendingOps();
   for (const op of pending) {
-    let changed = false;
-    if (typeof op.path === 'string' && op.path.includes(oldId)) {
-      op.path = op.path.replace(oldId, newId);
-      changed = true;
-    }
-    if (op.body && typeof op.body === 'object') {
-      const body = op.body as Record<string, unknown>;
-      if (body.from_task_id === oldId) { body.from_task_id = newId; changed = true; }
-      if (body.to_task_id === oldId) { body.to_task_id = newId; changed = true; }
-      if (body.task_id === oldId) { body.task_id = newId; changed = true; }
-    }
-    if (changed) await idbPutPendingOp(op);
+    const rebound = rebindTaskId(op, oldId, newId);
+    if (rebound !== op) await idbPutPendingOp(rebound);
   }
 }
 
 export async function flushPendingOps(config: ApiConfig): Promise<void> {
   const ops = await idbGetPendingOps();
   for (const op of ops) {
-    const result = await apiRequest(
-      op.path,
-      { method: op.method, body: op.body ? JSON.stringify(op.body) : undefined },
-      config,
-      anyJson,
-    );
+    const result = await toRequest(op, config);
     if (result.kind === 'contract') {
       // 2xx response with a non-JSON body (invalid_json contract): the server
       // applied the write but the response body is completely unusable. Drop the
       // op to prevent retry duplication. No server ID is available (raw is
       // undefined when JSON parsing itself fails), so dependent ops can't be
       // rebound here — stage 5 durable-failure handling will clean them up.
-      console.error('[sync] 2xx with non-JSON body; dropping op to avoid retry', op.path);
+      console.error('[sync] 2xx with non-JSON body; dropping op to avoid retry', op.op);
       await idbDeletePendingOp(op.id!);
       continue;
     }
 
     if (result.kind === 'ok') {
-      // For offline-created tasks, parse the server row BEFORE deleting the op so
-      // that a validation failure doesn't leave the op gone with no rebinding done.
-      if (op.method === 'POST' && op.path === '/api/tasks' && op.local_id) {
+      if (op.op === 'task.create') {
+        // For offline-created tasks, parse the server row BEFORE deleting the op so
+        // that a validation failure doesn't leave the op gone with no rebinding done.
         const parsed = parseTaskRow(result.value);
-        const oldId = op.local_id;
+        const oldId = op.localId;
 
         if (!parsed.ok) {
           // Server created the task but returned an unrecognisable body.
@@ -112,11 +93,12 @@ export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
   const remoteMap = Object.fromEntries(remoteTasks.map(t => [t.id, t]));
   const pendingOps = await idbGetPendingOps();
 
-  // Keep offline-created tasks that haven't synced yet
+  // Keep offline-created tasks that haven't synced yet.
+  // Stage 5 will replace title-based matching with localId-based survivor protection.
   const offlineCreatedTitles = new Set(
     pendingOps
-      .filter(op => op.method === 'POST' && op.path === '/api/tasks')
-      .map(op => (op.body as { title?: string })?.title),
+      .filter(op => op.op === 'task.create')
+      .map(op => op.body.title),
   );
 
   const local = await idbGetAllTasks();
@@ -153,3 +135,4 @@ export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
 
   return { online: true, tasks: finalTasks, projects, links };
 }
+
