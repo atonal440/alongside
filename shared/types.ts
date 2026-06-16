@@ -1,14 +1,5 @@
 export type { Task, Project, TaskLink, ActionLog } from './schema';
 
-export interface PendingOp {
-  id?: number;
-  method: string;
-  path: string;
-  body: unknown;
-  local_id: string | null;
-  created_at: string;
-}
-
 import type { Task, Project } from './schema';
 
 export type TaskCreate = Pick<Task, 'title'> &

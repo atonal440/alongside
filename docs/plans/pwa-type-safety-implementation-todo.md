@@ -61,13 +61,19 @@ All 9 endpoints match plan description. No schema/response mismatches found.
 
 ## Stage 4 — Typed Pending Ops (`stage-4-typed-pending-ops.md`)
 
-- [ ] `pwa/src/api/pendingOps.ts`: op union (+`attempts`), `toRequest`, `rebindTaskId`, `parsePendingOp`.
-- [ ] IDB v4 migration translating legacy queue records (delete-with-warn for unrecognizable).
-- [ ] Typed enqueues in `actions.ts`; parsed reads in `idb/pendingOps.ts`.
-- [ ] Mechanical `sync.ts` adaptation (no policy change yet); note title-vs-localId choice here.
-- [ ] Remove `PendingOp` from `shared/types.ts` (+ pwa re-export); worker verification.
-- [ ] Tests: pendingOps unit, idb round-trip, v3→v4 (and v2→v4 compose) migration.
+- [x] `pwa/src/api/pendingOps.ts`: op union (+`attempts`), `toRequest`, `rebindTaskId`, `parsePendingOp`.
+- [x] IDB v4 migration translating legacy queue records (delete-with-warn for unrecognizable).
+- [x] Typed enqueues in `actions.ts`; parsed reads in `idb/pendingOps.ts`.
+- [x] Mechanical `sync.ts` adaptation (no policy change yet); title-based survivor check kept (flagged below).
+- [x] Remove `PendingOp` from `shared/types.ts` (+ pwa re-export); worker verification green.
+- [x] Tests: pendingOps unit, idb round-trip, v3→v4 (and v2→v4 compose) migration. 230 tests green.
 - [ ] Docs: `docs/pwa/idb/` migration history; manual legacy-queue upgrade check noted in PR.
+
+**Deviations:**
+- `closeDb()` added to `pwa/src/idb/db.ts` to allow singleton reset between test phases (migration test seeds v3 then opens at v4).
+- `translateLegacyPendingOp` in `db.ts` applies the snoozed_until→defer_until body migration inline. v3 and v4 cursors run concurrently in a single upgrade transaction (both open cursors on `pending_ops`), so v4 cannot rely on v3 having already rewritten the body. Applying it inline in the translator makes v4 self-contained for that case.
+- Title-based survivor check in `syncFromServer` kept as-is (now typed: filters `op.op === 'task.create'` instead of method/path). Stage 5 replaces it with `localId`-based protection per the plan.
+- Docs update deferred per AGENTS.md convention for large doc changes.
 
 ## Stage 5 — Sync Engine Policy (`stage-5-sync-engine.md`)
 
