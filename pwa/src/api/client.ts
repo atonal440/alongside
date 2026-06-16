@@ -1,43 +1,81 @@
+import type { ValidationError } from '@shared/parse';
+import type { Result } from '@shared/result';
+import type { ApiResult, ApiErrorBody } from './result';
+
 export interface ApiConfig {
   apiBase: string;
   authToken: string;
 }
 
-export async function apiFetch(
+type BodyParser<T> = (raw: unknown) => Result<T, ValidationError[]>;
+
+export async function apiRequest<T>(
   path: string,
-  options: RequestInit = {},
+  init: RequestInit,
   config: ApiConfig,
-): Promise<unknown> {
-  if (!config.apiBase) return null;
+  parseBody: BodyParser<T>,
+): Promise<ApiResult<T>> {
+  if (!config.apiBase) return { kind: 'unconfigured' };
+
+  let res: Response;
   try {
-    const res = await fetch(`${config.apiBase}${path}`, {
-      ...options,
+    res = await fetch(`${config.apiBase}${path}`, {
+      ...init,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${config.authToken}`,
-        ...(options.headers as Record<string, string> | undefined),
+        ...(init.headers as Record<string, string> | undefined),
       },
     });
-    if (!res.ok) throw new Error(`${res.status}`);
-    return res.json();
-  } catch (e) {
-    console.warn('API fetch failed:', e);
-    return null;
+  } catch {
+    return { kind: 'network' };
   }
+
+  if (!res.ok) {
+    let body: ApiErrorBody;
+    try {
+      const raw = await res.json() as unknown;
+      const obj = raw as Record<string, unknown>;
+      if (raw !== null && typeof raw === 'object' && typeof obj['error'] === 'string') {
+        body = raw as ApiErrorBody;
+      } else {
+        body = { error: `HTTP ${res.status}` };
+      }
+    } catch {
+      body = { error: `HTTP ${res.status}` };
+    }
+    return { kind: 'http', status: res.status, body };
+  }
+
+  let raw: unknown;
+  try {
+    raw = await res.json();
+  } catch {
+    const issues: ValidationError[] = [
+      { path: [], code: 'invalid_json', message: 'Response body is not valid JSON.' },
+    ];
+    console.error('[api] contract violation:', issues);
+    return { kind: 'contract', status: res.status, issues, raw: undefined };
+  }
+
+  const parsed = parseBody(raw);
+  if (!parsed.ok) {
+    console.error('[api] contract violation:', parsed.error);
+    return { kind: 'contract', status: res.status, issues: parsed.error, raw };
+  }
+
+  return { kind: 'ok', value: parsed.value };
 }
 
 export async function verifyApiConfig(config: ApiConfig): Promise<boolean> {
   if (!config.apiBase || !config.authToken) return false;
-
   try {
     const res = await fetch(`${config.apiBase}/`, {
-      headers: {
-        Authorization: `Bearer ${config.authToken}`,
-      },
+      headers: { Authorization: `Bearer ${config.authToken}` },
     });
     return res.ok;
-  } catch (e) {
-    console.warn('API verification failed:', e);
+  } catch {
+    console.warn('API verification failed');
     return false;
   }
 }
