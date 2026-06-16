@@ -55,13 +55,13 @@ export async function apiRequest<T>(
       { path: [], code: 'invalid_json', message: 'Response body is not valid JSON.' },
     ];
     console.error('[api] contract violation:', issues);
-    return { kind: 'contract', status: res.status, issues };
+    return { kind: 'contract', status: res.status, issues, raw: undefined };
   }
 
   const parsed = parseBody(raw);
   if (!parsed.ok) {
     console.error('[api] contract violation:', parsed.error);
-    return { kind: 'contract', status: res.status, issues: parsed.error };
+    return { kind: 'contract', status: res.status, issues: parsed.error, raw };
   }
 
   return { kind: 'ok', value: parsed.value };

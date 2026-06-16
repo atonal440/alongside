@@ -5,7 +5,7 @@ export type ApiErrorBody = { error: string; details?: ValidationError[] };
 export type ApiResult<T> =
   | { kind: 'ok'; value: T }
   | { kind: 'http'; status: number; body: ApiErrorBody }
-  | { kind: 'contract'; status: number; issues: ValidationError[] }
+  | { kind: 'contract'; status: number; issues: ValidationError[]; raw: unknown }
   | { kind: 'network' }
   | { kind: 'unconfigured' };
 

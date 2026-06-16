@@ -48,10 +48,24 @@ export async function createTaskAction(
     await idbPutTask(serverTask);
     dispatch({ type: 'DELETE_TASK', id: task.id });
     dispatch({ type: 'UPSERT_TASK', task: serverTask });
+  } else if (result.kind === 'contract') {
+    // Server applied the write but the body failed schema validation.
+    // Don't queue a retry (would duplicate the task). Best-effort: extract
+    // the raw id field and update the local task so any follow-up edits,
+    // links, or deletes reference the real server ID rather than the temp ID.
+    const raw = result.raw as Record<string, unknown> | undefined;
+    const serverId = typeof raw?.['id'] === 'string' ? raw['id'] : null;
+    if (serverId) {
+      const reidentified = { ...task, id: serverId };
+      await idbDeleteTask(task.id);
+      await idbPutTask(reidentified);
+      dispatch({ type: 'DELETE_TASK', id: task.id });
+      dispatch({ type: 'UPSERT_TASK', task: reidentified });
+    }
+    // If we can't extract an id, leave the temp task; syncFromServer reconciles it.
   } else if (shouldQueue(result.kind)) {
     await idbQueueOp('POST', '/api/tasks', { title }, task.id);
   }
-  // contract: server applied the write; skip queue, leave optimistic task in place
 }
 
 export async function updateTaskAction(

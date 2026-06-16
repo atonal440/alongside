@@ -3,7 +3,7 @@ import { isDurableFailure, isTransientFailure, type ApiResult } from '../../src/
 
 function ok(): ApiResult<unknown> { return { kind: 'ok', value: 'x' }; }
 function http(status: number): ApiResult<unknown> { return { kind: 'http', status, body: { error: 'e' } }; }
-function contract(): ApiResult<unknown> { return { kind: 'contract', status: 200, issues: [] }; }
+function contract(): ApiResult<unknown> { return { kind: 'contract', status: 200, issues: [], raw: undefined }; }
 function network(): ApiResult<unknown> { return { kind: 'network' }; }
 function unconfigured(): ApiResult<unknown> { return { kind: 'unconfigured' }; }
 
