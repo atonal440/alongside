@@ -2,17 +2,37 @@ import type { Dispatch } from 'react';
 import type { TaskLink, TaskUpdate } from '../types';
 import type { AppAction } from './reducer';
 import type { ApiConfig } from '../api/client';
+import type { ApiResult } from '../api/result';
 import { api } from '../api/endpoints';
+import { isTransientFailure } from '../api/result';
+import { messageFromResult } from '../api/syncPolicy';
 import { idbGetAllTasks, idbPutTask, idbDeleteTask } from '../idb/tasks';
 import { idbPutLink, idbDeleteLink } from '../idb/links';
 import { idbQueueOp } from '../idb/pendingOps';
 import { genId } from '../utils/genId';
 
-// Failure classification used for pending-op queueing in this stage.
-// `contract` must not enqueue — the server has already applied the write and
-// a retry would duplicate it. Stage 5 handles durable vs. transient policy.
-function shouldQueue(kind: string): boolean {
-  return kind === 'http' || kind === 'network' || kind === 'unconfigured';
+// Registered by useSync so that durable rejections can trigger a resync that
+// rolls local state back to server truth (the rollback mechanism for optimistic
+// writes — no per-op inverse operations needed).
+let _requestSync: (() => void) | null = null;
+
+export function registerSyncCallback(fn: () => void): void {
+  _requestSync = fn;
+}
+
+// Queue only transient failures; durable rejections (4xx) are never retried.
+// `unconfigured` behaves like offline — queue the op for later.
+function shouldQueue(result: ApiResult<unknown>): boolean {
+  return isTransientFailure(result) || result.kind === 'unconfigured';
+}
+
+// Dispatch a toast from a durable server rejection (4xx only) and trigger
+// resync to restore server truth. `contract` results are excluded because the
+// server applied the write despite the schema mismatch.
+function handleRejection(result: ApiResult<unknown>, dispatch: Dispatch<AppAction>): void {
+  if (result.kind !== 'http') return;
+  dispatch({ type: 'SET_TOAST', message: messageFromResult(result) });
+  _requestSync?.();
 }
 
 export async function createTaskAction(
@@ -63,8 +83,12 @@ export async function createTaskAction(
       dispatch({ type: 'UPSERT_TASK', task: reidentified });
     }
     // If we can't extract an id, leave the temp task; syncFromServer reconciles it.
-  } else if (shouldQueue(result.kind)) {
+  } else if (shouldQueue(result)) {
     await idbQueueOp({ op: 'task.create', localId: task.id, body: { title } });
+  } else {
+    // Durable server rejection (4xx). No pending create op means syncFromServer
+    // will delete the temp task; resync is the rollback mechanism.
+    handleRejection(result, dispatch);
   }
 }
 
@@ -82,7 +106,11 @@ export async function updateTaskAction(
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
   const result = await api.updateTask(id, updates, config);
-  if (shouldQueue(result.kind)) await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+  if (shouldQueue(result)) {
+    await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+  } else {
+    handleRejection(result, dispatch);
+  }
 }
 
 export async function deleteTaskAction(
@@ -94,7 +122,11 @@ export async function deleteTaskAction(
   dispatch({ type: 'DELETE_TASK', id });
 
   const result = await api.deleteTask(id, config);
-  if (shouldQueue(result.kind)) await idbQueueOp({ op: 'task.delete', taskId: id });
+  if (shouldQueue(result)) {
+    await idbQueueOp({ op: 'task.delete', taskId: id });
+  } else {
+    handleRejection(result, dispatch);
+  }
 }
 
 export async function completeTaskAction(
@@ -118,9 +150,13 @@ export async function completeTaskAction(
       dispatch({ type: 'UPSERT_TASK', task: result.value.next });
       return `Done! Next: <span class="next-date">${result.value.next.due_date}</span>`;
     }
-  } else if (shouldQueue(result.kind)) {
+  } else if (shouldQueue(result)) {
     await idbQueueOp({ op: 'task.complete', taskId: id });
     if (wasRecurring) return 'Done! Next occurrence will sync when online.';
+  } else {
+    // Durable rejection (e.g. 409 invalid_transition — task already done).
+    // Resync restores the correct server state.
+    handleRejection(result, dispatch);
   }
   return null;
 }
@@ -145,7 +181,11 @@ export async function deferTaskAction(
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
   const result = await api.updateTask(id, updates, config);
-  if (shouldQueue(result.kind)) await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+  if (shouldQueue(result)) {
+    await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+  } else {
+    handleRejection(result, dispatch);
+  }
 }
 
 export async function clearDeferAction(
@@ -162,7 +202,11 @@ export async function clearDeferAction(
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
   const result = await api.updateTask(id, updates, config);
-  if (shouldQueue(result.kind)) await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+  if (shouldQueue(result)) {
+    await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+  } else {
+    handleRejection(result, dispatch);
+  }
 }
 
 export async function focusTaskAction(
@@ -185,7 +229,11 @@ export async function focusTaskAction(
 
   const body = { focused_until: focusedUntil };
   const result = await api.updateTask(id, body, config);
-  if (shouldQueue(result.kind)) await idbQueueOp({ op: 'task.update', taskId: id, body });
+  if (shouldQueue(result)) {
+    await idbQueueOp({ op: 'task.update', taskId: id, body });
+  } else {
+    handleRejection(result, dispatch);
+  }
 }
 
 export async function createLinkAction(
@@ -201,7 +249,13 @@ export async function createLinkAction(
 
   const body = { from_task_id: fromId, to_task_id: toId, link_type: linkType };
   const result = await api.createLink(body, config);
-  if (shouldQueue(result.kind)) await idbQueueOp({ op: 'link.create', body });
+  if (shouldQueue(result)) {
+    await idbQueueOp({ op: 'link.create', body });
+  } else {
+    // Durable rejection (e.g. 409 for self-link or blocks cycle): the optimistic
+    // link is removed by the resync triggered inside handleRejection.
+    handleRejection(result, dispatch);
+  }
 }
 
 export async function deleteLinkAction(
@@ -216,5 +270,9 @@ export async function deleteLinkAction(
 
   const body = { from_task_id: fromId, to_task_id: toId, link_type: linkType };
   const result = await api.deleteLink(body, config);
-  if (shouldQueue(result.kind)) await idbQueueOp({ op: 'link.delete', body });
+  if (shouldQueue(result)) {
+    await idbQueueOp({ op: 'link.delete', body });
+  } else {
+    handleRejection(result, dispatch);
+  }
 }
