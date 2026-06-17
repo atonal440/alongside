@@ -18,6 +18,10 @@ describe('isDurableFailure', () => {
   test('true for 422', () => { expect(isDurableFailure(http(422))).toBe(true); });
   test('false for 500', () => { expect(isDurableFailure(http(500))).toBe(false); });
   test('false for 503', () => { expect(isDurableFailure(http(503))).toBe(false); });
+  // Recoverable 4xx: credentials can be fixed, rate limit can be waited out
+  test('false for 401 (recoverable)', () => { expect(isDurableFailure(http(401))).toBe(false); });
+  test('false for 403 (recoverable)', () => { expect(isDurableFailure(http(403))).toBe(false); });
+  test('false for 429 (rate limit)', () => { expect(isDurableFailure(http(429))).toBe(false); });
 });
 
 describe('isTransientFailure', () => {
@@ -31,15 +35,22 @@ describe('isTransientFailure', () => {
   test('false for 422', () => { expect(isTransientFailure(http(422))).toBe(false); });
   test('true for 500', () => { expect(isTransientFailure(http(500))).toBe(true); });
   test('true for 503', () => { expect(isTransientFailure(http(503))).toBe(true); });
+  // Recoverable 4xx treated as transient to preserve queued ops
+  test('true for 401 (recoverable)', () => { expect(isTransientFailure(http(401))).toBe(true); });
+  test('true for 403 (recoverable)', () => { expect(isTransientFailure(http(403))).toBe(true); });
+  test('true for 429 (rate limit)', () => { expect(isTransientFailure(http(429))).toBe(true); });
 });
 
 describe('mutual exclusivity', () => {
   const cases: Array<[string, ApiResult<unknown>]> = [
     ['ok', ok()],
     ['http 400', http(400)],
+    ['http 401', http(401)],
+    ['http 403', http(403)],
     ['http 404', http(404)],
     ['http 409', http(409)],
     ['http 422', http(422)],
+    ['http 429', http(429)],
     ['http 500', http(500)],
     ['http 503', http(503)],
     ['contract', contract()],
