@@ -137,8 +137,18 @@ export function applyFocus(
     });
   }
   const focused_until = new Date(Date.parse(nowIso) + hours * 3_600_000).toISOString();
-  const updated: Task = { ...task, focused_until, updated_at: nowIso };
-  const body: TaskUpdateBody = { focused_until };
+  // Mirror worker's focusTaskPlan: focusing a deferred task clears the defer.
+  const clearDefer = task.defer_kind !== 'none';
+  const updated: Task = {
+    ...task,
+    focused_until,
+    ...(clearDefer ? { defer_kind: 'none', defer_until: null } : {}),
+    updated_at: nowIso,
+  };
+  const body: TaskUpdateBody = {
+    focused_until,
+    ...(clearDefer ? { defer_kind: 'none', defer_until: null } : {}),
+  };
   return ok({ task: updated, body });
 }
 

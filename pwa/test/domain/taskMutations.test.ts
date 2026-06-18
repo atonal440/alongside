@@ -244,6 +244,19 @@ describe('applyFocus', () => {
     const result = applyFocus(task, hours, NOW);
     expect(result.ok).toBe(true);
   });
+
+  test('focusing a deferred task clears defer state (mirrors worker focusTaskPlan)', () => {
+    const task = makeTask({ defer_kind: 'someday', defer_until: null });
+    const result = applyFocus(task, 3, NOW);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const { task: updated, body } = result.value;
+    expect(updated.defer_kind).toBe('none');
+    expect(updated.defer_until).toBeNull();
+    expect(body.defer_kind).toBe('none');
+    expect(body.defer_until).toBeNull();
+    expect(updated.focused_until).not.toBeNull();
+  });
 });
 
 // ─── applyUnfocus ─────────────────────────────────────────────────────────────
