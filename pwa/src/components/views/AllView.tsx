@@ -8,7 +8,7 @@ import {
   deleteTaskAction,
   clearDeferAction,
   focusTaskAction,
-  updateTaskAction,
+  unfocusTaskAction,
 } from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
 import { Markdown } from '../common/Markdown';
@@ -119,7 +119,7 @@ export function AllView() {
   }
 
   async function handleUnfocus(id: string) {
-    await updateTaskAction(id, { focused_until: null }, config, dispatch);
+    await unfocusTaskAction(id, config, dispatch);
   }
 
   async function handleDefer(id: string, choice: DeferChoice) {

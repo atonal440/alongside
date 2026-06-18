@@ -98,7 +98,10 @@ describe('completeTaskAction', () => {
     expect(actions.find(a => a.type === 'SET_TOAST')).toBeUndefined();
   });
 
-  test('409 invalid_transition: toast dispatched, op not queued', async () => {
+  test('already done locally: toast dispatched, no API call made', async () => {
+    // applyComplete guards locally — no server round-trip needed when the row is
+    // already done in IDB. (A 409 from the server would mean the same thing but
+    // we catch it before the request.)
     const task = makeTask({ id: 't_abc001', status: 'done' });
     await idbPutTask(task);
 
@@ -106,19 +109,18 @@ describe('completeTaskAction', () => {
     registerSyncCallback(() => { syncCalled = true; });
 
     const { actions, dispatch } = makeDispatch();
+    // No stub registered — any network call would throw if the guard fails.
     const stub = installFetchStub();
-    stub.respondWith({ method: 'POST', path: '/complete' }, {
-      type: 'json', status: 409, body: { error: 'invalid_transition' },
-    });
 
     await completeTaskAction('t_abc001', config, dispatch);
     stub.restore();
 
     const toast = actions.find(a => a.type === 'SET_TOAST');
     expect(toast).toBeDefined();
-    expect((toast as Extract<AppAction, { type: 'SET_TOAST' }>).message).toContain('invalid_transition');
+    expect((toast as Extract<AppAction, { type: 'SET_TOAST' }>).message).toContain('already');
     expect(await idbGetPendingOps()).toHaveLength(0);
-    expect(syncCalled).toBe(true);
+    // No resync triggered — guard fires locally, no server rejection to roll back.
+    expect(syncCalled).toBe(false);
   });
 
   test('recurring task offline: toast message about next occurrence returned', async () => {

@@ -1,8 +1,10 @@
 import type { Dispatch } from 'react';
-import type { TaskLink, TaskUpdate } from '../types';
+import type { TaskLink } from '../types';
 import type { AppAction } from './reducer';
 import type { ApiConfig } from '../api/client';
 import type { ApiResult } from '../api/result';
+import type { TaskUpdateBody } from '../api/endpoints';
+import type { IsoDateTime, NonEmptyString } from '@shared/parse';
 import { api } from '../api/endpoints';
 import { isTransientFailure } from '../api/result';
 import { messageFromResult } from '../api/syncPolicy';
@@ -10,6 +12,18 @@ import { idbGetAllTasks, idbPutTask, idbDeleteTask } from '../idb/tasks';
 import { idbPutLink, idbDeleteLink } from '../idb/links';
 import { idbGetPendingOps, idbQueueOp } from '../idb/pendingOps';
 import { genId } from '../utils/genId';
+import {
+  newLocalTask,
+  applyUpdate,
+  applyComplete,
+  applyDefer,
+  applyClearDefer,
+  applyFocus,
+  applyUnfocus,
+  applyReopen,
+  type DeferInput,
+  type TaskUpdatePatch,
+} from '../domain/taskMutations';
 
 // Registered by useSync so that durable rejections can trigger a resync that
 // rolls local state back to server truth (the rollback mechanism for optimistic
@@ -45,29 +59,18 @@ function handleRejection(result: ApiResult<unknown>, dispatch: Dispatch<AppActio
   _requestSync?.();
 }
 
+function nowIso(): IsoDateTime {
+  return new Date().toISOString() as IsoDateTime;
+}
+
 export async function createTaskAction(
   title: string,
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  const now = new Date().toISOString();
-  const task = {
-    id: genId('t'),
-    title,
-    notes: null,
-    status: 'pending' as const,
-    due_date: null,
-    recurrence: null,
-    created_at: now,
-    updated_at: now,
-    defer_until: null,
-    defer_kind: 'none' as const,
-    task_type: 'action' as const,
-    project_id: null,
-    kickoff_note: null,
-    session_log: null,
-    focused_until: null,
-  };
+  const now = nowIso();
+  // Title parsing happens in stage 7; cast here until the form boundary is typed.
+  const task = newLocalTask(title as NonEmptyString<200>, now, genId('t'));
   await idbPutTask(task);
   dispatch({ type: 'UPSERT_TASK', task });
 
@@ -104,24 +107,29 @@ export async function createTaskAction(
 
 export async function updateTaskAction(
   id: string,
-  updates: TaskUpdate,
+  updates: TaskUpdatePatch,
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
   const tasks = await idbGetAllTasks();
   const task = tasks.find(t => t.id === id);
   if (!task) return;
-  const updated = { ...task, ...updates, updated_at: new Date().toISOString() };
+  const mutation = applyUpdate(task, updates, nowIso());
+  if (!mutation.ok) {
+    dispatch({ type: 'SET_TOAST', message: mutation.error.message });
+    return;
+  }
+  const { task: updated, body } = mutation.value;
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
   if (await hasPendingCreate(id)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+    await idbQueueOp({ op: 'task.update', taskId: id, body: body as TaskUpdateBody });
     return;
   }
-  const result = await api.updateTask(id, updates, config);
+  const result = await api.updateTask(id, body, config);
   if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+    await idbQueueOp({ op: 'task.update', taskId: id, body: body as TaskUpdateBody });
   } else {
     handleRejection(result, dispatch);
   }
@@ -156,8 +164,12 @@ export async function completeTaskAction(
   const task = tasks.find(t => t.id === id);
   if (!task) return null;
 
-  const wasRecurring = !!task.recurrence;
-  const updated = { ...task, status: 'done' as const, updated_at: new Date().toISOString() };
+  const mutation = applyComplete(task, nowIso());
+  if (!mutation.ok) {
+    dispatch({ type: 'SET_TOAST', message: mutation.error.message });
+    return null;
+  }
+  const { task: updated, wasRecurring } = mutation.value;
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
@@ -194,22 +206,25 @@ export async function deferTaskAction(
   const tasks = await idbGetAllTasks();
   const task = tasks.find(t => t.id === id);
   if (!task) return;
-  const updates: TaskUpdate = {
-    defer_kind: kind,
-    defer_until: kind === 'until' ? untilIso : null,
-    focused_until: null,
-  };
-  const updated = { ...task, ...updates, updated_at: new Date().toISOString() };
+  const defer: DeferInput = kind === 'until' && untilIso
+    ? { kind: 'until', until: untilIso as IsoDateTime }
+    : { kind: 'someday' };
+  const mutation = applyDefer(task, defer, nowIso());
+  if (!mutation.ok) {
+    dispatch({ type: 'SET_TOAST', message: mutation.error.message });
+    return;
+  }
+  const { task: updated, body } = mutation.value;
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
   if (await hasPendingCreate(id)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+    await idbQueueOp({ op: 'task.update', taskId: id, body });
     return;
   }
-  const result = await api.updateTask(id, updates, config);
+  const result = await api.updateTask(id, body, config);
   if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+    await idbQueueOp({ op: 'task.update', taskId: id, body });
   } else {
     handleRejection(result, dispatch);
   }
@@ -223,18 +238,22 @@ export async function clearDeferAction(
   const tasks = await idbGetAllTasks();
   const task = tasks.find(t => t.id === id);
   if (!task) return;
-  const updates: TaskUpdate = { defer_kind: 'none', defer_until: null };
-  const updated = { ...task, ...updates, updated_at: new Date().toISOString() };
+  const mutation = applyClearDefer(task, nowIso());
+  if (!mutation.ok) {
+    dispatch({ type: 'SET_TOAST', message: mutation.error.message });
+    return;
+  }
+  const { task: updated, body } = mutation.value;
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
   if (await hasPendingCreate(id)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+    await idbQueueOp({ op: 'task.update', taskId: id, body });
     return;
   }
-  const result = await api.updateTask(id, updates, config);
+  const result = await api.updateTask(id, body, config);
   if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+    await idbQueueOp({ op: 'task.update', taskId: id, body });
   } else {
     handleRejection(result, dispatch);
   }
@@ -249,16 +268,73 @@ export async function focusTaskAction(
   const tasks = await idbGetAllTasks();
   const task = tasks.find(t => t.id === id);
   if (!task) return;
-  const focusedUntil = new Date(Date.now() + hours * 3600000).toISOString();
-  const updated = {
-    ...task,
-    focused_until: focusedUntil,
-    updated_at: new Date().toISOString(),
-  };
+  const mutation = applyFocus(task, hours, nowIso());
+  if (!mutation.ok) {
+    dispatch({ type: 'SET_TOAST', message: mutation.error.message });
+    return;
+  }
+  const { task: updated, body } = mutation.value;
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
-  const body = { focused_until: focusedUntil };
+  if (await hasPendingCreate(id)) {
+    await idbQueueOp({ op: 'task.update', taskId: id, body });
+    return;
+  }
+  const result = await api.updateTask(id, body, config);
+  if (shouldQueue(result)) {
+    await idbQueueOp({ op: 'task.update', taskId: id, body });
+  } else {
+    handleRejection(result, dispatch);
+  }
+}
+
+export async function unfocusTaskAction(
+  id: string,
+  config: ApiConfig,
+  dispatch: Dispatch<AppAction>,
+): Promise<void> {
+  const tasks = await idbGetAllTasks();
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  const mutation = applyUnfocus(task, nowIso());
+  if (!mutation.ok) {
+    dispatch({ type: 'SET_TOAST', message: mutation.error.message });
+    return;
+  }
+  const { task: updated, body } = mutation.value;
+  await idbPutTask(updated);
+  dispatch({ type: 'UPSERT_TASK', task: updated });
+
+  if (await hasPendingCreate(id)) {
+    await idbQueueOp({ op: 'task.update', taskId: id, body });
+    return;
+  }
+  const result = await api.updateTask(id, body, config);
+  if (shouldQueue(result)) {
+    await idbQueueOp({ op: 'task.update', taskId: id, body });
+  } else {
+    handleRejection(result, dispatch);
+  }
+}
+
+export async function reopenTaskAction(
+  id: string,
+  config: ApiConfig,
+  dispatch: Dispatch<AppAction>,
+): Promise<void> {
+  const tasks = await idbGetAllTasks();
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  const mutation = applyReopen(task, nowIso());
+  if (!mutation.ok) {
+    dispatch({ type: 'SET_TOAST', message: mutation.error.message });
+    return;
+  }
+  const { task: updated, body } = mutation.value;
+  await idbPutTask(updated);
+  dispatch({ type: 'UPSERT_TASK', task: updated });
+
   if (await hasPendingCreate(id)) {
     await idbQueueOp({ op: 'task.update', taskId: id, body });
     return;
