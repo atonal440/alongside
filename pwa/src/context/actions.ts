@@ -308,6 +308,10 @@ export async function deleteLinkAction(
   dispatch({ type: 'DELETE_LINK', from: fromId, to: toId, linkType });
 
   const body = { from_task_id: fromId, to_task_id: toId, link_type: linkType };
+  if (await hasPendingCreate(fromId) || await hasPendingCreate(toId)) {
+    await idbQueueOp({ op: 'link.delete', body });
+    return;
+  }
   const result = await api.deleteLink(body, config);
   if (shouldQueue(result)) {
     await idbQueueOp({ op: 'link.delete', body });

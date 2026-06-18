@@ -7,6 +7,7 @@ import {
   registerSyncCallback,
   createTaskAction,
   createLinkAction,
+  deleteLinkAction,
   completeTaskAction,
   updateTaskAction,
 } from '../../src/context/actions';
@@ -230,6 +231,19 @@ describe('writes against pending local tasks', () => {
 
     const opsAfter = await idbGetPendingOps();
     expect(opsAfter.some(o => o.op === 'link.create')).toBe(true);
+    expect(actions.find(a => a.type === 'SET_TOAST')).toBeUndefined();
+  });
+
+  test('deleteLinkAction with temp-id endpoint: queued without API call', async () => {
+    const tempId = await seedOfflineCreate();
+
+    const stub = installFetchStub();
+    const { dispatch, actions } = makeDispatch();
+    await deleteLinkAction(tempId, 't_abc001', 'blocks', config, dispatch);
+    stub.restore();
+
+    const opsAfter = await idbGetPendingOps();
+    expect(opsAfter.some(o => o.op === 'link.delete')).toBe(true);
     expect(actions.find(a => a.type === 'SET_TOAST')).toBeUndefined();
   });
 });
