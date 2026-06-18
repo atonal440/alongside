@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useAppState } from './useAppState';
 import { flushPendingOps, syncFromServer } from '../api/sync';
+import { registerSyncCallback } from '../context/actions';
 
 export function useSync() {
   const { state, dispatch } = useAppState();
@@ -17,8 +18,9 @@ export function useSync() {
     async function doSync() {
       dispatch({ type: 'SET_SYNC_STATUS', status: 'syncing' });
       try {
-        await flushPendingOps(config);
+        const flush = await flushPendingOps(config);
         const result = await syncFromServer(config);
+
         if (result.online && result.tasks) {
           dispatch({
             type: 'SET_DATA',
@@ -26,9 +28,15 @@ export function useSync() {
             projects: result.projects ?? [],
             links: result.links ?? [],
           });
-          dispatch({ type: 'SET_SYNC_STATUS', status: 'online' });
+          dispatch({ type: 'SET_SYNC_STATUS', status: flush.halted ? 'offline' : 'online' });
         } else {
           dispatch({ type: 'SET_SYNC_STATUS', status: 'offline' });
+        }
+
+        // Toast rejection messages after the resync so server truth is already
+        // restored when the user reads the message.
+        for (const message of flush.rejected) {
+          dispatch({ type: 'SET_TOAST', message });
         }
       } catch (err) {
         console.warn('Sync error:', err);
@@ -36,6 +44,8 @@ export function useSync() {
       }
     }
 
+    // Register so that action creators can trigger a resync on durable rejection.
+    registerSyncCallback(doSync);
     doSync();
     const interval = setInterval(doSync, 30_000);
 

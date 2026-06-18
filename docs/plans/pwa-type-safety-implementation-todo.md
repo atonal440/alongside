@@ -77,13 +77,23 @@ All 9 endpoints match plan description. No schema/response mismatches found.
 
 ## Stage 5 — Sync Engine Policy (`stage-5-sync-engine.md`)
 
-- [ ] `settleWrite` / `WriteOutcome`; durable = drop + toast + resync, transient = queue.
-- [ ] Action creators: rejection path (incl. temp-task removal via resync — verified), resync callback wiring.
-- [ ] Flush loop: FIFO, stop-on-transient, attempts cap surfacing, durable-create dependent-op cleanup.
-- [ ] `syncFromServer`: `local_id`-based survivor protection (title heuristic removed).
-- [ ] `useSync`: rejection toasts after resync; status transitions preserved.
-- [ ] Tests: flush matrix, reconciliation, duplicate-title regression, link 409 rollback, attempts cap.
-- [ ] Docs: sync policy narrative; check off the two "Future PWA Type System Notes" items in the worker todo.
+- [x] `WriteOutcome` / `FlushSummary`; durable = drop + toast + resync, transient = queue.
+- [x] Action creators: rejection path (incl. temp-task removal via resync — verified), resync callback wiring via `registerSyncCallback`.
+- [x] Flush loop: FIFO, stop-on-transient, attempts cap surfacing (`ATTEMPTS_CAP=25`), durable-create dependent-op cleanup.
+- [x] `syncFromServer`: `local_id`-based survivor protection (title heuristic removed).
+- [x] `useSync`: rejection toasts after resync; `halted → offline` status transition.
+- [x] Tests: flush matrix, reconciliation (rebound IDs verified in requests), duplicate-title regression, link 409 rollback, attempts cap. 254 tests green (15 new + 10 new in actions).
+- [x] Docs: `docs/pwa/api/sync.md` rewritten with policy table and rollback rationale; `docs/pwa/context/actions.md` updated.
+
+**Deviations:**
+- `settleWrite(result, op)` helper was not introduced as a separate function; instead `isDurableFailure`/`isTransientFailure` are used directly in the flush loop and action creators with a shared `handleRejection` helper — same policy, less indirection.
+- After a `task.create` success, the flush now rebinds both IDB AND the in-memory `ops` array so dependent ops are sent with the server ID in the same flush cycle (not deferred to the next). This matches the plan's intent more faithfully: dependent ops referencing a temp ID are processed immediately after the create resolves.
+- `_resetStuckNotice()` exported from `sync.ts` for test isolation of the once-per-session stuck notice.
+- "Future PWA Type System Notes" items in `docs/plans/type-driven-safety-implementation-todo.md` checked off below.
+
+**Worker todo items resolved (see stage 5 plan):**
+- ✓ "Sync distinguishes durable rejections from transient failures" — implemented via `isDurableFailure`/`isTransientFailure` from `result.ts`; 4xx drops, transient queues.
+- ✓ "Title-based temp-task survivor check" — replaced with `localId`-based protection in `syncFromServer`.
 
 ## Stage 6 — Local Mutation Domain (`stage-6-local-mutations.md`)
 

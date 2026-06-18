@@ -3,6 +3,9 @@ import { parseTaskRow } from '@shared/wire/rows';
 import type { ApiConfig } from './client';
 import { api } from './endpoints';
 import { toRequest, rebindTaskId } from './pendingOps';
+import type { PendingOp } from './pendingOps';
+import { isDurableFailure } from './result';
+import { messageFromResult, referencesTaskId, ATTEMPTS_CAP } from './syncPolicy';
 import {
   idbGetAllTasks, idbPutTask, idbDeleteTask,
 } from '../idb/tasks';
@@ -23,6 +26,19 @@ export interface SyncResult {
   links?: TaskLink[];
 }
 
+export interface FlushSummary {
+  flushed: number;
+  rejected: string[];
+  halted: boolean;
+}
+
+// Surfaced once per app session when an op sits wedged at the attempts cap.
+let _stuckNoticeFired = false;
+
+export function _resetStuckNotice(): void {
+  _stuckNoticeFired = false;
+}
+
 // Rebind all queued ops that reference oldId to newId.
 async function rebindTempId(oldId: string, newId: string): Promise<void> {
   const pending = await idbGetPendingOps();
@@ -32,48 +48,71 @@ async function rebindTempId(oldId: string, newId: string): Promise<void> {
   }
 }
 
-export async function flushPendingOps(config: ApiConfig): Promise<void> {
+// Delete all queued ops that reference taskId. Returns the IDB ids that were
+// deleted so the flush loop can skip them without re-fetching.
+async function dropDependentOps(taskId: string): Promise<Set<number>> {
+  const skipped = new Set<number>();
+  const pending = await idbGetPendingOps();
+  for (const op of pending) {
+    if (referencesTaskId(op, taskId) && op.id !== undefined) {
+      await idbDeletePendingOp(op.id);
+      skipped.add(op.id);
+    }
+  }
+  return skipped;
+}
+
+export async function flushPendingOps(config: ApiConfig): Promise<FlushSummary> {
   const ops = await idbGetPendingOps();
-  for (const op of ops) {
+  let flushed = 0;
+  const rejected: string[] = [];
+  let halted = false;
+  const skippedIds = new Set<number>();
+
+  for (let i = 0; i < ops.length; i++) {
+    const op = ops[i]!;
+    if (op.id !== undefined && skippedIds.has(op.id)) continue;
+
     const result = await toRequest(op, config);
+
     if (result.kind === 'contract') {
-      // 2xx response whose body either wasn't valid JSON or failed the schema
-      // check. The server has already applied the write, so drop the op to
-      // prevent retry duplication. For offline creates, attempt to extract the
-      // server id from the raw body so dependent queued ops can be rebound;
-      // raw is undefined only when JSON parsing itself failed.
+      // 2xx response whose body failed the schema check. The server has already
+      // applied the write — drop the op to prevent retry duplication.
       console.error('[sync] contract violation on queued op; dropping', op.op);
       await idbDeletePendingOp(op.id!);
       if (op.op === 'task.create') {
         const raw = result.raw as Record<string, unknown> | undefined;
         const serverId = typeof raw?.['id'] === 'string' ? raw['id'] : null;
-        if (serverId) await rebindTempId(op.localId, serverId);
+        if (serverId) {
+          await rebindTempId(op.localId, serverId);
+          for (let j = i + 1; j < ops.length; j++) {
+            ops[j] = rebindTaskId(ops[j]!, op.localId, serverId);
+          }
+        }
       }
+      flushed++;
       continue;
     }
 
     if (result.kind === 'ok') {
       if (op.op === 'task.create') {
-        // For offline-created tasks, parse the server row BEFORE deleting the op so
-        // that a validation failure doesn't leave the op gone with no rebinding done.
+        // Parse the server row BEFORE deleting the op so that a validation
+        // failure doesn't leave the op gone with no rebinding done.
         const parsed = parseTaskRow(result.value);
         const oldId = op.localId;
 
         if (!parsed.ok) {
-          // Server created the task but returned an unrecognisable body.
-          // Retrying would duplicate the server-side task, so drop the op.
-          // Best-effort rebind: extract the raw `id` field so that any queued
-          // PATCH/link ops are repointed to the real server ID rather than left
-          // permanently targeting the stale temp ID.
           console.error('[sync] offline-create response failed schema check', parsed.error);
           await idbDeletePendingOp(op.id!);
           const raw = result.value as Record<string, unknown>;
           const serverId = typeof raw?.['id'] === 'string' ? raw['id'] : null;
           if (serverId) {
             await rebindTempId(oldId, serverId);
+            for (let j = i + 1; j < ops.length; j++) {
+              ops[j] = rebindTaskId(ops[j]!, oldId, serverId);
+            }
           }
-          // If we couldn't extract an id at all, dependent ops will 404 on the
-          // server; stage 5 durable-failure handling will clean them up.
+          flushed++;
           continue;
         }
 
@@ -82,12 +121,53 @@ export async function flushPendingOps(config: ApiConfig): Promise<void> {
         await idbDeletePendingOp(op.id!);
         await idbDeleteTask(oldId);
         await idbPutTask(serverTask);
+        // Rebind in IDB and in the local array so subsequent ops in this cycle
+        // use the real server ID, not the temp ID.
         await rebindTempId(oldId, newId);
+        for (let j = i + 1; j < ops.length; j++) {
+          ops[j] = rebindTaskId(ops[j]!, oldId, newId);
+        }
       } else {
         await idbDeletePendingOp(op.id!);
       }
+      flushed++;
+      continue;
     }
+
+    if (isDurableFailure(result)) {
+      // 4xx rejection: the write can never succeed. Drop it and report to caller.
+      rejected.push(messageFromResult(result));
+      await idbDeletePendingOp(op.id!);
+
+      if (op.op === 'task.create') {
+        // All ops targeting this temp ID will also fail (the task will never
+        // exist on the server), so drop them and mark them as skipped in the
+        // current loop to avoid sending doomed requests.
+        const newSkipped = await dropDependentOps(op.localId);
+        for (const id of newSkipped) skippedIds.add(id);
+        // The temp task has no pending create op protecting it, so syncFromServer
+        // will delete it. Delete it from IDB now so the state is consistent even
+        // if syncFromServer is skipped (e.g. we're offline).
+        await idbDeleteTask(op.localId);
+      }
+      continue;
+    }
+
+    // Transient failure (network, 5xx, unconfigured): increment attempts and
+    // stop the flush to preserve op ordering. Later ops are not attempted.
+    const newAttempts = op.attempts + 1;
+    await idbPutPendingOp({ ...op, attempts: newAttempts } as PendingOp);
+    halted = true;
+
+    if (newAttempts >= ATTEMPTS_CAP && !_stuckNoticeFired) {
+      _stuckNoticeFired = true;
+      rejected.push('Some changes aren\'t syncing — they may need to be redone.');
+    }
+
+    break;
   }
+
+  return { flushed, rejected, halted };
 }
 
 export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
@@ -98,17 +178,18 @@ export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
   const remoteMap = Object.fromEntries(remoteTasks.map(t => [t.id, t]));
   const pendingOps = await idbGetPendingOps();
 
-  // Keep offline-created tasks that haven't synced yet.
-  // Stage 5 will replace title-based matching with localId-based survivor protection.
-  const offlineCreatedTitles = new Set(
+  // A local task survives server-absence iff a pending task.create op carries
+  // its id as localId. Title-based matching is intentionally removed here
+  // (stage 5): two tasks with the same title both survive correctly.
+  const offlineCreatedIds = new Set(
     pendingOps
-      .filter(op => op.op === 'task.create')
-      .map(op => op.body.title),
+      .filter((op): op is Extract<typeof op, { op: 'task.create' }> => op.op === 'task.create')
+      .map(op => op.localId),
   );
 
   const local = await idbGetAllTasks();
   for (const lt of local) {
-    if (!remoteMap[lt.id] && !offlineCreatedTitles.has(lt.title)) {
+    if (!remoteMap[lt.id] && !offlineCreatedIds.has(lt.id)) {
       await idbDeleteTask(lt.id);
     }
   }
@@ -135,7 +216,6 @@ export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
     for (const l of links) await idbPutLink(l);
   }
 
-  // Merge offline tasks back in (they survived deletion above)
   const finalTasks = await idbGetAllTasks();
 
   return { online: true, tasks: finalTasks, projects, links };
