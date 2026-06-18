@@ -8,7 +8,7 @@ import { isTransientFailure } from '../api/result';
 import { messageFromResult } from '../api/syncPolicy';
 import { idbGetAllTasks, idbPutTask, idbDeleteTask } from '../idb/tasks';
 import { idbPutLink, idbDeleteLink } from '../idb/links';
-import { idbQueueOp } from '../idb/pendingOps';
+import { idbGetPendingOps, idbQueueOp } from '../idb/pendingOps';
 import { genId } from '../utils/genId';
 
 // Registered by useSync so that durable rejections can trigger a resync that
@@ -24,6 +24,16 @@ export function registerSyncCallback(fn: () => void): void {
 // `unconfigured` behaves like offline — queue the op for later.
 function shouldQueue(result: ApiResult<unknown>): boolean {
   return isTransientFailure(result) || result.kind === 'unconfigured';
+}
+
+// Returns true if `id` is the localId of a pending task.create op.
+// Dependent writes on a temp-id task must be queued rather than sent directly:
+// the server doesn't know the temp id yet, so any API call would get a 404
+// (durable) and the write would be silently dropped instead of rebound after
+// the create flushes.
+async function hasPendingCreate(id: string): Promise<boolean> {
+  const ops = await idbGetPendingOps();
+  return ops.some(op => op.op === 'task.create' && op.localId === id);
 }
 
 // Dispatch a toast from a durable server rejection (4xx only) and trigger
@@ -105,6 +115,10 @@ export async function updateTaskAction(
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
+  if (await hasPendingCreate(id)) {
+    await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+    return;
+  }
   const result = await api.updateTask(id, updates, config);
   if (shouldQueue(result)) {
     await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
@@ -121,6 +135,10 @@ export async function deleteTaskAction(
   await idbDeleteTask(id);
   dispatch({ type: 'DELETE_TASK', id });
 
+  if (await hasPendingCreate(id)) {
+    await idbQueueOp({ op: 'task.delete', taskId: id });
+    return;
+  }
   const result = await api.deleteTask(id, config);
   if (shouldQueue(result)) {
     await idbQueueOp({ op: 'task.delete', taskId: id });
@@ -143,6 +161,11 @@ export async function completeTaskAction(
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
+  if (await hasPendingCreate(id)) {
+    await idbQueueOp({ op: 'task.complete', taskId: id });
+    if (wasRecurring) return 'Done! Next occurrence will sync when online.';
+    return null;
+  }
   const result = await api.completeTask(id, config);
   if (result.kind === 'ok') {
     if (result.value.next) {
@@ -180,6 +203,10 @@ export async function deferTaskAction(
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
+  if (await hasPendingCreate(id)) {
+    await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+    return;
+  }
   const result = await api.updateTask(id, updates, config);
   if (shouldQueue(result)) {
     await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
@@ -201,6 +228,10 @@ export async function clearDeferAction(
   await idbPutTask(updated);
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
+  if (await hasPendingCreate(id)) {
+    await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
+    return;
+  }
   const result = await api.updateTask(id, updates, config);
   if (shouldQueue(result)) {
     await idbQueueOp({ op: 'task.update', taskId: id, body: updates });
@@ -228,6 +259,10 @@ export async function focusTaskAction(
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
   const body = { focused_until: focusedUntil };
+  if (await hasPendingCreate(id)) {
+    await idbQueueOp({ op: 'task.update', taskId: id, body });
+    return;
+  }
   const result = await api.updateTask(id, body, config);
   if (shouldQueue(result)) {
     await idbQueueOp({ op: 'task.update', taskId: id, body });
@@ -248,6 +283,10 @@ export async function createLinkAction(
   dispatch({ type: 'UPSERT_LINK', link });
 
   const body = { from_task_id: fromId, to_task_id: toId, link_type: linkType };
+  if (await hasPendingCreate(fromId) || await hasPendingCreate(toId)) {
+    await idbQueueOp({ op: 'link.create', body });
+    return;
+  }
   const result = await api.createLink(body, config);
   if (shouldQueue(result)) {
     await idbQueueOp({ op: 'link.create', body });

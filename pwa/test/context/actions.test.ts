@@ -179,6 +179,61 @@ describe('createTaskAction', () => {
   });
 });
 
+// ─── pending-create guard ─────────────────────────────────────────────────────
+
+describe('writes against pending local tasks', () => {
+  async function seedOfflineCreate(): Promise<string> {
+    const { dispatch } = makeDispatch();
+    const stub = installFetchStub();
+    stub.networkError({ method: 'POST', path: '/api/tasks' });
+    await createTaskAction('Offline task', config, dispatch);
+    stub.restore();
+    const ops = await idbGetPendingOps();
+    const createOp = ops.find(o => o.op === 'task.create') as Extract<typeof ops[number], { op: 'task.create' }>;
+    return createOp.localId;
+  }
+
+  test('updateTaskAction on temp-id: queued without API call', async () => {
+    const tempId = await seedOfflineCreate();
+
+    // installFetchStub with no routes configured: any network call would throw
+    const stub = installFetchStub();
+    const { dispatch, actions } = makeDispatch();
+    await updateTaskAction(tempId, { title: 'Revised' }, config, dispatch);
+    stub.restore();
+
+    const opsAfter = await idbGetPendingOps();
+    expect(opsAfter.some(o => o.op === 'task.update')).toBe(true);
+    expect(actions.find(a => a.type === 'SET_TOAST')).toBeUndefined();
+  });
+
+  test('completeTaskAction on temp-id: queued without API call', async () => {
+    const tempId = await seedOfflineCreate();
+
+    const stub = installFetchStub();
+    const { dispatch, actions } = makeDispatch();
+    await completeTaskAction(tempId, config, dispatch);
+    stub.restore();
+
+    const opsAfter = await idbGetPendingOps();
+    expect(opsAfter.some(o => o.op === 'task.complete')).toBe(true);
+    expect(actions.find(a => a.type === 'SET_TOAST')).toBeUndefined();
+  });
+
+  test('createLinkAction with temp-id endpoint: queued without API call', async () => {
+    const tempId = await seedOfflineCreate();
+
+    const stub = installFetchStub();
+    const { dispatch, actions } = makeDispatch();
+    await createLinkAction(tempId, 't_abc001', 'blocks', config, dispatch);
+    stub.restore();
+
+    const opsAfter = await idbGetPendingOps();
+    expect(opsAfter.some(o => o.op === 'link.create')).toBe(true);
+    expect(actions.find(a => a.type === 'SET_TOAST')).toBeUndefined();
+  });
+});
+
 // ─── updateTaskAction ─────────────────────────────────────────────────────────
 
 describe('updateTaskAction', () => {
