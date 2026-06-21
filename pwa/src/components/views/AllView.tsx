@@ -6,9 +6,9 @@ import {
   completeTaskAction,
   deferTaskAction,
   deleteTaskAction,
-  clearDeferAction,
   focusTaskAction,
-  updateTaskAction,
+  unfocusTaskAction,
+  reopenTaskAction,
 } from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
 import { Markdown } from '../common/Markdown';
@@ -119,7 +119,7 @@ export function AllView() {
   }
 
   async function handleUnfocus(id: string) {
-    await updateTaskAction(id, { focused_until: null }, config, dispatch);
+    await unfocusTaskAction(id, config, dispatch);
   }
 
   async function handleDefer(id: string, choice: DeferChoice) {
@@ -132,7 +132,7 @@ export function AllView() {
   }
 
   async function handleReopen(id: string) {
-    await clearDeferAction(id, config, dispatch);
+    await reopenTaskAction(id, config, dispatch);
   }
 
   function handleEdit(id: string) {

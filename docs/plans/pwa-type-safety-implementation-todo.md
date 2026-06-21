@@ -97,11 +97,22 @@ All 9 endpoints match plan description. No schema/response mismatches found.
 
 ## Stage 6 — Local Mutation Domain (`stage-6-local-mutations.md`)
 
-- [ ] `pwa/src/domain/taskMutations.ts` (+ links if split): `TaskWrite` pairs, guards, typed defer union, hours cap matching worker.
-- [ ] Thin action creators; no row-field literals outside `pwa/src/domain/`.
-- [ ] PWA off `TaskCreate`/`TaskUpdate`/`ProjectCreate`/`ProjectUpdate` (aliases left in shared until stage 9).
-- [ ] Tests: mutation guard tables, `{task, body}` consistency property, type-tests fixtures.
-- [ ] Docs: `docs/pwa/domain/` page; note alias-removal unblock in the worker todo.
+- [x] `pwa/src/domain/taskMutations.ts` (+ links if split): `TaskWrite` pairs, guards, typed defer union, hours cap matching worker.
+- [x] Thin action creators; no row-field literals outside `pwa/src/domain/`.
+- [x] PWA off `TaskCreate`/`TaskUpdate`/`ProjectCreate`/`ProjectUpdate` (aliases left in shared until stage 9).
+- [x] Tests: mutation guard tables, `{task, body}` consistency property, type-tests fixtures.
+- [x] Docs: `docs/pwa/domain/taskMutations.md`; worker alias-removal unblocked (noted below).
+
+**Deviations**:
+- `TaskUpdatePatch` includes defer/focus fields (not content-only) so EditView's unified save keeps working through `updateTaskAction`. Stage 7 will split this into typed domain calls.
+- `newLocalTask` requires `NonEmptyString<200>` at the type level; `createTaskAction` casts `title as NonEmptyString<200>` until stage 7 parses form input.
+- `unfocusTaskAction` and `reopenTaskAction` added (not in plan); components now call `unfocusTaskAction` instead of `updateTaskAction(id, { focused_until: null }, ...)`.
+- Existing `completeTaskAction` test updated: `already_done` guard now fires locally before the server request (was: tested a 409 server rejection); `syncCalled` is now `false` in that case (correct — no server rejection to roll back).
+- `linkMutations.ts` not needed; link actions are already thin and have no field-level literals.
+- Bundle: 311.14 KiB / gzip 95.68 KiB (no meaningful change).
+- Worker alias removal (`TaskCreate`/`TaskUpdate`/`ProjectCreate`/`ProjectUpdate` in `shared/types.ts`) is now unblocked — PWA no longer imports them.
+
+**Worker todo note**: Stage 6 unblocks `shared/types.ts` alias deletion. After stage 9, the worker cleanup slice can delete the aliases without checking back.
 
 ## Stage 7 — Form Boundary (`stage-7-form-boundary.md`)
 

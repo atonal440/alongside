@@ -1,9 +1,1 @@
-export type {
-  Task,
-  Project,
-  TaskLink,
-  TaskCreate,
-  TaskUpdate,
-  ProjectCreate,
-  ProjectUpdate,
-} from '@shared/types';
+export type { Task, Project, TaskLink } from '@shared/types';
