@@ -5,7 +5,7 @@ import { EmptyState } from '../common/EmptyState';
 import { SearchBar } from '../common/SearchBar';
 import { TaskCard } from '../task/TaskCard';
 import { DeferMenu, type DeferChoice } from '../task/DeferMenu';
-import { createTaskAction, completeTaskAction, deferTaskAction, focusTaskAction, clearDeferAction, unfocusTaskAction } from '../../context/actions';
+import { createTaskAction, completeTaskAction, deferTaskAction, focusTaskAction, unfocusTaskAction, reopenTaskAction } from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
 import { deriveTaskFlow, type TaskFlowActionId } from '../../utils/taskFlow';
 import type { Project, Task, TaskLink } from '../../types';
@@ -65,7 +65,7 @@ export function SuggestView() {
   }
 
   async function handleReopen(id: string) {
-    await clearDeferAction(id, config, dispatch);
+    await reopenTaskAction(id, config, dispatch);
   }
 
   function handleEdit(id: string) {

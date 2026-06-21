@@ -161,15 +161,30 @@ export function applyUnfocus(
   return ok({ task: updated, body });
 }
 
-// Only done tasks can be reopened (deferred-pending tasks use applyClearDefer).
+// Mirrors worker's reopenTaskPlan: accepts done tasks and deferred pending tasks.
+// Always produces status='pending', defer_kind='none', defer_until=null, focused_until=null.
 export function applyReopen(
   task: Task,
   nowIso: IsoDateTime,
 ): Result<TaskWrite, LocalMutationError> {
-  if (task.status !== 'done') {
-    return err({ code: 'not_done', message: 'Only completed tasks can be reopened.' });
+  const isDone = task.status === 'done';
+  const isDeferred = task.defer_kind !== 'none';
+  if (!isDone && !isDeferred) {
+    return err({ code: 'not_reopenable', message: 'Only completed or deferred tasks can be reopened.' });
   }
-  const updated: Task = { ...task, status: 'pending', updated_at: nowIso };
-  const body: TaskUpdateBody = { status: 'pending' };
+  const updated: Task = {
+    ...task,
+    status: 'pending',
+    defer_kind: 'none',
+    defer_until: null,
+    focused_until: null,
+    updated_at: nowIso,
+  };
+  const body: TaskUpdateBody = {
+    status: 'pending',
+    defer_kind: 'none',
+    defer_until: null,
+    focused_until: null,
+  };
   return ok({ task: updated, body });
 }

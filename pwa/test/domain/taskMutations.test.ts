@@ -281,21 +281,44 @@ describe('applyUnfocus', () => {
 // ─── applyReopen ──────────────────────────────────────────────────────────────
 
 describe('applyReopen', () => {
-  test('marks done task pending', () => {
-    const task = makeTask({ status: 'done' });
+  test('marks done task pending and clears defer/focus', () => {
+    const task = makeTask({ status: 'done', defer_kind: 'none', defer_until: null, focused_until: null });
     const result = applyReopen(task, NOW);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.task.status).toBe('pending');
-    expect(result.value.body.status).toBe('pending');
-    expect(result.value.task.updated_at).toBe(NOW);
+    const { task: updated, body } = result.value;
+    expect(updated.status).toBe('pending');
+    expect(updated.defer_kind).toBe('none');
+    expect(updated.defer_until).toBeNull();
+    expect(updated.focused_until).toBeNull();
+    expect(body.status).toBe('pending');
+    expect(updated.updated_at).toBe(NOW);
   });
 
-  test('not_done on pending task', () => {
-    const task = makeTask({ status: 'pending' });
+  test('clears defer on a someday-deferred pending task (mirrors worker reopenTaskPlan)', () => {
+    const task = makeTask({ status: 'pending', defer_kind: 'someday', defer_until: null });
+    const result = applyReopen(task, NOW);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.task.defer_kind).toBe('none');
+    expect(result.value.task.defer_until).toBeNull();
+    expect(result.value.task.status).toBe('pending');
+  });
+
+  test('clears defer on an until-deferred pending task', () => {
+    const task = makeTask({ status: 'pending', defer_kind: 'until', defer_until: LATER });
+    const result = applyReopen(task, NOW);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.task.defer_kind).toBe('none');
+    expect(result.value.task.defer_until).toBeNull();
+  });
+
+  test('not_reopenable on a non-deferred pending task', () => {
+    const task = makeTask({ status: 'pending', defer_kind: 'none' });
     const result = applyReopen(task, NOW);
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error.code).toBe('not_done');
+    expect(result.error.code).toBe('not_reopenable');
   });
 });
