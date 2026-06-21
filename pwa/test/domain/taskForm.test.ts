@@ -203,6 +203,31 @@ describe('parseTaskForm — defer', () => {
     expect(result.value.defer_until).toContain('2026-07-10');
   });
 
+  test('deferKind=until with unchanged date preserves original timestamp', () => {
+    const original = '2026-07-10T17:00:00.000Z';
+    const result = parseTaskForm(baseInput({
+      deferKind: 'until',
+      deferUntil: '2026-07-10',
+      existingDeferUntil: original,
+    }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.defer_until).toBe(original);
+  });
+
+  test('deferKind=until with changed date normalizes to 9am', () => {
+    const original = '2026-07-10T17:00:00.000Z';
+    const result = parseTaskForm(baseInput({
+      deferKind: 'until',
+      deferUntil: '2026-07-15', // different date
+      existingDeferUntil: original,
+    }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.defer_until).toContain('2026-07-15');
+    expect(result.value.defer_until).not.toBe(original);
+  });
+
   test('deferKind=until with no date → error on deferUntil', () => {
     const result = parseTaskForm(baseInput({ deferKind: 'until', deferUntil: '' }));
     expect(result.ok).toBe(false);

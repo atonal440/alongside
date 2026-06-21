@@ -104,6 +104,7 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
       sessionLog,
       deferKind,
       deferUntil,
+      existingDeferUntil: task.defer_until ?? undefined,
     });
     if (!result.ok) {
       setFieldErrors(result.error);

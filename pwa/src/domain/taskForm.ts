@@ -27,6 +27,9 @@ export interface TaskFormInput {
   sessionLog: string;
   deferKind: 'none' | 'until' | 'someday';
   deferUntil: string;
+  // Original ISO timestamp from task.defer_until — preserved when deferUntil
+  // date is unchanged, so editing unrelated fields doesn't silently shift time.
+  existingDeferUntil?: string;
 }
 
 export type FieldErrors = Partial<Record<keyof TaskFormInput, string>>;
@@ -115,8 +118,15 @@ export function parseTaskForm(input: TaskFormInput): Result<TaskUpdatePatch, Fie
       if (!dateResult.ok) {
         errors.deferUntil = 'Invalid date.';
       } else {
-        // Normalize to 9am local — matches DeferMenu convention.
-        deferUntil = new Date(`${dateResult.value}T09:00:00`).toISOString() as IsoDateTime;
+        // Preserve the original timestamp when date is unchanged so editing an
+        // unrelated field doesn't silently shift e.g. 17:00 UTC to 09:00 local.
+        const existingDate = input.existingDeferUntil?.split('T')[0];
+        if (existingDate === dateResult.value && input.existingDeferUntil) {
+          deferUntil = input.existingDeferUntil as IsoDateTime;
+        } else {
+          // New date (or no existing timestamp) → normalize to 9am local.
+          deferUntil = new Date(`${dateResult.value}T09:00:00`).toISOString() as IsoDateTime;
+        }
       }
     }
   }
