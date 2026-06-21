@@ -40,13 +40,17 @@ export type FieldErrors = Partial<Record<keyof TaskFormInput, string>>;
 export function parseTaskForm(input: TaskFormInput): Result<TaskUpdatePatch, FieldErrors> {
   const errors: FieldErrors = {};
 
-  // title — trimmed, non-empty, ≤200
+  // title — validate using trimmed length (mirrors rowTitleSchema in shared/wire/rows.ts)
+  // but preserve the original value so a round-trip through EditView never silently
+  // rewrites stored whitespace (e.g. a title imported as "  Foo  " stays "  Foo  ").
   let title: NonEmptyString<200> | undefined;
-  const titleResult = parseNonEmpty(TASK_TITLE_MAX, input.title);
-  if (titleResult.ok) {
-    title = titleResult.value;
+  const titleTrimmed = input.title.trim();
+  if (titleTrimmed.length === 0) {
+    errors.title = 'Title is required.';
+  } else if (titleTrimmed.length > TASK_TITLE_MAX) {
+    errors.title = `Title must be ${TASK_TITLE_MAX} characters or fewer.`;
   } else {
-    errors.title = titleResult.error[0]?.message ?? 'Title is required.';
+    title = input.title as NonEmptyString<200>;
   }
 
   // notes — optional, ≤10 000

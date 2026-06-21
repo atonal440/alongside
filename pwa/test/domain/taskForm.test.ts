@@ -19,11 +19,12 @@ function baseInput(overrides: Partial<TaskFormInput> = {}): TaskFormInput {
 // ─── parseTaskForm ────────────────────────────────────────────────────────────
 
 describe('parseTaskForm — title', () => {
-  test('valid title returns ok with NonEmptyString<200>', () => {
+  test('valid title returns ok preserving original value (no trim)', () => {
     const result = parseTaskForm(baseInput({ title: '  Buy milk  ' }));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.title).toBe('Buy milk');
+    // Edit-form titles are NOT trimmed so round-trips don't silently rewrite stored whitespace.
+    expect(result.value.title).toBe('  Buy milk  ');
   });
 
   test('empty string → error on title', () => {
