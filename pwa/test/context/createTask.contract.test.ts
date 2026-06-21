@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import 'fake-indexeddb/auto';
 import { createTaskAction } from '../../src/context/actions';
+import type { NonEmptyString } from '@shared/parse';
 import { idbGetPendingOps } from '../../src/idb/pendingOps';
 import { idbGetAllTasks } from '../../src/idb/tasks';
 import { installFetchStub } from '../helpers/fetchStub';
@@ -23,7 +24,7 @@ describe('createTaskAction — contract violation', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const dispatched: AppAction[] = [];
-    await createTaskAction('Test task', config, action => { dispatched.push(action); });
+    await createTaskAction('Test task' as NonEmptyString<200>, config, action => { dispatched.push(action); });
     stub.restore();
 
     // Pending ops store must be empty — no retry was enqueued
@@ -48,7 +49,7 @@ describe('createTaskAction — contract violation', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const dispatched: AppAction[] = [];
-    await createTaskAction('Test task', config, action => { dispatched.push(action); });
+    await createTaskAction('Test task' as NonEmptyString<200>, config, action => { dispatched.push(action); });
     stub.restore();
 
     // No pending op queued

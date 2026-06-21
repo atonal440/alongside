@@ -64,13 +64,12 @@ function nowIso(): IsoDateTime {
 }
 
 export async function createTaskAction(
-  title: string,
+  title: NonEmptyString<200>,
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
   const now = nowIso();
-  // Title parsing happens in stage 7; cast here until the form boundary is typed.
-  const task = newLocalTask(title as NonEmptyString<200>, now, genId('t'));
+  const task = newLocalTask(title, now, genId('t'));
   await idbPutTask(task);
   dispatch({ type: 'UPSERT_TASK', task });
 
@@ -198,17 +197,13 @@ export async function completeTaskAction(
 
 export async function deferTaskAction(
   id: string,
-  kind: 'until' | 'someday',
-  untilIso: string | null,
+  defer: DeferInput,
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
   const tasks = await idbGetAllTasks();
   const task = tasks.find(t => t.id === id);
   if (!task) return;
-  const defer: DeferInput = kind === 'until' && untilIso
-    ? { kind: 'until', until: untilIso as IsoDateTime }
-    : { kind: 'someday' };
   const mutation = applyDefer(task, defer, nowIso());
   if (!mutation.ok) {
     dispatch({ type: 'SET_TOAST', message: mutation.error.message });

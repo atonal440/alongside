@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useAppState } from '../../hooks/useAppState';
 import { updateTaskAction, deleteTaskAction, createLinkAction, deleteLinkAction } from '../../context/actions';
+import { parseTaskForm, type FieldErrors } from '../../domain/taskForm';
+import type { TaskUpdatePatch } from '../../domain/taskMutations';
 import type { TaskLink } from '../../types';
 
 export function EditView() {
@@ -33,8 +35,8 @@ export function EditView() {
       taskLinks={taskLinks}
       otherTasks={otherTasks}
       taskMap={taskMap}
-      onSave={async (updates) => {
-        await updateTaskAction(task.id, updates, config, dispatch);
+      onSave={async (patch) => {
+        await updateTaskAction(task.id, patch, config, dispatch);
         dispatch({ type: 'SET_EDITING', id: null });
       }}
       onCancel={() => history.back()}
@@ -70,17 +72,7 @@ interface EditFormProps {
   taskLinks: TaskLink[];
   otherTasks: { id: string; title: string }[];
   taskMap: Record<string, { id: string; title: string }>;
-  onSave: (updates: {
-    title: string;
-    notes: string | null;
-    kickoff_note: string | null;
-    due_date: string | null;
-    recurrence: string | null;
-    session_log: string | null;
-    defer_kind: 'none' | 'until' | 'someday';
-    defer_until: string | null;
-    focused_until?: string | null;
-  }) => Promise<void>;
+  onSave: (updates: TaskUpdatePatch) => Promise<void>;
   onCancel: () => void;
   onDelete: () => Promise<void>;
   onAddLink: (toId: string, linkType: TaskLink['link_type']) => Promise<void>;
@@ -100,62 +92,129 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
   const [deferUntil, setDeferUntil] = useState(task.defer_until?.split('T')[0] ?? '');
   const [linkToId, setLinkToId] = useState('');
   const [linkType, setLinkType] = useState<TaskLink['link_type']>('blocks');
-  const deferUntilRequired = deferKind === 'until' && !deferUntil;
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   function handleSave() {
-    if (deferUntilRequired) return;
-    onSave({
+    const result = parseTaskForm({
       title,
-      notes: notes || null,
-      kickoff_note: kickoff || null,
-      due_date: dueDate || null,
-      recurrence: recurrence || null,
-      session_log: sessionLog || null,
-      defer_kind: deferKind,
-      defer_until: nextDeferUntil(),
-      ...(deferKind === 'none' ? {} : { focused_until: null }),
+      notes,
+      kickoffNote: kickoff,
+      dueDate,
+      recurrence,
+      sessionLog,
+      deferKind,
+      deferUntil,
     });
-  }
-
-  function nextDeferUntil(): string | null {
-    if (deferKind !== 'until') return null;
-    if (task.defer_kind === 'until' && task.defer_until?.split('T')[0] === deferUntil) {
-      return task.defer_until;
+    if (!result.ok) {
+      setFieldErrors(result.error);
+      return;
     }
-    return new Date(`${deferUntil}T09:00:00`).toISOString();
+    setFieldErrors({});
+    onSave(result.value);
   }
 
   return (
     <div className="edit-form">
-      <label>Title</label>
-      <input type="text" value={title} onChange={e => setTitle(e.target.value)} />
-      <label>Notes</label>
-      <textarea value={notes} onChange={e => setNotes(e.target.value)} />
-      <label>
+      <label htmlFor="edit-title">Title</label>
+      <input
+        id="edit-title"
+        type="text"
+        value={title}
+        onChange={e => setTitle(e.target.value)}
+        aria-describedby={fieldErrors.title ? 'edit-title-error' : undefined}
+      />
+      {fieldErrors.title && (
+        <span id="edit-title-error" className="field-error" role="alert">{fieldErrors.title}</span>
+      )}
+
+      <label htmlFor="edit-notes">Notes</label>
+      <textarea
+        id="edit-notes"
+        value={notes}
+        onChange={e => setNotes(e.target.value)}
+        aria-describedby={fieldErrors.notes ? 'edit-notes-error' : undefined}
+      />
+      {fieldErrors.notes && (
+        <span id="edit-notes-error" className="field-error" role="alert">{fieldErrors.notes}</span>
+      )}
+
+      <label htmlFor="edit-kickoff">
         Kickoff note{' '}
         <span style={{ fontWeight: 'normal', color: 'var(--text-dim)' }}>(what do you need to start?)</span>
       </label>
-      <textarea value={kickoff} onChange={e => setKickoff(e.target.value)} />
-      <label>Due date</label>
-      <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
-      <label>Recurrence</label>
-      <select value={recurrence} onChange={e => setRecurrence(e.target.value)}>
+      <textarea
+        id="edit-kickoff"
+        value={kickoff}
+        onChange={e => setKickoff(e.target.value)}
+        aria-describedby={fieldErrors.kickoffNote ? 'edit-kickoff-error' : undefined}
+      />
+      {fieldErrors.kickoffNote && (
+        <span id="edit-kickoff-error" className="field-error" role="alert">{fieldErrors.kickoffNote}</span>
+      )}
+
+      <label htmlFor="edit-due">Due date</label>
+      <input
+        id="edit-due"
+        type="date"
+        value={dueDate}
+        onChange={e => setDueDate(e.target.value)}
+        aria-describedby={fieldErrors.dueDate ? 'edit-due-error' : undefined}
+      />
+      {fieldErrors.dueDate && (
+        <span id="edit-due-error" className="field-error" role="alert">{fieldErrors.dueDate}</span>
+      )}
+
+      <label htmlFor="edit-recurrence">Recurrence</label>
+      <select
+        id="edit-recurrence"
+        value={recurrence}
+        onChange={e => setRecurrence(e.target.value)}
+        aria-describedby={fieldErrors.recurrence ? 'edit-recurrence-error' : undefined}
+      >
         <option value="">None</option>
         <option value="FREQ=DAILY;INTERVAL=1">Daily</option>
         <option value="FREQ=WEEKLY;INTERVAL=1">Weekly</option>
         <option value="FREQ=MONTHLY;INTERVAL=1">Monthly</option>
       </select>
-      <label>Defer</label>
-      <select value={deferKind} onChange={e => setDeferKind(e.target.value as DeferKind)}>
+      {fieldErrors.recurrence && (
+        <span id="edit-recurrence-error" className="field-error" role="alert">{fieldErrors.recurrence}</span>
+      )}
+
+      <label htmlFor="edit-defer">Defer</label>
+      <select
+        id="edit-defer"
+        value={deferKind}
+        onChange={e => setDeferKind(e.target.value as DeferKind)}
+      >
         <option value="none">None</option>
         <option value="until">Until…</option>
         <option value="someday">Someday</option>
       </select>
       {deferKind === 'until' && (
-        <input type="date" value={deferUntil} onChange={e => setDeferUntil(e.target.value)} />
+        <>
+          <input
+            type="date"
+            value={deferUntil}
+            onChange={e => setDeferUntil(e.target.value)}
+            aria-describedby={fieldErrors.deferUntil ? 'edit-defer-until-error' : undefined}
+          />
+          {fieldErrors.deferUntil && (
+            <span id="edit-defer-until-error" className="field-error" role="alert">{fieldErrors.deferUntil}</span>
+          )}
+        </>
       )}
-      <label>Session note</label>
-      <textarea value={sessionLog} onChange={e => setSessionLog(e.target.value)} />
+
+      <label htmlFor="edit-session-log">Session note</label>
+      <textarea
+        id="edit-session-log"
+        value={sessionLog}
+        onChange={e => setSessionLog(e.target.value)}
+        aria-describedby={fieldErrors.sessionLog ? 'edit-session-log-error' : undefined}
+      />
+      {fieldErrors.sessionLog && (
+        <span id="edit-session-log-error" className="field-error" role="alert">{fieldErrors.sessionLog}</span>
+      )}
+
       <label>Relationships</label>
       <div id="link-list">
         {taskLinks.length === 0 ? (
@@ -208,7 +267,6 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
       <div className="edit-actions">
         <button
           className="btn-save"
-          disabled={deferUntilRequired}
           onClick={handleSave}
         >
           Save

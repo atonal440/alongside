@@ -56,20 +56,23 @@ Discriminated union — `{ kind: 'someday', until: ... }` is unrepresentable at 
 
 ```ts
 interface TaskUpdatePatch {
-  title?: string;
-  notes?: string | null;
-  due_date?: string | null;
-  recurrence?: string | null;
+  title?: NonEmptyString<200>;
+  notes?: BoundedString<10000> | null;
+  due_date?: IsoDate | null;
+  recurrence?: Rrule | null;
   task_type?: string;
   project_id?: string | null;
-  kickoff_note?: string | null;
-  session_log?: string | null;
-  // Defer fields included so EditView's unified save still works through
-  // updateTaskAction. Stage 7 will split form saves into typed domain calls.
-  defer_kind?: string;
-  defer_until?: string | null;
-  focused_until?: string | null;
+  kickoff_note?: BoundedString<2000> | null;
+  session_log?: BoundedString<10000> | null;
+  defer_kind?: 'none' | 'until' | 'someday';
+  defer_until?: IsoDateTime | null;
+  focused_until?: IsoDateTime | null;
 }
 ```
 
-Stage 7 will tighten these to `NonEmptyString<200>`, `IsoDate | null`, etc. once the form boundary is typed.
+All text fields use branded types from `@shared/parse`. Raw `string` assignments are a compile error — call sites must parse input first. The form boundary for user-visible fields is `parseTaskForm` in `domain/taskForm.ts`.
+
+## Non-goals
+
+- **Branded field types in AppState**: `Task` rows still use plain `string` shapes in the reducer. Branded types appear only at the mutation call site boundary.
+- **Recurring successor minting**: `applyComplete` does not mint the next occurrence. The server is authoritative.

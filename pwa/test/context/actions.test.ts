@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 import { resetIdb } from '../helpers/idb';
 import { makeTask } from '../helpers/fixtures';
+import type { NonEmptyString } from '@shared/parse';
 import { installFetchStub } from '../helpers/fetchStub';
 import {
   registerSyncCallback,
@@ -154,7 +155,7 @@ describe('createTaskAction', () => {
       type: 'json', status: 400, body: { error: 'Title too short' },
     });
 
-    await createTaskAction('A', config, dispatch);
+    await createTaskAction('A' as NonEmptyString<200>, config, dispatch);
     stub.restore();
 
     const toast = actions.find(a => a.type === 'SET_TOAST');
@@ -168,7 +169,7 @@ describe('createTaskAction', () => {
     const stub = installFetchStub();
     stub.networkError({ method: 'POST', path: '/api/tasks' });
 
-    await createTaskAction('New task', config, dispatch);
+    await createTaskAction('New task' as NonEmptyString<200>, config, dispatch);
     stub.restore();
 
     const ops = await idbGetPendingOps();
@@ -189,7 +190,7 @@ describe('writes against pending local tasks', () => {
     const { dispatch } = makeDispatch();
     const stub = installFetchStub();
     stub.networkError({ method: 'POST', path: '/api/tasks' });
-    await createTaskAction('Offline task', config, dispatch);
+    await createTaskAction('Offline task' as NonEmptyString<200>, config, dispatch);
     stub.restore();
     const ops = await idbGetPendingOps();
     const createOp = ops.find(o => o.op === 'task.create') as Extract<typeof ops[number], { op: 'task.create' }>;
@@ -202,7 +203,7 @@ describe('writes against pending local tasks', () => {
     // installFetchStub with no routes configured: any network call would throw
     const stub = installFetchStub();
     const { dispatch, actions } = makeDispatch();
-    await updateTaskAction(tempId, { title: 'Revised' }, config, dispatch);
+    await updateTaskAction(tempId, { title: 'Revised' as NonEmptyString<200> }, config, dispatch);
     stub.restore();
 
     const opsAfter = await idbGetPendingOps();
@@ -266,7 +267,7 @@ describe('updateTaskAction', () => {
       type: 'json', status: 400, body: { error: 'Invalid update' },
     });
 
-    await updateTaskAction('t_abc001', { title: '' }, config, dispatch);
+    await updateTaskAction('t_abc001', { title: '' as NonEmptyString<200> }, config, dispatch);
     stub.restore();
 
     const toast = actions.find(a => a.type === 'SET_TOAST');
@@ -283,7 +284,7 @@ describe('updateTaskAction', () => {
     const stub = installFetchStub();
     stub.networkError({ method: 'PATCH', path: '/api/tasks' });
 
-    await updateTaskAction('t_abc001', { title: 'Updated' }, config, dispatch);
+    await updateTaskAction('t_abc001', { title: 'Updated' as NonEmptyString<200> }, config, dispatch);
     stub.restore();
 
     const ops = await idbGetPendingOps();

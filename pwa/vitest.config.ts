@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       '@shared': path.resolve(__dirname, '../shared'),
       rrule: path.resolve(__dirname, 'node_modules/rrule/dist/esm/index.js'),
+      valibot: path.resolve(__dirname, 'node_modules/valibot'),
     },
   },
   test: {

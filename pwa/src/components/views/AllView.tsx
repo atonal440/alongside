@@ -19,7 +19,9 @@ import {
   projectTitle,
   taskSort,
 } from '../../utils/design';
-import { DeferMenu, type DeferChoice } from '../task/DeferMenu';
+import { DeferMenu } from '../task/DeferMenu';
+import type { DeferInput } from '../../domain/taskMutations';
+import { parseQuickAddTitle } from '../../domain/taskForm';
 import { deriveTaskFlow, type TaskFlowAction, type TaskFlowActionId } from '../../utils/taskFlow';
 import type { StatusFilter } from '../../context/reducer';
 import type { Project, Task, TaskLink } from '../../types';
@@ -93,7 +95,8 @@ export function AllView() {
   const selectedTask = state.detailTaskId ? taskMap[state.detailTaskId] : (readyTasks[0] ?? blockedTasks[0]);
 
   async function handleAdd(title: string) {
-    await createTaskAction(title, config, dispatch);
+    const result = parseQuickAddTitle(title);
+    if (result.ok) await createTaskAction(result.value, config, dispatch);
   }
 
   async function handleComplete(id: string) {
@@ -122,12 +125,8 @@ export function AllView() {
     await unfocusTaskAction(id, config, dispatch);
   }
 
-  async function handleDefer(id: string, choice: DeferChoice) {
-    if (choice.kind === 'someday') {
-      await deferTaskAction(id, 'someday', null, config, dispatch);
-    } else {
-      await deferTaskAction(id, 'until', choice.untilIso, config, dispatch);
-    }
+  async function handleDefer(id: string, choice: DeferInput) {
+    await deferTaskAction(id, choice, config, dispatch);
     setDeferTargetId(null);
   }
 
@@ -337,7 +336,7 @@ function DetailPanel({ task, today, projects, links, allTasks, taskMap, blocksMa
   onComplete: (id: string) => void;
   onUnfocus: (id: string) => void;
   onDeferRequest: (id: string) => void;
-  onDeferChoose: (id: string, choice: DeferChoice) => void;
+  onDeferChoose: (id: string, choice: DeferInput) => void;
   onDeferCancel: () => void;
   onReopen: (id: string) => void;
   onEdit: (id: string) => void;
