@@ -94,13 +94,16 @@ export function AllView() {
     : [];
   const selectedTask = state.detailTaskId ? taskMap[state.detailTaskId] : (readyTasks[0] ?? blockedTasks[0]);
 
-  async function handleAdd(title: string): Promise<boolean> {
+  function handleAdd(title: string): boolean {
     const result = parseQuickAddTitle(title);
     if (!result.ok) {
       dispatch({ type: 'SET_TOAST', message: result.error });
       return false;
     }
-    await createTaskAction(result.value, config, dispatch);
+    // Fire-and-forget: optimistic write happens inside createTaskAction before
+    // any network call, so the input clears immediately without waiting for the
+    // API round-trip (matches AddBar's behaviour).
+    void createTaskAction(result.value, config, dispatch);
     return true;
   }
 
@@ -161,10 +164,9 @@ export function AllView() {
               placeholder="Filter tasks..."
               value={query}
               onChange={event => setQuery(event.target.value)}
-              onKeyDown={async event => {
+              onKeyDown={event => {
                 if (event.key === 'Enter' && query.trim()) {
-                  const ok = await handleAdd(query.trim());
-                  if (ok) setQuery('');
+                  if (handleAdd(query.trim())) setQuery('');
                 }
               }}
             />
