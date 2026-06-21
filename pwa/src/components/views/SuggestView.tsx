@@ -38,9 +38,14 @@ export function SuggestView() {
     }
   }, [queue, selectedTaskId]);
 
-  async function handleAdd(title: string) {
+  async function handleAdd(title: string): Promise<boolean> {
     const result = parseQuickAddTitle(title);
-    if (result.ok) await createTaskAction(result.value, config, dispatch);
+    if (!result.ok) {
+      dispatch({ type: 'SET_TOAST', message: result.error });
+      return false;
+    }
+    await createTaskAction(result.value, config, dispatch);
+    return true;
   }
 
   async function handleDone(id: string) {
