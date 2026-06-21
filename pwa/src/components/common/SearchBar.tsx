@@ -6,7 +6,8 @@ import type { TaskFlowActionId } from '../../utils/taskFlow';
 interface Props {
   tasks: Task[];
   projects: Project[];
-  onCreateTask: (title: string) => void;
+  // Return false to keep the search input (parse error); any other return or void clears it.
+  onCreateTask: (title: string) => Promise<boolean | void> | boolean | void;
   onOpenTask: (id: string) => void;
   onOpenProject: (id: string) => void;
   onTaskAction: (id: string, action: TaskFlowActionId) => void;
@@ -98,12 +99,14 @@ export function SearchBar({ tasks, projects, onCreateTask, onOpenTask, onOpenPro
     if (activeIndex >= results.length) setActiveIndex(Math.max(0, results.length - 1));
   }, [activeIndex, results.length]);
 
-  function createTask() {
+  async function createTask() {
     const title = query.trim();
     if (!title) return;
-    onCreateTask(title);
-    setQuery('');
-    setOpen(false);
+    const ok = await onCreateTask(title);
+    if (ok !== false) {
+      setQuery('');
+      setOpen(false);
+    }
   }
 
   function activate(result: CommandResult | undefined) {

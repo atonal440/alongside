@@ -1,5 +1,11 @@
 import type { Task } from '@shared/types';
-import type { IsoDateTime, NonEmptyString } from '@shared/parse';
+import type {
+  BoundedString,
+  IsoDate,
+  IsoDateTime,
+  NonEmptyString,
+  Rrule,
+} from '@shared/parse';
 import { ok, err, type Result } from '@shared/result';
 import type { TaskUpdateBody } from '../api/endpoints';
 
@@ -16,21 +22,21 @@ export type DeferInput =
   | { kind: 'until'; until: IsoDateTime };
 
 // Content-field update patch. Excludes status (use applyComplete/applyReopen).
-// Defer fields included so EditView's unified save still works through updateTaskAction;
+// All string fields are branded — raw strings cannot be passed without parsing first.
+// Defer fields included so EditView's unified save works through updateTaskAction;
 // dedicated applyDefer/applyClearDefer enforce atomicity for the action buttons.
-// Stage 7 will tighten field types to branded NonEmptyString/IsoDate etc.
 export interface TaskUpdatePatch {
-  title?: string;
-  notes?: string | null;
-  due_date?: string | null;
-  recurrence?: string | null;
+  title?: NonEmptyString<200>;
+  notes?: BoundedString<10000> | null;
+  due_date?: IsoDate | null;
+  recurrence?: Rrule | null;
   task_type?: string;
   project_id?: string | null;
-  kickoff_note?: string | null;
-  session_log?: string | null;
-  defer_kind?: string;
-  defer_until?: string | null;
-  focused_until?: string | null;
+  kickoff_note?: BoundedString<2000> | null;
+  session_log?: BoundedString<10000> | null;
+  defer_kind?: 'none' | 'until' | 'someday';
+  defer_until?: IsoDateTime | null;
+  focused_until?: IsoDateTime | null;
 }
 
 // Max focus window, mirrors worker/src/mcp.ts MAX_FOCUS_HOURS.

@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import * as fc from 'fast-check';
 import { makeTask } from '../helpers/fixtures';
+import type { NonEmptyString, IsoDate, IsoDateTime, Rrule, BoundedString } from '@shared/parse';
 import {
   newLocalTask,
   applyUpdate,
@@ -11,7 +12,6 @@ import {
   applyUnfocus,
   applyReopen,
 } from '../../src/domain/taskMutations';
-import type { IsoDateTime, NonEmptyString } from '@shared/parse';
 
 const NOW = '2026-06-18T12:00:00.000Z' as IsoDateTime;
 const LATER = '2026-06-18T15:00:00.000Z' as IsoDateTime;
@@ -39,7 +39,7 @@ describe('newLocalTask', () => {
 describe('applyUpdate', () => {
   test('patches content fields and stamps updated_at', () => {
     const task = makeTask({ title: 'Old', notes: null });
-    const result = applyUpdate(task, { title: 'New', notes: 'some notes' }, NOW);
+    const result = applyUpdate(task, { title: 'New' as NonEmptyString<200>, notes: 'some notes' as BoundedString<10000> }, NOW);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.task.title).toBe('New');
@@ -49,7 +49,7 @@ describe('applyUpdate', () => {
 
   test('body matches updated row fields (no updated_at drift)', () => {
     const task = makeTask({ title: 'Old', due_date: '2026-07-01' });
-    const patch = { title: 'New', due_date: null, recurrence: null };
+    const patch = { title: 'New' as NonEmptyString<200>, due_date: null, recurrence: null };
     const result = applyUpdate(task, patch, NOW);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -66,7 +66,8 @@ describe('applyUpdate', () => {
         title: fc.string({ minLength: 1, maxLength: 10 }),
         notes: fc.option(fc.string(), { nil: null }),
       }),
-      (patch) => {
+      (rawPatch) => {
+        const patch = rawPatch as { title: NonEmptyString<200>; notes: BoundedString<10000> | null };
         const task = makeTask();
         const result = applyUpdate(task, patch, NOW);
         if (!result.ok) return true; // guard fired — irrelevant for this property
@@ -80,7 +81,7 @@ describe('applyUpdate', () => {
 
   test('setting recurrence without due_date → recurrence_requires_due_date', () => {
     const task = makeTask({ due_date: null, recurrence: null });
-    const result = applyUpdate(task, { recurrence: 'FREQ=DAILY' }, NOW);
+    const result = applyUpdate(task, { recurrence: 'FREQ=DAILY' as Rrule }, NOW);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe('recurrence_requires_due_date');
@@ -102,7 +103,7 @@ describe('applyUpdate', () => {
 
   test('setting both recurrence and due_date together → ok', () => {
     const task = makeTask({ due_date: null, recurrence: null });
-    const result = applyUpdate(task, { due_date: '2026-07-01', recurrence: 'FREQ=WEEKLY' }, NOW);
+    const result = applyUpdate(task, { due_date: '2026-07-01' as IsoDate, recurrence: 'FREQ=WEEKLY' as Rrule }, NOW);
     expect(result.ok).toBe(true);
   });
 });

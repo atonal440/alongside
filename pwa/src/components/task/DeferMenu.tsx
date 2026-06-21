@@ -1,20 +1,18 @@
 import { useState } from 'react';
-
-export type DeferChoice =
-  | { kind: 'until'; untilIso: string }
-  | { kind: 'someday' };
+import type { DeferInput } from '../../domain/taskMutations';
+import type { IsoDateTime } from '@shared/parse';
 
 interface Props {
-  onChoose: (choice: DeferChoice) => void;
+  onChoose: (choice: DeferInput) => void;
   onCancel: () => void;
   taskTitle?: string;
 }
 
-function isoForDaysFromNow(days: number): string {
+function isoForDaysFromNow(days: number): IsoDateTime {
   const d = new Date();
   d.setDate(d.getDate() + days);
   d.setHours(9, 0, 0, 0);
-  return d.toISOString();
+  return d.toISOString() as IsoDateTime;
 }
 
 export function DeferMenu({ onChoose, onCancel, taskTitle }: Props) {
@@ -22,12 +20,15 @@ export function DeferMenu({ onChoose, onCancel, taskTitle }: Props) {
   const [date, setDate] = useState('');
 
   function pickDays(days: number) {
-    onChoose({ kind: 'until', untilIso: isoForDaysFromNow(days) });
+    onChoose({ kind: 'until', until: isoForDaysFromNow(days) });
   }
 
   function submitPickedDate() {
     if (!date) return;
-    onChoose({ kind: 'until', untilIso: new Date(`${date}T09:00:00`).toISOString() });
+    onChoose({
+      kind: 'until',
+      until: new Date(`${date}T09:00:00`).toISOString() as IsoDateTime,
+    });
   }
 
   return (

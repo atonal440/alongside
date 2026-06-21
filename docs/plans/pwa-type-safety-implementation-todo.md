@@ -116,10 +116,18 @@ All 9 endpoints match plan description. No schema/response mismatches found.
 
 ## Stage 7 — Form Boundary (`stage-7-form-boundary.md`)
 
-- [ ] `pwa/src/domain/taskForm.ts`: `parseTaskForm`, `parseQuickAddTitle`, field-scoped errors, cross-field rules (bounds verified against worker schemas).
-- [ ] EditView inline errors; AddBar cap; DeferMenu emits discriminated defer.
-- [ ] Tests: taskForm tables (node), EditView/AddBar/DeferMenu RTL (jsdom).
-- [ ] Docs: components pages + three-layer validation note.
+- [x] `pwa/src/domain/taskForm.ts`: `parseTaskForm`, `parseQuickAddTitle`, field-scoped errors, cross-field rules (bounds verified against worker schemas).
+- [x] EditView inline errors; AddBar cap; DeferMenu emits discriminated defer.
+- [x] Tests: taskForm tables (node), EditView/AddBar/DeferMenu RTL (jsdom). 353 tests green.
+- [x] Docs: components pages + three-layer validation note.
+
+**Deviations**:
+- `TaskUpdatePatch` tightened in place (title → `NonEmptyString<200>`, notes/kickoff/sessionLog → `BoundedString<N>`, due_date → `IsoDate`, recurrence → `Rrule`). Existing test files updated with branded-type casts.
+- `deferTaskAction` now takes a `DeferInput` union instead of `(kind, untilIso)` pair — removes the internal reconstruction that was in the action creator.
+- `nextDeferUntil()` in old EditView (preserved exact time when date unchanged) replaced by `new Date(\`${date}T09:00:00\`).toISOString()` in `parseTaskForm` — normalizes to 9 am on save, acceptable behavior change.
+- `vitest.config.ts` gained a `valibot` alias (same pattern as existing `rrule` alias) so jsdom-environment tests can resolve the shared package's valibot import.
+- `test/setup.ts` gained `afterEach(cleanup)` from `@testing-library/react` — RTL auto-cleanup was not firing in jsdom env without it.
+- Worker `node_modules` must be installed in the worktree before `pwa typecheck` passes (drizzle-orm path alias in tsconfig.app.json points to `../worker/node_modules/drizzle-orm`).
 
 ## Stage 8 — IDB Read Boundary (`stage-8-idb-boundary.md`)
 

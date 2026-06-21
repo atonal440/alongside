@@ -4,7 +4,9 @@ import { suggestQueue } from '../../utils/suggestQueue';
 import { EmptyState } from '../common/EmptyState';
 import { SearchBar } from '../common/SearchBar';
 import { TaskCard } from '../task/TaskCard';
-import { DeferMenu, type DeferChoice } from '../task/DeferMenu';
+import { DeferMenu } from '../task/DeferMenu';
+import type { DeferInput } from '../../domain/taskMutations';
+import { parseQuickAddTitle } from '../../domain/taskForm';
 import { createTaskAction, completeTaskAction, deferTaskAction, focusTaskAction, unfocusTaskAction, reopenTaskAction } from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
 import { deriveTaskFlow, type TaskFlowActionId } from '../../utils/taskFlow';
@@ -36,8 +38,14 @@ export function SuggestView() {
     }
   }, [queue, selectedTaskId]);
 
-  async function handleAdd(title: string) {
-    await createTaskAction(title, config, dispatch);
+  function handleAdd(title: string): boolean {
+    const result = parseQuickAddTitle(title);
+    if (!result.ok) {
+      dispatch({ type: 'SET_TOAST', message: result.error });
+      return false;
+    }
+    void createTaskAction(result.value, config, dispatch);
+    return true;
   }
 
   async function handleDone(id: string) {
@@ -54,12 +62,8 @@ export function SuggestView() {
     await unfocusTaskAction(id, config, dispatch);
   }
 
-  async function handleDefer(id: string, choice: DeferChoice) {
-    if (choice.kind === 'someday') {
-      await deferTaskAction(id, 'someday', null, config, dispatch);
-    } else {
-      await deferTaskAction(id, 'until', choice.untilIso, config, dispatch);
-    }
+  async function handleDefer(id: string, choice: DeferInput) {
+    await deferTaskAction(id, choice, config, dispatch);
     setSelectedTaskId(null);
     setDeferOpenForTaskId(null);
   }
