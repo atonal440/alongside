@@ -7,6 +7,7 @@ import { idbGetAllProjects } from '../../src/idb/projects';
 import { idbGetAllLinks } from '../../src/idb/links';
 import { decodeTaskRows, decodeProjectRows, decodeLinkRows, onDecodeReport } from '../../src/idb/decode';
 import { makeTask, makeProject, makeLink } from '../helpers/fixtures';
+import type { Task } from '@shared/types';
 
 beforeEach(async () => {
   closeDb();
