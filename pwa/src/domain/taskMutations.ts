@@ -92,7 +92,15 @@ export function applyComplete(
     return err({ code: 'already_done', message: 'Task is already complete.' });
   }
   const wasRecurring = task.recurrence !== null;
-  const updated: Task = { ...task, status: 'done', updated_at: nowIso };
+  // Clear focus/defer: done tasks cannot be deferred or focused (mirrors server invariant).
+  const updated: Task = {
+    ...task,
+    status: 'done',
+    defer_kind: 'none',
+    defer_until: null,
+    focused_until: null,
+    updated_at: nowIso,
+  };
   // complete endpoint takes no body; body field is unused by the action creator.
   const body: TaskUpdateBody = {};
   return ok({ task: updated, body, wasRecurring });

@@ -136,6 +136,25 @@ describe('applyComplete', () => {
     expect(result.value.wasRecurring).toBe(false);
   });
 
+  test('clears focused_until so done row passes IDB cross-field check', () => {
+    const task = makeTask({ focused_until: '2026-07-01T12:00:00.000Z' });
+    const result = applyComplete(task, NOW);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.task.focused_until).toBeNull();
+    expect(result.value.task.status).toBe('done');
+  });
+
+  test('clears defer fields so done row passes IDB cross-field check', () => {
+    const task = makeTask({ defer_kind: 'someday' });
+    const result = applyComplete(task, NOW);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.task.defer_kind).toBe('none');
+    expect(result.value.task.defer_until).toBeNull();
+    expect(result.value.task.status).toBe('done');
+  });
+
   test('already_done on done task', () => {
     const task = makeTask({ status: 'done' });
     const result = applyComplete(task, NOW);
