@@ -14,6 +14,24 @@ const NULLABLE_TASK_FIELDS = [
 
 const NULLABLE_PROJECT_FIELDS = ['notes', 'kickoff_note'] as const;
 
+// Canonicalize enum values removed from D1 schema via worker migrations:
+//   task_type 'recurring' → 'action'   (migration 002)
+//   status 'snoozed' → 'pending'       (migration 004)
+//   status 'active'  → 'pending'       (migration 005)
+// IDB was never migrated in-band, so old synced rows may still carry these.
+function migrateLegacyTaskEnums(value: Record<string, unknown>): boolean {
+  let changed = false;
+  if (value['task_type'] === 'recurring') {
+    value['task_type'] = 'action';
+    changed = true;
+  }
+  if (value['status'] === 'snoozed' || value['status'] === 'active') {
+    value['status'] = 'pending';
+    changed = true;
+  }
+  return changed;
+}
+
 function fillMissingNullableTaskFields(value: Record<string, unknown>): boolean {
   let changed = false;
   for (const field of NULLABLE_TASK_FIELDS) {
@@ -109,7 +127,8 @@ export function decodeTaskRows(raw: unknown[], store = 'tasks'): DecodeResult<Ta
       const mutable = { ...(item as Record<string, unknown>) };
       const a = migrateLegacyDeferShape(mutable);
       const b = fillMissingNullableTaskFields(mutable);
-      if (a || b) {
+      const c = migrateLegacyTaskEnums(mutable);
+      if (a || b || c) {
         const reparsed = parseTaskRow(mutable);
         if (reparsed.ok) {
           parsed = reparsed;

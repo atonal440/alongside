@@ -62,6 +62,32 @@ describe('decodeTaskRows — missing nullable fields repair', () => {
   });
 });
 
+describe('decodeTaskRows — legacy enum repair (migration 002/004/005)', () => {
+  test('task_type=recurring is repaired to action (migration 002)', () => {
+    const old = makeTask({ id: 't_aaa001', task_type: 'recurring' as Task['task_type'] });
+    const { rows, report } = decodeTaskRows([old]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.task_type).toBe('action');
+    expect(report.repaired).toBe(1);
+  });
+
+  test('status=snoozed is repaired to pending (migration 004)', () => {
+    const old = makeTask({ id: 't_aaa001', status: 'snoozed' as Task['status'] });
+    const { rows, report } = decodeTaskRows([old]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe('pending');
+    expect(report.repaired).toBe(1);
+  });
+
+  test('status=active is repaired to pending (migration 005)', () => {
+    const old = makeTask({ id: 't_aaa001', status: 'active' as Task['status'] });
+    const { rows, report } = decodeTaskRows([old]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe('pending');
+    expect(report.repaired).toBe(1);
+  });
+});
+
 describe('decodeTaskRows — legacy repair', () => {
   test('snoozed_until era task is repaired and counted', () => {
     const legacy = {
