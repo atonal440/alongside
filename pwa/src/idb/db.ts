@@ -3,7 +3,7 @@ const IDB_VERSION = 4;
 
 let _db: IDBDatabase | null = null;
 
-function migrateLegacyDeferShape(value: Record<string, unknown>): boolean {
+export function migrateLegacyDeferShape(value: Record<string, unknown>): boolean {
   if (!Object.prototype.hasOwnProperty.call(value, 'snoozed_until')) return false;
 
   const snoozed = value.snoozed_until as string | null | undefined;
