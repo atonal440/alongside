@@ -39,6 +39,29 @@ describe('decodeTaskRows — round-trip', () => {
   });
 });
 
+describe('decodeTaskRows — missing nullable fields repair', () => {
+  test('task missing notes field is repaired (nullable field added later)', () => {
+    const old = { ...makeTask({ id: 't_aaa001' }) };
+    delete (old as Record<string, unknown>)['notes'];
+    const { rows, report } = decodeTaskRows([old]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.notes).toBeNull();
+    expect(report.repaired).toBe(1);
+    expect(report.quarantined).toHaveLength(0);
+  });
+
+  test('task missing kickoff_note and session_log is repaired', () => {
+    const old = { ...makeTask({ id: 't_aaa001' }) };
+    delete (old as Record<string, unknown>)['kickoff_note'];
+    delete (old as Record<string, unknown>)['session_log'];
+    const { rows, report } = decodeTaskRows([old]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.kickoff_note).toBeNull();
+    expect(rows[0]!.session_log).toBeNull();
+    expect(report.repaired).toBe(1);
+  });
+});
+
 describe('decodeTaskRows — legacy repair', () => {
   test('snoozed_until era task is repaired and counted', () => {
     const legacy = {
@@ -163,6 +186,26 @@ describe('decodeProjectRows', () => {
     const { rows, report } = decodeProjectRows([project]);
     expect(rows).toHaveLength(1);
     expect(report.quarantined).toHaveLength(0);
+  });
+
+  test('project missing notes field is repaired (nullable field added later)', () => {
+    // Simulate a row written before the notes column was added
+    const old = { ...makeProject({ id: 'p_aaa001' }) };
+    delete (old as Record<string, unknown>)['notes'];
+    const { rows, report } = decodeProjectRows([old]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.notes).toBeNull();
+    expect(report.repaired).toBe(1);
+    expect(report.quarantined).toHaveLength(0);
+  });
+
+  test('project missing kickoff_note field is repaired', () => {
+    const old = { ...makeProject({ id: 'p_aaa001' }) };
+    delete (old as Record<string, unknown>)['kickoff_note'];
+    const { rows, report } = decodeProjectRows([old]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.kickoff_note).toBeNull();
+    expect(report.repaired).toBe(1);
   });
 
   test('invalid status quarantines the project row', () => {

@@ -3,6 +3,39 @@ import type { ValidationError } from '@shared/parse';
 import { parseTaskRow, parseProjectRow, parseTaskLinkRow } from '@shared/wire/rows';
 import { migrateLegacyDeferShape } from './db';
 
+// Default any nullable task/project field that is completely absent to null so
+// that rows written before a field was added survive schema evolution without
+// being quarantined. Only run this if the initial parse failed — valid rows pass
+// through without mutation.
+const NULLABLE_TASK_FIELDS = [
+  'notes', 'due_date', 'recurrence', 'defer_until', 'project_id',
+  'kickoff_note', 'session_log', 'focused_until',
+] as const;
+
+const NULLABLE_PROJECT_FIELDS = ['notes', 'kickoff_note'] as const;
+
+function fillMissingNullableTaskFields(value: Record<string, unknown>): boolean {
+  let changed = false;
+  for (const field of NULLABLE_TASK_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(value, field)) {
+      value[field] = null;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function fillMissingNullableProjectFields(value: Record<string, unknown>): boolean {
+  let changed = false;
+  for (const field of NULLABLE_PROJECT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(value, field)) {
+      value[field] = null;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 export interface DecodeReport {
   repaired: number;
   quarantined: { store: string; key: unknown; issues: ValidationError[] }[];
@@ -74,7 +107,9 @@ export function decodeTaskRows(raw: unknown[], store = 'tasks'): DecodeResult<Ta
 
     if (!parsed.ok && item !== null && typeof item === 'object' && !Array.isArray(item)) {
       const mutable = { ...(item as Record<string, unknown>) };
-      if (migrateLegacyDeferShape(mutable)) {
+      const a = migrateLegacyDeferShape(mutable);
+      const b = fillMissingNullableTaskFields(mutable);
+      if (a || b) {
         const reparsed = parseTaskRow(mutable);
         if (reparsed.ok) {
           parsed = reparsed;
@@ -110,22 +145,40 @@ export function decodeProjectRows(raw: unknown[], store = 'projects'): DecodeRes
   const rows: Project[] = [];
   const repairedRows: Project[] = [];
   const quarantined: DecodeReport['quarantined'] = [];
+  let repairedCount = 0;
 
   for (const item of raw) {
     const key = item !== null && typeof item === 'object' && !Array.isArray(item)
       ? (item as Record<string, unknown>)['id'] ?? item
       : item;
 
-    const parsed = parseProjectRow(item);
+    let parsed = parseProjectRow(item);
+    let wasRepaired = false;
+
+    if (!parsed.ok && item !== null && typeof item === 'object' && !Array.isArray(item)) {
+      const mutable = { ...(item as Record<string, unknown>) };
+      if (fillMissingNullableProjectFields(mutable)) {
+        const reparsed = parseProjectRow(mutable);
+        if (reparsed.ok) {
+          parsed = reparsed;
+          wasRepaired = true;
+        }
+      }
+    }
+
     if (!parsed.ok) {
       quarantined.push({ store, key, issues: parsed.error });
       continue;
     }
 
     rows.push(parsed.value);
+    if (wasRepaired) {
+      repairedCount++;
+      repairedRows.push(parsed.value);
+    }
   }
 
-  const report: DecodeReport = { repaired: 0, quarantined };
+  const report: DecodeReport = { repaired: repairedCount, quarantined };
   emitReport(report);
   return { rows, report, repairedRows };
 }

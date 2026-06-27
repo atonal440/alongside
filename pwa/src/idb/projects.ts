@@ -9,7 +9,10 @@ export async function idbGetAllProjects(): Promise<Project[]> {
     req.onsuccess = () => resolve(req.result as unknown[]);
     req.onerror = () => reject(req.error);
   });
-  const { rows } = decodeProjectRows(raw);
+  const { rows, repairedRows } = decodeProjectRows(raw);
+  for (const project of repairedRows) {
+    await idbPutProject(project);
+  }
   return rows;
 }
 
