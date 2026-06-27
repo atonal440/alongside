@@ -66,7 +66,8 @@ export function newLocalTask(
   };
 }
 
-// General-purpose content update. Enforces recurrence ↔ due-date invariant.
+// General-purpose content update. Enforces recurrence ↔ due-date invariant and
+// done-task cross-field invariants (mirrors taskFromRow in worker/src/domain/task.ts).
 export function applyUpdate(
   task: Task,
   patch: TaskUpdatePatch,
@@ -79,6 +80,22 @@ export function applyUpdate(
   }
 
   const updated: Task = { ...task, ...patch, updated_at: nowIso } as Task;
+
+  // Guard done-task invariants so the IDB decoder never quarantines an
+  // optimistically written row. Done tasks cannot be deferred or focused.
+  if (updated.status === 'done') {
+    if (updated.defer_kind !== 'none') {
+      return err({ code: 'invalid_state', message: 'Cannot defer a completed task.' });
+    }
+    if (updated.focused_until !== null) {
+      return err({ code: 'invalid_state', message: 'Cannot focus a completed task.' });
+    }
+  }
+  // Deferred tasks cannot also be focused.
+  if (updated.defer_kind !== 'none' && updated.focused_until !== null) {
+    return err({ code: 'invalid_state', message: 'Cannot focus a deferred task.' });
+  }
+
   const body: TaskUpdateBody = { ...patch };
   return ok({ task: updated, body });
 }
