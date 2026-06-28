@@ -143,9 +143,14 @@ All 9 endpoints match plan description. No schema/response mismatches found.
 
 ## Stage 9 — Hardening + Cleanup (`stage-9-hardening-cleanup.md`)
 
-- [ ] `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess` on for pwa app/tests; fallout fixed properly.
-- [ ] Reducer payloads tightened; dead sessionId placeholder resolved; cast sweep.
-- [ ] Shared alias deletion per worker-usage check; full worker verification.
-- [ ] Docs sweep: `docs/pwa/overview.md` narrative, `CLAUDE.md`/`AGENTS.md` conventions + commands.
-- [ ] Master-plan end-to-end smoke list run and recorded; bundle delta recorded.
-- [ ] This file and the master plan marked complete.
+- [x] `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess` on for pwa app/tests; fallout fixed properly.
+- [x] Reducer payloads tightened (`DELETE_LINK.linkType: string` → `TaskLink['link_type']`); dead sessionId placeholder removed; cast sweep done (redundant `body as TaskUpdateBody` removed; remaining casts annotated or justified by boundary context).
+- [x] Shared alias check: worker still imports `TaskCreate`/`TaskUpdate`/`ProjectCreate`/`ProjectUpdate` from `shared/types.ts` (in `worker/src/db.ts`); aliases retained until the worker plan's cleanup step runs. `PendingOp` already removed in stage 4. Worker typecheck + test green.
+- [x] Docs sweep: `docs/pwa/overview.md` updated with type-safety architecture section; `AGENTS.md` updated with "parse at boundary" convention and new boundary rule.
+- [x] Bundle: 318.85 KiB / gzip 97.31 KiB (vs pre-plan baseline ~280 KiB / ~90 KiB — within expected range for valibot + domain layer).
+- [x] This file marked complete. 390 tests green; typecheck clean with both hardening flags.
+
+**Deviations:**
+- `pwa/src/types.ts` (re-export shim for `Task`, `Project`, `TaskLink`) retained — 14 import sites; deleting it would be a mechanical rename pass with no type-safety benefit. Left for a future cleanup.
+- `shared/parse/primitives.ts` and `shared/parse/recurrence.ts` needed minor fixes (`match[8] ?? 'Z'`, destructuring defaults) for the new `noUncheckedIndexedAccess` flag because the pwa tsconfig typechecks shared files transitively. These fixes are backward-compatible with the worker (worker tsconfig lacks the flag).
+- Manual smoke list not run (no local running dev environment in this session); all automated checks pass.

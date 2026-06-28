@@ -171,7 +171,7 @@ describe('deriveTaskFlow — project info', () => {
 
 describe('TASK_FLOW_CHART sanity', () => {
   test('last entry is "ready" (fallback)', () => {
-    expect(TASK_FLOW_CHART[TASK_FLOW_CHART.length - 1].mode).toBe('ready');
+    expect(TASK_FLOW_CHART.at(-1)?.mode).toBe('ready');
   });
 
   test('all 6 modes are covered', () => {

@@ -3,7 +3,6 @@ import type { TaskLink } from '../types';
 import type { AppAction } from './reducer';
 import type { ApiConfig } from '../api/client';
 import type { ApiResult } from '../api/result';
-import type { TaskUpdateBody } from '../api/endpoints';
 import type { IsoDateTime, NonEmptyString } from '@shared/parse';
 import { api } from '../api/endpoints';
 import { isTransientFailure } from '../api/result';
@@ -123,12 +122,12 @@ export async function updateTaskAction(
   dispatch({ type: 'UPSERT_TASK', task: updated });
 
   if (await hasPendingCreate(id)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body: body as TaskUpdateBody });
+    await idbQueueOp({ op: 'task.update', taskId: id, body });
     return;
   }
   const result = await api.updateTask(id, body, config);
   if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body: body as TaskUpdateBody });
+    await idbQueueOp({ op: 'task.update', taskId: id, body });
   } else {
     handleRejection(result, dispatch);
   }

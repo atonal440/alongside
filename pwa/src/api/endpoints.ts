@@ -50,7 +50,7 @@ const CompleteResultSchema = v.object({
 
 export interface CompleteResult {
   completed: Task;
-  next?: Task;
+  next?: Task | undefined;
 }
 
 function jsonBody(body: unknown): RequestInit {

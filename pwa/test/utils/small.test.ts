@@ -101,7 +101,7 @@ describe('suggestQueue', () => {
     const high = makeTask({ id: 't_high', kickoff_note: 'kick', updated_at: OLD });
     const low = makeTask({ id: 't_low', kickoff_note: null, updated_at: OLD });
     const queue = suggestQueue([low, high], '2026-06-09');
-    expect(queue[0].id).toBe('t_high');
+    expect(queue[0]?.id).toBe('t_high');
   });
 
   test('returns empty array when all tasks are filtered', () => {

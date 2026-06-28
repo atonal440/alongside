@@ -31,7 +31,7 @@ export function projectColor(projectId: string | null | undefined): string {
   for (let i = 0; i < projectId.length; i += 1) {
     hash = (hash * 31 + projectId.charCodeAt(i)) >>> 0;
   }
-  return PROJECT_COLORS[hash % PROJECT_COLORS.length];
+  return PROJECT_COLORS[hash % PROJECT_COLORS.length] ?? '#9C8472';
 }
 
 export function formatDue(task: Pick<Task, 'due_date'>, today: string): string {

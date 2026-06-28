@@ -170,6 +170,19 @@ Output directory: `pwa/dist`.
 - Prefer existing design helpers in `pwa/src/utils/design.ts` for labels, colors, and sorting.
 - Do not introduce a new state library unless the existing reducer/context model is intentionally being replaced.
 
+### PWA Type Safety — Parse at Every Boundary
+
+The PWA uses branded types (`IsoDate`, `NonEmptyString<N>`, `Rrule`, …) for all domain values. Raw strings from external sources must be **parsed before use** — once parsed, the branded type flows through without re-validation. This applies to four boundaries:
+
+1. **API responses** — `pwa/src/api/endpoints.ts` parses every REST response through valibot row schemas (`parseTaskRow`, etc.). Never trust raw JSON beyond this layer.
+2. **IDB reads** — `pwa/src/idb/decode.ts` repairs and validates rows read from IndexedDB. Corrupt rows are quarantined-in-place; repairs are written back. The decode pipeline wires into all IDB read modules (`idbGetAllTasks`, etc.).
+3. **Form submissions** — `pwa/src/domain/taskForm.ts` (`parseTaskForm`) validates and brands form strings. Never pass raw `input.value` strings into domain types or action creators.
+4. **Pending ops** — `pwa/src/api/pendingOps.ts` (`parsePendingOp`) validates IDB queue records on read. Legacy shapes are migrated by the IDB upgrade pipeline.
+
+**Adding a new boundary (new endpoint, new IDB store, new form field) requires a parser + tests.** This is a hard convention, not a suggestion.
+
+The sync engine distinguishes **durable failures** (4xx — drop the op, toast, resync) from **transient failures** (network/5xx — increment attempts, stop the flush, retry later). See `pwa/src/api/result.ts` for the classifier and `docs/pwa/api/sync.md` for the full policy.
+
 ## Documentation Rule
 
 Documentation should help a human reader understand the code at the level of intent, invariants, and usage. Prefer reader docs over mechanical mirror docs.

@@ -35,7 +35,7 @@ describe('UPSERT_TASK', () => {
     const s1 = reducer(baseState(), { type: 'UPSERT_TASK', task: original });
     const s2 = reducer(s1, { type: 'UPSERT_TASK', task: updated });
     expect(s2.tasks).toHaveLength(1);
-    expect(s2.tasks[0].title).toBe('Updated');
+    expect(s2.tasks[0]?.title).toBe('Updated');
   });
 
   test('appends task with new id', () => {

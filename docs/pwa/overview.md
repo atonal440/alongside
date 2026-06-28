@@ -136,28 +136,50 @@ The PWA has a vitest suite at `pwa/test/`. Run it with:
 npm --prefix pwa run test
 ```
 
-The root `npm run verify` runs the suite as part of the full pipeline (after pwa typecheck, before pwa build).
+The root `npm run verify` runs the suite as part of the full pipeline (after pwa typecheck, before pwa build). 390 tests as of the stage-9 hardening pass.
 
 **Layout**:
 
 ```
 pwa/
   vitest.config.ts          node default env; jsdom for test/components/** and test/hooks/**;
-                            @shared + rrule aliases; test/setup.ts for jest-dom matchers
+                            @shared + rrule + valibot aliases; test/setup.ts for jest-dom matchers
   test/
-    setup.ts                global: import @testing-library/jest-dom/vitest
+    setup.ts                global: import @testing-library/jest-dom/vitest; afterEach cleanup
     helpers/
       fixtures.ts           makeTask / makeProject / makeLink row factories (all test literals here)
-      fetchStub.ts          install/restore fetch; queue typed responses; record calls (used from stage 3)
-      idb.ts                fake-indexeddb/auto + resetIdb() (used from stage 4)
+      fetchStub.ts          install/restore fetch; queue typed responses; record calls
+      idb.ts                fake-indexeddb/auto + resetIdb()
     shared/                 readiness.test.ts — shared/readiness.ts (isDeferred, isFocused, readinessScore…)
     utils/                  design.test.ts, taskFlow.test.ts, small.test.ts
-    context/                reducer.test.ts
-    components/             RTL tests (jsdom env, added in later stages)
-  type-tests/               @ts-expect-error fixtures (added in later stages)
+    context/                reducer.test.ts, actions.test.ts
+    idb/                    pendingOps.test.ts, decode.test.ts (includes migration round-trip and quarantine)
+    api/                    client.test.ts, endpoints.test.ts, sync.test.ts, pendingOps.test.ts
+    domain/                 taskMutations.test.ts, taskForm.test.ts
+    components/             EditView.test.tsx, AddBar.test.tsx, DeferMenu.test.tsx (jsdom env)
+  type-tests/               @ts-expect-error fixtures for branded-type guards
 ```
 
 Pure-logic tests run in the `node` environment; DOM-dependent tests in `test/components/` and `test/hooks/` run in `jsdom`.
+
+## Type safety architecture
+
+The PWA enforces a **parse at boundary, brand thereafter** discipline. Values from external sources (API responses, IndexedDB rows, form strings, serialized pending ops) are untrusted until parsed by a valibot schema into a branded type (`IsoDate`, `NonEmptyString<N>`, `Rrule`, …). Once branded, the type propagates through domain code without re-validation.
+
+**Four parsed boundaries:**
+
+| Boundary | Module | What it does |
+|---|---|---|
+| REST responses | `api/endpoints.ts` | Every response is parsed through a row schema (`parseTaskRow`, etc.); contract violations are classified as `kind: 'contract'` rather than silently used |
+| IDB reads | `idb/decode.ts` | Rows are repaired (legacy shapes migrated), validated, and quarantined-in-place if corrupt; repairs are written back; an `onDecodeReport` hook triggers a toast on first quarantine |
+| Form submissions | `domain/taskForm.ts` | `parseTaskForm` validates and brands all string inputs; field-level errors are returned for inline display |
+| Pending ops queue | `api/pendingOps.ts` | `parsePendingOp` validates records on IDB read; the IDB v4 upgrade pipeline migrates legacy queue shapes |
+
+**Domain mutation layer (`pwa/src/domain/`):** `taskMutations.ts` provides typed, guard-checked write functions (`applyUpdate`, `applyComplete`, `applyDefer`, etc.) that return `Result<TaskWrite, LocalMutationError>`. Action creators use these functions; they never compose raw field objects outside `pwa/src/domain/`.
+
+**Sync policy:** the sync engine in `api/sync.ts` distinguishes durable failures (4xx) from transient failures (network/5xx) using `isDurableFailure`/`isTransientFailure` from `api/result.ts`. Durable ops are dropped with a toast and a resync; transient ops increment an attempts counter and halt the flush. The resync mechanism is the sole rollback path for optimistic writes — no per-op inverse functions.
+
+**Compiler flags:** `pwa/tsconfig.app.json` and `pwa/tsconfig.test.json` enable `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess` in addition to `strict`. These flags are intentional; all fallout is fixed structurally (no `!` assertions, no unsound casts).
 
 ## Key design decisions
 
