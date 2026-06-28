@@ -198,7 +198,7 @@ export function SearchBar({ tasks, projects, onCreateTask, onOpenTask, onOpenPro
               key={result.id}
               result={result}
               active={index === activeIndex}
-              showGroup={index === 0 || results[index - 1].group !== result.group}
+              showGroup={index === 0 || results[index - 1]?.group !== result.group}
               onHover={() => {
                 setActiveIndex(index);
                 if (result.kind === 'task') setActionTaskId(result.task.id);

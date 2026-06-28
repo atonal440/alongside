@@ -17,7 +17,7 @@ function hasExpiredFocus(task: { focused_until: string | null }): boolean {
 
 export function ReviewView() {
   const { state, dispatch } = useAppState();
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toISOString().split('T')[0] ?? '';
   const config = { apiBase: state.apiBase, authToken: state.authToken };
   const focused = state.tasks
     .filter(isActiveFocus)

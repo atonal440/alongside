@@ -46,7 +46,7 @@ describe('EditView — valid form', () => {
     fireEvent.change(titleInput, { target: { value: 'Updated title' } });
     await userEvent.click(screen.getByRole('button', { name: /save/i }));
     expect(updateTaskAction).toHaveBeenCalledOnce();
-    const [, patch] = (updateTaskAction as ReturnType<typeof vi.fn>).mock.calls[0];
+    const [, patch] = (updateTaskAction as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
     expect(patch.title).toBe('Updated title');
   });
 
@@ -54,7 +54,7 @@ describe('EditView — valid form', () => {
     renderEditView();
     await userEvent.click(screen.getByRole('button', { name: /save/i }));
     expect(updateTaskAction).toHaveBeenCalledOnce();
-    const [, patch] = (updateTaskAction as ReturnType<typeof vi.fn>).mock.calls[0];
+    const [, patch] = (updateTaskAction as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
     expect(patch.notes).toBeNull();
   });
 });

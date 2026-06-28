@@ -16,7 +16,7 @@ export function SuggestView() {
   const { state, dispatch } = useAppState();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [deferOpenForTaskId, setDeferOpenForTaskId] = useState<string | null>(null);
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toISOString().split('T')[0] ?? '';
   const queue = suggestQueue(state.tasks, today, state.links);
   const config = { apiBase: state.apiBase, authToken: state.authToken };
   const selectedTask = selectedTaskId ? queue.find(t => t.id === selectedTaskId) : null;

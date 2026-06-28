@@ -197,7 +197,7 @@ export function parseRrule(input: unknown): Result<{ rrule: Rrule; parts: RruleP
 }
 
 function dateParts(date: IsoDate): { year: number; month: number; day: number } {
-  const [year, month, day] = date.split('-').map(Number);
+  const [year = 0, month = 0, day = 0] = date.split('-').map(Number);
   return { year, month, day };
 }
 

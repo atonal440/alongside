@@ -24,7 +24,7 @@ export type AppAction =
   | { type: 'DELETE_TASK'; id: string }
   | { type: 'UPSERT_PROJECT'; project: Project }
   | { type: 'UPSERT_LINK'; link: TaskLink }
-  | { type: 'DELETE_LINK'; from: string; to: string; linkType: string }
+  | { type: 'DELETE_LINK'; from: string; to: string; linkType: TaskLink['link_type'] }
   | { type: 'SET_VIEW'; view: AppState['currentView'] | 'session' }
   | { type: 'SET_PROJECT_FILTER'; id: string | null }
   | { type: 'SET_EDITING'; id: string | null }
@@ -49,7 +49,6 @@ export function getInitialState(): AppState {
   const loggedOut = localStorage.getItem(LOGGED_OUT_KEY) === 'true';
   const apiBase = loggedOut ? '' : (localStorage.getItem('alongside_api') ?? getDefaultApiBase());
   const authToken = loggedOut ? '' : (localStorage.getItem('alongside_token') || 'dev-token-change-me');
-  const sessionId = localStorage.getItem('alongside_session') || null;
   return {
     tasks: [],
     projects: [],
@@ -64,8 +63,6 @@ export function getInitialState(): AppState {
     toastMessage: null,
     apiBase,
     authToken,
-    // sessionId is read in actions but stored separately
-    ...(sessionId ? {} : {}), // placeholder; sessionId accessed directly in actions
   };
 }
 

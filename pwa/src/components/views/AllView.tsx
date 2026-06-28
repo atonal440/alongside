@@ -33,7 +33,7 @@ export function AllView() {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SortMode>('readiness');
   const [deferTargetId, setDeferTargetId] = useState<string | null>(null);
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toISOString().split('T')[0] ?? '';
   const config = { apiBase: state.apiBase, authToken: state.authToken };
   const selectedProject = state.selectedProjectId
     ? state.projects.find(project => project.id === state.selectedProjectId)
@@ -224,7 +224,7 @@ export function AllView() {
             </>
           ) : (
             <TaskGroup
-              label={STATUS_FILTER_LABELS[state.statusFilter]}
+              label={STATUS_FILTER_LABELS[state.statusFilter] ?? state.statusFilter}
               tasks={readyTasks}
               today={today}
               selectedId={selectedTask?.id}
@@ -275,7 +275,7 @@ function TaskGroup({ label, tasks, today, selectedId, projects, links, allTasks,
   label: string;
   tasks: Task[];
   today: string;
-  selectedId?: string;
+  selectedId?: string | undefined;
   projects: Project[];
   links: TaskLink[];
   allTasks: Task[];
@@ -329,7 +329,7 @@ function TaskGroup({ label, tasks, today, selectedId, projects, links, allTasks,
 }
 
 function DetailPanel({ task, today, projects, links, allTasks, taskMap, blocksMap, blockedByMap, deferTargetId, onSelect, onFocus, onComplete, onUnfocus, onDeferRequest, onDeferChoose, onDeferCancel, onReopen, onEdit, onDelete, onBack }: {
-  task?: Task;
+  task?: Task | undefined;
   today: string;
   projects: Project[];
   links: TaskLink[];
@@ -364,7 +364,7 @@ function DetailPanel({ task, today, projects, links, allTasks, taskMap, blocksMa
   const blockedBy = [...(blockedByMap[currentTask.id] ?? [])]
     .map(id => taskMap[id])
     .filter((blocker): blocker is Task => !!blocker && blocker.status !== 'done');
-  const blocking = [...(blocksMap[currentTask.id] ?? [])].map(id => taskMap[id]).filter(Boolean);
+  const blocking = [...(blocksMap[currentTask.id] ?? [])].map(id => taskMap[id]).filter((t): t is Task => t !== undefined);
   const flow = deriveTaskFlow(currentTask, { today, projects, links, tasks: allTasks, surface: 'detail', selected: true });
 
   function handleAction(action: TaskFlowActionId) {

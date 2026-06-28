@@ -8,7 +8,7 @@ import type { Task } from '../../types';
 export function DetailView() {
   const { state, dispatch } = useAppState();
   const config = { apiBase: state.apiBase, authToken: state.authToken };
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toISOString().split('T')[0] ?? '';
 
   const taskOrUndef = state.tasks.find(t => t.id === state.detailTaskId);
   if (!taskOrUndef) return null;
@@ -41,7 +41,7 @@ export function DetailView() {
   if (focused) statusLabel = 'Focused';
   else if (task.defer_kind === 'someday') statusLabel = 'Someday';
   else if (task.defer_kind === 'until' && task.defer_until && task.defer_until > new Date().toISOString())
-    statusLabel = `Deferred until ${task.defer_until.split('T')[0]}`;
+    statusLabel = `Deferred until ${task.defer_until.split('T')[0] ?? ''}`;
   else if (task.due_date && task.due_date < today) statusLabel = `Overdue · ${task.due_date}`;
 
   async function handleDone() {

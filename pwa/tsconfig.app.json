@@ -17,6 +17,8 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
     "paths": {
       "@shared/*": ["../shared/*"],
       "drizzle-orm": ["../worker/node_modules/drizzle-orm"],

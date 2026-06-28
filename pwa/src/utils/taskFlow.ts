@@ -74,6 +74,22 @@ const deferAction: TaskFlowAction = { id: 'defer', label: 'Defer', tone: 'neutra
 const reopenAction: TaskFlowAction = { id: 'reopen', label: 'Bring back', tone: 'neutral' };
 const unfocusAction: TaskFlowAction = { id: 'unfocus', label: 'Unfocus', tone: 'neutral' };
 
+// Extracted so deriveTaskFlow can use it as a type-safe fallback without array indexing.
+// The 'ready' predicate is always true, so this entry is always matched by find(); the
+// fallback is an unreachable safety net for the type checker.
+const readyState: TaskFlowStateDefinition = {
+  mode: 'ready',
+  predicate: 'ready',
+  emphasis: 'secondary',
+  statusLabel: ({ dueLabel }) => dueLabel || 'Ready',
+  actions: {
+    detail: actionSet(primaryAction('focus', 'Focus this ->'), completeAction, deferAction, editAction('Edit notes'), deleteAction),
+    focus: actionSet(primaryAction('focus', 'Focus this ->'), deferAction, editAction('Edit >')),
+    list: actionSet(primaryAction('focus', 'Focus this ->')),
+    queue: actionSet(primaryAction('focus', 'Focus this ->')),
+  },
+};
+
 export const TASK_FLOW_CHART: TaskFlowStateDefinition[] = [
   {
     mode: 'done',
@@ -135,18 +151,7 @@ export const TASK_FLOW_CHART: TaskFlowStateDefinition[] = [
       queue: actionSet(primaryAction('focus', 'Focus this ->')),
     },
   },
-  {
-    mode: 'ready',
-    predicate: 'ready',
-    emphasis: 'secondary',
-    statusLabel: ({ dueLabel }) => dueLabel || 'Ready',
-    actions: {
-      detail: actionSet(primaryAction('focus', 'Focus this ->'), completeAction, deferAction, editAction('Edit notes'), deleteAction),
-      focus: actionSet(primaryAction('focus', 'Focus this ->'), deferAction, editAction('Edit >')),
-      list: actionSet(primaryAction('focus', 'Focus this ->')),
-      queue: actionSet(primaryAction('focus', 'Focus this ->')),
-    },
-  },
+  readyState,
 ];
 
 export function deriveTaskFlow(task: Task, context: TaskFlowContext): TaskFlow {
@@ -174,13 +179,13 @@ export function deriveTaskFlow(task: Task, context: TaskFlowContext): TaskFlow {
     ready: true,
   };
 
-  const state = TASK_FLOW_CHART.find(definition => predicates[definition.predicate]) ?? TASK_FLOW_CHART[TASK_FLOW_CHART.length - 1];
+  const state = TASK_FLOW_CHART.find(definition => predicates[definition.predicate]) ?? readyState;
   const emphasis: TaskFlowEmphasis = context.selected ? 'primary' : state.emphasis;
   const statusLabel = typeof state.statusLabel === 'function'
     ? state.statusLabel({ dueLabel })
     : state.statusLabel;
   const metaLabel = taskFlowMetaLabel(task, state.mode, statusLabel);
-  const actions = state.actions[context.surface ?? 'focus'] ?? actionSet(undefined);
+  const actions = state.actions[context.surface ?? 'focus'] ?? actionSet();
 
   return {
     taskId: task.id,
@@ -196,7 +201,7 @@ export function deriveTaskFlow(task: Task, context: TaskFlowContext): TaskFlow {
     kickoff: task.kickoff_note ?? '',
     notePreview: firstNoteEntry(task.notes),
     relationships: { blockedBy, unlocks },
-    primaryAction: actions.primaryAction,
+    ...(actions.primaryAction !== undefined ? { primaryAction: actions.primaryAction } : {}),
     secondaryActions: actions.secondaryActions,
   };
 }
@@ -218,14 +223,16 @@ function taskFlowMetaLabel(task: Task, mode: TaskFlowMode, statusLabel: string):
 }
 
 function formatMetaDate(value: string): string {
-  const [datePart] = value.split('T');
-  const [year, month, day] = datePart.split('-').map(Number);
+  const [datePart = ''] = value.split('T');
+  const [year = 0, month = 0, day = 0] = datePart.split('-').map(Number);
   if (!year || !month || !day) return value;
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(year, month - 1, day));
 }
 
 function actionSet(primaryAction?: TaskFlowAction, ...secondaryActions: TaskFlowAction[]): TaskFlowActionSet {
-  return { primaryAction, secondaryActions };
+  return primaryAction !== undefined
+    ? { primaryAction, secondaryActions }
+    : { secondaryActions };
 }
 
 function primaryAction(id: TaskFlowActionId, label: string): TaskFlowAction {

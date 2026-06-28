@@ -72,7 +72,7 @@ export function isIsoDateTimeString(input: string): boolean {
   const hour = Number(match[4]);
   const minute = Number(match[5]);
   const second = Number(match[6]);
-  const offset = match[8];
+  const offset = match[8] ?? 'Z';
   const offsetHour = offset === 'Z' ? 0 : Number(offset.slice(1, 3));
   const offsetMinute = offset === 'Z' ? 0 : Number(offset.slice(4, 6));
 
