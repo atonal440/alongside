@@ -1,13 +1,19 @@
 import type { Project } from '@shared/types';
 import { getDB } from './db';
+import { decodeProjectRows } from './decode';
 
 export async function idbGetAllProjects(): Promise<Project[]> {
   const db = await getDB();
-  return new Promise((resolve, reject) => {
+  const raw = await new Promise<unknown[]>((resolve, reject) => {
     const req = db.transaction('projects', 'readonly').objectStore('projects').getAll();
-    req.onsuccess = () => resolve(req.result as Project[]);
+    req.onsuccess = () => resolve(req.result as unknown[]);
     req.onerror = () => reject(req.error);
   });
+  const { rows, repairedRows } = decodeProjectRows(raw);
+  for (const project of repairedRows) {
+    await idbPutProject(project);
+  }
+  return rows;
 }
 
 export async function idbPutProject(project: Project): Promise<void> {

@@ -66,7 +66,8 @@ export function newLocalTask(
   };
 }
 
-// General-purpose content update. Enforces recurrence ↔ due-date invariant.
+// General-purpose content update. Enforces recurrence ↔ due-date invariant and
+// done-task cross-field invariants (mirrors taskFromRow in worker/src/domain/task.ts).
 export function applyUpdate(
   task: Task,
   patch: TaskUpdatePatch,
@@ -79,6 +80,22 @@ export function applyUpdate(
   }
 
   const updated: Task = { ...task, ...patch, updated_at: nowIso } as Task;
+
+  // Guard done-task invariants so the IDB decoder never quarantines an
+  // optimistically written row. Done tasks cannot be deferred or focused.
+  if (updated.status === 'done') {
+    if (updated.defer_kind !== 'none') {
+      return err({ code: 'invalid_state', message: 'Cannot defer a completed task.' });
+    }
+    if (updated.focused_until !== null) {
+      return err({ code: 'invalid_state', message: 'Cannot focus a completed task.' });
+    }
+  }
+  // Deferred tasks cannot also be focused.
+  if (updated.defer_kind !== 'none' && updated.focused_until !== null) {
+    return err({ code: 'invalid_state', message: 'Cannot focus a deferred task.' });
+  }
+
   const body: TaskUpdateBody = { ...patch };
   return ok({ task: updated, body });
 }
@@ -92,7 +109,15 @@ export function applyComplete(
     return err({ code: 'already_done', message: 'Task is already complete.' });
   }
   const wasRecurring = task.recurrence !== null;
-  const updated: Task = { ...task, status: 'done', updated_at: nowIso };
+  // Clear focus/defer: done tasks cannot be deferred or focused (mirrors server invariant).
+  const updated: Task = {
+    ...task,
+    status: 'done',
+    defer_kind: 'none',
+    defer_until: null,
+    focused_until: null,
+    updated_at: nowIso,
+  };
   // complete endpoint takes no body; body field is unused by the action creator.
   const body: TaskUpdateBody = {};
   return ok({ task: updated, body, wasRecurring });

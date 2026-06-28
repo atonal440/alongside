@@ -106,6 +106,30 @@ describe('applyUpdate', () => {
     const result = applyUpdate(task, { due_date: '2026-07-01' as IsoDate, recurrence: 'FREQ=WEEKLY' as Rrule }, NOW);
     expect(result.ok).toBe(true);
   });
+
+  test('deferring a done task → invalid_state (IDB cross-field guard)', () => {
+    const task = makeTask({ status: 'done', defer_kind: 'none', defer_until: null });
+    const result = applyUpdate(task, { defer_kind: 'someday' }, NOW);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('invalid_state');
+  });
+
+  test('focusing a done task → invalid_state', () => {
+    const task = makeTask({ status: 'done', focused_until: null });
+    const result = applyUpdate(task, { focused_until: LATER }, NOW);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('invalid_state');
+  });
+
+  test('focusing a deferred task → invalid_state', () => {
+    const task = makeTask({ defer_kind: 'someday', focused_until: null });
+    const result = applyUpdate(task, { focused_until: LATER }, NOW);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('invalid_state');
+  });
 });
 
 // ─── applyComplete ────────────────────────────────────────────────────────────
@@ -134,6 +158,25 @@ describe('applyComplete', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.wasRecurring).toBe(false);
+  });
+
+  test('clears focused_until so done row passes IDB cross-field check', () => {
+    const task = makeTask({ focused_until: '2026-07-01T12:00:00.000Z' });
+    const result = applyComplete(task, NOW);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.task.focused_until).toBeNull();
+    expect(result.value.task.status).toBe('done');
+  });
+
+  test('clears defer fields so done row passes IDB cross-field check', () => {
+    const task = makeTask({ defer_kind: 'someday' });
+    const result = applyComplete(task, NOW);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.task.defer_kind).toBe('none');
+    expect(result.value.task.defer_until).toBeNull();
+    expect(result.value.task.status).toBe('done');
   });
 
   test('already_done on done task', () => {

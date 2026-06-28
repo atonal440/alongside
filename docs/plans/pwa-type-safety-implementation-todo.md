@@ -131,10 +131,15 @@ All 9 endpoints match plan description. No schema/response mismatches found.
 
 ## Stage 8 — IDB Read Boundary (`stage-8-idb-boundary.md`)
 
-- [ ] `pwa/src/idb/decode.ts`: parse → repair (shared `migrateLegacyDeferShape`) → quarantine-in-place; decode-local cross-field checks mirroring `taskFromRow`; write-back of repairs; boot report + single toast.
-- [ ] Decode wired into tasks/projects/links reads (report mechanism documented).
-- [ ] Tests: repair, quarantine, mixed store, boot integration.
-- [ ] Docs: `docs/pwa/idb/` boundary contract + migration↔repair rule.
+- [x] `pwa/src/idb/decode.ts`: parse → repair (`migrateLegacyDeferShape` exported from `db.ts`) → quarantine-in-place; decode-local cross-field checks mirroring `taskFromRow`; write-back of repairs; `onDecodeReport` hook.
+- [x] Decode wired into tasks/projects/links reads (module-level callback, unchanged return types); `AppContext` aggregates reports + dispatches one toast on quarantine.
+- [x] Tests: repair, quarantine, cross-field quarantine, mixed store, write-back round-trip, boot integration. 378 tests green (25 new).
+- [x] Docs: `docs/pwa/idb/decode.md` (boundary contract, repair/quarantine policy, migration rule); `docs/pwa/idb/tasks.md` updated.
+
+**Deviations**:
+- `decodeTaskRows` returns `{ rows, report, repairedRows }` internally; write-back is done in `idbGetAllTasks` using `idbPutTask`. The plan's simplified interface (`{ rows, report }`) was extended with `repairedRows` to avoid passing IDB references into `decode.ts`.
+- `decodeProjectRows` and `decodeLinkRows` have no repair pipeline entries yet — projects and links have no known legacy shape changes. Repair hooks can be added alongside future IDB migrations per the documentation rule.
+- The module-level `onDecodeReport` callback is reset in `beforeEach` of tests to avoid cross-test leakage. `AppContext` clears it in the effect cleanup.
 
 ## Stage 9 — Hardening + Cleanup (`stage-9-hardening-cleanup.md`)
 
