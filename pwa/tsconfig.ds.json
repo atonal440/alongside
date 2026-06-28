@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "paths": {
+      "@shared/brand": ["../shared/brand.ts"],
+      "@shared/parse": ["../shared/parse/index.ts"],
+      "@shared/result": ["../shared/result.ts"],
+      "@shared/readiness": ["../shared/readiness.ts"],
+      "@shared/types": ["../shared/types.ts"],
+      "@shared/wire": ["../shared/wire/index.ts"],
+      "@shared/wire/*": ["../shared/wire/*"],
+      "rrule": ["./node_modules/rrule/dist/esm/index.js"],
+      "valibot": ["./node_modules/valibot/dist/index.mjs"]
+    }
+  }
+}

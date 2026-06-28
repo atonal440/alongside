@@ -1,0 +1,36 @@
+{
+  "pkg": "alongside-pwa",
+  "globalName": "Alongside",
+  "projectId": "68c4fa5b-77e0-445e-a67a-df3f67ab012f",
+  "shape": "package",
+  "srcDir": "src/components",
+  "tsconfig": "tsconfig.ds.json",
+  "cssEntry": "src/index.css",
+  "buildCmd": "node .ds-sync/package-build.mjs --config design-sync.config.json --node-modules pwa/node_modules --entry pwa/src/ds-entry.ts --out ./ds-bundle",
+  "provider": {
+    "component": "AppProvider"
+  },
+  "componentSrcMap": {
+    "AppProvider": "src/context/AppContext.tsx",
+    "AddBar": "src/components/common/AddBar.tsx",
+    "EmptyState": "src/components/common/EmptyState.tsx",
+    "Markdown": "src/components/common/Markdown.tsx",
+    "SearchBar": "src/components/common/SearchBar.tsx",
+    "SettingsBanner": "src/components/common/SettingsBanner.tsx",
+    "Toast": "src/components/common/Toast.tsx",
+    "Header": "src/components/layout/Header.tsx",
+    "NavBar": "src/components/layout/NavBar.tsx",
+    "Sidebar": "src/components/layout/Sidebar.tsx",
+    "SyncStatus": "src/components/layout/SyncStatus.tsx",
+    "CompactCard": "src/components/task/CompactCard.tsx",
+    "DeferMenu": "src/components/task/DeferMenu.tsx",
+    "TaskCard": "src/components/task/TaskCard.tsx",
+    "TaskMeta": "src/components/task/TaskMeta.tsx",
+    "TaskStack": "src/components/task/TaskStack.tsx",
+    "AllView": "src/components/views/AllView.tsx",
+    "DetailView": "src/components/views/DetailView.tsx",
+    "EditView": "src/components/views/EditView.tsx",
+    "ReviewView": "src/components/views/ReviewView.tsx",
+    "SuggestView": "src/components/views/SuggestView.tsx"
+  }
+}

@@ -13,3 +13,9 @@ dist/
 .obsidian/
 .claude/
 design_update/
+
+# design-sync build artifacts (regenerated on every sync)
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
