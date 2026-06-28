@@ -36,6 +36,23 @@ Rich authored previews planned for 13 core components:
 - Sidebar, SyncStatus → floor cards (context-heavy, not in authored scope)
 - All 5 views → floor cards (full app screens, authorable on re-sync)
 
+## Converter patch (applied 2026-06-28)
+
+`.ds-sync/lib/emit.mjs` line 293 was patched to trust `cfg.provider` when `exported` is empty (no
+compiled `.d.ts` files). The original guard `exported.has(head)` short-circuits to `null` when the
+exported set is empty, silently removing provider wrapping from all previews. The patch:
+
+```js
+// Before:
+const wrap = providerWrapper(PROVIDER && exported.has(PROVIDER.component.split('.')[0]) ? PROVIDER : null, ...)
+// After:
+const providerTrusted = PROVIDER && (exported.size === 0 || exported.has(head0));
+const wrap = providerWrapper(providerTrusted ? PROVIDER : null, ...)
+```
+
+Also suppresses the false-positive `[PROVIDER_UNEXPORTED]` warning when `exported.size === 0`.
+When upgrading the converter scripts, reapply this patch if the guard reappears.
+
 ## Re-sync risks
 
 - `pwa/src/ds-entry.ts` is the barrel — must be updated when new components are added to the app.
