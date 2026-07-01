@@ -23,7 +23,9 @@ orders must never drift from each other or from the code.
   later (Stage 9).
 - **Spawn ownership:** server-authoritative; the PWA never materializes locally.
 - **Completion:** decoupled from spawning; `completeTaskPlan`'s recurrence branch
-  is retired (Stage 4).
+  is retired (Stage 4). **Stages 4 + 5 deploy as one unit** — retire-completion-
+  spawn and wire-trigger cannot straddle a release, or recurrence stalls (0
+  spawners) or double-spawns (2). See `duties/03`, State B.
 - **Series anchor immutable:** `rrule` + `dtstart` + `timezone` are fixed at
   creation (all define the occurrence calendar); reschedule/re-zone = `end_duty` +
   `create_duty`. `updateDutyPlan` edits template fields + `catch_up` only.
@@ -46,6 +48,9 @@ orders must never drift from each other or from the code.
   variants, row/wire schemas, MCP registry entries, and where each lives.
 - [ ] `duties/02-timestamp-model.md` — minute-resolution-UTC substrate
   (Decision 4): why date-only is abandoned, what it removes/enables, DST tradeoff.
+- [ ] `duties/03-transition-invariants.md` — per-stage rollout-safety checklist for
+  the partially-migrated coexistence windows. **Each stage's acceptance step
+  verifies its state's invariants**; note the Stage 4 ↔ 5 atomic cut-over.
 
 ## Phase 1 — Single-task duties
 

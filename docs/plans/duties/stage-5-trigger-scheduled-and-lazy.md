@@ -136,6 +136,10 @@ never touches it. Viewer-side display formatting is a separate client concern
   cron tick required; the cron spawns it with no client connected.
 - No timezone resolution exists anywhere in the spawn path.
 - Write/single-GET paths do not call the materialize hook.
+- **Transition invariants — State B/C (`duties/03`):** this stage completes the
+  Stage 4 ↔ 5 atomic cut-over — verify that after deploy, recurrence is served by
+  exactly one spawner (the materializer), every backfilled duty fires, and no date
+  has both a legacy plain task and a duty instance.
 - Root `npm run verify` passes.
 - Check off Stage 5 in the implementation todo; record the chosen cron cadence and
   per-tick cap.

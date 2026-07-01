@@ -210,6 +210,9 @@ columns, and the datetime `due_date`. Flag for the Stage 6 doc pass that
   applies cleanly (`wrangler d1 migrations apply` locally).
 - `npm --prefix worker run test` and `npm --prefix pwa run test` green.
 - No duty rows are created and no `task.duty_id` is set in this stage.
+- **Transition invariants — State A (`duties/03`):** a recurring task still loads
+  and completes/spawns via the A2 shim; the `duties` table is empty; the PWA
+  accepts the datetime `due_date`. Verify these before merging.
 - Root `npm run verify` passes.
 - Check off Stage 1 (Parts A and B) in the implementation todo, noting the
   migration number used.

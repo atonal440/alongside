@@ -238,6 +238,12 @@ task's `duty_id`/`occurrence_at`. Idempotent (skip tasks that already have a
 - Materialize is idempotent and the cursor never regresses; `catch_up: next`
   yields exactly one current instance; `COUNT=1` never ends prematurely.
 - Nothing calls `materializeDueDuties` in production paths yet (Stage 5).
+- **Transition invariants — State B (`duties/03`):** because this stage retires
+  completion-spawn while the backfill creates dormant duties, it **must not deploy
+  without Stage 5's trigger** — a release with backfill + retirement but no trigger
+  stalls recurrence (zero spawners), and one with backfill but *not* retirement
+  double-spawns (two spawners). Stages 4 and 5 ship as one unit; the acceptance
+  gate is "no deployable point where recurrence is served by neither or both."
 - Root `npm run verify` passes.
 - Check off Stage 4 in the todo; note the `maxPerRun` value and the `completeTask`
   return-shape change for Stage 6.

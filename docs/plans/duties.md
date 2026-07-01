@@ -279,7 +279,10 @@ are resolved in Stage 6 (the concept they gestured at is now the `duties` table)
   occurrence. This is the full vertical: schema, recurrence, domain, engine,
   trigger, REST, MCP, PWA. It reaches feature parity with today's completion
   recurrence and surpasses it (calendar cadence, finite series, pause/resume,
-  template/instance separation, offline-safe server spawning).
+  template/instance separation, offline-safe server spawning). **Deploy note:**
+  Stages 4 and 5 are separable to *build and review* but must **deploy as one
+  unit** — retiring completion-spawn and wiring the trigger cannot straddle a
+  release, or recurrence either stalls or double-spawns (`duties/03`, State B).
 - **Phase 2 — Task-graph duties (Stage 9).** A duty template becomes a set of
   tasks plus links; each occurrence spawns the whole graph with a fresh set of
   ids and rewritten link endpoints. Stage 3's `DutyTemplate` is shaped so this
@@ -302,6 +305,11 @@ Foundational analysis (read first):
 - `duties/02-timestamp-model.md` — the minute-resolution-UTC substrate
   (Decision 4): why date-only is abandoned, what it removes and enables, the DST
   tradeoff, and the app-wide `due_date` migration.
+- `duties/03-transition-invariants.md` — the rollout-safety checklist: what must
+  hold in each partially-migrated state where the old and new worlds coexist. Each
+  stage's acceptance step verifies its state's invariants. Read this before
+  deploying any stage — notably the **Stage 4 ↔ 5 atomic cut-over** (recurrence
+  must be served by exactly one spawner, never zero or two).
 
 Implementation stages (cold-start work orders in `docs/plans/duties/`):
 
