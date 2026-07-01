@@ -24,7 +24,9 @@ something recur.
 - Plan builders `createDutyPlan` / `updateDutyPlan` / `setDutyStatusPlan` /
   `deleteDutyPlan` land in Stage 4; `DB` needs thin methods wrapping them
   (mirroring `DB.addTask` / `DB.updateTask`).
-- `DB.completeTask` lost its `next` return in Stage 4 — clean up the readers here.
+- `DB.completeTask` lost its `next` return in Stage 4 (its readers in
+  `api.ts`/`mcp.ts` were minimally patched there to keep typecheck green) —
+  finalize the outward response shapes and docs here (Step 5).
 - **Action-log reality check:** today only **MCP** tools write `action_log`
   entries (e.g. `worker/src/mcp.ts:438-449`); **REST** mutations do *not* —
   `worker/src/api.ts:125` just calls `db.addTask` and returns the row. So duty
@@ -67,9 +69,15 @@ Route specs + handlers:
 
 Bodies reference the shared brands (`SeriesRruleSchema`, `IsoDateTimeSchema`,
 `TimezoneSchema`, `DutyStatusSchema`, `CatchUpPolicySchema`) so malformed input is
-a `validation` error at the edge. Add `duty_id` + `occurrence_at` to the task REST
-payloads (read-only, nullable). Route status changes through `setDutyStatusPlan`
-so illegal transitions map to `409`/`invalid_transition`.
+a `validation` error at the edge. **Loose-parse trap:** the wire specs use valibot
+`v.object`, which *strips* unknown keys — so merely omitting
+`rrule`/`dtstart`/`timezone` from `DutyUpdateBody` would silently *ignore* an
+attempted anchor edit, not reject it. To make the promised rejection real,
+explicitly forbid those keys on update (e.g. check the raw body for them before
+parsing, or include them in the schema as always-failing fields) — and do the
+same in the MCP `update_duty` arg parser. Add `duty_id` + `occurrence_at` to the
+task REST payloads (read-only, nullable). Route status changes through
+`setDutyStatusPlan` so illegal transitions map to `409`/`invalid_transition`.
 
 ### 3. MCP tools (`worker/src/mcp.ts`)
 
@@ -121,7 +129,12 @@ be dropped** if the worker starts hard-rejecting.
   - task has **no `duty_id`** (an unattached legacy recurring task) → transparently
     **create/attach a duty** so the user's intent is preserved. This is the one
     place we auto-create a duty — justified because the caller is a legacy client
-    mid-migration, not an explicit API user.
+    mid-migration, not an explicit API user. **Seed it exactly like the Stage 4
+    backfill** (share that helper): `dtstart` = the task's `due_date`, cursor =
+    `due_date` only if it is an occurrence of the anchored rule, else null cursor +
+    `next_occurrence_at = firstOcc` (`04` INV-B). Naive `last_spawned_at = due_date`
+    seeding fails `dutyFromRow` for an off-calendar `due_date` and turns the
+    tolerated write into exactly the durable 4xx this path exists to prevent.
   - task **already has a `duty_id`** (it's a duty instance) → the `recurrence` field
     is a **no-op** (ignore it; do not create a second schedule). Editing an existing
     instance must not spawn a duplicate duty.
@@ -165,7 +178,9 @@ must ship with the backfill. See Stage 4 §5b and `03` State C.
 ### 8. Tests (`worker/test/`)
 
 - REST: create/list/patch/delete duty happy paths; malformed rrule/dtstart/status/
-  timezone → 4xx `validation`; a PATCH attempting `rrule`/`dtstart` → rejected;
+  timezone → 4xx `validation`; a PATCH attempting `rrule`/`dtstart`/`timezone` →
+  **explicitly rejected with a 409/validation error** (assert the response, not
+  just that the anchor didn't change — the loose body parse would silently strip);
   pause→resume→end transitions; resume-ended → 409; delete orphans instances
   (tasks survive with `duty_id` *and* `occurrence_at` nulled).
 - MCP: each tool dispatches and validates; duty mutations write an
@@ -174,7 +189,9 @@ must ship with the backfill. See Stage 4 §5b and `03` State C.
 - Recurrence compat (Step 4): **REST** `add_task` with `recurrence` does **not**
   4xx — it transparently creates a duty (verify the duty exists and the task is its
   instance); an offline pending op carrying `recurrence` flushed against this stage
-  succeeds rather than becoming a durable failure.
+  succeeds rather than becoming a durable failure; an **off-calendar** `due_date`
+  (due Monday under `BYDAY=FR`) still upgrades cleanly (backfill-style seeding —
+  null cursor, `next_occurrence_at = firstOcc`), not a 4xx.
 - Import/export: duty round-trip (Step 6).
 - Regression: `complete_task` on any task returns no `next`.
 

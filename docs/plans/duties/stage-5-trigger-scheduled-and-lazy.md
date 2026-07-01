@@ -63,9 +63,9 @@ export default {
   branded `IsoDateTime`. That's the whole "what time is it" step — no zone.
 - `await db.materializeDueDuties(now)`.
 - **Runtime budget:** cap duties processed per tick (e.g. 200) inside
-  `materializeDueDuties` (ordered by cursor staleness, Stage 4, so the most-overdue
-  are never starved). If the cap is hit, the next tick — or a lazy read — picks up
-  the rest; idempotency makes partial progress safe.
+  `materializeDueDuties` (ordered by `next_occurrence_at` ascending, Stage 4 — the
+  most-overdue first, so nothing is starved). If the cap is hit, the next tick —
+  or a lazy read — picks up the rest; idempotency makes partial progress safe.
 - try/catch + log; a scheduled failure must not throw uncaught.
 
 Add `ScheduledController` / `ExecutionContext` from `@cloudflare/workers-types`.

@@ -15,7 +15,7 @@ each is caught by a parser or a domain codec, the same way `taskFromRow` already
 rejects a deferred done task.
 
 > **Canonical source:** the exact calendar-primitive signatures, the domain
-> invariants (INV-A…K), and the op catalog live in
+> invariants (INV-A…L), and the op catalog live in
 > `04-invariants-and-contracts.md`. Where this doc and `04` disagree, **`04`
 > wins** — treat the copies here as an inventory that must track it.
 
@@ -210,7 +210,7 @@ export type DutyRowPatch = Partial<Omit<DutyRow, 'id' | 'created_at'>>;
 
 // added to Op:
   | { kind: 'duty.insert'; row: DutyRow }
-  | { kind: 'duty.update'; id: DutyId; patch: DutyRowPatch }
+  | { kind: 'duty.update'; id: DutyId; patch: DutyRowPatch; ifStatus?: 'active' }   // ifStatus set only by the materializer (INV-L)
   | { kind: 'duty.update_cursor'; id: DutyId; lastSpawnedAt: IsoDateTime; nextOccurrenceAt: IsoDateTime | null; updatedAt: IsoDateTime }
   | { kind: 'duty.orphan_stale'; id: DutyId; before: IsoDateTime; updatedAt: IsoDateTime }   // detach PENDING instances older than `before` (catch_up:next); excludes the current occurrence
   | { kind: 'duty.orphan_all'; id: DutyId; updatedAt: IsoDateTime }                          // detach ALL instances (any status); used before duty.delete so the FK can't dangle
@@ -360,7 +360,7 @@ carry `null` and every parser must accept `null`.
 |---|---|---|
 | INPUT | `shared/parse/ids.ts` | `DutyId`/`ParsedDutyId`/`MintedDutyId`, `parseDutyId` |
 | INPUT | `shared/parse/enums.ts` | `DUTY_STATUSES`, `CATCH_UP_POLICIES`, parsers, `TOOL_NAMES` += duty tools |
-| INPUT | `shared/parse/recurrence.ts` | `SeriesRrule`, `SeriesRruleParts`, `parseSeriesRrule`, anchor-zone-aware `occurrencesBetween`/`nextOccurrenceAfter`, `isSeriesExhausted` |
+| INPUT | `shared/parse/recurrence.ts` | `SeriesRrule`, `SeriesRruleParts`, `parseSeriesRrule`, anchor-zone-aware `occurrencesBetween`/`nextOccurrenceAfter`/`latestOccurrenceAtOrBefore`, `isSeriesExhausted` |
 | INPUT | `shared/parse/time.ts` | `Timezone` brand — per-duty rule-expansion input **and** PWA display (Phase 1, Decision 4) |
 | DOMAIN | `worker/src/domain/duty.ts` | `DutyTemplate`, `DutySeries` (incl. `timezone`, `nextOccurrenceAt`), `DutyDomain` union, `dutyFromRow` |
 | DOMAIN | `worker/src/domain/Op.ts` | `duty.insert/update/update_cursor/orphan_stale/orphan_all/delete` ops, `duty.exists` precheck, `DutyRow`/`DutyRowPatch` |

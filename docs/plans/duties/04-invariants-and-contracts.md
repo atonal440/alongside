@@ -135,16 +135,28 @@ Stage 4 backfill), removed in Stage 10.
 | Op | Shape | Statement / semantics |
 |---|---|---|
 | `duty.insert` | `{ row }` | INSERT a duty row. |
-| `duty.update` | `{ id, patch }` | UPDATE template fields + `catch_up` (+ `status` via `setDutyStatusPlan`). **Never** `rrule`/`dtstart`/`timezone` (INV-A). |
-| `duty.update_cursor` | `{ id, lastSpawnedAt, nextOccurrenceAt, updatedAt }` | Monotonic: `SET last_spawned_at=:new, next_occurrence_at=:next … WHERE id=:id AND (last_spawned_at IS NULL OR last_spawned_at<:new)`. Stale = no-op (INV-K). |
-| `duty.orphan_stale` | `{ id, before, updatedAt }` | `UPDATE tasks SET duty_id=NULL, occurrence_at=NULL … WHERE duty_id=:id AND status='pending' AND occurrence_at < :before`. `catch_up:next`; excludes current (INV-G). |
-| `duty.orphan_all` | `{ id, updatedAt }` | `UPDATE tasks SET duty_id=NULL, occurrence_at=NULL … WHERE duty_id=:id`. Any status; before `duty.delete` (INV-H). |
+| `duty.update` | `{ id, patch, ifStatus? }` | UPDATE template fields + `catch_up` (+ `status` via `setDutyStatusPlan`). **Never** `rrule`/`dtstart`/`timezone` (INV-A). `ifStatus: 'active'` — set **only** by the materializer's exhaustion→`ended` op — appends `AND status='active'` (INV-L); status-transition plans (`pause`/`resume`/`end_duty`) never set it (resume must apply to a `paused` row). |
+| `duty.update_cursor` | `{ id, lastSpawnedAt, nextOccurrenceAt, updatedAt }` | Monotonic **and status-guarded** (materialize-only op): `SET last_spawned_at=:new, next_occurrence_at=:next … WHERE id=:id AND status='active' AND (last_spawned_at IS NULL OR last_spawned_at<:new)`. Stale or no-longer-active = no-op (INV-K, INV-L). |
+| `duty.orphan_stale` | `{ id, before, updatedAt }` | `UPDATE tasks SET duty_id=NULL, occurrence_at=NULL … WHERE duty_id=:id AND status='pending' AND occurrence_at < :before AND EXISTS (SELECT 1 FROM duties WHERE id=:id AND status='active')`. `catch_up:next`; excludes current (INV-G); materialize-only, so the INV-L status guard is baked in. [Phase 2: also sets `template_node_key=NULL`.] |
+| `duty.orphan_all` | `{ id, updatedAt }` | `UPDATE tasks SET duty_id=NULL, occurrence_at=NULL … WHERE duty_id=:id`. Any status; before `duty.delete` (INV-H). [Phase 2: also sets `template_node_key=NULL`.] |
 | `duty.delete` | `{ id }` | DELETE the duty (after `orphan_all`). |
 | precheck `duty.exists` | `{ id }` | Guarded existence check; `not_found` if missing. |
 
+**INV-L guard mechanism.** The materializer's writes go silently inert when the
+duty is no longer `active` via **SQL predicates on the write statements
+themselves** — *not* via the precheck machinery (`duty.exists`-style guards abort
+the whole batch with an error; INV-L wants "stopped duty ⇒ successful no-op").
+Concretely: `duty.update_cursor` and `duty.orphan_stale` are materialize-only
+ops, so their statements carry the status condition unconditionally (above); the
+materializer's exhaustion transition sets `ifStatus: 'active'` on `duty.update`;
+and a **duty-instance `task.insert`** (row with non-null `duty_id`) is emitted as
+`INSERT INTO tasks (…) SELECT … WHERE EXISTS (SELECT 1 FROM duties WHERE
+id=:duty_id AND status='active')` — the same `apply` special case that already
+treats its unique-index conflict as benign (INV-K layer 3).
+
 Non-duty ops that duties force a change to: **`project.delete`** also nulls
 `duties.project_id` (INV-H); **`wipe`** also deletes `duties` in FK order:
-`task_links → action_log → tasks → duties → projects → preferences`.
+`task_links → action_log → tasks → duties → projects → user_preferences`.
 
 ## 6. Operations × invariants matrix
 
@@ -168,7 +180,7 @@ one of these cells — e.g. `end_duty`×INV-D, materialize-`next`×INV-G.)
 | backfill (Stage 4) | INV-B (cursor = `due_date` only if it is an occurrence, else `null` + `next_occurrence_at=firstOcc`); INV-F (paired with retiring completion-spawn); validate each row via `dutyFromRow`. |
 | `project.delete` | INV-H (null `duties.project_id` **and** `tasks.project_id`). |
 | import `wipe`/restore | INV-H (delete `duties` in FK order; restore projects→duties→tasks); INV-E (round-trip `duty_id`/`occurrence_at`). **Ships with the Stage 4/5 cut-over, not Stage 6** — duties exist from the backfill, so export/wipe must handle them from that moment (`03` State C). |
-| task write w/ `recurrence` | INV-F + `03` I4(b): MCP rejects; REST tolerates through the transition — but **only auto-creates a duty when `duty_id` is null** (unattached legacy task). If the task already has a `duty_id`, the `recurrence` field is **ignored (no-op)**, or a second schedule is created for the same task. |
+| task write w/ `recurrence` | INV-F + `03` I4(b): MCP rejects; REST tolerates through the transition — but **only auto-creates a duty when `duty_id` is null** (unattached legacy task). If the task already has a `duty_id`, the `recurrence` field is **ignored (no-op)**, or a second schedule is created for the same task. The auto-created duty is seeded **exactly like the Stage 4 backfill** (INV-B: cursor = `due_date` only if it is an occurrence, else null cursor + `next_occurrence_at=firstOcc`) — share that helper, or an off-calendar `due_date` fails `dutyFromRow` and turns the tolerated write into the durable 4xx this path exists to prevent. |
 
 ## 7. How to keep this canonical
 

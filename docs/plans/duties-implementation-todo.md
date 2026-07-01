@@ -52,7 +52,7 @@ orders must never drift from each other or from the code.
   the partially-migrated coexistence windows. **Each stage's acceptance step
   verifies its state's invariants**; note the Stage 4 ↔ 5 atomic cut-over.
 - [ ] `duties/04-invariants-and-contracts.md` — **canonical source of truth**:
-  schema of record, domain invariants (INV-A…K), calendar signatures, op catalog,
+  schema of record, domain invariants (INV-A…L), calendar signatures, op catalog,
   and the operations × invariants matrix. `04` wins over any stage doc; run the
   matrix (§6) when adding/changing a mutation. Update `04` **first**, then reconcile
   stage docs — this is the anti-drift discipline.
@@ -113,7 +113,9 @@ orders must never drift from each other or from the code.
 - [ ] `materializeDueDuties` driver: gate on `next_occurrence_at <= now`, order by
   it, isolate per-duty failures.
 - [ ] **Duty backfill** (validated through `dutyFromRow`; transactional abort),
-  then retire `completeTaskPlan` spawn + fix `DB.completeTask` shape.
+  then retire `completeTaskPlan` spawn + fix `DB.completeTask` shape (and patch
+  its `api.ts`/`mcp.ts` readers in the same stage so typecheck stays green —
+  `mcp.ts:459` reads `result.next`).
 - [ ] **Export/import + `wipe`** (moved here from Stage 6 — duties exist from the
   backfill): add `duties` to payload/import schema, wipe in FK order, restore
   projects→duties→tasks (`03` State C).
@@ -136,7 +138,9 @@ orders must never drift from each other or from the code.
 ### Stage 6 — REST + MCP (`stage-6-rest-and-mcp.md`)
 - [ ] DB duty methods.
 - [ ] REST `/api/duties*` returning **raw rows** (not envelopes) + duty fields on
-  task payloads; PATCH rejects `rrule`/`dtstart` (immutable).
+  task payloads; PATCH rejects `rrule`/`dtstart`/`timezone` **explicitly** (the
+  loose `v.object` parse strips unknown keys — forbid them, don't rely on
+  omission).
 - [ ] MCP `create_duty`/`list_duties`/`update_duty`/`pause_duty`/`resume_duty`/
   `end_duty`/`delete_duty` (+ `timezone` arg; delete orphans).
 - [ ] Action-log is **new** on REST (MCP-only today); wire `action_log.duty_id`.
@@ -144,7 +148,8 @@ orders must never drift from each other or from the code.
   `ensureDutiesFresh` gate (Stage 5) so a due-but-unspawned duty is materialized
   before listing.
 - [ ] REST recurrence tolerance is **idempotent on `duty_id`**: auto-create a duty
-  only for unattached legacy tasks; no-op if `duty_id` already set (no double
+  only for unattached legacy tasks (seeded via the shared Stage 4 backfill helper —
+  INV-B-safe for off-calendar due dates); no-op if `duty_id` already set (no double
   schedule). Export/import moved to Stage 4.
 - [ ] Deprecate `recurrence` on task writes: **MCP** rejects (→ create_duty);
   **REST** tolerates through the transition (transparent task→duty upgrade so the
@@ -213,6 +218,24 @@ regression → monotonic `duty.update_cursor`; cheap-gate → `next_occurrence_a
 moved to Stage 4 (after domain validation exists); `dtstart` immutable;
 `catch_up: next` orphan semantics; anchor zone pulled into Phase 1;
 `occurrence_at`/`duty_id` paired invariant.
+
+## Resolved by the consistency review (2026-07-01)
+
+A full-pass consistency review of all 17 docs, verified against the code:
+INV-L's guard mechanism made concrete and reconciled into the `04` §5 op catalog
+(status predicates on `duty.update_cursor`/`duty.orphan_stale`, an
+`ifStatus: 'active'` field on `duty.update` for the exhaustion transition, and
+`INSERT…SELECT WHERE EXISTS(active)` for duty-instance inserts — silent no-op, not
+the batch-aborting precheck); stale "INV-A…K" references updated to INV-A…L;
+Stage 2's goal no longer contradicts its own anchor-zone content; Stage 4 now
+patches `DB.completeTask`'s readers in-stage (typecheck would fail otherwise —
+`mcp.ts:459` reads `result.next`); Stage 6's anchor-edit rejection must be
+explicit (loose `v.object` strips unknown keys) and its recurrence→duty upgrade
+reuses the backfill seeding helper (off-calendar `due_date` would otherwise 4xx);
+`03` I6 promoted to the cross-cutting list and State D's PWA-parser question
+resolved as verified fact (non-strict parsers; Stages 6/7 separable); wipe order
+names `user_preferences`; Stage 5/00 ordering language aligned to
+`next_occurrence_at` ascending; Stage 7 notes the duty-row LWW churn wrinkle.
 
 ## Notes / deviations
 

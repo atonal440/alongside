@@ -44,6 +44,11 @@ suggestion.
 - **I5 — The backfill is atomic and idempotent; a half-migrated table is never a
   resting state.** `tasks` is never left with some recurring rows carrying a
   `duty_id` and others not. The backfill either completes or rolls back (Stage 4).
+- **I6 — Whole-DB paths learn a new table in the same deploy that first populates
+  it.** Any path that operates on the whole database (export, import, wipe, bulk
+  delete) is taught about `duties` in the deploy that creates duty rows — the
+  Stage 4/5 cut-over — never in a later surface stage. (Generalized from the
+  State C export/import finding below.)
 
 ## The rollout timeline, state by state
 
@@ -107,9 +112,13 @@ Checks after the cut-over:
 
 ### State D checks (after Stage 6)
 - I4(a): the pre-Stage-7 PWA does not choke on `duty_id`/`occurrence_at` on tasks or
-  on any new endpoint's shape. If the PWA response parser is strict about unknown
-  keys, either it must be widened here or Stages 6 and 7 deploy together. State the
-  choice; don't leave it implicit.
+  on any new endpoint's shape. **Verified against the code:** the PWA's response and
+  IDB parsers use non-strict valibot `v.object` (`shared/wire/rows.ts`,
+  `pwa/src/api/endpoints.ts`), which silently drops unknown keys — so the pre-Stage-7
+  PWA tolerates the new task fields (they're stripped locally until Stage 7 adds
+  them; harmless, since the PWA pushes patches via pending ops, never whole rows
+  back). Stages 6 and 7 therefore need not deploy together. If a future refactor
+  switches these parsers to `v.strictObject`, this invariant must be re-checked.
 - I4(b): **REST task writes still accept `recurrence`** — the pre-Stage-8 PWA sends
   it, and offline pending ops carrying it must still flush. Stage 6 tolerates it
   (transparently upgrading to a duty); only MCP `add_task`/`update_task` reject it

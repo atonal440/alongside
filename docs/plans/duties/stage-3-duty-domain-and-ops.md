@@ -3,7 +3,7 @@
 Part of `docs/plans/duties.md`. Prerequisites: Stage 1 (schema), Stage 2
 (series recurrence). Read `01-type-system.md`'s DOMAIN layer first.
 
-> **Canonical invariants & ops:** `04-invariants-and-contracts.md` §3 (INV-A…K) and
+> **Canonical invariants & ops:** `04-invariants-and-contracts.md` §3 (INV-A…L) and
 > §5 (op catalog) are authoritative for the `dutyFromRow` invariants and the
 > `duty.*` op semantics this stage implements — if this doc drifts, `04` wins.
 
@@ -100,7 +100,10 @@ export type DutyRowPatch = Partial<Omit<DutyRow, 'id' | 'created_at'>>;
 Add to `Op`: `duty.insert` / `duty.update` / `duty.update_cursor` /
 `duty.orphan_stale` / `duty.orphan_all` / `duty.delete`. Add to `PreCheck`:
 `duty.exists`. Ensure `Duty` is re-exported from `shared/types.ts` alongside
-`Task`/`Project`/`TaskLink`. Three ops need a dedicated form (not a generic
+`Task`/`Project`/`TaskLink`. `duty.update` carries an optional
+`ifStatus?: 'active'` field — set **only** by the materializer's exhaustion
+transition (Stage 4, `04` INV-L); status-transition plans never set it. Three ops
+need a dedicated form (not a generic
 patch), each so it's **one bulk statement** regardless of row count:
 `duty.update_cursor` (monotonic cursor advance); `duty.orphan_stale { id, before }`
 (the `catch_up: next` orphan — pending instances *older than* the current
@@ -112,27 +115,33 @@ any status).
 - `DUTY_INSERT_COLUMNS` and `DUTY_UPDATE_COLUMNS` arrays mirroring the task ones.
 - `case 'duty.insert' | 'duty.update' | 'duty.delete'`: build the
   `INSERT` / `UPDATE … WHERE id = ?` / `DELETE` statements the same way tasks do.
-- `case 'duty.update_cursor'`: emit **monotonic** compare-and-set SQL so a stale
-  driver cannot regress the cursor (`00` §4):
+  When `duty.update` carries `ifStatus: 'active'`, append `AND status = 'active'`
+  to the UPDATE's WHERE clause (INV-L; a no-op is success).
+- `case 'duty.update_cursor'`: emit **monotonic**, **status-guarded**
+  compare-and-set SQL so a stale driver cannot regress the cursor (`00` §4) and a
+  plan applying after a pause/end cannot write onto a stopped duty (`04` INV-L):
   ```sql
   UPDATE duties
      SET last_spawned_at = :new,
          next_occurrence_at = :next,
          updated_at = :updatedAt
    WHERE id = :id
+     AND status = 'active'
      AND (last_spawned_at IS NULL OR last_spawned_at < :new);
   ```
-  A no-op update (a slower driver whose `:new` is ≤ the stored cursor) is success,
-  not an error — the faster driver already advanced it.
+  A no-op update (a slower driver whose `:new` is ≤ the stored cursor, or a duty
+  paused/ended since the plan was built) is success, not an error.
 - `case 'duty.orphan_stale'`: one bulk statement — detach the duty's *stale open*
   instances (pending **and** older than the occurrence being materialized). The
   `occurrence_at < :before` bound is essential: it **excludes the current
   occurrence**, so a stale replay that runs after another driver already inserted
-  the current instance cannot detach it (`00` §3). Idempotent — a second run
+  the current instance cannot detach it (`00` §3). Materialize-only op, so the
+  INV-L status guard is baked in via the `EXISTS`. Idempotent — a second run
   matches nothing.
   ```sql
   UPDATE tasks SET duty_id = NULL, occurrence_at = NULL, updated_at = :updatedAt
-   WHERE duty_id = :id AND status = 'pending' AND occurrence_at < :before;
+   WHERE duty_id = :id AND status = 'pending' AND occurrence_at < :before
+     AND EXISTS (SELECT 1 FROM duties WHERE id = :id AND status = 'active');
   ```
 - `case 'duty.orphan_all'`: one bulk statement — detach **every** instance of the
   duty (any status), used before `duty.delete` so no `tasks.duty_id` FK dangles.
@@ -167,6 +176,9 @@ any status).
 - `apply`: a `Plan` of `duty.insert` then `duty.update` commits both;
   `duty.update_cursor` advances forward but a **stale** `duty.update_cursor`
   (`:new` ≤ stored) is a no-op (monotonic — the cursor never regresses);
+  `duty.update_cursor` and `duty.orphan_stale` against a **paused/ended** duty are
+  no-ops (INV-L status guard); `duty.update` with `ifStatus: 'active'` skips a
+  non-active row while a plain `duty.update` (e.g. resume) still applies;
   `duty.exists` precheck fails a plan whose duty is missing (`not_found`);
   `duty.delete` removes the row.
 - Brand parsers: `parseDutyId` accepts `d_ab3k9`, rejects `t_...` and `d_` too

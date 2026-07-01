@@ -11,11 +11,14 @@ section, and `02-timestamp-model.md` first.
 ## Goal
 
 Add a finite, **time-capable** `SeriesRrule` profile to
-`shared/parse/recurrence.ts` and the two instant-based calendar primitives the
-materializer needs — `occurrencesBetween` and `isSeriesExhausted`. Everything
-works in UTC instants (Decision 4); there is **no** `today` resolver and **no**
-timezone in this module. Pure functions only. This is the calendar math the whole
-engine stands on, so it gets the heaviest test coverage of any stage.
+`shared/parse/recurrence.ts` and the four instant-based calendar primitives the
+engine needs — `occurrencesBetween`, `nextOccurrenceAfter`,
+`latestOccurrenceAtOrBefore`, and `isSeriesExhausted` — all **anchor-zone-aware**
+(each takes the duty's `timezone`; null ⇒ UTC expansion). Inputs and outputs are
+UTC instants (Decision 4); there is **no** `today` resolver and **no** *global*
+timezone — the only zone in this module is the per-duty anchor-zone parameter
+consumed during rule expansion. Pure functions only. This is the calendar math
+the whole engine stands on, so it gets the heaviest test coverage of any stage.
 
 ## Context for a cold start
 

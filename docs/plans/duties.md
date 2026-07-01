@@ -311,7 +311,7 @@ Foundational analysis (read first):
   deploying any stage — notably the **Stage 4 ↔ 5 atomic cut-over** (recurrence
   must be served by exactly one spawner, never zero or two).
 - `duties/04-invariants-and-contracts.md` — **the single source of truth** for the
-  schema of record, domain invariants (INV-A…K), calendar-primitive signatures,
+  schema of record, domain invariants (INV-A…L), calendar-primitive signatures,
   the duty op catalog, and the **operations × invariants matrix**. Where a stage
   doc disagrees with `04`, `04` wins. Stage docs are the how-to; `04` is the
   contract. Consult §6 (the matrix) when adding or changing any mutation.
@@ -321,7 +321,7 @@ Implementation stages (cold-start work orders in `docs/plans/duties/`):
 | Stage | File | Scope |
 |---|---|---|
 | 1 | `stage-1-schema-and-migration.md` | **Part A:** app-wide minute-resolution-UTC unification (`due_date`→datetime, retire `IsoDate`, migrate). **Part B:** `duties` table (incl. `timezone`, `next_occurrence_at`), `tasks.duty_id`/`occurrence_at`, `action_log.duty_id`, unique index, hand-written SQL migration, `schema.sql`. **No duty backfill here** (moved to Stage 4). |
-| 2 | `stage-2-series-recurrence.md` | Extend `shared/parse/recurrence.ts`: finite, time-capable `SeriesRrule` (COUNT/UNTIL); `dtstart`-anchored, **anchor-zone-aware** `occurrencesBetween`/`nextOccurrenceAfter` over instants; `isSeriesExhausted`. *Adds* the series profile; legacy date-only profile removal is deferred to Stage 10. |
+| 2 | `stage-2-series-recurrence.md` | Extend `shared/parse/recurrence.ts`: finite, time-capable `SeriesRrule` (COUNT/UNTIL); `dtstart`-anchored, **anchor-zone-aware** `occurrencesBetween`/`nextOccurrenceAfter`/`latestOccurrenceAtOrBefore` over instants; `isSeriesExhausted`. *Adds* the series profile; legacy date-only profile removal is deferred to Stage 10. |
 | 3 | `stage-3-duty-domain-and-ops.md` | `DutyId`/`DutyStatus`/`CatchUpPolicy`/`Timezone` brands; `worker/src/domain/duty.ts` `DutyDomain`; `duty.*` `Op` variants + `duty.exists` precheck; monotonic-cursor `apply.ts` execution. |
 | 4 | `stage-4-spawn-and-materialize.md` | `materializeDutyPlan` (catch-up, orphan-on-`next`, `next_occurrence_at` maintenance, per-run cap, live-status guard, exhaustion → `ended`); monotonic cursor; **duty backfill** (validated); **export/import + wipe** (moved here — duties exist from the backfill); retire `completeTaskPlan`'s spawn branch. |
 | 5 | `stage-5-trigger-scheduled-and-lazy.md` | `wrangler.toml` cron, `scheduled()` handler, runtime budget, lazy-on-read hook in list/sync endpoints. |

@@ -5,7 +5,7 @@ Part of `docs/plans/duties.md`. Prerequisites: Stages 1–3. Read
 algorithm, including the revised idempotency (three layers) and `catch_up: next`
 (orphan) rules.
 
-> **Canonical invariants & matrix:** `04-invariants-and-contracts.md` §3 (INV-A…K)
+> **Canonical invariants & matrix:** `04-invariants-and-contracts.md` §3 (INV-A…L)
 > and §6 (operations × invariants) are authoritative — the materializer must
 > satisfy every ✓ cell for `create_duty` and the three `materialize` rows. If this
 > doc disagrees with `04`, `04` wins.
@@ -109,11 +109,19 @@ Algorithm (from `00` §2–§4):
 `pause_duty`/`end_duty` can commit between the moment this plan was built (against
 an `active` row) and the moment it applies. A stale plan would then spawn an
 instance for a stopped duty, and its `duty.update_cursor` could write a non-null
-`next_occurrence_at` onto an `ended` row (violating INV-D). So the materialize
-batch's writes must be **conditional on `status='active'`** at apply time — the
-`task.insert(instance)` and `duty.update_cursor` only take effect if the row is
-still active (a status-guarded batch, atomic with the writes), not merely
-existence-checked. A no-op under this guard is success (the duty was stopped).
+`next_occurrence_at` onto an `ended` row (violating INV-D). So **every write the
+materializer emits** — the instance `task.insert`, `duty.orphan_stale`,
+`duty.update_cursor`, and the exhaustion/ended `duty.update` — must be
+**conditional on `status='active'`** at apply time, via predicates on the write
+statements themselves (silent no-op = success; the batch-aborting precheck trick
+is the wrong semantics here). Mechanism per op (`04` §5): `duty.update_cursor`
+and `duty.orphan_stale` carry the status condition unconditionally (Stage 3
+executor); the exhaustion `duty.update` ops in Steps 2 and 5 set
+`ifStatus: 'active'`; and the duty-instance `task.insert` is emitted as
+`INSERT INTO tasks (…) SELECT … WHERE EXISTS (SELECT 1 FROM duties WHERE
+id = :duty_id AND status = 'active')` — extend the same `apply` special case that
+Step 3 adds for the benign unique-conflict (both key off the row's non-null
+`duty_id`). A no-op under this guard is success (the duty was stopped).
 
 Clock-free: everything from `ctx`. For `next`, `newCursor` is the true latest due
 occurrence — so a duty 200 days behind spawns *today's* task and jumps the cursor
@@ -193,8 +201,8 @@ import wipe FK-fails or leaves stale/colliding duty rows (`03` State C). Extend
 - Add `duties: v.array(DutyRowSchema)` to `ExportPayload` and `ImportV1Schema`;
   include duties in `exportAll`. (`DutyRowSchema` exists from Stage 3.)
 - **Extend the `wipe` op to delete `duties`**, in FK order: `task_links →
-  action_log → tasks → duties → projects → preferences` (duties after the tables
-  that reference them, before the projects they reference).
+  action_log → tasks → duties → projects → user_preferences` (duties after the
+  tables that reference them, before the projects they reference).
 - **Restore order** in `planImport`: `projects → duties → tasks → …` (duties before
   tasks since `tasks.duty_id`→duties; after projects since `duties.project_id`→
   projects); validate each duty via `dutyFromRow`; keep the pre-wipe integrity check.
@@ -209,8 +217,12 @@ import wipe FK-fails or leaves stale/colliding duty rows (`03` State C). Extend
   only marks the task done. Remove the `nextTaskId` input and `nextOccurrence`
   import there.
 - `DB.completeTask` (`db.ts:286`): drop the `nextTaskId` argument (`db.ts:296`) and
-  the `next` return plumbing (`db.ts:304-311`); return `{ completed: Task }`. Note
-  the shape change for Stage 6 to clean up callers in `api.ts`/`mcp.ts`.
+  the `next` return plumbing (`db.ts:304-311`); return `{ completed: Task }`.
+  **Update the existing readers in this same stage or the worker won't typecheck:**
+  the MCP `complete_task` handler reads `result.next` (`worker/src/mcp.ts:459`) and
+  the REST complete handler passes the result through — strip their `next` usage
+  now (minimal mechanical change), and leave the outward response-shape/docs
+  cleanup to Stage 6 §5.
 - Test: completing a backfilled instance spawns nothing (the duty materializer
   does, by date).
 
@@ -276,6 +288,9 @@ import wipe FK-fails or leaves stale/colliding duty rows (`03` State C). Extend
 - Idempotency: apply the same plan twice → one instance, cursor unchanged (no
   regression); a stale-cursor plan is a monotonic no-op; an active not-yet-due
   duty keeps a populated `next_occurrence_at` (never nulled while merely not due).
+- INV-L: a materialize plan built against an `active` duty, applied **after** the
+  duty was paused/ended, is a complete no-op — no instance inserted, no cursor or
+  `next_occurrence_at` write, no orphaning, no status write.
 - Carry-forward: a completed prior instance's `session_log` → new
   instance's `kickoff_note`.
 - Backfill: mixed recurring/plain tasks → validated duties; a duty row that would

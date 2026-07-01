@@ -62,6 +62,13 @@ the master's Pillar 6: the PWA renders duties and their spawned instances but
 
 - Add duties to the full-sync pull: fetch `/api/duties`, parse each row, merge
   last-write-wins on `updated_at` into the `duties` store, dispatch to state.
+  Note one duty-specific wrinkle: unlike tasks, duty rows are rewritten
+  server-side **without user action** (every spawn advances the cursor and bumps
+  `updated_at`), so a queued-but-unflushed local duty edit will lose the LWW merge
+  far more often than a task edit would. That is still eventually consistent —
+  the pending op flushes and re-applies the patch server-side — but preserve the
+  existing flush-pending-ops-before-pull ordering so the window is one cycle, and
+  don't "fix" a transient UI revert by weakening LWW.
 - **Crucial:** the pull is also what surfaces server-spawned instances. Because
   the worker's list/sync endpoints run lazy materialize (Stage 5), a pull after
   a due date already returns the new task instances — the PWA just stores them

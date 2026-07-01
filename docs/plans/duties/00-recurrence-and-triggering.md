@@ -90,8 +90,11 @@ and its companion:
 
 ```ts
 // True when the rule is finite and has no occurrence strictly after `after`.
-isSeriesExhausted(parts: SeriesRruleParts, dtstart: IsoDateTime, after: IsoDateTime): boolean
+isSeriesExhausted(parts: SeriesRruleParts, dtstart: IsoDateTime, after: IsoDateTime | null): boolean
 ```
+
+(These sketches omit the per-duty `timezone` and `limit` parameters for
+readability — the canonical, anchor-zone-aware signatures are `04` §4.)
 
 `nextOccurrence` (the old strictly-after-one primitive) stays for the legacy
 migration path but is no longer the engine.
@@ -272,7 +275,7 @@ the cron is delayed or misconfigured. Because both call the *same* idempotent
 finds the cursor already advanced and does nothing. This is only safe *because*
 of §4; the idempotency work is what makes "both" free.
 
-### The two rejected options
+### The rejected options
 
 - **Cron only.** Gives app-closed spawning but reintroduces visible lag and makes
   the UI's freshness depend on cron frequency — pushing you toward an
@@ -341,6 +344,6 @@ rule (§3) keeps exactly one *current* instance (older opens are detached).
 
 - Exact open-instance signature the `next` orphan rule passes into
   `materializeDutyPlan` → Stage 4.
-- Whether the scheduled handler processes duties in id order or cursor-staleness
-  order under the per-tick cap → Stage 5 (staleness order, so the most-overdue
-  duties can't be starved).
+- Whether the scheduled handler processes duties in id order or overdue order
+  under the per-tick cap → Stage 5 (`next_occurrence_at` ascending — most-overdue
+  first, so nothing is starved).
