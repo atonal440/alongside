@@ -75,6 +75,8 @@ Return `{ rrule: SeriesRrule; parts: SeriesRruleParts }`; add `SeriesRruleSchema
 export function occurrencesBetween(
   parts: SeriesRruleParts, dtstart: IsoDateTime, timezone: Timezone | null,
   after: IsoDateTime | null, through: IsoDateTime,
+  limit?: number,   // stop after `limit` results; callers pass maxPerRun (Stage 4) so a
+                    // far-behind high-frequency rule can't hit the runaway cap and throw
 ): IsoDateTime[]
 
 export function nextOccurrenceAfter(
@@ -102,8 +104,11 @@ export function latestOccurrenceAtOrBefore(
   match behavior; do not add custom handling (master Out of Scope).
 - Enumerate occurrences `> after` (or `>= dtstart` when `after === null`) and
   `<= through`. Respect the rule's own `COUNT`/`UNTIL` so a finite rule stops.
-- Return `IsoDateTime[]`, ascending. Hard-cap length (e.g. 10 000) as a runaway
-  guard; throw/log on cap hit. `nextOccurrenceAfter` (rule `.after`) maintains
+- Return `IsoDateTime[]`, ascending. Stop at `limit` when given (callers pass
+  `maxPerRun`), else hard-cap length (e.g. 10 000) as a runaway guard and throw/log
+  on cap hit. The `limit` matters: a far-behind high-frequency `all` duty must be
+  bounded by `maxPerRun` *before* enumeration so it never trips the runaway cap.
+  `nextOccurrenceAfter` (rule `.after`) maintains
   `next_occurrence_at`; `latestOccurrenceAtOrBefore` (rule `.before(instant,
   inclusive=true)`) gives the newest due occurrence without enumerating — used by
   `catch_up: 'next'` so it jumps straight to the current occurrence even when the
@@ -144,7 +149,11 @@ takes a plain UTC `now` (Stage 5) and passes each duty's own `timezone` into
 - `parseSeriesRrule`: accepts `FREQ=DAILY;COUNT=30`,
   `FREQ=WEEKLY;UNTIL=…Z`, a time-of-day rule (`FREQ=DAILY` from a datetime
   `DTSTART` at 09:00Z), and all the infinite forms; rejects `COUNT=0`,
-  `COUNT=99999`, `COUNT`+`UNTIL` together, and an empty series.
+  `COUNT=99999`, and `COUNT`+`UNTIL` together. It does **not** test "empty series"
+  — that check is anchor-dependent and lives in `createDutyPlan` (04 INV-I / Stage
+  4), so the empty-series rejection is tested there, not here.
+- `occurrencesBetween` with `limit`: a far-behind high-frequency rule returns
+  exactly `limit` results and does **not** throw on the runaway cap.
 - `occurrencesBetween`: table-driven over the Step 2 edge cases; a monthly
   `BYDAY=3FR` proving the anchor is fixed (spawn instants don't drift with
   `after`); a sub-day rule; the runaway cap.

@@ -96,6 +96,14 @@ Checks after the cut-over:
   `duty_id`/`occurrence_at` — so **I4 already applies here** if the worker includes
   those fields in task payloads. Ensure the PWA task parser accepts them by now
   (this is why the PWA due-date sweep is in Stage 1 Part A, not deferred).
+- **Whole-DB data paths already know about duties.** Because duties exist from the
+  backfill (Stage 4), **export/import must handle them from State C** — not Stage 6.
+  A backup taken here must not drop schedules; an import/wipe here must not FK-fail
+  or leave stale duty rows. This is why the export/import + `wipe` extension moved
+  into Stage 4's cut-over (Stage 4 §5b). *Generalize the lesson (I6):* any path that
+  operates on the **whole database** (export, import, wipe, bulk delete) must be
+  taught about a new table in the **same** deploy that first populates it, not in a
+  later surface stage.
 
 ### State D checks (after Stage 6)
 - I4(a): the pre-Stage-7 PWA does not choke on `duty_id`/`occurrence_at` on tasks or

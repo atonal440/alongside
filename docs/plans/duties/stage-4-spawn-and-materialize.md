@@ -92,15 +92,28 @@ Algorithm (from `00` §2–§4):
      replay's orphan then matches nothing new and its insert hits the unique index
      → benign no-op. `newCursor = latest`. Bounded ~3 statements however far behind.
    - **`all`** → `missed = occurrencesBetween(parts, dtstart, timezone, cursor,
-     now)` **capped to the first `ctx.maxPerRun`** occurrences (keeps the plan under
-     `apply`'s batch limit); one `task.insert` per occurrence. `newCursor =` the
-     last spawned occurrence. If `missed` was truncated, the remainder is picked up
-     next run (safe — the cursor only advances past what we spawned).
+     now, /*limit*/ ctx.maxPerRun)` — **pass `maxPerRun` as the expansion limit**,
+     don't expand-all-then-slice. A minutely duty months behind has millions of
+     occurrences; `occurrencesBetween` would hit its ~10 000 runaway cap and
+     throw/log, failing *every* materialization even though we only want 50. With
+     the limit it stops at `maxPerRun`. One `task.insert` per returned occurrence;
+     `newCursor =` the last spawned; the remainder is picked up next run (safe —
+     the cursor only advances past what we spawned).
 4. `nextOcc = nextOccurrenceAfter(parts, dtstart, timezone, newCursor)`.
 5. `ops += duty.update_cursor { id, lastSpawnedAt: newCursor, nextOccurrenceAt:
    nextOcc, updatedAt: now }` (monotonic — `00` §4). If `nextOcc === null`, also
    emit `duty.update { status: 'ended' }`.
 6. `ok({ ops, assertions: [duty.exists(duty.id)] })`.
+
+**Guard the plan on live status (INV-L).** `duty.exists` is *not* sufficient: a
+`pause_duty`/`end_duty` can commit between the moment this plan was built (against
+an `active` row) and the moment it applies. A stale plan would then spawn an
+instance for a stopped duty, and its `duty.update_cursor` could write a non-null
+`next_occurrence_at` onto an `ended` row (violating INV-D). So the materialize
+batch's writes must be **conditional on `status='active'`** at apply time — the
+`task.insert(instance)` and `duty.update_cursor` only take effect if the row is
+still active (a status-guarded batch, atomic with the writes), not merely
+existence-checked. A no-op under this guard is success (the duty was stopped).
 
 Clock-free: everything from `ctx`. For `next`, `newCursor` is the true latest due
 occurrence — so a duty 200 days behind spawns *today's* task and jumps the cursor
@@ -168,6 +181,27 @@ upgrade for a perfectly valid legacy row. So:
 row fails.** With the cursor seeded as above, no valid legacy row aborts. Set the
 task's `duty_id`/`occurrence_at`. Idempotent (skip tasks that already have a
 `duty_id`). Run it before Step 6.
+
+### 5b. Export / import + wipe (moved here from Stage 6)
+
+Because the backfill above creates active duties, the export/import pipeline must
+handle duties **from this stage** — not Stage 6. Otherwise, in the State-C window
+after the cut-over, a backup export silently drops every recurring schedule and an
+import wipe FK-fails or leaves stale/colliding duty rows (`03` State C). Extend
+(`worker/src/db.ts` `exportAll`, `worker/src/wire/importPayload.ts`):
+
+- Add `duties: v.array(DutyRowSchema)` to `ExportPayload` and `ImportV1Schema`;
+  include duties in `exportAll`. (`DutyRowSchema` exists from Stage 3.)
+- **Extend the `wipe` op to delete `duties`**, in FK order: `task_links →
+  action_log → tasks → duties → projects → preferences` (duties after the tables
+  that reference them, before the projects they reference).
+- **Restore order** in `planImport`: `projects → duties → tasks → …` (duties before
+  tasks since `tasks.duty_id`→duties; after projects since `duties.project_id`→
+  projects); validate each duty via `dutyFromRow`; keep the pre-wipe integrity check.
+- A legacy (duty-less) v1 payload imports as "no duties," which is correct.
+- Tests: round-trip preserves duties + instances' `duty_id`/`occurrence_at`; import
+  **over a DB that already has duties** wipes them (no FK failure, no id collision);
+  a legacy payload still imports.
 
 ### 6. Retire completion-driven spawn
 

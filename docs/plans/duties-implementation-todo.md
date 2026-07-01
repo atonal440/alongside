@@ -106,12 +106,17 @@ orders must never drift from each other or from the code.
 ### Stage 4 — Spawn / materialize engine + backfill (`stage-4-spawn-and-materialize.md`)
 - [ ] `instanceFromTemplate` + kickoff carry-forward.
 - [ ] `materializeDutyPlan` (catch-up `all`/`next`-with-orphan, `next_occurrence_at`
-  maintenance, `maxPerRun` cap, exhaustion→ended, `COUNT=1` not-premature).
+  maintenance, `maxPerRun` **passed as `occurrencesBetween` limit**, exhaustion→
+  ended, `COUNT=1` not-premature, **live-status guard INV-L** — no spawn/cursor
+  write if paused/ended between plan-build and apply).
 - [ ] Unique-index benign-conflict no-op in `apply` (idempotency layer 3).
 - [ ] `materializeDueDuties` driver: gate on `next_occurrence_at <= now`, order by
   it, isolate per-duty failures.
 - [ ] **Duty backfill** (validated through `dutyFromRow`; transactional abort),
   then retire `completeTaskPlan` spawn + fix `DB.completeTask` shape.
+- [ ] **Export/import + `wipe`** (moved here from Stage 6 — duties exist from the
+  backfill): add `duties` to payload/import schema, wipe in FK order, restore
+  projects→duties→tasks (`03` State C).
 - [ ] `createDutyPlan(now)` / `updateDutyPlan` (no rrule/dtstart) /
   `setDutyStatusPlan` / `deleteDutyPlan` (orphan both).
 - [ ] Tests: engine matrix, orphan-on-next, cursor no-regression, `COUNT=1`,
@@ -135,8 +140,12 @@ orders must never drift from each other or from the code.
 - [ ] MCP `create_duty`/`list_duties`/`update_duty`/`pause_duty`/`resume_duty`/
   `end_duty`/`delete_duty` (+ `timezone` arg; delete orphans).
 - [ ] Action-log is **new** on REST (MCP-only today); wire `action_log.duty_id`.
-- [ ] **Export/import**: add `duties` to payload + import schema; insert duties
-  before tasks; validate.
+- [ ] Duty-list endpoints (`GET /api/duties`, `list_duties`) run the
+  `ensureDutiesFresh` gate (Stage 5) so a due-but-unspawned duty is materialized
+  before listing.
+- [ ] REST recurrence tolerance is **idempotent on `duty_id`**: auto-create a duty
+  only for unattached legacy tasks; no-op if `duty_id` already set (no double
+  schedule). Export/import moved to Stage 4.
 - [ ] Deprecate `recurrence` on task writes: **MCP** rejects (→ create_duty);
   **REST** tolerates through the transition (transparent task→duty upgrade so the
   in-flight PWA + offline ops don't 4xx). Hard REST reject moves to Stage 10.

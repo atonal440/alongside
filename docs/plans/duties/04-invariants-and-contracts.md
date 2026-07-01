@@ -99,6 +99,14 @@ The authoritative statements `dutyFromRow` and the planners enforce:
   → no duplicate instances; (2) monotonic `last_spawned_at` (`duty.update_cursor`
   compare-and-set) → no cursor regression; (3) `next_occurrence_at` gate + benign
   unique-conflict handling → a late/duplicate run is a no-op. See `00` §4.
+- **INV-L — Materialize is guarded on live status.** A materialize plan built while
+  a duty was `active` must **no-op if the duty is no longer `active`** by the time
+  it applies (a `pause_duty`/`end_duty` committed in between). `duty.exists` is not
+  enough — it still passes for a paused/ended row, so a stale plan would spawn after
+  the user stopped the duty and could write a non-null `next_occurrence_at` onto an
+  `ended` row (violating INV-D). The materialize batch's writes must therefore be
+  **conditional on `status='active'`** (a status guard on the insert + cursor ops,
+  atomic with them), not merely on existence.
 
 ## 4. Calendar-primitive signatures (`shared/parse/recurrence.ts`)
 
@@ -107,7 +115,9 @@ expansion). Passing UTC-only for a zoned duty silently drifts it across DST.
 
 ```ts
 occurrencesBetween(parts, dtstart: IsoDateTime, timezone: Timezone | null,
-                   after: IsoDateTime | null, through: IsoDateTime): IsoDateTime[]
+                   after: IsoDateTime | null, through: IsoDateTime,
+                   limit?: number): IsoDateTime[]   // stops after `limit` results — pass maxPerRun so a
+                                                    // far-behind high-frequency rule can't hit the runaway cap
 nextOccurrenceAfter(parts, dtstart: IsoDateTime, timezone: Timezone | null,
                     after: IsoDateTime | null): IsoDateTime | null   // null ⇒ exhausted
 latestOccurrenceAtOrBefore(parts, dtstart: IsoDateTime, timezone: Timezone | null,
@@ -151,14 +161,14 @@ one of these cells — e.g. `end_duty`×INV-D, materialize-`next`×INV-G.)
 | `resume` (`setDutyStatusPlan`) | INV-C (recompute `next_occurrence_at` from cursor); reject if `ended` (terminal). |
 | `end_duty` (`setDutyStatusPlan→ended`) | INV-D (`next_occurrence_at=NULL`; **no** exhaustion requirement — works for infinite duties). |
 | `delete_duty` (`deleteDutyPlan`) | INV-H (`duty.orphan_all` then `duty.delete`); INV-J (bounded 2 statements). |
-| materialize `next` | INV-G (`orphan_stale{before:latest}` excludes current) + INV-K (unique index on the insert); INV-C (advance cursor + `next_occurrence_at`); INV-J (bulk orphan). |
-| materialize `all` | INV-J (`maxPerRun` cap; remainder next run) + INV-K (unique index, monotonic cursor). |
-| materialize → exhausted | INV-D (`status='ended'`, `next_occurrence_at=NULL`); the `null`-cursor `COUNT=1`/future-`dtstart` case is **not** ended prematurely. |
+| materialize `next` | INV-G (`orphan_stale{before:latest}` excludes current) + INV-K (unique index on the insert); INV-C (advance cursor + `next_occurrence_at`); INV-J (bulk orphan); **INV-L (status guard — no spawn if paused/ended between plan-build and apply)**. |
+| materialize `all` | INV-J (`maxPerRun` cap **passed into `occurrencesBetween` as `limit`** — expand at most `maxPerRun`, never the 10k runaway cap; remainder next run) + INV-K + **INV-L (status guard)**. |
+| materialize → exhausted | INV-D (`status='ended'`, `next_occurrence_at=NULL`); the `null`-cursor `COUNT=1`/future-`dtstart` case is **not** ended prematurely; **INV-L (only from a still-active row)**. |
 | complete instance (`completeTask`) | INV-F (spawns nothing — the materializer owns recurrence); session_log→next kickoff carried by the materializer. |
 | backfill (Stage 4) | INV-B (cursor = `due_date` only if it is an occurrence, else `null` + `next_occurrence_at=firstOcc`); INV-F (paired with retiring completion-spawn); validate each row via `dutyFromRow`. |
 | `project.delete` | INV-H (null `duties.project_id` **and** `tasks.project_id`). |
-| import `wipe`/restore | INV-H (delete `duties` in FK order; restore projects→duties→tasks); INV-E (round-trip `duty_id`/`occurrence_at`). |
-| task write w/ `recurrence` | INV-F + `03` I4(b): MCP rejects; REST tolerates (upgrade to duty) through the transition — never a hard 4xx while the PWA still sends it. |
+| import `wipe`/restore | INV-H (delete `duties` in FK order; restore projects→duties→tasks); INV-E (round-trip `duty_id`/`occurrence_at`). **Ships with the Stage 4/5 cut-over, not Stage 6** — duties exist from the backfill, so export/wipe must handle them from that moment (`03` State C). |
+| task write w/ `recurrence` | INV-F + `03` I4(b): MCP rejects; REST tolerates through the transition — but **only auto-creates a duty when `duty_id` is null** (unattached legacy task). If the task already has a `duty_id`, the `recurrence` field is **ignored (no-op)**, or a second schedule is created for the same task. |
 
 ## 7. How to keep this canonical
 

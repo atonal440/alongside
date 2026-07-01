@@ -52,7 +52,9 @@ something recur.
 Route specs + handlers:
 
 - `GET  /api/duties?status=active|paused|ended` → `Duty[]` (raw rows, matching the
-  existing task-list convention — not an envelope).
+  existing task-list convention — not an envelope). Runs the lazy `ensureDutiesFresh`
+  gate first (Stage 5) so a duty due-but-not-yet-spawned is materialized before the
+  list is served (else it shows a stale past `next_occurrence_at`).
 - `POST /api/duties` (`DutyCreateBody`: title, notes?, kickoff_note?, task_type?,
   project_id?, rrule, dtstart, `timezone?`, catch_up?) → the created `Duty` row.
 - `PATCH /api/duties/:duty_id` (`DutyUpdateBody`: **template fields + `catch_up` +
@@ -112,11 +114,17 @@ be dropped** if the worker starts hard-rejecting.
   non-null `recurrence` with a `validation` error pointing at `create_duty`
   ("Recurring tasks are now Duties — use create_duty").
 - **REST task create/update (must tolerate through the transition).** Do **not**
-  hard-reject `recurrence` here while a recurrence-sending PWA is deployed. Accept
-  it and **transparently upgrade it to a duty** (create/attach a duty from the task
-  + recurrence, so the user's intent is preserved rather than silently dropped).
-  This compat path is the one place we *do* auto-create a duty — justified because
-  the caller is a legacy client mid-migration, not an explicit API user.
+  hard-reject `recurrence` here while a recurrence-sending PWA is deployed. Handle
+  it **idempotently, keyed on `duty_id`** (the old PWA edit form re-sends the task's
+  existing `recurrence` on *every* save, including for tasks already backfilled
+  with a `duty_id`):
+  - task has **no `duty_id`** (an unattached legacy recurring task) → transparently
+    **create/attach a duty** so the user's intent is preserved. This is the one
+    place we auto-create a duty — justified because the caller is a legacy client
+    mid-migration, not an explicit API user.
+  - task **already has a `duty_id`** (it's a duty instance) → the `recurrence` field
+    is a **no-op** (ignore it; do not create a second schedule). Editing an existing
+    instance must not spawn a duplicate duty.
 - Keep *reading* `recurrence` on tasks (legacy column exists until Stage 10) so
   existing rows render.
 
@@ -134,32 +142,13 @@ and REST complete handlers to drop the `next` field from their responses (or kee
 it always-absent for one release and note the removal). Update
 `docs/mcp-tools.md`'s `complete_task` accordingly.
 
-### 6. Export / import (don't lose duties)
+### 6. Export / import (moved to Stage 4)
 
-Duties must round-trip through the export/import pipeline or a backup restore
-silently drops every recurring schedule. Today the payload covers only
-projects/tasks/links/preferences/action_log (`worker/src/db.ts` `exportAll` and
-`worker/src/wire/importPayload.ts:84-88`). Extend both:
-
-- Add `duties: v.array(DutyRowSchema)` to `ExportPayload` and the import schema
-  (`ImportV1Schema`); include duties in `exportAll`.
-- **Extend the `wipe` op to delete `duties`.** Today `wipe` deletes
-  task_links/action_log/tasks/projects/preferences but *not* duties; importing over
-  a DB that already has duties would then FK-fail on the project delete (duties
-  still reference projects) or leave stale schedules colliding with imported duty
-  ids. Delete order must respect the FKs: `task_links → action_log → tasks →
-  **duties** → projects → preferences` (duties after the tasks/action_log that
-  reference them, before the projects they reference).
-- **Restore order:** `planImport` inserts **projects → duties → tasks → …**
-  (duties before tasks, since `tasks.duty_id` → duties; duties after projects,
-  since `duties.project_id` → projects); validate each duty through `dutyFromRow`.
-  Keep the pre-wipe integrity check.
-- Version the payload (bump `version`) if the import schema is versioned; a v1
-  payload without `duties` imports as "no duties," which is correct.
-- Tests: export→import round-trip preserves duties and their instances'
-  `duty_id`/`occurrence_at`; import **over an existing DB that has duties** wipes
-  them (no FK failure, no id collision); an import with a duty a task references
-  but that is missing is rejected; a legacy (duty-less) payload still imports.
+The duty export/import + `wipe` extension **has moved to Stage 4**, because it
+cannot wait for Stage 6: the Stage 4/5 cut-over creates active duties (State C), so
+from that moment a backup export that omits duties **silently drops every recurring
+schedule**, and an import wipe that skips duties FK-fails or leaves stale rows. It
+must ship with the backfill. See Stage 4 §5b and `03` State C.
 
 ### 7. Resolve the documented drift
 

@@ -84,9 +84,15 @@ async function ensureDutiesFresh(db: DB): Promise<void> {
 Call sites:
 
 - MCP: `start_session`, `list_tasks`, `get_ready_tasks`, `show_tasks` — any tool
-  returning a task list (`worker/src/mcp.ts`).
-- REST: the task list endpoint(s) in `worker/src/api.ts` and the PWA full-sync
-  pull — this is what makes the PWA see new instances after being offline.
+  returning a task list — **and `list_duties`** (`worker/src/mcp.ts`).
+- REST: the task list endpoint(s) in `worker/src/api.ts`, the PWA full-sync pull,
+  **and `GET /api/duties`** — this is what makes the PWA see new instances after
+  being offline.
+- The **duty-list** endpoints (`GET /api/duties`, `list_duties`) run the gate too
+  (they land in Stage 6): otherwise opening the duties surface after an occurrence
+  is due but before the cron fires returns an `active` duty with
+  `next_occurrence_at` still in the past (or a finite duty not yet `ended`), and
+  the spawn only appears after some *task*-list read happens to refresh it.
 
 The cheap gate (Stage 4) means the added latency on the common no-op path is one
 indexed `SELECT … LIMIT 1`. Do **not** call it on single-task GETs or mutation
