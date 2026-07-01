@@ -5,6 +5,11 @@ Part of `docs/plans/duties.md`. Prerequisites: Stages 1–3. Read
 algorithm, including the revised idempotency (three layers) and `catch_up: next`
 (orphan) rules.
 
+> **Canonical invariants & matrix:** `04-invariants-and-contracts.md` §3 (INV-A…K)
+> and §6 (operations × invariants) are authoritative — the materializer must
+> satisfy every ✓ cell for `create_duty` and the three `materialize` rows. If this
+> doc disagrees with `04`, `04` wins.
+
 ## Goal
 
 Implement the duty plan builders in `worker/src/domain/ops/duty.ts` — chiefly

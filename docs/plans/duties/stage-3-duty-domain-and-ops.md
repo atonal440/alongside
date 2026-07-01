@@ -3,6 +3,10 @@
 Part of `docs/plans/duties.md`. Prerequisites: Stage 1 (schema), Stage 2
 (series recurrence). Read `01-type-system.md`'s DOMAIN layer first.
 
+> **Canonical invariants & ops:** `04-invariants-and-contracts.md` §3 (INV-A…K) and
+> §5 (op catalog) are authoritative for the `dutyFromRow` invariants and the
+> `duty.*` op semantics this stage implements — if this doc drifts, `04` wins.
+
 ## Goal
 
 Give duties the same domain treatment tasks have: brands (`DutyId`,

@@ -51,6 +51,11 @@ orders must never drift from each other or from the code.
 - [ ] `duties/03-transition-invariants.md` — per-stage rollout-safety checklist for
   the partially-migrated coexistence windows. **Each stage's acceptance step
   verifies its state's invariants**; note the Stage 4 ↔ 5 atomic cut-over.
+- [ ] `duties/04-invariants-and-contracts.md` — **canonical source of truth**:
+  schema of record, domain invariants (INV-A…K), calendar signatures, op catalog,
+  and the operations × invariants matrix. `04` wins over any stage doc; run the
+  matrix (§6) when adding/changing a mutation. Update `04` **first**, then reconcile
+  stage docs — this is the anti-drift discipline.
 
 ## Phase 1 — Single-task duties
 

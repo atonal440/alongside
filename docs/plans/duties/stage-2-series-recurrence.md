@@ -4,6 +4,10 @@ Part of `docs/plans/duties.md`. Prerequisite: Stage 1. Read
 `00-recurrence-and-triggering.md` §2, `01-type-system.md`'s "Series recurrence"
 section, and `02-timestamp-model.md` first.
 
+> **Canonical signatures:** `04-invariants-and-contracts.md` §4 is authoritative
+> for the calendar-primitive signatures implemented here — if this doc drifts,
+> `04` wins.
+
 ## Goal
 
 Add a finite, **time-capable** `SeriesRrule` profile to

@@ -14,6 +14,11 @@ cursor sits before its anchor, a `duty_id` on a task with no `occurrence_at` —
 each is caught by a parser or a domain codec, the same way `taskFromRow` already
 rejects a deferred done task.
 
+> **Canonical source:** the exact calendar-primitive signatures, the domain
+> invariants (INV-A…K), and the op catalog live in
+> `04-invariants-and-contracts.md`. Where this doc and `04` disagree, **`04`
+> wins** — treat the copies here as an inventory that must track it.
+
 ## INPUT layer — brands and enums (`shared/parse/`)
 
 ### Identifiers (`shared/parse/ids.ts`)

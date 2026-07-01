@@ -310,6 +310,11 @@ Foundational analysis (read first):
   stage's acceptance step verifies its state's invariants. Read this before
   deploying any stage — notably the **Stage 4 ↔ 5 atomic cut-over** (recurrence
   must be served by exactly one spawner, never zero or two).
+- `duties/04-invariants-and-contracts.md` — **the single source of truth** for the
+  schema of record, domain invariants (INV-A…K), calendar-primitive signatures,
+  the duty op catalog, and the **operations × invariants matrix**. Where a stage
+  doc disagrees with `04`, `04` wins. Stage docs are the how-to; `04` is the
+  contract. Consult §6 (the matrix) when adding or changing any mutation.
 
 Implementation stages (cold-start work orders in `docs/plans/duties/`):
 
