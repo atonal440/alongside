@@ -66,21 +66,26 @@ for the reasoning.
    read paths (`list_tasks`, `get_ready_tasks`, PWA sync pull) also materialize
    lazily so a client never renders stale state between cron ticks. Both paths
    call the same idempotent engine.
-3. **Scope is phased: single-task first, task-graph-ready types.** The type
-   system models a duty template as *a set of tasks plus links* from the start,
-   but the shipping engine spawns exactly one task per occurrence. Task-graph
-   spawning (the "recurring sequence of blockers") is a designed-in, deferred
-   stage (Stage 9), not a retrofit.
-4. **Minute-resolution UTC everywhere; no date-only, no stored timezones.**
-   Alongside abandons "day" resolution: every scheduling timestamp is a UTC
-   instant at minute resolution, and timezone is a pure presentation concern. A
-   duty's `dtstart` and each `occurrence_at` are instants; recurrence is expanded
-   in UTC; the materializer compares against `now`, not a zone-resolved `today`.
-   This is app-wide (it migrates `tasks.due_date` from date-only to a datetime)
-   and is a net *simplification* of the trigger design — it deletes the timezone
-   resolution path and the date-only RRULE profile rather than adding to them.
-   The full reasoning, the DST tradeoff, and the migration are in
-   `duties/02-timestamp-model.md`.
+3. **Scope is phased: single-task first, task-graph-*ready* types.** Phase 1's
+   `DutyTemplate` is a single task's fields, but it is deliberately shaped as a
+   degenerate one-node template so widening it to *a set of tasks plus links*
+   (Stage 9) is additive, not a rewrite. The shipping engine spawns exactly one
+   task per occurrence; task-graph spawning (the "recurring sequence of blockers")
+   is a designed-for, deferred stage, not a retrofit. (To be precise: the graph
+   shape is *anticipated* in the type design, not fully *modeled* in Phase 1.)
+4. **Minute-resolution UTC everywhere; a timezone is a rule parameter, never on a
+   timestamp.** Alongside abandons "day" resolution: every *stored* scheduling
+   timestamp is a UTC instant at minute resolution. A duty's `dtstart` and each
+   `occurrence_at` are UTC instants; the materializer compares against a UTC `now`,
+   not a global zone-resolved `today`. This is app-wide (it migrates
+   `tasks.due_date` from date-only to a datetime) and deletes the global
+   today-resolver and the date-only RRULE profile. **Phase 1 also ships the
+   optional per-duty anchor zone** (`duties.timezone`): when set, a duty's rule is
+   *expanded* in that IANA zone so wall-clock times stay stable across DST; the
+   occurrence instants it produces are still stored in UTC. Unset ⇒ UTC expansion.
+   A timezone is thus a per-duty rule-expansion input, never a property of a
+   stored timestamp, and never a user-global setting. The full reasoning, the
+   two-conversions model, and the migration are in `duties/02-timestamp-model.md`.
 
 ## Design Pillars
 
@@ -95,23 +100,30 @@ for the reasoning.
    the clock from its argument, never from `Date.now()`, so it is deterministic
    and table-testable. The scheduled handler and the lazy-read hook are thin
    drivers that supply `now` and hand the plan to the existing `apply` executor.
-3. **Spawning is idempotent by construction.** Two things race to materialize the
-   same occurrence: the cron tick and a concurrent read. Correctness cannot
-   depend on them not overlapping. A `UNIQUE(duty_id, occurrence_at)` index on
-   `tasks` is the hard backstop; a `last_spawned_at` cursor on the duty is the
-   fast path. A duplicate insert is a no-op, never a second task.
+3. **Spawning is idempotent by construction — including the cursor.** Two things
+   race to materialize the same occurrence: the cron tick and a concurrent read.
+   Correctness cannot depend on them not overlapping. Three guards, not one: a
+   `UNIQUE(duty_id, occurrence_at)` index on `tasks` is the hard backstop against
+   duplicate instances; the `last_spawned_at` cursor advance is **monotonic**
+   (`last_spawned_at = max(existing, new)` at the SQL level) so a slow driver
+   built from a stale read can never move the cursor *backward*; and a
+   `next_occurrence_at` column drives the "is anything due" gate so a duplicate or
+   late run is a no-op, never a second task. (The naive `last_spawned_at < now`
+   gate is *not* cheap — a monthly duty would trip it every read for a month — so
+   the gate keys on `next_occurrence_at`, not the last-spawn cursor.)
 4. **Parse at the duty boundary, brand through the core.** Duties get the same
-   four-layer treatment as tasks: `DutyId`/`DutyStatus`/`CatchUpPolicy` brands
-   and a `SeriesRrule` (finite-capable) parser in `shared/parse/`; a
+   four-layer treatment as tasks: `DutyId`/`DutyStatus`/`CatchUpPolicy`/`Timezone`
+   brands and a `SeriesRrule` (finite-capable) parser in `shared/parse/`; a
    `DutyDomain` discriminated union in `worker/src/domain/duty.ts`; row schemas in
    `shared/wire/rows.ts`; REST/MCP wire specs. Illegal duties (a finite rule with
-   no occurrences, a paused duty with a live cursor ahead of its anchor) fail to
+   no occurrences, a paused duty with a cursor *before* its anchor) fail to
    parse, not at runtime.
-5. **The series anchor is real.** `dtstart` is stored and fixed at creation. The
-   RRULE is always evaluated relative to `dtstart`, never relative to the last
-   instance's due date. This is what makes `COUNT`, `UNTIL`, and stable
-   "nth-weekday-of-month" semantics correct, and what lets a finite series
-   *end* (transition to `status: 'ended'`) deterministically.
+5. **The series anchor is real and immutable.** `dtstart` is stored and **fixed
+   at creation** — it is never editable (rescheduling a duty means `end_duty` +
+   `create_duty`). The RRULE is always evaluated relative to `dtstart`, never
+   relative to the last instance's due date. This is what makes `COUNT`, `UNTIL`,
+   and stable "nth-weekday-of-month" semantics correct, and what lets a finite
+   series *end* (transition to `status: 'ended'`) deterministically.
 6. **Server is authoritative for spawning; the PWA stays local-first for
    everything else.** The PWA creates, edits, pauses, and deletes duties through
    the same queued pending-op path as tasks, and it renders duties and their
@@ -119,12 +131,15 @@ for the reasoning.
    occurrences — that would fork the clock and defeat the idempotency guarantees.
    Instances appear in the PWA when sync pulls them after the server spawned
    them. This is stated up front so no stage tries to make the client spawn.
-7. **Timezone is presentation, not storage.** Every timestamp is a UTC instant
-   (Decision 4). The materializer works in UTC and compares occurrence instants
-   against `now` — there is no zone-resolved "today" and no `timezone` in the
-   spawn path. The PWA formats instants into the viewer's local zone at render
-   time; nothing is stored per-zone. This is the pillar date-only resolution
-   was supposed to buy and never did (`duties/02-timestamp-model.md`).
+7. **Timestamps are UTC; timezone is a per-duty rule parameter, never on a
+   timestamp.** Every stored instant is UTC (Decision 4). The materializer takes a
+   UTC `now` — there is no global zone-resolved "today" and no user-wide timezone
+   preference in the spawn path. A duty may carry an optional **anchor zone**
+   (`duties.timezone`) used *only* to expand its rule so wall-clock times stay
+   stable across DST (Phase 1 — see Decision 4); the occurrence instants it
+   produces are still UTC. The PWA formats instants into the viewer's (separate)
+   local zone at render time. This is the clean split date-only resolution was
+   supposed to buy and never did (`duties/02-timestamp-model.md`).
 
 ## Data Model
 
@@ -139,10 +154,12 @@ duties
   task_type        text enum(action|plan) NOT NULL default 'action'   template
   project_id       text FK projects     template (nullable)
   rrule            text NOT NULL        series recurrence (finite allowed: COUNT/UNTIL; time-capable)
-  dtstart          text NOT NULL        series anchor instant (UTC datetime, minute resolution)
+  dtstart          text NOT NULL        series anchor instant (UTC datetime, minute resolution); immutable
+  timezone         text                 optional IANA anchor zone for rule expansion; null = expand in UTC
   status           text enum(active|paused|ended) NOT NULL default 'active'
   catch_up         text enum(next|all) NOT NULL default 'next'
   last_spawned_at  text                 cursor: occurrence instant of newest instance, null = none yet
+  next_occurrence_at text               next un-spawned occurrence instant; null = none due / ended. Drives the "is anything due" gate.
   created_at       text NOT NULL
   updated_at       text NOT NULL
 ```
@@ -151,9 +168,15 @@ Columns added to `tasks`:
 
 ```
 tasks
-  + duty_id          text FK duties(id)    null for one-off tasks
-  + occurrence_at    text                  the occurrence this instance represents (UTC datetime)
+  + duty_id          text FK duties(id)    null for one-off tasks (and for orphaned ex-instances)
+  + occurrence_at    text                  the occurrence this instance represents (UTC datetime); null when duty_id is null
 ```
+
+Invariant: `duty_id` and `occurrence_at` are set together or both null — an
+instance always has both; a one-off or orphaned task has neither.
+
+`action_log` also gains a nullable `duty_id` so duty mutations can be logged
+(today the table has only `task_id`; see Stage 6).
 
 Note that `tasks.due_date` itself changes under Decision 4: it migrates from a
 date-only string to a UTC datetime (minute resolution), app-wide. Existing values
@@ -185,7 +208,7 @@ Duties reuse the exact layering of tasks. New surface area at each layer:
 WIRE     REST /api/duties*, MCP create_duty/list_duties/update_duty/…, import payload
   │      parsed by: worker/src/wire/rest.ts (DutyRoute*), MCP registry
   ▼
-INPUT    shared/parse: DutyId, DutyStatus, CatchUpPolicy, SeriesRrule (finite-capable)
+INPUT    shared/parse: DutyId, DutyStatus, CatchUpPolicy, Timezone, SeriesRrule (finite-capable)
   │
   ▼
 DOMAIN   worker/src/domain/duty.ts: DutyDomain = Active|Paused|Ended, DutyTemplate
@@ -207,29 +230,39 @@ TRIGGER  scheduled() handler (cron)  ─┐
 Existing recurrence-bearing tasks must become duties without losing the live
 instance or its history.
 
-The duty backfill runs *after* Stage 1 Part A has converted `due_date` to a UTC
-datetime (date-only `due_date` values become midnight UTC), so `task.due_date` is
-already an instant here. For each task with `recurrence != NULL` and
-`due_date != NULL`:
+**Sequencing (revised).** The duty backfill does *not* run in Stage 1. Stage 1
+only converts `due_date` to a UTC datetime and adds the duties schema. The
+backfill runs in **Stage 4**, once `parseSeriesRrule` (Stage 2) and `dutyFromRow`
+(Stage 3) exist, so every duty row it writes is validated by the same domain codec
+that will read it back — a row the codec would reject is never persisted. The
+backfill is also paired with retiring the completion-driven spawn (Stage 4) so no
+recurring task is left both un-migrated and no longer self-spawning.
+
+For each task with `recurrence != NULL` and `due_date != NULL`:
 
 1. Mint a duty; copy template fields (`title`, `notes`, `kickoff_note`,
    `task_type`, `project_id`) from the task.
 2. Set the duty's `rrule = task.recurrence`, `dtstart = task.due_date`,
-   `status = 'active'`, `catch_up = 'next'`, `last_spawned_at = task.due_date`
-   (this task *is* the occurrence at `dtstart`, so the cursor starts there).
+   `timezone = NULL` (legacy rules were UTC/date-only), `status = 'active'`,
+   `catch_up = 'next'`, `last_spawned_at = task.due_date` (this task *is* the
+   occurrence at `dtstart`), and `next_occurrence_at =` the first occurrence after
+   `dtstart`.
 3. Point the task at the duty: `duty_id = <new duty>`,
    `occurrence_at = task.due_date`. Leave the task's own `recurrence` column in
    place but stop treating it as authoritative.
+4. Validate the minted duty row through `dutyFromRow`; abort the whole backfill
+   (transactional) if any row fails to parse.
 
 Tasks with `recurrence != NULL` but `due_date = NULL` are already invalid under
 `taskFromRow`'s `recurrence-requires-due-date` invariant, so none should exist;
-the migration asserts this and fails loudly if one does.
+the backfill asserts this and fails loudly if one does.
 
-After migration, `completeTaskPlan` stops spawning (Stage 4). The
-`tasks.recurrence` column becomes read-only legacy: no new writes, retained for
-one release for rollback, then dropped in Stage 10. `docs/mcp-tools.md`'s
-phantom `'recurring'` task_type and `'supersedes'` link_type are resolved in
-Stage 6 (the concept they gestured at is now the `duties` table).
+After the backfill, `completeTaskPlan` stops spawning (both in Stage 4, in that
+order). The `tasks.recurrence` column becomes read-only legacy: no new writes,
+retained for one release for rollback, then dropped in Stage 10 (which defines the
+explicit rollout criterion for the drop, not just "a stage later").
+`docs/mcp-tools.md`'s phantom `'recurring'` task_type and `'supersedes'` link_type
+are resolved in Stage 6 (the concept they gestured at is now the `duties` table).
 
 ## Phasing
 
@@ -240,8 +273,9 @@ Stage 6 (the concept they gestured at is now the `duties` table).
   template/instance separation, offline-safe server spawning).
 - **Phase 2 — Task-graph duties (Stage 9).** A duty template becomes a set of
   tasks plus links; each occurrence spawns the whole graph with a fresh set of
-  ids and rewritten link endpoints. The type system from Stage 3 already models
-  this; Stage 9 lights up the engine and surfaces.
+  ids and rewritten link endpoints. Stage 3's `DutyTemplate` is shaped so this
+  widening is additive (a degenerate one-node template); Stage 9 lights up the
+  engine and surfaces.
 - **Hardening (Stage 10).** Compiler flags, the push-notification hook that the
   scheduled handler makes possible, drop the legacy `recurrence` column, and the
   documentation sweep.
@@ -264,10 +298,10 @@ Implementation stages (cold-start work orders in `docs/plans/duties/`):
 
 | Stage | File | Scope |
 |---|---|---|
-| 1 | `stage-1-schema-and-migration.md` | **Part A:** app-wide minute-resolution-UTC unification (`due_date`→datetime, retire `IsoDate`, migrate). **Part B:** `duties` table, `tasks.duty_id`/`occurrence_at`, unique index, Drizzle migration, `schema.sql`, backfill of existing recurring tasks. |
-| 2 | `stage-2-series-recurrence.md` | Extend `shared/parse/recurrence.ts`: finite, time-capable `SeriesRrule` (COUNT/UNTIL), `dtstart`-anchored `occurrencesBetween` over instants, `isSeriesExhausted`. Removes the date-only RRULE profile. |
-| 3 | `stage-3-duty-domain-and-ops.md` | `DutyId`/`DutyStatus`/`CatchUpPolicy` brands; `worker/src/domain/duty.ts` `DutyDomain`; `duty.*` `Op` variants + `duty.exists` precheck; `apply.ts` execution. |
-| 4 | `stage-4-spawn-and-materialize.md` | `materializeDutyPlan`, catch-up policies, series-exhaustion → `ended`, idempotency; retire `completeTaskPlan`'s spawn branch. |
+| 1 | `stage-1-schema-and-migration.md` | **Part A:** app-wide minute-resolution-UTC unification (`due_date`→datetime, retire `IsoDate`, migrate). **Part B:** `duties` table (incl. `timezone`, `next_occurrence_at`), `tasks.duty_id`/`occurrence_at`, `action_log.duty_id`, unique index, hand-written SQL migration, `schema.sql`. **No duty backfill here** (moved to Stage 4). |
+| 2 | `stage-2-series-recurrence.md` | Extend `shared/parse/recurrence.ts`: finite, time-capable `SeriesRrule` (COUNT/UNTIL); `dtstart`-anchored, **anchor-zone-aware** `occurrencesBetween`/`nextOccurrenceAfter` over instants; `isSeriesExhausted`. *Adds* the series profile; legacy date-only profile removal is deferred to Stage 10. |
+| 3 | `stage-3-duty-domain-and-ops.md` | `DutyId`/`DutyStatus`/`CatchUpPolicy`/`Timezone` brands; `worker/src/domain/duty.ts` `DutyDomain`; `duty.*` `Op` variants + `duty.exists` precheck; monotonic-cursor `apply.ts` execution. |
+| 4 | `stage-4-spawn-and-materialize.md` | `materializeDutyPlan` (catch-up, orphan-on-`next`, `next_occurrence_at` maintenance, per-run cap, exhaustion → `ended`); monotonic cursor; **duty backfill** (validated); retire `completeTaskPlan`'s spawn branch. |
 | 5 | `stage-5-trigger-scheduled-and-lazy.md` | `wrangler.toml` cron, `scheduled()` handler, runtime budget, lazy-on-read hook in list/sync endpoints. |
 | 6 | `stage-6-rest-and-mcp.md` | REST `/api/duties*`; MCP `create_duty`/`list_duties`/`update_duty`/`pause_duty`/`resume_duty`/`end_duty`/`delete_duty`; resolve `recurring`/`supersedes` drift; deprecate task-level recurrence input. |
 | 7 | `stage-7-pwa-data-and-sync.md` | PWA `duties` IDB store, decode/parse, endpoints, sync pull, typed pending-ops; server-authoritative spawn boundary. |
@@ -277,13 +311,13 @@ Implementation stages (cold-start work orders in `docs/plans/duties/`):
 
 ## Out of Scope
 
-- **Wall-clock-stable (DST-anchored) recurrence.** Recurrence is expanded in UTC
-  in Phase 1 (Decision 4), so a rule fixed at `14:00Z` drifts against a local wall
-  clock across DST. The fix — an optional per-duty *anchor zone* used only to
-  expand the rule, with instants still stored in UTC — is designed additively in
-  `duties/02-timestamp-model.md` and is the current lean, but is **planned for the
-  later reminders / timeboxing track**, not Phase 1. (Time-of-day and sub-day
-  recurrence themselves are already *in* scope, a free consequence of Decision 4.)
+- **DST-transition edge cases in rule expansion.** Wall-clock-stable recurrence
+  *is* in Phase 1 (the anchor zone, Decision 4), but when an anchored wall-clock
+  time lands in a nonexistent (spring-forward) or doubled (fall-back) hour, we
+  rely on the `rrule` library's default skip/first-match behavior rather than
+  adding custom handling; Stage 8's editor steers users toward safe hours. A
+  user-*global* timezone setting is also out of scope — the zone is always
+  per-duty.
 - **A `duty_occurrences` ledger** with per-occurrence skip/backfill history. The
   cursor model is deliberately lighter; `duties/00` records the upgrade path if
   it is ever needed.

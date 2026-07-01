@@ -22,7 +22,7 @@ engine stands on, so it gets the heaviest test coverage of any stage.
   `rrule` library, whose native mode is datetime. `parseRrule` (`recurrence.ts:186`)
   returns `{ rrule, parts }` with `RruleParts = { source, freq, interval }`.
 - `nextOccurrence(parts, from)` (`recurrence.ts:213`) is the legacy strictly-after
-  primitive used by the Stage 1 backfill — leave it working until Stage 10.
+  primitive used by the Stage 4 backfill — leave it working until Stage 10.
 - Date math uses `Date.UTC` + `toISOString()` (`recurrence.ts:199-211`). Under
   Decision 4 the outputs are full UTC instants (minute resolution), not date-only.
 - The `rrule` library is aliased in `wrangler.toml` and the vitest/vite configs.
@@ -60,45 +60,67 @@ export interface SeriesRruleParts extends RruleParts {
 Return `{ rrule: SeriesRrule; parts: SeriesRruleParts }`; add `SeriesRruleSchema`
 (valibot pipe) alongside `RruleSchema`.
 
-### 2. `occurrencesBetween`
+### 2. `occurrencesBetween` and `nextOccurrenceAfter` (anchor-zone aware)
 
 ```ts
 export function occurrencesBetween(
-  parts: SeriesRruleParts, dtstart: IsoDateTime,
+  parts: SeriesRruleParts, dtstart: IsoDateTime, timezone: Timezone | null,
   after: IsoDateTime | null, through: IsoDateTime,
 ): IsoDateTime[]
+
+export function nextOccurrenceAfter(
+  parts: SeriesRruleParts, dtstart: IsoDateTime, timezone: Timezone | null,
+  after: IsoDateTime | null,
+): IsoDateTime | null   // null = series exhausted; feeds duties.next_occurrence_at
 ```
 
 - Build the rule with `dtstart` as the **fixed anchor instant** (not `after`).
   This is the core difference from `nextOccurrence`.
+- **Anchor-zone expansion (Phase 1, Decision 4).** When `timezone` is `null`,
+  expand in UTC. When set, expand the rule against that IANA zone: generate the
+  rule's *wall-clock* occurrences in the zone and convert each to a UTC instant
+  using the offset in effect on that date — so consecutive daily occurrences are
+  usually 24h apart but 23h/25h across a DST boundary, keeping the wall-clock time
+  stable. Return values are **always UTC instants** either way. Use a zone-aware
+  path (a small `Intl.DateTimeFormat`/offset helper, or the `rrule` library's tz
+  support if reliable in Workers — validate in tests). DST-transition edge cases
+  (nonexistent/doubled wall-clock times) fall back to the library's skip/first-
+  match behavior; do not add custom handling (master Out of Scope).
 - Enumerate occurrences `> after` (or `>= dtstart` when `after === null`) and
   `<= through`. Respect the rule's own `COUNT`/`UNTIL` so a finite rule stops.
-- Return `IsoDateTime[]`, ascending. Hard-cap the length (e.g. 10 000, matching
-  the `COUNT` cap) as a runaway guard; throw/log on cap hit.
+- Return `IsoDateTime[]`, ascending. Hard-cap length (e.g. 10 000) as a runaway
+  guard; throw/log on cap hit. `nextOccurrenceAfter` is the single-result form used
+  to maintain `next_occurrence_at`.
 - Edge cases to test: `after === dtstart` excludes `dtstart`; `after` between two
   occurrences returns from the next; `through < dtstart` → `[]`; a `COUNT` rule
-  used up before `through` returns only the survivors; a sub-day rule
-  (`FREQ=HOURLY` / minute intervals) enumerates within a day.
+  used up before `through` returns only the survivors; a sub-day rule enumerates
+  within a day; a DST-crossing daily rule under a zone keeps constant wall-clock
+  time (the whole point).
 
 ### 3. `isSeriesExhausted`
 
 ```ts
 export function isSeriesExhausted(
-  parts: SeriesRruleParts, dtstart: IsoDateTime, after: IsoDateTime,
+  parts: SeriesRruleParts, dtstart: IsoDateTime, timezone: Timezone | null,
+  after: IsoDateTime | null,
 ): boolean
 ```
 
-True iff the rule is finite (`count`/`until`) **and** has no occurrence strictly
-after `after` (`rule.after(fromInstant, false) === null`). Infinite rules → always
-`false`. This flips a duty to `ended` (Stage 4).
+True iff the rule is finite (`count`/`until`) **and** `nextOccurrenceAfter(...,
+after)` is `null`. Note `after` is nullable: when the cursor is `null` (nothing
+spawned yet), exhaustion is evaluated as "no occurrence at or after `dtstart`",
+so a `COUNT=1` duty whose single occurrence is `dtstart` is **not** exhausted
+until that occurrence is spawned. Infinite rules → always `false`. This flips a
+duty to `ended` (Stage 4).
 
-### 4. No timezone resolver
+### 4. `Timezone` brand (`shared/parse/time.ts`)
 
-Decision 4 removes the `todayInZone` / per-user "today" resolution an earlier
-draft placed here — there is nothing to add. The materializer receives a UTC
-`now` computed by the trigger edge (Stage 5) as `Date.now()`; this module never
-sees a timezone. A `Timezone` brand, if present, is used only for PWA
-presentation (Stage 8), not here.
+Add the `Timezone` brand — IANA membership via `Intl.supportedValuesOf('timeZone')`
+— and `parseTimezone`. It is a real Phase-1 input consumed by `occurrencesBetween`
+above (rule expansion) and reused PWA-side for display. There is **no** per-user
+`todayInZone` resolver and no global timezone preference; the materializer still
+takes a plain UTC `now` (Stage 5) and passes each duty's own `timezone` into
+`occurrencesBetween`.
 
 ### 5. Tests (`worker/test/` — deep-coverage stage)
 
@@ -128,6 +150,7 @@ the task column until Stage 10.
 
 - `npm --prefix worker run typecheck` / `test` pass; new suites green.
 - Legacy `parseRrule`/`nextOccurrence` behavior unchanged.
-- No timezone/`today` resolver exists in this module.
+- No global `todayInZone` resolver or user-wide timezone preference exists; the
+  only timezone use is the per-duty anchor zone passed into `occurrencesBetween`.
 - Root `npm run verify` passes.
 - Check off Stage 2 in the implementation todo.

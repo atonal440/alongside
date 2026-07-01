@@ -53,13 +53,18 @@ a one-off. This completes Phase 1 — duties are usable end to end.
 - Fields: title, notes, kickoff_note, task_type, project_id, **rrule** (raw text,
   reusing `EditView`'s recurrence input + error affordance), **dtstart** (a
   local date/time picker that resolves to a UTC instant at submit — Decision 4;
-  default the time to a sensible hour, e.g. 09:00 local, when the user picks only
-  a date), **catch_up** (next/all toggle).
+  default the time to a sensible hour, e.g. 09:00, when the user picks only a
+  date — this default is now *honest* because the anchor zone keeps it stable),
+  **timezone** (an IANA anchor-zone select, defaulting to the browser's
+  `Intl.DateTimeFormat().resolvedOptions().timeZone`, with an explicit "UTC / no
+  anchor" option; set ⇒ "daily at 9" stays 9am across DST — Decision 4),
+  **catch_up** (next/all toggle).
 - Submit runs `parseDutyForm` (Stage 7); field errors render inline like
   `EditView`'s `fieldErrors.recurrence` (`EditView.tsx:180`).
-- Editing an existing duty: series edits (rrule/dtstart) show a note that already
-  spawned instances are unaffected and the cursor re-anchors (Stage 4
-  `updateDutyPlan` semantics).
+- **Editing an existing duty:** `rrule` and `dtstart` are **read-only** (immutable
+  — Pillar 5). Show them disabled with a "Reschedule" affordance that ends this
+  duty and opens a fresh create form. `timezone`, `catch_up`, and template fields
+  are editable; note that a timezone change re-anchors only *future* occurrences.
 - Optimistic save through the Stage 7 async action; offline-safe.
 
 ### 3. Spawned-instance badge (`pwa/src/components/task/TaskMeta.tsx`, `DetailView.tsx`)

@@ -37,6 +37,8 @@ materialization yet** (that's Stage 4) — this stage is the type-safe substrate
 - `enums.ts`: `DUTY_STATUSES = ['active','paused','ended']`,
   `CATCH_UP_POLICIES = ['next','all']`, their `Brand` types, `parseDutyStatus`,
   `parseCatchUpPolicy`. Re-export from `shared/parse/index.ts`.
+- `time.ts`: the `Timezone` brand + `parseTimezone` (if Stage 2 didn't already
+  land it) — needed by `dutyFromRow` to brand the nullable `timezone` column.
 - Minting: add `mintDutyId()` next to `mintTaskId` (`worker/src/db.ts:86`),
   `d_${nanoid(5)}` branded `MintedDutyId`.
 
@@ -49,21 +51,26 @@ Define `DutyTemplate`, `DutySeries`, `DutyBase`, the three status variants, the
 - Brand each column (`parseDutyId`, `parseNonEmpty(200, …)` for title,
   `nullableBounded` for notes/kickoff, `parseTaskType`, `nullableProjectId`,
   `parseSeriesRrule` for `rrule`, `parseIsoDateTime` for `dtstart` (a UTC instant
-  now — Decision 4), `parseDutyStatus`, `parseCatchUpPolicy`, nullable
-  `parseIsoDateTime` for `last_spawned_at`, `parseIsoDateTime` for timestamps).
-  Reuse the `nullable*`
+  now — Decision 4), nullable `parseTimezone` for `timezone`, `parseDutyStatus`,
+  `parseCatchUpPolicy`, nullable `parseIsoDateTime` for `last_spawned_at` and
+  `next_occurrence_at`, `parseIsoDateTime` for timestamps). Reuse the `nullable*`
   helpers from `worker/src/domain/task.ts:93-119` — extract them to a shared
   module if that's cleaner than duplicating.
 - Cross-field invariants (accumulate as `ValidationError[]`, same style as
-  `taskFromRow`):
+  `taskFromRow`) — expand the rule using the duty's own `timezone`:
   - `parts.until` present ⇒ `until >= dtstart`.
-  - `cursor` (last_spawned_at) present ⇒ `cursor >= dtstart` **and** `cursor` is
-    an actual occurrence of the rule (verify with `occurrencesBetween(parts,
-    dtstart, null, cursor)` ending exactly at `cursor`, or a dedicated
-    `isOccurrence` helper from Stage 2).
-  - `status === 'ended'` ⇒ `isSeriesExhausted(parts, dtstart, cursor ?? dtstart)`
-    is true (a live series can't be `ended`). Do **not** enforce the converse —
-    an exhausted-but-still-`active` row is transient and healed by the next
+  - `cursor` (last_spawned_at) present ⇒ `cursor >= dtstart` (a cursor *before*
+    the anchor is impossible) **and** `cursor` is an actual occurrence of the rule
+    (verify via `occurrencesBetween(parts, dtstart, timezone, null, cursor)`
+    ending exactly at `cursor`, or an `isOccurrence` helper).
+  - `next_occurrence_at` present ⇒ it is a real occurrence strictly after
+    `cursor` (or after `dtstart` when cursor is null), consistent with the rule +
+    zone.
+  - `status === 'ended'` ⇒ `next_occurrence_at IS NULL` **and**
+    `isSeriesExhausted(parts, dtstart, timezone, cursor)` is true. A `null`-cursor
+    duty is **never** `ended` (its `dtstart` occurrence hasn't been consumed — the
+    `COUNT=1`/future-`dtstart` case). Do **not** enforce the converse — an
+    exhausted-but-still-`active` row is transient and healed by the next
     materialize.
 - Return the status-tagged variant.
 
@@ -77,29 +84,46 @@ export type DutyRow      = Duty;                        // import from @shared/t
 export type DutyRowPatch = Partial<Omit<DutyRow, 'id' | 'created_at'>>;
 ```
 
-Add to `Op`: `duty.insert` / `duty.update` / `duty.delete`. Add to `PreCheck`:
-`duty.exists`. Ensure `Duty` is re-exported from `shared/types.ts` alongside
-`Task`/`Project`/`TaskLink` so `Op.ts` can import it via `@shared/types`.
+Add to `Op`: `duty.insert` / `duty.update` / `duty.update_cursor` / `duty.delete`.
+Add to `PreCheck`: `duty.exists`. Ensure `Duty` is re-exported from
+`shared/types.ts` alongside `Task`/`Project`/`TaskLink` so `Op.ts` can import it
+via `@shared/types`. (`duty.update_cursor` exists specifically so the cursor
+advance can be executed as monotonic SQL — see Step 4 and `00` §4.)
 
 ### 4. Executor (`worker/src/storage/apply.ts`)
 
 - `DUTY_INSERT_COLUMNS` and `DUTY_UPDATE_COLUMNS` arrays mirroring the task ones.
 - `case 'duty.insert' | 'duty.update' | 'duty.delete'`: build the
   `INSERT` / `UPDATE … WHERE id = ?` / `DELETE` statements the same way tasks do.
+- `case 'duty.update_cursor'`: emit **monotonic** compare-and-set SQL so a stale
+  driver cannot regress the cursor (`00` §4):
+  ```sql
+  UPDATE duties
+     SET last_spawned_at = :new,
+         next_occurrence_at = :next,
+         updated_at = :updatedAt
+   WHERE id = :id
+     AND (last_spawned_at IS NULL OR last_spawned_at < :new);
+  ```
+  A no-op update (a slower driver whose `:new` is ≤ the stored cursor) is success,
+  not an error — the faster driver already advanced it.
 - `case 'duty.exists'` precheck: a guarded existence statement, mirroring
-  `task.exists` — the `ExistingRowGuard` machinery (`apply.ts:18`) already
-  supports `entity: 'task' | 'project'`; widen it to include `'duty'`.
+  `task.exists` — the `ExistingRowGuard` machinery (`apply.ts:18`, `apply.ts:239`)
+  already supports `entity: 'task' | 'project'`; widen it to include `'duty'`.
 - The `UNIQUE(duty_id, occurrence_at)` benign-conflict handling is **Stage 4's**
-  concern (it's specific to duty-instance `task.insert`), not here. This stage
-  only wires duty ops themselves.
+  concern (it's specific to duty-instance `task.insert`), not here.
 
 ### 5. Tests (`worker/test/`)
 
 - `dutyFromRow`: a valid active duty round-trips; `until < dtstart` rejected;
   `cursor < dtstart` rejected; `cursor` off-calendar rejected; `status: 'ended'`
-  with a still-live infinite rule rejected; a `paused` duty with a valid cursor
-  accepted.
+  with a still-live infinite rule rejected; a `null`-cursor `COUNT=1` duty is
+  **not** rejected as ended; `next_occurrence_at` inconsistent with the rule
+  rejected; a valid `timezone` accepted and a bogus one rejected; a `paused` duty
+  with a valid cursor accepted.
 - `apply`: a `Plan` of `duty.insert` then `duty.update` commits both;
+  `duty.update_cursor` advances forward but a **stale** `duty.update_cursor`
+  (`:new` ≤ stored) is a no-op (monotonic — the cursor never regresses);
   `duty.exists` precheck fails a plan whose duty is missing (`not_found`);
   `duty.delete` removes the row.
 - Brand parsers: `parseDutyId` accepts `d_ab3k9`, rejects `t_...` and `d_` too

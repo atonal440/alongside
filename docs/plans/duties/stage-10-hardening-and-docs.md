@@ -15,15 +15,27 @@ duties concept is coherent across every doc.
 
 ### 1. Drop the legacy `recurrence` column
 
-By now `tasks.recurrence` has been read-only for a release (Stage 6 blocked new
-writes; Stage 8 stopped the UI offering it). Confirm nothing writes it and only
-defensive fallbacks read it, then:
+`tasks.recurrence` has been read-only since Stage 6 (writes blocked) / Stage 8
+(UI stopped offering it). **Explicit rollout criterion** — do not drop the column
+until *all* hold, or the drop is a data-loss risk on a client that hasn't caught
+up:
 
-- Migration dropping `tasks.recurrence` from `shared/schema.ts`, `schema.sql`, and
-  a generated migration. SQLite column drop via the migration mechanism
-  (recreate-table if the D1/Drizzle path requires it).
+1. The Stage 4 backfill has run in production and `SELECT count(*) FROM tasks
+   WHERE recurrence IS NOT NULL AND duty_id IS NULL` is `0` (every legacy
+   recurring task became a duty).
+2. At least one release has shipped with duties live, so rollback to a
+   duty-unaware build is no longer a target.
+3. No deployed worker or PWA build still *reads* `recurrence` except the
+   defensive fallbacks removed below.
+
+Once satisfied:
+
+- A hand-written `worker/migrations/00N_*.sql` dropping `tasks.recurrence` (SQLite
+  needs table-recreate for a column drop) plus the `shared/schema.ts` / `schema.sql`
+  change. (Migrations are hand-written SQL — `worker/drizzle.config.ts`; Drizzle is
+  only a diff preview.)
 - Remove the legacy `parseRrule` / `nextOccurrence` *usage* if the migration path
-  (Stage 1 backfill) is the only remaining caller and it has run everywhere; keep
+  (Stage 4 backfill) is the only remaining caller and it has run everywhere; keep
   the functions if any legacy-render fallback still needs them, else delete. When
   `parseRrule` goes, so does the now-dead date-only RRULE profile
   (`isDateOnlyProfile` and helpers) — the last vestige of date-only resolution
@@ -77,8 +89,9 @@ Reconcile every doc with the shipped system (`AGENTS.md` documentation rule):
   with the duties model (series anchor, cron + lazy-read spawning, server
   authoritative). Update the recurrence caveat that said COUNT/UNTIL are
   unsupported — they are, for duties. Add the timestamp-model decision
-  (minute-resolution UTC everywhere; no date-only fields; timezone is
-  presentation only) and note `due_date` is now a datetime.
+  (minute-resolution UTC everywhere; no date-only fields; per-duty anchor zone for
+  wall-clock-stable recurrence; no global timezone) and note `due_date` is now a
+  datetime.
 - `docs/overview.md`: add duties to the architecture overview.
 - `docs/mcp-tools.md`: final pass — duty tools, duty object shape, task
   `duty_id`/`occurrence_at`, recurrence removed from `add_task`, tool count

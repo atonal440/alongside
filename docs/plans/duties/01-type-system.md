@@ -101,15 +101,23 @@ export function isSeriesExhausted(parts: SeriesRruleParts, dtstart: IsoDateTime,
 
 `nextOccurrence` stays as-is for the migration path.
 
-### Timezone — not in the spawn type path (Decision 4)
+### Timezone — a per-duty rule-expansion input (Phase 1, Decision 4)
 
-There is **no** timezone type in the materialization path: the engine works in
-UTC instants and takes a UTC `now`, never a zone-resolved `today`
-(`02-timestamp-model.md`). A `Timezone` brand (IANA membership via
-`Intl.supportedValuesOf('timeZone')`) appears only for **presentation** in the
-PWA (formatting an instant into the viewer's local zone) and, if ever built, for
-the deferred per-duty rule-expansion escape hatch. It is not a duty field and not
-a spawn input.
+`Timezone` is a real Phase-1 brand (IANA membership via
+`Intl.supportedValuesOf('timeZone')`), added in Stage 2/3:
+
+```ts
+export type Timezone = Brand<string, 'Timezone'>;
+export function parseTimezone(input: unknown): Result<Timezone, ValidationError[]>;
+```
+
+It is a **per-duty, nullable** field (`duties.timezone`), used *only* to expand a
+duty's rule (`occurrencesBetween` — Stage 2), never a user-global setting and
+never stored on an instant. The materializer itself still takes a plain UTC `now`;
+the zone is consulted inside `occurrencesBetween` for that duty. The same brand is
+reused PWA-side for **display** (formatting an instant into the viewer's local
+zone). Two narrow uses — expansion and display — per `02-timestamp-model.md`'s
+"two conversions, two zones."
 
 ## DOMAIN layer (`worker/src/domain/`)
 
@@ -130,8 +138,10 @@ export interface DutyTemplate {
 export interface DutySeries {
   rrule: SeriesRrule;
   parts: SeriesRruleParts;
-  dtstart: IsoDateTime;
-  cursor: IsoDateTime | null;   // last_spawned_at
+  dtstart: IsoDateTime;            // immutable anchor
+  timezone: Timezone | null;      // anchor zone for expansion; null = UTC
+  cursor: IsoDateTime | null;     // last_spawned_at
+  nextOccurrenceAt: IsoDateTime | null;   // next un-spawned occurrence; drives the due-gate
   catchUp: CatchUpPolicy;
 }
 
@@ -154,11 +164,17 @@ export function dutyFromRow(row: DutyRow): Result<DutyDomain, ValidationError[]>
 `dutyFromRow` enforces the cross-field invariants a single-column parser can't:
 
 - `until` (if present) ≥ `dtstart`.
-- `cursor` (if present) ≥ `dtstart` — you cannot have spawned before the anchor.
+- `cursor` (if present) ≥ `dtstart` — a cursor *before* the anchor is impossible
+  (you cannot have spawned before the series began).
 - `cursor` must be an actual occurrence of the rule, or `null` — a cursor
   off the calendar means a corrupt row.
-- An `ended` duty's series must genuinely be exhausted at `cursor` (a finite rule
-  whose occurrences are used up), or the row is inconsistent.
+- `nextOccurrenceAt`, if non-null, must be a real occurrence strictly after
+  `cursor` (or after `dtstart` when `cursor` is null), consistent with the rule
+  and the anchor zone.
+- An `ended` duty must have `nextOccurrenceAt = null` and a genuinely exhausted
+  series at `cursor`; a `null`-cursor duty is never `ended` (its `dtstart`
+  occurrence hasn't been consumed — this is the `COUNT=1` / future-`dtstart` case
+  that must not be marked ended prematurely).
 
 Phase 2 (Stage 9) widens `DutyTemplate` from a single task shape to
 `{ tasks: DutyTaskTemplate[]; links: DutyTemplateLink[] }`. The single-task
@@ -178,33 +194,43 @@ export type DutyRowPatch = Partial<Omit<DutyRow, 'id' | 'created_at'>>;
 // added to Op:
   | { kind: 'duty.insert'; row: DutyRow }
   | { kind: 'duty.update'; id: DutyId; patch: DutyRowPatch }
+  | { kind: 'duty.update_cursor'; id: DutyId; lastSpawnedAt: IsoDateTime; nextOccurrenceAt: IsoDateTime | null; updatedAt: IsoDateTime }
   | { kind: 'duty.delete'; id: DutyId }
 
 // added to PreCheck:
   | { kind: 'duty.exists'; id: DutyId }
 ```
 
-No new `duty.occurrence_free` precheck is needed: idempotency rides on the
-`UNIQUE(duty_id, occurrence_at)` index, handled inside `apply` (Stage 4), not
-as a plan-level assertion.
+The dedicated `duty.update_cursor` op exists so `apply` can execute the cursor
+advance as **monotonic** compare-and-set SQL (`SET last_spawned_at = :new WHERE
+last_spawned_at IS NULL OR last_spawned_at < :new`), which a generic `duty.update`
+patch cannot express (see `00` §4). No `duty.occurrence_free` precheck is needed:
+duplicate-instance idempotency rides on the `UNIQUE(duty_id, occurrence_at)` index
+handled inside `apply` (Stage 4).
 
 ### Plan builders (`worker/src/domain/ops/duty.ts`, new)
 
 Pure `(...) => Result<Plan, AppError>`, in the style of `worker/src/domain/ops/task.ts`:
 
 ```ts
-createDutyPlan(input, ids): TaskPlanResult         // duty.insert (+ optional first materialize)
-updateDutyPlan(duty, patch): TaskPlanResult        // duty.update on template/series fields
+createDutyPlan(input, ids, now): TaskPlanResult    // duty.insert; materialize the first occ. if dtstart <= now
+updateDutyPlan(duty, patch): TaskPlanResult        // duty.update on TEMPLATE fields + catch_up + timezone ONLY
 setDutyStatusPlan(duty, next): TaskPlanResult       // active⇄paused, →ended (guarded transitions)
-deleteDutyPlan(duty, opts): TaskPlanResult          // duty.delete; orphan-vs-cascade decided Stage 6
+deleteDutyPlan(duty): TaskPlanResult                // orphan instances (null duty_id+occurrence_at) + duty.delete
 materializeDutyPlan(duty, ctx): TaskPlanResult       // the engine; see Stage 4 for ctx shape
 ```
 
-`setDutyStatusPlan` encodes the legal transitions: `active→paused`,
-`paused→active`, `active→ended`, `paused→ended`. `ended` is terminal (no
-resume; resuming a finished series means creating a new duty). Illegal
-transitions return an `invalid_transition` `AppError`, exactly like the task
-lifecycle planners.
+`createDutyPlan` takes `now` because it may materialize the first occurrence
+immediately. `updateDutyPlan` is **not** allowed to change `rrule` or `dtstart`
+(the series anchor is immutable — Decision/Pillar 5); it edits template fields,
+`catch_up`, and `timezone`. Changing `timezone` re-expands future occurrences, so
+the plan recomputes `next_occurrence_at` (the already-spawned instances are not
+retroactively moved). `setDutyStatusPlan` encodes the legal transitions:
+`active→paused`, `paused→active`, `active→ended`, `paused→ended`; `ended` is
+terminal (resuming a finished series means creating a new duty). `deleteDutyPlan`
+orphans instances (nulling both `duty_id` and `occurrence_at`) — the decided
+behavior, not a Stage 6 open question. Illegal transitions return
+`invalid_transition`.
 
 ### Errors (`worker/src/domain/errors.ts`)
 
@@ -225,9 +251,9 @@ master plan's Data Model, plus:
 export type Duty = typeof duties.$inferSelect;
 ```
 
-and the `UNIQUE(duty_id, occurrence_at)` index (Drizzle
-`uniqueIndex(...)` or raw in `schema.sql` — Stage 1 decides based on how the
-existing migrations are generated).
+and the `UNIQUE(duty_id, occurrence_at)` index (Drizzle `uniqueIndex(...)` mirrored
+in the hand-written `worker/migrations/00N_*.sql` — Stage 1). `action_log` also
+gains a nullable `duty_id`.
 
 ### Shared row schema (`shared/wire/rows.ts`)
 
@@ -242,8 +268,10 @@ export const DutyRowSchema = v.object({
   kickoff_note: v.nullable(...), task_type: TaskTypeSchema,
   project_id: v.nullable(ProjectIdSchema),
   rrule: SeriesRruleSchema, dtstart: IsoDateTimeSchema,
+  timezone: v.nullable(TimezoneSchema),
   status: DutyStatusSchema, catch_up: CatchUpPolicySchema,
   last_spawned_at: v.nullable(IsoDateTimeSchema),
+  next_occurrence_at: v.nullable(IsoDateTimeSchema),
   created_at: IsoDateTimeSchema, updated_at: IsoDateTimeSchema,
 });
 ```
@@ -289,8 +317,8 @@ Per `docs/plans/pwa-type-safety.md`, every new boundary needs a parser + tests:
   discriminated pending-op union, with temp-id rebinding for `MintedDutyId` just
   like tasks.
 - **Form parser** (`pwa/src/domain/`): a `parseDutyForm` branding the duty
-  editor's raw inputs (title, rrule, dtstart, catch_up) at submit, mirroring
-  `parseTaskForm`.
+  editor's raw inputs (title, rrule, dtstart, timezone, catch_up) at submit,
+  mirroring `parseTaskForm`.
 - **Local mutations** (`pwa/src/domain/`): duty mutation guards, but **no local
   materialization** — the PWA never spawns instances (master Pillar 6). Duty
   create/edit/pause/delete are optimistic; instance appearance is server-driven.
@@ -309,12 +337,12 @@ carry `null` and every parser must accept `null`.
 |---|---|---|
 | INPUT | `shared/parse/ids.ts` | `DutyId`/`ParsedDutyId`/`MintedDutyId`, `parseDutyId` |
 | INPUT | `shared/parse/enums.ts` | `DUTY_STATUSES`, `CATCH_UP_POLICIES`, parsers, `TOOL_NAMES` += duty tools |
-| INPUT | `shared/parse/recurrence.ts` | `SeriesRrule`, `SeriesRruleParts`, `parseSeriesRrule`, `occurrencesBetween`, `isSeriesExhausted` |
-| INPUT | `shared/parse/time.ts` | `Timezone` brand — **PWA presentation only**, not a spawn input (Decision 4) |
-| DOMAIN | `worker/src/domain/duty.ts` | `DutyTemplate`, `DutySeries`, `DutyDomain` union, `dutyFromRow` |
-| DOMAIN | `worker/src/domain/Op.ts` | `duty.insert/update/delete` ops, `duty.exists` precheck, `DutyRow`/`DutyRowPatch` |
+| INPUT | `shared/parse/recurrence.ts` | `SeriesRrule`, `SeriesRruleParts`, `parseSeriesRrule`, anchor-zone-aware `occurrencesBetween`/`nextOccurrenceAfter`, `isSeriesExhausted` |
+| INPUT | `shared/parse/time.ts` | `Timezone` brand — per-duty rule-expansion input **and** PWA display (Phase 1, Decision 4) |
+| DOMAIN | `worker/src/domain/duty.ts` | `DutyTemplate`, `DutySeries` (incl. `timezone`, `nextOccurrenceAt`), `DutyDomain` union, `dutyFromRow` |
+| DOMAIN | `worker/src/domain/Op.ts` | `duty.insert/update/update_cursor/delete` ops, `duty.exists` precheck, `DutyRow`/`DutyRowPatch` |
 | DOMAIN | `worker/src/domain/ops/duty.ts` | `createDutyPlan`, `updateDutyPlan`, `setDutyStatusPlan`, `deleteDutyPlan`, `materializeDutyPlan` |
-| ROW | `shared/schema.ts` | `duties` table, `tasks.duty_id`/`occurrence_at`, unique index, `Duty` type |
+| ROW | `shared/schema.ts` | `duties` table (incl. `timezone`, `next_occurrence_at`), `tasks.duty_id`/`occurrence_at`, `action_log.duty_id`, unique index, `Duty` type |
 | ROW/WIRE | `shared/wire/rows.ts` | `DutyRowSchema`, `TaskRowSchema` += duty fields |
 | WIRE | `worker/src/wire/rest.ts` | duty route specs + bodies |
 | WIRE | `worker/src/mcp.ts` | duty tool registry entries |

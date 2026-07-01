@@ -92,14 +92,15 @@ The cheap gate (Stage 4) means the added latency on the common no-op path is one
 indexed `SELECT … LIMIT 1`. Do **not** call it on single-task GETs or mutation
 endpoints — only list/sync reads, to keep write paths lean.
 
-### 4. Timezone: presentation only, not here
+### 4. Timezone: not at the trigger edge
 
-Decision 4 removes the `timezone` preference and `todayInZone` resolver an earlier
-draft placed in this stage. There is nothing timezone-related to plumb server-side.
-If/when the PWA formats instants in the viewer's local zone (Stage 8), that is a
-pure client concern. The deferred wall-clock-recurrence escape hatch
-(`02-timestamp-model.md`) would add an *optional per-duty* zone used only for rule
-expansion — not a user-global preference and not part of this stage.
+There is **no** timezone to plumb *at this stage*. Decision 4 removes the global
+`timezone` preference and `todayInZone` resolver an earlier draft placed here — the
+scheduled handler and lazy hook both just pass a UTC `now`. The per-duty anchor
+zone that Phase 1 *does* ship (`duties.timezone`) is consumed **inside**
+`occurrencesBetween` per duty (Stage 2), not at the trigger edge — the driver
+never touches it. Viewer-side display formatting is a separate client concern
+(Stage 8). So nothing timezone-related is added in Stage 5.
 
 ### 5. Tests
 

@@ -30,8 +30,8 @@ really date-only complexity in disguise.
   bookkeeping.
 - Minute resolution is also the **substrate for planned features** — reminders,
   timeboxing, and other time-of-day behaviors — not merely duty correctness. That
-  roadmap is a reason to lean *into* timezone-aware recurrence (below) rather than
-  treat it as a curiosity, even though Phase 1 does not implement it.
+  roadmap is why Phase 1 goes all the way to timezone-aware recurrence (the anchor
+  zone, below) rather than treating it as a curiosity.
 
 ## Why date-only was a false economy
 
@@ -100,19 +100,19 @@ Storing and evaluating recurrence in UTC means a rule fixed at `14:00Z` fires at
 to someone's morning, that drift is a real UX cost — and it is the classic reason
 calendar systems attach a timezone to recurring events (iCal's `DTSTART;TZID`).
 
-**Current lean.** We are leaning *toward* timezone-aware recurrence, because the
-planned reminders / timeboxing work wants stable wall-clock behavior. Phase 1
-still ships UTC expansion and the anchor zone is deferred to that later track —
-the full details do not need settling now. What matters now is that the seam is
-designed so it drops in additively. Two modes:
+**Decision: ship it in Phase 1.** Because the planned reminders / timeboxing work
+wants stable wall-clock behavior — and because the Stage 8 editor would otherwise
+imply a "daily at 9" that Phase 1 quietly breaks after DST — the optional anchor
+zone is **in Phase 1**, not deferred. A `duties.timezone` column lands in Stage 1
+and `occurrencesBetween` is anchor-zone-aware in Stage 2. Two modes:
 
-- **Default (shipped in Phase 1):** rules expand in UTC. Simple, zero stored
-  state, no drift *within* UTC. Every stage in this plan assumes this.
-- **Anchor zone (planned, additive):** a duty may carry an *optional* IANA zone —
-  the zone whose wall clock the rule is pinned to (`09:00 America/New_York`). It
-  is used **only to expand the rule**; the occurrences it produces are still
-  stored as UTC instants. Unset ⇒ UTC expansion, exactly today's behavior — so it
-  adds without migration and never puts a timezone on a timestamp.
+- **Default (no zone set):** rules expand in UTC. Simple, zero stored state, no
+  drift *within* UTC. This is what every duty with `timezone = NULL` does.
+- **Anchor zone (opt-in per duty):** a duty carries an *optional* IANA zone — the
+  zone whose wall clock the rule is pinned to (`09:00 America/New_York`). It is
+  used **only to expand the rule**; the occurrences it produces are still stored
+  as UTC instants. Unset ⇒ UTC expansion. It never puts a timezone on a timestamp
+  and is never a user-global setting.
 
 The anchor zone is *intent*, not a creation fact. It **defaults** to the
 creator's zone, but it really means "which wall clock this rule follows," and it

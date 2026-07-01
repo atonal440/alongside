@@ -131,44 +131,69 @@ The plan is executed by the existing `apply` engine (`worker/src/storage/apply.t
 If the app was closed for a week, a daily duty has seven un-spawned occurrences.
 Two policies, stored per duty as `catch_up`:
 
-- **`next` (default).** Collapse all missed occurrences into a **single** task,
+- **`next` (default).** Collapse all missed occurrences into a **single** task
   dated at the most recent missed occurrence. You come back Monday to *one*
-  "water the plants," not seven. This is the humane default and it prevents
-  pile-up: a `next` duty has at most one open un-completed instance at a time
-  (see below). Chosen because most personal duties are "keep this current," not
-  "account for every past instance."
+  "water the plants," not seven. Chosen because most personal duties are "keep
+  this current," not "account for every past instance."
 - **`all`.** Spawn one task per missed occurrence. For duties where each instance
   is a distinct obligation (a daily journal entry, a billable log), you want the
-  backlog to be real. This can pile up, by design.
+  backlog to be real. This can pile up, by design. (Bounded per run — §4.)
 
-**Pile-up guard for `next`.** Before spawning, `applyCatchUp('next', …)` also
-checks whether an open (pending, uncompleted) instance for this duty already
-exists; if so, it re-dates that instance forward rather than adding a second. The
-practical rule: a `next` duty never shows you two open copies of itself. The
-cleanest implementation is a precheck/lookup in the materializer's DB-facing
-wrapper (`materializeDueDuties`), which knows the open-instance count; the pure
-`materializeDutyPlan` receives that count as an input so it stays testable. Stage
-4 specifies the exact signature.
+**What `next` does with a still-open prior instance.** The interesting case is
+when the previous instance is *still open* (uncompleted) and new occurrences come
+due. The rule (decided; supersedes an earlier "re-date the open instance" draft):
+
+1. **Orphan the stale instance.** Detach it from the series by nulling *both* its
+   `duty_id` and `occurrence_at`, turning it into a plain standalone task. It's
+   still there for you to finish or delete, but it no longer represents the duty's
+   live position, and it won't be mistaken for the current instance.
+2. **Spawn one fresh instance** for the latest due occurrence, so the duty always
+   has exactly one *current* instance.
+3. **Advance the cursor** to the latest occurrence; the intermediate missed
+   occurrences are simply dropped (never materialized) — that is what `next`
+   means.
+
+Honest tradeoff: if you never touch them, orphaned ex-instances accumulate as
+detached tasks. That is the deliberate cost of `next` — the alternative (silently
+re-dating last week's task to today) hides that you missed it. The pure
+`materializeDutyPlan` receives the open-instance info as input so it stays
+testable; the DB-facing `materializeDueDuties` supplies it. Stage 4 specifies the
+exact signature and the orphan op.
 
 ## 4. Idempotency: the cron and a read will race
 
 With two triggers (§5), the same occurrence *will* be materialized twice
-concurrently. Correctness cannot assume otherwise. Two layers defend it:
+concurrently. Correctness cannot assume otherwise. **Three** layers defend it —
+the third closes a gap an earlier two-layer draft missed:
 
 1. **Cursor as the fast path.** `materializeDutyPlan` only considers occurrences
    after `last_spawned_at`. Once one driver advances the cursor, the other sees
-   nothing to do. Because the cursor advance and the task insert are in the *same
-   `Plan`*, `apply` runs them in one D1 batch (one transaction), so the cursor and
-   the instance commit together or not at all.
+   nothing to do. The cursor advance and the task insert are in the *same
+   `Plan`*, applied in one D1 batch, so they commit together or not at all.
 2. **`UNIQUE(duty_id, occurrence_at)` as the hard backstop.** If two batches
    interleave before either commits, the second `task.insert` violates the unique
    index. Stage 4 makes `apply` treat that specific constraint violation as a
    benign no-op for duty-instance inserts (the occurrence already exists — that
-   *is* success), not an error. The result is exactly one instance per
-   `(duty, occurrence_at)`, always.
+   *is* success), not an error. Exactly one instance per `(duty, occurrence_at)`.
+3. **Monotonic cursor to prevent regression.** The unique index protects task
+   *rows*, but not the cursor: two drivers can build plans from the same old
+   cursor but different `now` values, and if the later-`now` plan commits first,
+   the earlier one's `duty.update { last_spawned_at: <older> }` would move the
+   cursor *backward* — re-opening already-spawned occurrences on the next run. So
+   the cursor update is **monotonic**: `last_spawned_at = max(last_spawned_at,
+   :new)` (and `next_occurrence_at` recomputed) applied as compare-and-advance SQL,
+   never a blind overwrite. Stage 3 implements this in `apply`; Stage 4 relies on
+   it.
+
+Note also that the "is anything due" gate keys on a stored `next_occurrence_at`
+column, **not** on `last_spawned_at < now`: the latter is true for a whole month
+for a monthly duty (it spawned yesterday but yesterday is still `< now` every read
+until next month), so it would defeat the cheap-gate purpose. `next_occurrence_at`
+holds the next un-spawned occurrence instant; the gate is
+`next_occurrence_at <= now`, and it is `NULL` for paused/ended/not-yet-due duties.
 
 This is why the master plan calls spawning "idempotent by construction": neither
-driver needs to know about the other.
+driver needs to know about the other, and neither can corrupt the cursor.
 
 ## 5. Triggering — the decision, and the alternatives
 
@@ -235,28 +260,29 @@ of §4; the idempotency work is what makes "both" free.
 - **Keep completion-driven** was rejected at the master level: it cannot enforce
   calendar cadence and stalls the instant you miss one completion.
 
-## 6. Timezone — nothing to resolve
+## 6. Timezone — no global resolver; a per-duty rule parameter
 
-An earlier draft of this section resolved a per-user "today" in the user's IANA
-timezone at the trigger edge, because a date-only duty that fires "daily" has to
-pick *someone's* midnight. Decision 4 (`02-timestamp-model.md`) deletes that
-entire problem: there are no dates and no "today." A duty's `dtstart` and every
-occurrence are UTC instants; the rule is expanded in UTC; the materializer
-receives a UTC `now` and compares instants. The cron and a lazy read both compute
-`now = Date.now()`, so they agree by construction — no per-user zone, no
-resolver, no `timezone`-in-the-spawn-path preference.
+An earlier draft resolved a per-user "today" in the user's IANA timezone at the
+trigger edge, because a date-only "daily" duty has to pick *someone's* midnight.
+Decision 4 (`02-timestamp-model.md`) deletes that problem: there are no dates and
+no global "today." Every stored instant is UTC; the materializer receives a UTC
+`now = Date.now()`, so the cron and a lazy read agree by construction. There is no
+user-global timezone preference and no zone-resolved `today` in the spawn path.
 
-Timezone survives only as **presentation**: the PWA formats a stored instant into
-the viewer's local zone at render time (§Presentation of `02`). The server never
-needs to know a user's zone to decide what to spawn.
+What Phase 1 *does* add is a per-duty **anchor zone** (`duties.timezone`, nullable)
+used **only to expand that duty's rule** so wall-clock times stay stable across
+DST. When set, `occurrencesBetween` expands the rule in that zone and converts each
+wall-clock occurrence to a UTC instant using the offset in effect on that date;
+when unset, it expands in UTC. Either way the occurrence instants it returns — and
+everything stored — are UTC. This is the "two conversions, two zones" model in
+`02-timestamp-model.md`: the anchor zone drives *expansion* (server, per duty),
+the viewer's zone drives *display* (client), UTC is the fixed point between.
 
-The one residual UX cost is DST drift: a rule fixed at `14:00Z` fires at a
-different local wall-clock time across a DST boundary. This is the deliberate,
-documented tradeoff of "UTC everywhere." The fix — an optional per-duty *anchor
-zone* used only to expand the rule (occurrences still stored UTC) — is the current
-lean and is designed additively in `02-timestamp-model.md`, but is planned for the
-later reminders / timeboxing track, not Phase 1. It does not affect any stage
-below; every stage here assumes UTC expansion.
+So timezone appears in exactly two places, both narrow: the per-duty anchor zone
+for expansion, and the viewer's zone for presentation. Neither is a global setting,
+and neither ever lands on a stored timestamp. The materializer still takes a plain
+UTC `now`; the zone is consulted *inside* `occurrencesBetween` for a given duty,
+not at the trigger edge.
 
 ## 7. Completion, after duties
 
@@ -271,15 +297,25 @@ complete.
 
 Edge case worth stating: because spawn is calendar-driven, you can have an open
 instance from last week and a newly spawned one for this week at the same time
-under `catch_up: 'all'`. That is intended. Under `catch_up: 'next'` the pile-up
-guard (§3) keeps it to one.
+under `catch_up: 'all'`. That is intended. Under `catch_up: 'next'` the orphan
+rule (§3) keeps exactly one *current* instance (older opens are detached).
+
+## Decided (were open questions)
+
+- **`dtstart` is immutable.** Rescheduling a duty is `end_duty` + `create_duty`,
+  not an in-place `dtstart`/`rrule` edit. Keeps the series anchor a stable fact
+  and avoids "what happens to already-spawned future instances" (there are none to
+  reconcile). → Stages 4/6 enforce this.
+- **Deleting a duty orphans its instances** (keeps the tasks — real work the user
+  may still want — nulls their `duty_id` *and* `occurrence_at`) and stops future
+  spawns. Not a cascade. → Stage 6 (decided, not deferred).
+- **`catch_up: 'next'` orphans a stale open instance and spawns a fresh current
+  one** (§3). → Stage 4.
 
 ## Open questions deferred to their stages
 
-- Exact open-instance-count signature for the `next` pile-up guard → Stage 4.
+- Exact open-instance signature the `next` orphan rule passes into
+  `materializeDutyPlan` → Stage 4.
 - Whether the scheduled handler processes duties in id order or cursor-staleness
   order under the per-tick cap → Stage 5 (staleness order, so the most-overdue
   duties can't be starved).
-- Whether deleting a duty cascades to its spawned instances or orphans them
-  (keep the tasks, null the `duty_id`) → Stage 6. Current lean: keep the tasks —
-  they're real work the user may still want — and stop future spawns.

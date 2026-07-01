@@ -25,8 +25,17 @@ something recur.
   `deleteDutyPlan` land in Stage 4; `DB` needs thin methods wrapping them
   (mirroring `DB.addTask` / `DB.updateTask`).
 - `DB.completeTask` lost its `next` return in Stage 4 — clean up the readers here.
-- Action-log policy: mutations write an `action_log` entry (`schema.ts:44`,
-  `get_action_log`). Duty mutations get entries too.
+- **Action-log reality check:** today only **MCP** tools write `action_log`
+  entries (e.g. `worker/src/mcp.ts:438-449`); **REST** mutations do *not* —
+  `worker/src/api.ts:125` just calls `db.addTask` and returns the row. So duty
+  action-logging on REST is **new** behavior, not "mirroring existing policy."
+  Decide deliberately: log duty mutations from the MCP tools (parity with other
+  MCP tools) and, if REST parity is wanted, add it explicitly. `action_log.duty_id`
+  (added in Stage 1) lets a duty entry reference the duty with a null `task_id`.
+- **Response-shape reality check:** existing REST endpoints return **raw rows**
+  (or arrays of rows), not `{ entity, action_log_entry }` envelopes — the PWA sync
+  layer expects rows. Keep duty REST consistent with that (see Step 2), and let
+  the MCP tools carry `action_log_entry` the way other MCP tools already do.
 
 ## Steps
 
@@ -42,19 +51,22 @@ something recur.
 
 Route specs + handlers:
 
-- `GET  /api/duties?status=active|paused|ended` → `{ duties: Duty[] }`.
+- `GET  /api/duties?status=active|paused|ended` → `Duty[]` (raw rows, matching the
+  existing task-list convention — not an envelope).
 - `POST /api/duties` (`DutyCreateBody`: title, notes?, kickoff_note?, task_type?,
-  project_id?, rrule, dtstart, catch_up?) → `{ duty, action_log_entry }`.
-- `PATCH /api/duties/:duty_id` (`DutyUpdateBody`: any template/series field, plus
-  `status` for pause/resume/end) → `{ duty, action_log_entry }`.
-- `DELETE /api/duties/:duty_id` → `{ deleted: true, duty_id, title,
-  action_log_entry }`.
+  project_id?, rrule, dtstart, `timezone?`, catch_up?) → the created `Duty` row.
+- `PATCH /api/duties/:duty_id` (`DutyUpdateBody`: **template fields + `catch_up` +
+  `timezone` + `status` only — never `rrule`/`dtstart`**, which are immutable) →
+  the updated `Duty` row. A body attempting to set `rrule`/`dtstart` is a
+  `validation`/`409` rejection pointing the caller at `end_duty` + `create_duty`.
+- `DELETE /api/duties/:duty_id` → `{ deleted: true, duty_id }` (matching the
+  existing delete convention).
 
 Bodies reference the shared brands (`SeriesRruleSchema`, `IsoDateTimeSchema`,
-`DutyStatusSchema`, `CatchUpPolicySchema`) so malformed input is a `validation`
-error at the edge. Add `duty_id` + `occurrence_at` to the task REST payloads
-(read-only, nullable). Route status changes through `setDutyStatusPlan` so
-illegal transitions map to a `409`/`invalid_transition`.
+`TimezoneSchema`, `DutyStatusSchema`, `CatchUpPolicySchema`) so malformed input is
+a `validation` error at the edge. Add `duty_id` + `occurrence_at` to the task REST
+payloads (read-only, nullable). Route status changes through `setDutyStatusPlan`
+so illegal transitions map to `409`/`invalid_transition`.
 
 ### 3. MCP tools (`worker/src/mcp.ts`)
 
@@ -62,19 +74,22 @@ Add and register (`TOOL_NAMES`) these tools, each with a JSON-schema arg spec an
 an action-log entry:
 
 - `create_duty` — title (req), notes, kickoff_note, task_type, project_id,
-  rrule (req, `SeriesRrule`), dtstart (req, UTC ISO datetime), catch_up (`next`|`all`,
-  default `next`). Returns the created duty; if it materialized a first instance,
-  include it.
+  rrule (req, `SeriesRrule`), dtstart (req, UTC ISO datetime), `timezone?` (IANA
+  anchor zone for wall-clock-stable recurrence; omit for UTC), catch_up
+  (`next`|`all`, default `next`). Returns the created duty; if it materialized a
+  first instance, include it.
 - `list_duties` — `status?`. Returns `{ duties }`.
-- `update_duty` — `duty_id` (req) + any editable field. Series edits re-validate.
+- `update_duty` — `duty_id` (req) + editable fields: template fields, `catch_up`,
+  `timezone`. **`rrule`/`dtstart` are not editable** — attempting them is rejected
+  with "reschedule by ending this duty and creating a new one." A `timezone`
+  change re-anchors future occurrences only.
 - `pause_duty` / `resume_duty` / `end_duty` — `duty_id`. Thin wrappers over
-  `setDutyStatusPlan`. `resume_duty` on an `ended` duty is rejected with a clear
-  message ("ended series can't resume — create a new duty").
-- `delete_duty` — `duty_id`. Hard delete; orphans instances (keeps the tasks,
-  nulls their `duty_id`) per `00-recurrence-and-triggering.md`'s deferred
-  decision — **confirm this is the chosen behavior and state it in the tool
-  description** ("Deleting a duty stops future spawns; already-created tasks
-  remain").
+  `setDutyStatusPlan`. `resume_duty` on an `ended` duty is rejected ("ended series
+  can't resume — create a new duty").
+- `delete_duty` — `duty_id`. Hard delete; **orphans instances** (keeps the tasks,
+  nulls their `duty_id` *and* `occurrence_at`) and stops future spawns — the
+  decided behavior (`00` "Decided"). Tool description: "Deleting a duty stops
+  future spawns; already-created tasks remain as standalone tasks."
 - Tool descriptions must teach the model the model: a duty is a template + a
   schedule; instances appear automatically; completing an instance does not
   affect the schedule.
@@ -103,7 +118,25 @@ and REST complete handlers to drop the `next` field from their responses (or kee
 it always-absent for one release and note the removal). Update
 `docs/mcp-tools.md`'s `complete_task` accordingly.
 
-### 6. Resolve the documented drift
+### 6. Export / import (don't lose duties)
+
+Duties must round-trip through the export/import pipeline or a backup restore
+silently drops every recurring schedule. Today the payload covers only
+projects/tasks/links/preferences/action_log (`worker/src/db.ts` `exportAll` and
+`worker/src/wire/importPayload.ts:84-88`). Extend both:
+
+- Add `duties: v.array(DutyRowSchema)` to `ExportPayload` and the import schema
+  (`ImportV1Schema`); include duties in `exportAll`.
+- `planImport` must insert **duties before tasks** (tasks' `duty_id` FK references
+  duties) and validate each duty through `dutyFromRow`. Preserve the existing
+  wipe-then-restore ordering and the pre-wipe integrity check.
+- Version the payload (bump `version`) if the import schema is versioned; a v1
+  payload without `duties` imports as "no duties," which is correct.
+- Tests: export→import round-trip preserves duties and their instances'
+  `duty_id`/`occurrence_at`; an import with a duty a task references but that is
+  missing is rejected; a legacy (duty-less) payload still imports.
+
+### 7. Resolve the documented drift
 
 - `docs/mcp-tools.md`: remove the phantom `task_type: 'recurring'` (it never
   existed in schema) and either remove `link_type: 'supersedes'` or file it as a
@@ -115,13 +148,16 @@ it always-absent for one release and note the removal). Update
   (`docs/mcp-tools.md:3` says "18 tools").
 - Update `docs/api.md` with the `/api/duties*` endpoints and the new task fields.
 
-### 7. Tests (`worker/test/`)
+### 8. Tests (`worker/test/`)
 
-- REST: create/list/patch/delete duty happy paths; malformed rrule/dtstart/status
-  → 4xx `validation`; pause→resume→end transitions; resume-ended → 409;
-  delete orphans instances (tasks survive with `duty_id` nulled).
-- MCP: each tool dispatches, validates, and writes an action-log entry;
-  `add_task`/`update_task` with `recurrence` → rejection pointing at `create_duty`.
+- REST: create/list/patch/delete duty happy paths; malformed rrule/dtstart/status/
+  timezone → 4xx `validation`; a PATCH attempting `rrule`/`dtstart` → rejected;
+  pause→resume→end transitions; resume-ended → 409; delete orphans instances
+  (tasks survive with `duty_id` *and* `occurrence_at` nulled).
+- MCP: each tool dispatches and validates; duty mutations write an
+  `action_log` entry (with `duty_id`); `add_task`/`update_task` with `recurrence`
+  → rejection pointing at `create_duty`.
+- Import/export: duty round-trip (Step 6).
 - Regression: `complete_task` on any task returns no `next`.
 
 ## Acceptance criteria

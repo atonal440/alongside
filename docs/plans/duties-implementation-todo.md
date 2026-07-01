@@ -9,22 +9,33 @@ orders must never drift from each other or from the code.
 
 ## Locked decisions (see `duties/00`, `duties/02`)
 
-- **Data model:** first-class `duties` table; tasks carry `duty_id` +
-  `occurrence_at`; `UNIQUE(duty_id, occurrence_at)` idempotency backstop;
+- **Data model:** first-class `duties` table (incl. `timezone`,
+  `next_occurrence_at`); tasks carry `duty_id` + `occurrence_at` (set/null
+  together); `action_log.duty_id`; `UNIQUE(duty_id, occurrence_at)` backstop;
   `last_spawned_at` cursor (no occurrences ledger).
 - **Triggering:** Cloudflare cron `scheduled()` handler **+** lazy-on-read hook,
-  both calling one idempotent `materializeDueDuties(now)`.
-- **Scope:** phased — type system models a task-graph template from the start;
-  ship single-task spawning first (Stages 1–8), graph spawning later (Stage 9).
+  both calling one idempotent `materializeDueDuties(now)`. Due-gate keys on
+  `next_occurrence_at <= now`, **not** `last_spawned_at`.
+- **Idempotency = three layers:** unique index (no dup instances) + monotonic
+  `last_spawned_at` (no cursor regression) + `next_occurrence_at` gate.
+- **Scope:** phased — `DutyTemplate` is a degenerate one-node template *shaped for*
+  a task+link graph; ship single-task spawning first (Stages 1–8), graph spawning
+  later (Stage 9).
 - **Spawn ownership:** server-authoritative; the PWA never materializes locally.
 - **Completion:** decoupled from spawning; `completeTaskPlan`'s recurrence branch
-  is retired.
-- **Timestamps (Decision 4):** minute-resolution UTC on every scheduling field;
-  no date-only fields; `due_date` migrates to a datetime app-wide; recurrence is
-  expanded in UTC in Phase 1. Net-simplifies the trigger design (deletes
-  `todayInZone` and the date-only RRULE profile). Timezone is presentation-only in
-  Phase 1; an optional per-duty *anchor zone* for wall-clock-stable recurrence is
-  the lean, planned for the later reminders / timeboxing track (`duties/02`).
+  is retired (Stage 4).
+- **`dtstart` immutable:** reschedule = `end_duty` + `create_duty`; `updateDutyPlan`
+  never edits `rrule`/`dtstart`.
+- **`catch_up: next`:** spawn the latest occurrence; **orphan** any still-open
+  prior instance (null `duty_id` + `occurrence_at`); advance cursor; drop
+  intermediates. Orphans may accumulate — the deliberate cost of `next`.
+- **Delete-duty:** orphans instances (keep tasks, null `duty_id` + `occurrence_at`),
+  stops future spawns. Decided, not deferred.
+- **Timestamps (Decision 4):** minute-resolution UTC on every scheduling field
+  (truncate-on-write); no date-only fields; `due_date` migrates to a datetime
+  app-wide. **Anchor zone is in Phase 1**: `duties.timezone` (nullable) expands a
+  duty's rule in an IANA zone so wall-clock times survive DST; instants stored are
+  always UTC. No global timezone preference; no `todayInZone`.
 
 ## Foundation docs (read before implementing)
 
@@ -37,58 +48,75 @@ orders must never drift from each other or from the code.
 
 ## Phase 1 — Single-task duties
 
-### Stage 1 — Timestamp model, schema, migration (`stage-1-schema-and-migration.md`)
+### Stage 1 — Timestamp model + schema (`stage-1-schema-and-migration.md`)
 - [ ] **Part A:** `due_date` → UTC datetime app-wide; retire `IsoDate` as a
-  scheduling type; minute-resolution parser; migrate existing values to midnight
-  UTC; sweep worker + PWA date-only touch points (`formatDue`, `taskSort`
-  sentinel, readiness window, edit form).
-- [ ] **Part B:** `duties` table + `Duty` type in `shared/schema.ts`.
-- [ ] **Part B:** `tasks.duty_id` + `tasks.occurrence_at` columns.
-- [ ] **Part B:** `UNIQUE(duty_id, occurrence_at)` index (schema + `schema.sql`).
-- [ ] Generated Drizzle migration(s).
-- [ ] Idempotent, lossless backfill of legacy recurring tasks → duties.
-- [ ] Tests: Part A representation change; backfill; unique-index
-  NULL-distinctness; backfill-abort on bad row.
+  scheduling type; minute-resolution parser (**truncate-on-write**); migrate
+  existing values to midnight UTC; sweep worker + PWA date-only touch points
+  (`formatDue`, `taskSort` sentinel, readiness window, edit form).
+- [ ] **Part B:** `duties` table (incl. `timezone`, `next_occurrence_at` + index)
+  + `Duty` type; `tasks.duty_id`/`occurrence_at`; `action_log.duty_id`;
+  `UNIQUE(duty_id, occurrence_at)` index; `schema.sql`.
+- [ ] **Hand-written** `worker/migrations/007_*.sql` (Drizzle is a diff-preview
+  only — `drizzle.config.ts`).
+- [ ] **No duty backfill here** (moved to Stage 4). No `duty_id` set on any task.
+- [ ] Tests: Part A representation change; schema; unique-index NULL-distinctness.
 - [ ] `wrangler deploy --dry-run` + `verify` green.
 
 ### Stage 2 — Series recurrence (`stage-2-series-recurrence.md`)
 - [ ] `SeriesRrule` / `SeriesRruleParts` / `parseSeriesRrule` (COUNT/UNTIL,
-  time-capable); **drop the date-only profile** for series rules.
-- [ ] `occurrencesBetween` (dtstart-anchored, over instants) + runaway cap.
-- [ ] `isSeriesExhausted`.
-- [ ] No timezone/`today` resolver (Decision 4).
-- [ ] Deep tests incl. fast-check properties; legacy `parseRrule` unchanged.
+  time-capable). *Adds* the series profile; legacy date-only profile removal is
+  Stage 10.
+- [ ] **Anchor-zone-aware** `occurrencesBetween` + `nextOccurrenceAfter` (over
+  instants, expand in `timezone` when set, UTC when null) + runaway cap.
+- [ ] `isSeriesExhausted` (nullable `after`; `null`-cursor `COUNT=1` not exhausted).
+- [ ] `Timezone` brand + `parseTimezone`. No global `todayInZone`/preference.
+- [ ] Deep tests incl. DST-crossing zoned rule + fast-check; legacy `parseRrule`
+  unchanged.
 
 ### Stage 3 — Duty domain + Op/apply (`stage-3-duty-domain-and-ops.md`)
-- [ ] `DutyId` / `DutyStatus` / `CatchUpPolicy` brands + `mintDutyId`.
-- [ ] `DutyDomain` union + `dutyFromRow` invariants.
-- [ ] `duty.insert/update/delete` ops + `duty.exists` precheck.
-- [ ] `apply.ts` duty execution (insert/update/delete/exists).
-- [ ] Tests: codec invariants, apply, brand parsers.
+- [ ] `DutyId` / `DutyStatus` / `CatchUpPolicy` (+ `Timezone`) brands + `mintDutyId`.
+- [ ] `DutyDomain` (series incl. `timezone`, `nextOccurrenceAt`) + `dutyFromRow`
+  invariants (cursor ≥ dtstart; `null`-cursor never `ended`; next_occurrence_at
+  consistency).
+- [ ] `duty.insert/update/update_cursor/delete` ops + `duty.exists` precheck.
+- [ ] **Monotonic** `duty.update_cursor` in `apply.ts` (compare-and-set; stale =
+  no-op).
+- [ ] Tests: codec invariants, monotonic cursor, apply, brand parsers.
 
-### Stage 4 — Spawn / materialize engine (`stage-4-spawn-and-materialize.md`)
+### Stage 4 — Spawn / materialize engine + backfill (`stage-4-spawn-and-materialize.md`)
 - [ ] `instanceFromTemplate` + kickoff carry-forward.
-- [ ] `materializeDutyPlan` (catch-up next/all, pile-up guard, exhaustion→ended).
-- [ ] Unique-index benign-conflict handling in `apply` (idempotency layer 2).
-- [ ] `materializeDueDuties` DB driver with cheap gate + staleness ordering.
-- [ ] Retire `completeTaskPlan` recurrence branch + fix `DB.completeTask` shape.
-- [ ] `createDutyPlan` / `updateDutyPlan` / `setDutyStatusPlan` / `deleteDutyPlan`.
-- [ ] Tests: engine matrix, idempotency, no-spawn-on-complete regression.
+- [ ] `materializeDutyPlan` (catch-up `all`/`next`-with-orphan, `next_occurrence_at`
+  maintenance, `maxPerRun` cap, exhaustion→ended, `COUNT=1` not-premature).
+- [ ] Unique-index benign-conflict no-op in `apply` (idempotency layer 3).
+- [ ] `materializeDueDuties` driver: gate on `next_occurrence_at <= now`, order by
+  it, isolate per-duty failures.
+- [ ] **Duty backfill** (validated through `dutyFromRow`; transactional abort),
+  then retire `completeTaskPlan` spawn + fix `DB.completeTask` shape.
+- [ ] `createDutyPlan(now)` / `updateDutyPlan` (no rrule/dtstart) /
+  `setDutyStatusPlan` / `deleteDutyPlan` (orphan both).
+- [ ] Tests: engine matrix, orphan-on-next, cursor no-regression, `COUNT=1`,
+  zoned-DST, cap, backfill abort, no-spawn-on-complete.
 
 ### Stage 5 — Triggering (`stage-5-trigger-scheduled-and-lazy.md`)
 - [ ] `wrangler.toml` `[triggers]` cron.
 - [ ] `scheduled()` export + `handleScheduled` (`now = Date.now()`, no tz) with
   runtime budget.
-- [ ] `ensureDutiesFresh` lazy hook on all list/sync reads (not writes/GETs).
-- [ ] No timezone plumbing (Decision 4 — presentation only).
+- [ ] `ensureDutiesFresh` lazy hook on all list/sync reads (not single-task GETs
+  or mutations).
+- [ ] No timezone plumbing at the edge (per-duty zone lives inside the engine).
 - [ ] Tests: scheduled, lazy-read freshness, both-drivers race, sub-day lag,
-  per-tick cap.
+  per-tick cap, monthly-duty gate not tripped daily.
 - [ ] `wrangler deploy --dry-run` green.
 
 ### Stage 6 — REST + MCP (`stage-6-rest-and-mcp.md`)
 - [ ] DB duty methods.
-- [ ] REST `/api/duties*` + duty fields on task payloads.
-- [ ] MCP `create_duty`/`list_duties`/`update_duty`/`pause`/`resume`/`end`/`delete`.
+- [ ] REST `/api/duties*` returning **raw rows** (not envelopes) + duty fields on
+  task payloads; PATCH rejects `rrule`/`dtstart` (immutable).
+- [ ] MCP `create_duty`/`list_duties`/`update_duty`/`pause_duty`/`resume_duty`/
+  `end_duty`/`delete_duty` (+ `timezone` arg; delete orphans).
+- [ ] Action-log is **new** on REST (MCP-only today); wire `action_log.duty_id`.
+- [ ] **Export/import**: add `duties` to payload + import schema; insert duties
+  before tasks; validate.
 - [ ] Deprecate `recurrence` on `add_task`/`update_task` (reject → point to duties).
 - [ ] Clean up `complete_task` `next` readers.
 - [ ] Resolve `docs/mcp-tools.md` `recurring`/`supersedes` drift; add Duties docs.
@@ -106,7 +134,9 @@ orders must never drift from each other or from the code.
 
 ### Stage 8 — PWA UI (`stage-8-pwa-ui.md`)
 - [ ] `DutiesView` + cadence-summary helper.
-- [ ] `DutyEditView` (raw RRULE input, dtstart, catch_up).
+- [ ] `DutyEditView` (raw RRULE + dtstart **read-only on edit**; `timezone`
+  anchor-zone select defaulting to browser zone; `catch_up`; Reschedule =
+  end+create affordance).
 - [ ] "From duty" badge on instances.
 - [ ] Remove recurrence field from task creation.
 - [ ] Component tests. **Phase 1 done.**
@@ -133,14 +163,27 @@ orders must never drift from each other or from the code.
 
 ## Open decisions to confirm as stages are reached
 
-- Exact `openInstanceCount` signature for the `next` pile-up guard (Stage 4).
-- Per-tick processing order under the cap — staleness order chosen (Stage 5).
-- Delete-duty behavior — orphan instances (keep tasks, null `duty_id`) chosen,
-  confirm in tool copy (Stage 6).
+- Exact `openInstanceIds` shape passed into `materializeDutyPlan` for the `next`
+  orphan rule (Stage 4).
+- `maxPerRun` value (Stage 4) and per-tick duty cap + ordering (Stage 5, by
+  `next_occurrence_at` asc).
+- Zoned-expansion implementation: `rrule` library tz support vs a small
+  `Intl`-offset helper — validate in Workers (Stage 2).
 - Template storage shape — normalized tables vs JSON blob (Stage 9; leaning
   normalized).
-- Whether legacy `parseRrule`/`nextOccurrence` are deleted or retained after the
-  backfill has run everywhere (Stage 10).
+- Whether legacy `parseRrule`/`nextOccurrence` + date-only profile are deleted or
+  retained after the rollout criterion holds (Stage 10).
+
+## Resolved by the second-opinion review (2026-06-30)
+
+Folded in from a `codex exec` review of the first draft: hand-written SQL
+migrations (not Drizzle-generated); REST action-logging is new behavior;
+`apply` batch cap (100) → `maxPerRun`; export/import must include duties; cursor
+regression → monotonic `duty.update_cursor`; cheap-gate → `next_occurrence_at`;
+`COUNT=1`/future-`dtstart` premature-`ended` fix; Stage 1 over-scoped → backfill
+moved to Stage 4 (after domain validation exists); `dtstart` immutable;
+`catch_up: next` orphan semantics; anchor zone pulled into Phase 1;
+`occurrence_at`/`duty_id` paired invariant.
 
 ## Notes / deviations
 
