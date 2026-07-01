@@ -214,7 +214,7 @@ handled inside `apply` (Stage 4).
 Pure `(...) => Result<Plan, AppError>`, in the style of `worker/src/domain/ops/task.ts`:
 
 ```ts
-createDutyPlan(input, ids, now): TaskPlanResult    // duty.insert; materialize the first occ. if dtstart <= now
+createDutyPlan(input, ids, now): TaskPlanResult    // duty.insert; materialize the first occ. if firstOcc <= now (not dtstart)
 updateDutyPlan(duty, patch): TaskPlanResult        // duty.update on TEMPLATE fields + catch_up ONLY
 setDutyStatusPlan(duty, next): TaskPlanResult       // active⇄paused, →ended (guarded transitions)
 deleteDutyPlan(duty): TaskPlanResult                // orphan instances (null duty_id+occurrence_at) + duty.delete

@@ -153,8 +153,12 @@ self-spawning.
 ### 7. Lifecycle plan builders (used by Stage 6)
 
 - `createDutyPlan(input, ids, now)` → `duty.insert` with
-  `next_occurrence_at =` first occurrence; materialize immediately if
-  `dtstart <= now`.
+  `next_occurrence_at = firstOcc`, where `firstOcc = nextOccurrenceAfter(parts,
+  dtstart, timezone, null)` computes the rule's **first actual occurrence** (which
+  may be after `dtstart` — e.g. a `BYDAY`/`BYMONTHDAY` filter the anchor instant
+  doesn't match). Materialize immediately only if `firstOcc <= now` — **not**
+  `dtstart <= now`, which would spawn early for such rules. If `firstOcc > now`,
+  just insert the duty (it fires later via the gate).
 - `updateDutyPlan(duty, patch)` → `duty.update` on **template fields and
   `catch_up` only**. The series anchor — `rrule`, `dtstart`, **and `timezone`** —
   is immutable (all three define the occurrence calendar; editing any would strand
@@ -179,8 +183,14 @@ self-spawning.
   time; a **`next` duty 200 days behind with `maxPerRun=50` spawns *today's* task
   and jumps the cursor to today** (the cap does not apply to `next`); `maxPerRun`
   caps a huge `all` catch-up and the next run continues.
+- `createDutyPlan`: a rule whose **first occurrence is after `dtstart`** (e.g.
+  `dtstart` on a Mon, `FREQ=WEEKLY;BYDAY=FR`) with `dtstart < now < firstOcc` does
+  **not** spawn immediately (gate is `firstOcc <= now`, not `dtstart <= now`), and
+  seeds `next_occurrence_at = firstOcc`; a future-`dtstart` duty inserts with a
+  populated (future) `next_occurrence_at` and spawns nothing.
 - Idempotency: apply the same plan twice → one instance, cursor unchanged (no
-  regression); a stale-cursor plan is a monotonic no-op.
+  regression); a stale-cursor plan is a monotonic no-op; an active not-yet-due
+  duty keeps a populated `next_occurrence_at` (never nulled while merely not due).
 - Carry-forward: a completed prior instance's `session_log` → new
   instance's `kickoff_note`.
 - Backfill: mixed recurring/plain tasks → validated duties; a duty row that would

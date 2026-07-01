@@ -58,17 +58,35 @@ one node and no edges (migrate Phase 1 duties into this representation, or treat
 
 ### 3. Graph materialization
 
-Extend `materializeDutyPlan`: for each occurrence to spawn, mint a fresh
+Extend `materializeDutyPlan`: for each occurrence to spawn, assign a
 `MintedTaskId` per template node, build the `task.insert` rows (all sharing the
-same `occurrence_at` and `duty_id`), then map template links to `link.upsert`
-ops using the freshly minted ids. The whole graph is one plan → one D1 batch, so
-an occurrence's tasks and links commit atomically.
+same `occurrence_at` and `duty_id`, each stamped with its `template_node_key`),
+then map template links to `link.upsert` ops. The whole graph is one plan → one D1
+batch, so an occurrence's tasks and links commit atomically.
 
-Idempotency: the `UNIQUE(duty_id, occurrence_at)` index constrains one row per
-(duty, occurrence) — but a graph has N tasks per occurrence. Widen the uniqueness
-to `(duty_id, occurrence_at, template_node_key)` (add a `template_node_key`
-column to `tasks`, nullable for one-off and single-node instances) so re-running
-a graph spawn is still a no-op per node. Update Stage 4's benign-conflict handling
+**Idempotent replay needs stable per-node ids.** A racing/duplicate graph
+materialization must not point links at freshly-minted ids while the widened unique
+index no-ops the repeated inserts — the `link.upsert` would then reference tasks
+that were never inserted (FK failure / dangling link). So node ids must be
+*stable across replays*, one of:
+
+- **(preferred) Deterministic ids:** derive each node's id from
+  `(duty_id, occurrence_at, template_node_key)` (e.g. `t_` + a short hash), so a
+  replay re-derives the identical ids and both the `task.insert` (index no-op) and
+  the `link.upsert` (same endpoints) are idempotent. No random `nanoid` for duty
+  instances.
+- **(alternative) Resolve-then-emit:** before building link ops, look up existing
+  instance ids for this `(duty_id, occurrence_at)` and reuse them for present
+  nodes; only mint for missing ones.
+
+Idempotency index: widen `UNIQUE(duty_id, occurrence_at)` to
+`(duty_id, occurrence_at, template_node_key)`. Add a `template_node_key` column to
+`tasks`. **Every duty instance gets a non-null key** — including the Phase 1
+single-node case (use a stable default, e.g. `'main'`); `NULL` is reserved for
+one-off (non-duty) tasks only. This matters because SQLite treats `NULL` as
+distinct in unique indexes, so a nullable key on duty instances would let repeated
+single-task materialization insert duplicates. Backfill Phase 1 instances with the
+default key when the column is added, and update Stage 4's benign-conflict handling
 to the wider key.
 
 ### 4. Catch-up with graphs

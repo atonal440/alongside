@@ -190,7 +190,11 @@ column, **not** on `last_spawned_at < now`: the latter is true for a whole month
 for a monthly duty (it spawned yesterday but yesterday is still `< now` every read
 until next month), so it would defeat the cheap-gate purpose. `next_occurrence_at`
 holds the next un-spawned occurrence instant; the gate is
-`next_occurrence_at <= now`, and it is `NULL` for paused/ended/not-yet-due duties.
+`next_occurrence_at <= now`. It is `NULL` **only** for paused/ended/exhausted
+duties. An *active but not-yet-due* duty keeps `next_occurrence_at` populated with
+its next (future) occurrence — the gate simply doesn't select it until `now`
+reaches that instant. Storing `NULL` while merely "not yet due" would be a bug: no
+step recomputes it as time passes, so the duty would never fire.
 
 This is why the master plan calls spawning "idempotent by construction": neither
 driver needs to know about the other, and neither can corrupt the cursor.

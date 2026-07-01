@@ -161,7 +161,7 @@ duties
   status           text enum(active|paused|ended) NOT NULL default 'active'
   catch_up         text enum(next|all) NOT NULL default 'next'
   last_spawned_at  text                 cursor: occurrence instant of newest instance, null = none yet
-  next_occurrence_at text               next un-spawned occurrence instant; null = none due / ended. Drives the "is anything due" gate.
+  next_occurrence_at text               next un-spawned occurrence (may be future); null ONLY for paused/ended/exhausted. Drives the "is anything due" gate.
   created_at       text NOT NULL
   updated_at       text NOT NULL
 ```
