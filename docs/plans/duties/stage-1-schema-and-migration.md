@@ -139,6 +139,15 @@ export type Duty = typeof duties.$inferSelect;
 Add an index on `next_occurrence_at` (partial/plain) so the Stage 5 due-gate
 (`status='active' AND next_occurrence_at <= now`) is cheap.
 
+**FK follow-ons (flag now, implement in the noted stages).** `duties.project_id`
+is a real FK to `projects`, so two existing DB paths must be extended or they'll
+FK-fail once any duty references a project:
+- the `project.delete` apply case must **also** null `duties.project_id` (today it
+  only nulls `tasks.project_id`) — Stage 3.
+- the import `wipe` op must **also** delete `duties`, ordered after `tasks`/
+  `action_log` (which reference duties) and before `projects` (which duties
+  reference) — Stage 6.
+
 ### B2. Extend `tasks` (`shared/schema.ts`)
 
 ```ts

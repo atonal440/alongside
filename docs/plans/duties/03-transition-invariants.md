@@ -31,12 +31,16 @@ suggestion.
   datetime (Stage 1 A3), *every* reader treats it as such — including the surviving
   legacy recurrence path, via the Stage 1 A2 shim. No code path parses a migrated
   `due_date` as date-only (which would throw on the `IsoDate` assertion).
-- **I4 — The PWA parses every row shape the worker emits.** A field the worker
-  starts putting in a payload (datetime `due_date`, `duty_id`, `occurrence_at`,
-  duty rows) must be *accepted* by the PWA's response parser no later than the
-  deploy that starts emitting it — otherwise the PWA sees a contract failure and
-  drops/《resyncs the write forever (`docs/plans/pwa-type-safety.md` durable-failure
-  policy). PWA parser widening must not *lag* the worker.
+- **I4 — Client/server field contracts stay compatible in *both* directions.**
+  (a) *Worker → PWA:* a field the worker starts emitting (datetime `due_date`,
+  `duty_id`, `occurrence_at`, duty rows) must be *accepted* by the PWA's response
+  parser no later than the deploy that emits it. (b) *PWA → worker:* the worker
+  must **not start rejecting** a field the deployed PWA still *sends* — notably
+  `recurrence` on task writes: the pre-Stage-8 `EditView` still sends it, and
+  **queued offline pending ops carrying it would become durable 4xx failures and be
+  dropped**. Neither side may tighten a contract ahead of the other loosening its
+  use of it; when in doubt, tolerate on the receiver and remove the sender first.
+  (This bidirectionality is the correction to an earlier one-way framing.)
 - **I5 — The backfill is atomic and idempotent; a half-migrated table is never a
   resting state.** `tasks` is never left with some recurring rows carrying a
   `duty_id` and others not. The backfill either completes or rolls back (Stage 4).
@@ -94,10 +98,15 @@ Checks after the cut-over:
   (this is why the PWA due-date sweep is in Stage 1 Part A, not deferred).
 
 ### State D checks (after Stage 6)
-- I4: the pre-Stage-7 PWA does not choke on `duty_id`/`occurrence_at` on tasks or
+- I4(a): the pre-Stage-7 PWA does not choke on `duty_id`/`occurrence_at` on tasks or
   on any new endpoint's shape. If the PWA response parser is strict about unknown
   keys, either it must be widened here or Stages 6 and 7 deploy together. State the
   choice; don't leave it implicit.
+- I4(b): **REST task writes still accept `recurrence`** — the pre-Stage-8 PWA sends
+  it, and offline pending ops carrying it must still flush. Stage 6 tolerates it
+  (transparently upgrading to a duty); only MCP `add_task`/`update_task` reject it
+  (no offline queue there). The hard REST rejection waits for Stage 10, after the
+  PWA field is gone (Stage 8) and pending ops have drained.
 
 ### State F checks (after Stage 10)
 - The Stage 10 rollout criterion (backfill complete, one release of overlap, no

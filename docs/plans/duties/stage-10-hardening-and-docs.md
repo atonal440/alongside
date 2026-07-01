@@ -45,6 +45,11 @@ Once satisfied:
   the brand if fully unused.
 - Remove the defensive "legacy recurrence-only" fallbacks in the PWA
   (`TaskMeta.tsx`, `DetailView.tsx`) and worker readers added in Stages 6–8.
+- Remove the **Stage 1 A2 legacy-recurrence shim** and the **Stage 6 REST
+  recurrence tolerance** (the transparent task→duty upgrade). Both were transition
+  compat paths; once the same rollout criterion holds (no client sends
+  `recurrence`, pending ops drained), REST task writes may finally hard-reject
+  `recurrence` like MCP does (`duties/03`, State D → end state).
 - Verify with `wrangler deploy --dry-run` and a migration test that a DB with
   post-backfill data drops cleanly and duties still function.
 

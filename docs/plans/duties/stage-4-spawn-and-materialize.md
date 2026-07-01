@@ -181,9 +181,14 @@ task's `duty_id`/`occurrence_at`. Idempotent (skip tasks that already have a
   `next_occurrence_at = firstOcc`, where `firstOcc = nextOccurrenceAfter(parts,
   dtstart, timezone, null)` computes the rule's **first actual occurrence** (which
   may be after `dtstart` — e.g. a `BYDAY`/`BYMONTHDAY` filter the anchor instant
-  doesn't match). Materialize immediately only if `firstOcc <= now` — **not**
-  `dtstart <= now`, which would spawn early for such rules. If `firstOcc > now`,
-  just insert the duty (it fires later via the gate).
+  doesn't match). **Reject an empty series here:** if `firstOcc` is `null` (the
+  rule yields no occurrence at/after `dtstart` — e.g. `UNTIL` before the first
+  match), return a `validation` error ("recurrence produces no occurrences from
+  its start"). This is the anchor-aware non-empty check that `parseSeriesRrule`
+  can't do (Stage 2) — it lives here because it needs `dtstart`. Otherwise:
+  materialize immediately only if `firstOcc <= now` — **not** `dtstart <= now`,
+  which would spawn early for filtered rules. If `firstOcc > now`, just insert the
+  duty (it fires later via the gate).
 - `updateDutyPlan(duty, patch)` → `duty.update` on **template fields and
   `catch_up` only**. The series anchor — `rrule`, `dtstart`, **and `timezone`** —
   is immutable (all three define the occurrence calendar; editing any would strand
@@ -219,7 +224,9 @@ task's `duty_id`/`occurrence_at`. Idempotent (skip tasks that already have a
   `dtstart` on a Mon, `FREQ=WEEKLY;BYDAY=FR`) with `dtstart < now < firstOcc` does
   **not** spawn immediately (gate is `firstOcc <= now`, not `dtstart <= now`), and
   seeds `next_occurrence_at = firstOcc`; a future-`dtstart` duty inserts with a
-  populated (future) `next_occurrence_at` and spawns nothing.
+  populated (future) `next_occurrence_at` and spawns nothing; **an empty series**
+  (`FREQ=WEEKLY;BYDAY=FR;UNTIL=<a Thursday ≥ dtstart>`, `firstOcc = null`) is
+  **rejected** at create.
 - Lifecycle: `end_duty` (`setDutyStatusPlan`) on an **infinite, never-exhausted**
   duty writes a row that **passes `dutyFromRow`** (`ended` requires only
   `next_occurrence_at IS NULL`, not exhaustion) — so reschedule-by-`end_duty` +

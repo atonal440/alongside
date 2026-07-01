@@ -54,8 +54,13 @@ export interface SeriesRruleParts extends RruleParts {
   require explicit times; otherwise normalize a date to midnight UTC. Cross-field
   `UNTIL >= dtstart` is checked in the domain codec (Stage 3), not here.
 - Reject a rule with **both** `COUNT` and `UNTIL`.
-- Drop the infinite requirement, but still require **at least one** occurrence
-  from the probe/DTSTART (an empty series is invalid).
+- Drop the infinite requirement. **Do not** try to reject "empty series" here:
+  whether a rule yields any occurrence is **anchor-dependent** (e.g.
+  `FREQ=WEEKLY;BYDAY=FR;UNTIL=<a Thursday>` is empty only relative to a specific
+  `dtstart`), and `parseSeriesRrule` sees only the rule string, not `dtstart`. The
+  non-empty check therefore moves to **create-time**, where `dtstart` is known:
+  `createDutyPlan` rejects a duty whose `firstOcc = nextOccurrenceAfter(dtstart,
+  …)` is `null` (Stage 4). `parseSeriesRrule` validates only rule *shape*.
 
 Return `{ rrule: SeriesRrule; parts: SeriesRruleParts }`; add `SeriesRruleSchema`
 (valibot pipe) alongside `RruleSchema`.

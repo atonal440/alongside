@@ -89,17 +89,25 @@ in UTC, which is `rrule`'s native mode. It adds:
 - The rule must still produce **at least one** occurrence from `dtstart`
   (an empty series is a user error, not a valid duty).
 
-Two new pure calendar functions, working in instants (see
-`00-recurrence-and-triggering.md` §2):
+The calendar primitives, working in instants and **anchor-zone-aware** — every one
+takes the duty's `timezone` (null = expand in UTC) so zoned duties stay
+wall-clock-stable across DST; passing UTC-only would silently drift them. These
+are the authoritative signatures Stage 2 implements and `dutyFromRow` /
+materialization call:
 
 ```ts
 export function occurrencesBetween(parts: SeriesRruleParts, dtstart: IsoDateTime,
-                                   after: IsoDateTime | null, through: IsoDateTime): IsoDateTime[];
+  timezone: Timezone | null, after: IsoDateTime | null, through: IsoDateTime): IsoDateTime[];
+export function nextOccurrenceAfter(parts: SeriesRruleParts, dtstart: IsoDateTime,
+  timezone: Timezone | null, after: IsoDateTime | null): IsoDateTime | null;
+export function latestOccurrenceAtOrBefore(parts: SeriesRruleParts, dtstart: IsoDateTime,
+  timezone: Timezone | null, instant: IsoDateTime): IsoDateTime | null;
 export function isSeriesExhausted(parts: SeriesRruleParts, dtstart: IsoDateTime,
-                                  after: IsoDateTime): boolean;
+  timezone: Timezone | null, after: IsoDateTime | null): boolean;
 ```
 
-`nextOccurrence` stays as-is for the migration path.
+`nextOccurrence` (the old, single-arg, UTC-only primitive) stays as-is only for the
+legacy migration path.
 
 ### Timezone — a per-duty rule-expansion input (Phase 1, Decision 4)
 

@@ -98,19 +98,34 @@ an action-log entry:
 Optionally add `show_duties` (an App widget, mirroring `show_tasks`) — but this
 can slip to Stage 8/9; mark it optional.
 
-### 4. Deprecate task-level recurrence input
+### 4. Deprecate task-level recurrence input — but don't break the in-flight PWA
 
-Recurrence now belongs to duties. On the task write surfaces:
+Recurrence now belongs to duties. The two write surfaces must be treated
+**differently**, because rejecting a field the deployed PWA still sends is a
+transition hazard (`duties/03`, State D): the pre-Stage-8 `EditView` still exposes
+a recurrence selector, `parseTaskForm` still sends non-null `recurrence`, and
+**offline pending ops created before Stage 8 would become durable 4xx failures and
+be dropped** if the worker starts hard-rejecting.
 
-- `add_task` / `update_task` (MCP `mcp.ts`) and the REST task create/update
-  bodies (`wire/rest.ts:71,81`): **reject** a non-null `recurrence` with a
-  `validation` error that points the caller at `create_duty`
-  ("Recurring tasks are now Duties — use create_duty"). Do not silently create a
-  duty behind the caller's back; be explicit.
-- Keep *reading* `recurrence` on tasks (legacy column still exists until Stage
-  10) so existing rows render, but no new task write may set it.
-- Remove the recurrence arg from the `add_task`/`update_task` JSON schemas and
-  their docs so the model stops offering it.
+- **MCP `add_task`/`update_task` (safe to reject now).** MCP callers are the model,
+  not an offline queue. Remove `recurrence` from the tool JSON schema and reject a
+  non-null `recurrence` with a `validation` error pointing at `create_duty`
+  ("Recurring tasks are now Duties — use create_duty").
+- **REST task create/update (must tolerate through the transition).** Do **not**
+  hard-reject `recurrence` here while a recurrence-sending PWA is deployed. Accept
+  it and **transparently upgrade it to a duty** (create/attach a duty from the task
+  + recurrence, so the user's intent is preserved rather than silently dropped).
+  This compat path is the one place we *do* auto-create a duty — justified because
+  the caller is a legacy client mid-migration, not an explicit API user.
+- Keep *reading* `recurrence` on tasks (legacy column exists until Stage 10) so
+  existing rows render.
+
+**Sequencing.** The clean end-state (REST also rejects task recurrence) lands only
+once no deployed client sends it *and* pre-existing pending ops have drained:
+Stage 8 removes the PWA recurrence field, and **Stage 10** removes the REST
+tolerance alongside dropping the legacy column (same rollout criterion). Stage 6's
+REST tolerance and Stage 8's field removal must not leave a window where the worker
+rejects what a client still sends.
 
 ### 5. Clean up the `completeTask` readers
 
@@ -128,14 +143,23 @@ projects/tasks/links/preferences/action_log (`worker/src/db.ts` `exportAll` and
 
 - Add `duties: v.array(DutyRowSchema)` to `ExportPayload` and the import schema
   (`ImportV1Schema`); include duties in `exportAll`.
-- `planImport` must insert **duties before tasks** (tasks' `duty_id` FK references
-  duties) and validate each duty through `dutyFromRow`. Preserve the existing
-  wipe-then-restore ordering and the pre-wipe integrity check.
+- **Extend the `wipe` op to delete `duties`.** Today `wipe` deletes
+  task_links/action_log/tasks/projects/preferences but *not* duties; importing over
+  a DB that already has duties would then FK-fail on the project delete (duties
+  still reference projects) or leave stale schedules colliding with imported duty
+  ids. Delete order must respect the FKs: `task_links → action_log → tasks →
+  **duties** → projects → preferences` (duties after the tasks/action_log that
+  reference them, before the projects they reference).
+- **Restore order:** `planImport` inserts **projects → duties → tasks → …**
+  (duties before tasks, since `tasks.duty_id` → duties; duties after projects,
+  since `duties.project_id` → projects); validate each duty through `dutyFromRow`.
+  Keep the pre-wipe integrity check.
 - Version the payload (bump `version`) if the import schema is versioned; a v1
   payload without `duties` imports as "no duties," which is correct.
 - Tests: export→import round-trip preserves duties and their instances'
-  `duty_id`/`occurrence_at`; an import with a duty a task references but that is
-  missing is rejected; a legacy (duty-less) payload still imports.
+  `duty_id`/`occurrence_at`; import **over an existing DB that has duties** wipes
+  them (no FK failure, no id collision); an import with a duty a task references
+  but that is missing is rejected; a legacy (duty-less) payload still imports.
 
 ### 7. Resolve the documented drift
 
@@ -156,8 +180,12 @@ projects/tasks/links/preferences/action_log (`worker/src/db.ts` `exportAll` and
   pause→resume→end transitions; resume-ended → 409; delete orphans instances
   (tasks survive with `duty_id` *and* `occurrence_at` nulled).
 - MCP: each tool dispatches and validates; duty mutations write an
-  `action_log` entry (with `duty_id`); `add_task`/`update_task` with `recurrence`
-  → rejection pointing at `create_duty`.
+  `action_log` entry (with `duty_id`); **MCP** `add_task`/`update_task` with
+  `recurrence` → rejection pointing at `create_duty`.
+- Recurrence compat (Step 4): **REST** `add_task` with `recurrence` does **not**
+  4xx — it transparently creates a duty (verify the duty exists and the task is its
+  instance); an offline pending op carrying `recurrence` flushed against this stage
+  succeeds rather than becoming a durable failure.
 - Import/export: duty round-trip (Step 6).
 - Regression: `complete_task` on any task returns no `next`.
 

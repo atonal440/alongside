@@ -132,7 +132,9 @@ orders must never drift from each other or from the code.
 - [ ] Action-log is **new** on REST (MCP-only today); wire `action_log.duty_id`.
 - [ ] **Export/import**: add `duties` to payload + import schema; insert duties
   before tasks; validate.
-- [ ] Deprecate `recurrence` on `add_task`/`update_task` (reject → point to duties).
+- [ ] Deprecate `recurrence` on task writes: **MCP** rejects (→ create_duty);
+  **REST** tolerates through the transition (transparent task→duty upgrade so the
+  in-flight PWA + offline ops don't 4xx). Hard REST reject moves to Stage 10.
 - [ ] Clean up `complete_task` `next` readers.
 - [ ] Resolve `docs/mcp-tools.md` `recurring`/`supersedes` drift; add Duties docs.
 - [ ] Tests + curl smoke.

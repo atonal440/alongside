@@ -139,17 +139,27 @@ any status).
 - `case 'duty.exists'` precheck: a guarded existence statement, mirroring
   `task.exists` — the `ExistingRowGuard` machinery (`apply.ts:18`, `apply.ts:239`)
   already supports `entity: 'task' | 'project'`; widen it to include `'duty'`.
+- **Extend the existing `project.delete` case.** Today it nulls `tasks.project_id`
+  before deleting the project; now that `duties.project_id` is an FK to `projects`
+  (Stage 1), it must **also** null `duties.project_id` (`UPDATE duties SET
+  project_id = NULL WHERE project_id = :id`) in the same batch, or deleting a
+  project that any duty references FK-fails. Mirror exactly what it does for tasks.
 - The `UNIQUE(duty_id, occurrence_at)` benign-conflict handling is **Stage 4's**
   concern (it's specific to duty-instance `task.insert`), not here.
 
 ### 5. Tests (`worker/test/`)
 
 - `dutyFromRow`: a valid active duty round-trips; `until < dtstart` rejected;
-  `cursor < dtstart` rejected; `cursor` off-calendar rejected; `status: 'ended'`
-  with a still-live infinite rule rejected; a `null`-cursor `COUNT=1` duty is
-  **not** rejected as ended; `next_occurrence_at` inconsistent with the rule
-  rejected; a valid `timezone` accepted and a bogus one rejected; a `paused` duty
-  with a valid cursor accepted.
+  `cursor < dtstart` rejected; `cursor` off-calendar rejected; an **`ended`
+  infinite duty with `next_occurrence_at = null` is ACCEPTED** (a user-ended /
+  reschedule-by-end duty — the `ended` invariant is *only* `next_occurrence_at IS
+  NULL`, never an exhaustion requirement); an `ended` duty with a **non-null**
+  `next_occurrence_at` is rejected; a `null`-cursor `COUNT=1` duty is **not**
+  rejected as ended; `next_occurrence_at` inconsistent with the rule rejected; a
+  valid `timezone` accepted and a bogus one rejected; a `paused` duty with a valid
+  cursor accepted.
+- `apply` / `project.delete`: deleting a project that a duty references nulls
+  `duties.project_id` (and `tasks.project_id`) rather than FK-failing.
 - `apply`: a `Plan` of `duty.insert` then `duty.update` commits both;
   `duty.update_cursor` advances forward but a **stale** `duty.update_cursor`
   (`:new` ≤ stored) is a no-op (monotonic — the cursor never regresses);
