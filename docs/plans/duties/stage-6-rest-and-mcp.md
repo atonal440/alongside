@@ -56,9 +56,10 @@ Route specs + handlers:
 - `POST /api/duties` (`DutyCreateBody`: title, notes?, kickoff_note?, task_type?,
   project_id?, rrule, dtstart, `timezone?`, catch_up?) → the created `Duty` row.
 - `PATCH /api/duties/:duty_id` (`DutyUpdateBody`: **template fields + `catch_up` +
-  `timezone` + `status` only — never `rrule`/`dtstart`**, which are immutable) →
-  the updated `Duty` row. A body attempting to set `rrule`/`dtstart` is a
-  `validation`/`409` rejection pointing the caller at `end_duty` + `create_duty`.
+  `status` only — never `rrule`/`dtstart`/`timezone`**, the whole series anchor is
+  immutable) → the updated `Duty` row. A body attempting to set
+  `rrule`/`dtstart`/`timezone` is a `validation`/`409` rejection pointing the
+  caller at `end_duty` + `create_duty`.
 - `DELETE /api/duties/:duty_id` → `{ deleted: true, duty_id }` (matching the
   existing delete convention).
 
@@ -79,10 +80,10 @@ an action-log entry:
   (`next`|`all`, default `next`). Returns the created duty; if it materialized a
   first instance, include it.
 - `list_duties` — `status?`. Returns `{ duties }`.
-- `update_duty` — `duty_id` (req) + editable fields: template fields, `catch_up`,
-  `timezone`. **`rrule`/`dtstart` are not editable** — attempting them is rejected
-  with "reschedule by ending this duty and creating a new one." A `timezone`
-  change re-anchors future occurrences only.
+- `update_duty` — `duty_id` (req) + editable fields: template fields, `catch_up`.
+  **`rrule`/`dtstart`/`timezone` are not editable** (the whole series anchor is
+  immutable) — attempting any is rejected with "reschedule by ending this duty and
+  creating a new one."
 - `pause_duty` / `resume_duty` / `end_duty` — `duty_id`. Thin wrappers over
   `setDutyStatusPlan`. `resume_duty` on an `ended` duty is rejected ("ended series
   can't resume — create a new duty").

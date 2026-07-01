@@ -61,10 +61,11 @@ a one-off. This completes Phase 1 — duties are usable end to end.
   **catch_up** (next/all toggle).
 - Submit runs `parseDutyForm` (Stage 7); field errors render inline like
   `EditView`'s `fieldErrors.recurrence` (`EditView.tsx:180`).
-- **Editing an existing duty:** `rrule` and `dtstart` are **read-only** (immutable
-  — Pillar 5). Show them disabled with a "Reschedule" affordance that ends this
-  duty and opens a fresh create form. `timezone`, `catch_up`, and template fields
-  are editable; note that a timezone change re-anchors only *future* occurrences.
+- **Editing an existing duty:** the whole series anchor — `rrule`, `dtstart`, and
+  `timezone` — is **read-only** (immutable — Pillar 5). Show all three disabled
+  with a "Reschedule" affordance that ends this duty and opens a fresh create form
+  (which is also how you change the zone). Only `catch_up` and the template fields
+  are editable.
 - Optimistic save through the Stage 7 async action; offline-safe.
 
 ### 3. Spawned-instance badge (`pwa/src/components/task/TaskMeta.tsx`, `DetailView.tsx`)

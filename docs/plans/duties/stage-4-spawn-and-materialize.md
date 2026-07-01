@@ -56,7 +56,7 @@ export interface MaterializeCtx {
   openInstanceIds: readonly TaskId[];        // pending instances of THIS duty (for the next-orphan rule)
   priorSessionLog: BoundedString<10_000> | null;
   mintTaskId: () => MintedTaskId;            // injected for deterministic tests
-  maxPerRun: number;                         // cap on occurrences materialized this run (e.g. 50)
+  maxPerRun: number;                         // cap on task.inserts per run — applies to catch_up:'all' ONLY (e.g. 50)
 }
 
 export function materializeDutyPlan(duty: DutyDomain, ctx: MaterializeCtx): TaskPlanResult;
@@ -65,33 +65,37 @@ export function materializeDutyPlan(duty: DutyDomain, ctx: MaterializeCtx): Task
 Algorithm (from `00` §2–§4):
 
 1. `duty.status !== 'active'` → `ok(emptyPlan())`.
-2. `missed = occurrencesBetween(parts, dtstart, timezone, cursor, now)`, truncated
-   to `ctx.maxPerRun` (keeps the plan under the batch cap; the remainder is picked
-   up next run — safe because the cursor only advances past what we spawn).
-3. **`missed` empty:**
+2. `latest = latestOccurrenceAtOrBefore(parts, dtstart, timezone, now)` — the last
+   occurrence with instant `<= now` (Stage 2; backed by the rule's `.before(now,
+   inclusive)`, so it is O(1)-ish and needs no enumeration). If `latest` is null or
+   `latest <= cursor`, **nothing new is due:**
    - `isSeriesExhausted(parts, dtstart, timezone, cursor)` → emit
      `duty.update { status: 'ended', next_occurrence_at: null, updated_at: now }`.
-     (Because `isSeriesExhausted` treats a `null` cursor as "no occurrence at/after
-     `dtstart`", a `COUNT=1`/future-`dtstart` duty is **not** ended here — its
-     first occurrence is still pending.)
+     (`isSeriesExhausted` treats a `null` cursor as "no occurrence at/after
+     `dtstart`", so a `COUNT=1`/future-`dtstart` duty is **not** ended here.)
    - else `ok(emptyPlan())`.
-4. **`spawnAt = applyCatchUp(duty.catchUp, missed, ctx.openInstanceIds)`:**
-   - `all` → every instant in `missed` (already capped at `maxPerRun`).
-   - `next` → the single latest instant `max(missed)`. **Orphan rule (`00` §3):**
-     for each id in `openInstanceIds`, emit `task.update { id, duty_id: null,
-     occurrence_at: null, updated_at: now }` (detach the stale instance to a plain
-     task), then spawn one fresh instance at `max(missed)`. Always one *current*
-     instance; older opens become orphans.
-5. `ops += spawnAt.map(t => task.insert(instanceFromTemplate(duty, t, ctx.mintTaskId, ctx.priorSessionLog)))`.
-6. `newCursor = max(missed)`; `nextOcc = nextOccurrenceAfter(parts, dtstart,
-   timezone, newCursor)`.
-7. `ops += duty.update_cursor { id, lastSpawnedAt: newCursor, nextOccurrenceAt:
+3. **Branch on `catch_up` (the per-run cap applies to `all` only):**
+   - **`next`** → spawn exactly one at `latest` (the *true* latest due occurrence,
+     never a cap boundary). **Orphan rule (`00` §3):** for each id in
+     `openInstanceIds`, emit `task.update { id, duty_id: null, occurrence_at: null,
+     updated_at: now }` (detach the stale instance), then one `task.insert` at
+     `latest`. `newCursor = latest`. The cap is irrelevant — `next` inserts one row
+     however far behind it is.
+   - **`all`** → `missed = occurrencesBetween(parts, dtstart, timezone, cursor,
+     now)` **capped to the first `ctx.maxPerRun`** occurrences (keeps the plan under
+     `apply`'s batch limit); one `task.insert` per occurrence. `newCursor =` the
+     last spawned occurrence. If `missed` was truncated, the remainder is picked up
+     next run (safe — the cursor only advances past what we spawned).
+4. `nextOcc = nextOccurrenceAfter(parts, dtstart, timezone, newCursor)`.
+5. `ops += duty.update_cursor { id, lastSpawnedAt: newCursor, nextOccurrenceAt:
    nextOcc, updatedAt: now }` (monotonic — `00` §4). If `nextOcc === null`, also
    emit `duty.update { status: 'ended' }`.
-8. `ok({ ops, assertions: [duty.exists(duty.id)] })`.
+6. `ok({ ops, assertions: [duty.exists(duty.id)] })`.
 
-Clock-free: everything from `ctx`. Note the cursor advances to `max(missed)` even
-when `next` collapses many into one, so the next run doesn't re-see them.
+Clock-free: everything from `ctx`. For `next`, `newCursor` is the true latest due
+occurrence — so a duty 200 days behind spawns *today's* task and jumps the cursor
+to today, rather than crawling forward `maxPerRun` at a time and repeatedly
+orphaning a stale instance.
 
 ### 3. Idempotent instance insert in `apply`
 
@@ -151,10 +155,11 @@ self-spawning.
 - `createDutyPlan(input, ids, now)` → `duty.insert` with
   `next_occurrence_at =` first occurrence; materialize immediately if
   `dtstart <= now`.
-- `updateDutyPlan(duty, patch)` → `duty.update` on **template fields, `catch_up`,
-  and `timezone` only**. `rrule`/`dtstart` are **immutable** (reject an attempt);
-  rescheduling is `end_duty` + `create_duty`. A `timezone` change recomputes
-  `next_occurrence_at` (already-spawned instances are not moved).
+- `updateDutyPlan(duty, patch)` → `duty.update` on **template fields and
+  `catch_up` only**. The series anchor — `rrule`, `dtstart`, **and `timezone`** —
+  is immutable (all three define the occurrence calendar; editing any would strand
+  the cursor and break the Stage 3 invariant). Reject an attempt to change them;
+  rescheduling (including changing the zone) is `end_duty` + `create_duty`.
 - `setDutyStatusPlan(duty, next)` → guarded `duty.update` (active⇄paused,
   active/paused→ended; ended terminal). Pausing sets `next_occurrence_at = null`
   (gate skips it); resuming recomputes it from the cursor.
@@ -171,7 +176,9 @@ self-spawning.
   whose last occurrence ≤ now spawns the remainder then `status: 'ended'` +
   `next_occurrence_at: null`; **`COUNT=1` with `now < dtstart` does NOT end**;
   paused/ended spawn nothing; a zoned duty across a DST boundary keeps wall-clock
-  time; `maxPerRun` caps a huge `all` catch-up and the next run continues.
+  time; a **`next` duty 200 days behind with `maxPerRun=50` spawns *today's* task
+  and jumps the cursor to today** (the cap does not apply to `next`); `maxPerRun`
+  caps a huge `all` catch-up and the next run continues.
 - Idempotency: apply the same plan twice → one instance, cursor unchanged (no
   regression); a stale-cursor plan is a monotonic no-op.
 - Carry-forward: a completed prior instance's `session_log` → new

@@ -24,8 +24,9 @@ orders must never drift from each other or from the code.
 - **Spawn ownership:** server-authoritative; the PWA never materializes locally.
 - **Completion:** decoupled from spawning; `completeTaskPlan`'s recurrence branch
   is retired (Stage 4).
-- **`dtstart` immutable:** reschedule = `end_duty` + `create_duty`; `updateDutyPlan`
-  never edits `rrule`/`dtstart`.
+- **Series anchor immutable:** `rrule` + `dtstart` + `timezone` are fixed at
+  creation (all define the occurrence calendar); reschedule/re-zone = `end_duty` +
+  `create_duty`. `updateDutyPlan` edits template fields + `catch_up` only.
 - **`catch_up: next`:** spawn the latest occurrence; **orphan** any still-open
   prior instance (null `duty_id` + `occurrence_at`); advance cursor; drop
   intermediates. Orphans may accumulate — the deliberate cost of `next`.
@@ -134,9 +135,9 @@ orders must never drift from each other or from the code.
 
 ### Stage 8 — PWA UI (`stage-8-pwa-ui.md`)
 - [ ] `DutiesView` + cadence-summary helper.
-- [ ] `DutyEditView` (raw RRULE + dtstart **read-only on edit**; `timezone`
-  anchor-zone select defaulting to browser zone; `catch_up`; Reschedule =
-  end+create affordance).
+- [ ] `DutyEditView` (raw RRULE + dtstart + `timezone` all **read-only on edit**
+  — anchor immutable; `timezone` select defaults to browser zone on create;
+  `catch_up` + template editable; Reschedule/re-zone = end+create affordance).
 - [ ] "From duty" badge on instances.
 - [ ] Remove recurrence field from task creation.
 - [ ] Component tests. **Phase 1 done.**

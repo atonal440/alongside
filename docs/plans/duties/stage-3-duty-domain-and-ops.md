@@ -63,9 +63,11 @@ Define `DutyTemplate`, `DutySeries`, `DutyBase`, the three status variants, the
     the anchor is impossible) **and** `cursor` is an actual occurrence of the rule
     (verify via `occurrencesBetween(parts, dtstart, timezone, null, cursor)`
     ending exactly at `cursor`, or an `isOccurrence` helper).
-  - `next_occurrence_at` present ⇒ it is a real occurrence strictly after
-    `cursor` (or after `dtstart` when cursor is null), consistent with the rule +
-    zone.
+  - `next_occurrence_at` present ⇒ it is a real occurrence of the rule that is
+    strictly after `cursor` **when the cursor is set**, or **at or after
+    `dtstart`** when the cursor is null (a brand-new/backfilled duty has
+    `next_occurrence_at === dtstart`, the un-spawned first occurrence — do not
+    require strictly-after here), consistent with the rule + zone.
   - `status === 'ended'` ⇒ `next_occurrence_at IS NULL` **and**
     `isSeriesExhausted(parts, dtstart, timezone, cursor)` is true. A `null`-cursor
     duty is **never** `ended` (its `dtstart` occurrence hasn't been consumed — the

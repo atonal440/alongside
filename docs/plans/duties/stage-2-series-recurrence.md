@@ -72,6 +72,11 @@ export function nextOccurrenceAfter(
   parts: SeriesRruleParts, dtstart: IsoDateTime, timezone: Timezone | null,
   after: IsoDateTime | null,
 ): IsoDateTime | null   // null = series exhausted; feeds duties.next_occurrence_at
+
+export function latestOccurrenceAtOrBefore(
+  parts: SeriesRruleParts, dtstart: IsoDateTime, timezone: Timezone | null,
+  instant: IsoDateTime,
+): IsoDateTime | null   // last occurrence <= instant, or null if none yet; used by catch_up:'next'
 ```
 
 - Build the rule with `dtstart` as the **fixed anchor instant** (not `after`).
@@ -89,8 +94,11 @@ export function nextOccurrenceAfter(
 - Enumerate occurrences `> after` (or `>= dtstart` when `after === null`) and
   `<= through`. Respect the rule's own `COUNT`/`UNTIL` so a finite rule stops.
 - Return `IsoDateTime[]`, ascending. Hard-cap length (e.g. 10 000) as a runaway
-  guard; throw/log on cap hit. `nextOccurrenceAfter` is the single-result form used
-  to maintain `next_occurrence_at`.
+  guard; throw/log on cap hit. `nextOccurrenceAfter` (rule `.after`) maintains
+  `next_occurrence_at`; `latestOccurrenceAtOrBefore` (rule `.before(instant,
+  inclusive=true)`) gives the newest due occurrence without enumerating — used by
+  `catch_up: 'next'` so it jumps straight to the current occurrence even when the
+  duty is far behind.
 - Edge cases to test: `after === dtstart` excludes `dtstart`; `after` between two
   occurrences returns from the next; `through < dtstart` → `[]`; a `COUNT` rule
   used up before `through` returns only the survivors; a sub-day rule enumerates

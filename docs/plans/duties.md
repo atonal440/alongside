@@ -118,12 +118,14 @@ for the reasoning.
    `shared/wire/rows.ts`; REST/MCP wire specs. Illegal duties (a finite rule with
    no occurrences, a paused duty with a cursor *before* its anchor) fail to
    parse, not at runtime.
-5. **The series anchor is real and immutable.** `dtstart` is stored and **fixed
-   at creation** — it is never editable (rescheduling a duty means `end_duty` +
-   `create_duty`). The RRULE is always evaluated relative to `dtstart`, never
-   relative to the last instance's due date. This is what makes `COUNT`, `UNTIL`,
-   and stable "nth-weekday-of-month" semantics correct, and what lets a finite
-   series *end* (transition to `status: 'ended'`) deterministically.
+5. **The series anchor is real and immutable.** The whole anchor — `rrule`,
+   `dtstart`, **and `timezone`** — is **fixed at creation** and never editable,
+   because all three define the occurrence calendar; editing any would strand the
+   `last_spawned_at` cursor off the new calendar. Rescheduling (or re-zoning) a
+   duty is `end_duty` + `create_duty`. The RRULE is always evaluated relative to
+   `dtstart` (in `timezone`), never to the last instance's due date. This is what
+   makes `COUNT`, `UNTIL`, and stable "nth-weekday-of-month" semantics correct, and
+   what lets a finite series *end* deterministically.
 6. **Server is authoritative for spawning; the PWA stays local-first for
    everything else.** The PWA creates, edits, pauses, and deletes duties through
    the same queued pending-op path as tasks, and it renders duties and their
@@ -155,7 +157,7 @@ duties
   project_id       text FK projects     template (nullable)
   rrule            text NOT NULL        series recurrence (finite allowed: COUNT/UNTIL; time-capable)
   dtstart          text NOT NULL        series anchor instant (UTC datetime, minute resolution); immutable
-  timezone         text                 optional IANA anchor zone for rule expansion; null = expand in UTC
+  timezone         text                 optional IANA anchor zone for rule expansion; null = UTC; immutable (series-defining)
   status           text enum(active|paused|ended) NOT NULL default 'active'
   catch_up         text enum(next|all) NOT NULL default 'next'
   last_spawned_at  text                 cursor: occurrence instant of newest instance, null = none yet

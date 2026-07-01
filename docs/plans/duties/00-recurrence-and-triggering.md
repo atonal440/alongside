@@ -233,8 +233,10 @@ is about to render is already caught up.
 - **Weakness:** nothing spawns while nobody reads. On its own it cannot power
   notifications and cannot catch up a long-idle account until someone opens it —
   which for catch-up (`all`) means the backlog only materializes on next visit.
-- **Cost control:** it must be cheap on the common path. Gate it: a single
-  indexed query "does any `active` duty have `last_spawned_at < now` (or NULL)?"
+- **Cost control:** it must be cheap on the common path. Gate it with the same
+  indexed check used everywhere else — `status='active' AND next_occurrence_at IS
+  NOT NULL AND next_occurrence_at <= now` — **not** `last_spawned_at < now` (§4
+  explains why the latter trips on every read for a month). It
   short-circuits the whole thing when there's nothing to do, which is the usual
   case. Only when that guard trips does the full materialize run.
 

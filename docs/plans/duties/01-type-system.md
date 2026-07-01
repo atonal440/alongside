@@ -168,9 +168,10 @@ export function dutyFromRow(row: DutyRow): Result<DutyDomain, ValidationError[]>
   (you cannot have spawned before the series began).
 - `cursor` must be an actual occurrence of the rule, or `null` — a cursor
   off the calendar means a corrupt row.
-- `nextOccurrenceAt`, if non-null, must be a real occurrence strictly after
-  `cursor` (or after `dtstart` when `cursor` is null), consistent with the rule
-  and the anchor zone.
+- `nextOccurrenceAt`, if non-null, must be a real occurrence of the rule —
+  strictly after `cursor` when the cursor is set, or **at or after `dtstart`**
+  when the cursor is null (a new/backfilled duty seeds `nextOccurrenceAt =
+  dtstart`, the un-spawned first occurrence) — consistent with the anchor zone.
 - An `ended` duty must have `nextOccurrenceAt = null` and a genuinely exhausted
   series at `cursor`; a `null`-cursor duty is never `ended` (its `dtstart`
   occurrence hasn't been consumed — this is the `COUNT=1` / future-`dtstart` case
@@ -214,18 +215,20 @@ Pure `(...) => Result<Plan, AppError>`, in the style of `worker/src/domain/ops/t
 
 ```ts
 createDutyPlan(input, ids, now): TaskPlanResult    // duty.insert; materialize the first occ. if dtstart <= now
-updateDutyPlan(duty, patch): TaskPlanResult        // duty.update on TEMPLATE fields + catch_up + timezone ONLY
+updateDutyPlan(duty, patch): TaskPlanResult        // duty.update on TEMPLATE fields + catch_up ONLY
 setDutyStatusPlan(duty, next): TaskPlanResult       // active⇄paused, →ended (guarded transitions)
 deleteDutyPlan(duty): TaskPlanResult                // orphan instances (null duty_id+occurrence_at) + duty.delete
 materializeDutyPlan(duty, ctx): TaskPlanResult       // the engine; see Stage 4 for ctx shape
 ```
 
 `createDutyPlan` takes `now` because it may materialize the first occurrence
-immediately. `updateDutyPlan` is **not** allowed to change `rrule` or `dtstart`
-(the series anchor is immutable — Decision/Pillar 5); it edits template fields,
-`catch_up`, and `timezone`. Changing `timezone` re-expands future occurrences, so
-the plan recomputes `next_occurrence_at` (the already-spawned instances are not
-retroactively moved). `setDutyStatusPlan` encodes the legal transitions:
+immediately. `updateDutyPlan` edits **template fields and `catch_up` only**. The
+whole series anchor — `rrule`, `dtstart`, **and `timezone`** — is immutable
+(Pillar 5): all three define the occurrence calendar, so changing any of them would
+strand the cursor off the new calendar and violate the Stage 3 invariant that
+`last_spawned_at` be an occurrence under the duty's current rule + zone. Changing
+the zone is therefore also `end_duty` + `create_duty`. `setDutyStatusPlan` encodes
+the legal transitions:
 `active→paused`, `paused→active`, `active→ended`, `paused→ended`; `ended` is
 terminal (resuming a finished series means creating a new duty). `deleteDutyPlan`
 orphans instances (nulling both `duty_id` and `occurrence_at`) — the decided
