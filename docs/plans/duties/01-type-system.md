@@ -172,10 +172,13 @@ export function dutyFromRow(row: DutyRow): Result<DutyDomain, ValidationError[]>
   strictly after `cursor` when the cursor is set, or **at or after `dtstart`**
   when the cursor is null (a new/backfilled duty seeds `nextOccurrenceAt =
   dtstart`, the un-spawned first occurrence) — consistent with the anchor zone.
-- An `ended` duty must have `nextOccurrenceAt = null` and a genuinely exhausted
-  series at `cursor`; a `null`-cursor duty is never `ended` (its `dtstart`
-  occurrence hasn't been consumed — this is the `COUNT=1` / future-`dtstart` case
-  that must not be marked ended prematurely).
+- An `ended` duty must have `nextOccurrenceAt = null` — and that is the *only*
+  requirement. `ended` is terminal, reached by exhaustion **or** by `end_duty`
+  (the canonical reschedule/re-zone path). An infinite duty is never "exhausted",
+  and a duty may be ended before it ever spawns, so do **not** require
+  `isSeriesExhausted` here. The premature-`ended` guard for `COUNT=1`/future-
+  `dtstart` is the materializer's job (it won't auto-end such a duty), not the
+  codec's.
 
 Phase 2 (Stage 9) widens `DutyTemplate` from a single task shape to
 `{ tasks: DutyTaskTemplate[]; links: DutyTemplateLink[] }`. The single-task
@@ -196,7 +199,8 @@ export type DutyRowPatch = Partial<Omit<DutyRow, 'id' | 'created_at'>>;
   | { kind: 'duty.insert'; row: DutyRow }
   | { kind: 'duty.update'; id: DutyId; patch: DutyRowPatch }
   | { kind: 'duty.update_cursor'; id: DutyId; lastSpawnedAt: IsoDateTime; nextOccurrenceAt: IsoDateTime | null; updatedAt: IsoDateTime }
-  | { kind: 'duty.orphan_open'; id: DutyId; updatedAt: IsoDateTime }   // bulk-detach all open instances of a duty (one UPDATE)
+  | { kind: 'duty.orphan_stale'; id: DutyId; before: IsoDateTime; updatedAt: IsoDateTime }   // detach PENDING instances older than `before` (catch_up:next); excludes the current occurrence
+  | { kind: 'duty.orphan_all'; id: DutyId; updatedAt: IsoDateTime }                          // detach ALL instances (any status); used before duty.delete so the FK can't dangle
   | { kind: 'duty.delete'; id: DutyId }
 
 // added to PreCheck:
@@ -218,7 +222,7 @@ Pure `(...) => Result<Plan, AppError>`, in the style of `worker/src/domain/ops/t
 createDutyPlan(input, ids, now): TaskPlanResult    // duty.insert; materialize the first occ. if firstOcc <= now (not dtstart)
 updateDutyPlan(duty, patch): TaskPlanResult        // duty.update on TEMPLATE fields + catch_up ONLY
 setDutyStatusPlan(duty, next): TaskPlanResult       // active⇄paused, →ended (guarded transitions)
-deleteDutyPlan(duty): TaskPlanResult                // orphan instances (null duty_id+occurrence_at) + duty.delete
+deleteDutyPlan(duty): TaskPlanResult                // duty.orphan_all (detach every instance) then duty.delete
 materializeDutyPlan(duty, ctx): TaskPlanResult       // the engine; see Stage 4 for ctx shape
 ```
 
@@ -232,8 +236,10 @@ the zone is therefore also `end_duty` + `create_duty`. `setDutyStatusPlan` encod
 the legal transitions:
 `active→paused`, `paused→active`, `active→ended`, `paused→ended`; `ended` is
 terminal (resuming a finished series means creating a new duty). `deleteDutyPlan`
-orphans instances (nulling both `duty_id` and `occurrence_at`) — the decided
-behavior, not a Stage 6 open question. Illegal transitions return
+emits `duty.orphan_all` (one bulk `UPDATE` detaching **every** instance — pending
+*and* completed — so nulling their `duty_id`/`occurrence_at` leaves no dangling FK)
+then `duty.delete`. This is the decided behavior, not a Stage 6 open question, and
+it stays bounded regardless of instance count. Illegal transitions return
 `invalid_transition`.
 
 ### Errors (`worker/src/domain/errors.ts`)
@@ -344,7 +350,7 @@ carry `null` and every parser must accept `null`.
 | INPUT | `shared/parse/recurrence.ts` | `SeriesRrule`, `SeriesRruleParts`, `parseSeriesRrule`, anchor-zone-aware `occurrencesBetween`/`nextOccurrenceAfter`, `isSeriesExhausted` |
 | INPUT | `shared/parse/time.ts` | `Timezone` brand — per-duty rule-expansion input **and** PWA display (Phase 1, Decision 4) |
 | DOMAIN | `worker/src/domain/duty.ts` | `DutyTemplate`, `DutySeries` (incl. `timezone`, `nextOccurrenceAt`), `DutyDomain` union, `dutyFromRow` |
-| DOMAIN | `worker/src/domain/Op.ts` | `duty.insert/update/update_cursor/orphan_open/delete` ops, `duty.exists` precheck, `DutyRow`/`DutyRowPatch` |
+| DOMAIN | `worker/src/domain/Op.ts` | `duty.insert/update/update_cursor/orphan_stale/orphan_all/delete` ops, `duty.exists` precheck, `DutyRow`/`DutyRowPatch` |
 | DOMAIN | `worker/src/domain/ops/duty.ts` | `createDutyPlan`, `updateDutyPlan`, `setDutyStatusPlan`, `deleteDutyPlan`, `materializeDutyPlan` |
 | ROW | `shared/schema.ts` | `duties` table (incl. `timezone`, `next_occurrence_at`), `tasks.duty_id`/`occurrence_at`, `action_log.duty_id`, unique index, `Duty` type |
 | ROW/WIRE | `shared/wire/rows.ts` | `DutyRowSchema`, `TaskRowSchema` += duty fields |

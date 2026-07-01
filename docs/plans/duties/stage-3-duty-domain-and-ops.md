@@ -68,11 +68,18 @@ Define `DutyTemplate`, `DutySeries`, `DutyBase`, the three status variants, the
     `dtstart`** when the cursor is null (a brand-new/backfilled duty has
     `next_occurrence_at === dtstart`, the un-spawned first occurrence — do not
     require strictly-after here), consistent with the rule + zone.
-  - `status === 'ended'` ⇒ `next_occurrence_at IS NULL` **and**
-    `isSeriesExhausted(parts, dtstart, timezone, cursor)` is true. A `null`-cursor
-    duty is **never** `ended` (its `dtstart` occurrence hasn't been consumed — the
-    `COUNT=1`/future-`dtstart` case). Do **not** enforce the converse — an
-    exhausted-but-still-`active` row is transient and healed by the next
+  - `status === 'ended'` ⇒ `next_occurrence_at IS NULL`. That is the **only**
+    invariant on `ended` — do **not** also require `isSeriesExhausted`. `ended` is a
+    terminal state reachable two ways: a finite series ran out (exhaustion), *or*
+    the user called `end_duty` (which is also the canonical reschedule/re-zone
+    path, `end_duty` + `create_duty`). An **infinite** duty is never
+    `isSeriesExhausted`, and a brand-new duty may be ended before it ever spawns
+    (null cursor) — both are legal `ended` rows, so requiring exhaustion here would
+    make manual ending and reschedule-by-end unusable. The premature-`ended` guard
+    for `COUNT=1`/future-`dtstart` lives in the *materializer* (Stage 4 §2 — it
+    won't auto-transition such a duty), not in this codec; a `null`-cursor `ended`
+    row from an explicit `end_duty` is fine. Do **not** enforce the converse —
+    an exhausted-but-still-`active` row is transient and healed by the next
     materialize.
 - Return the status-tagged variant.
 
@@ -87,12 +94,14 @@ export type DutyRowPatch = Partial<Omit<DutyRow, 'id' | 'created_at'>>;
 ```
 
 Add to `Op`: `duty.insert` / `duty.update` / `duty.update_cursor` /
-`duty.orphan_open` / `duty.delete`. Add to `PreCheck`: `duty.exists`. Ensure `Duty`
-is re-exported from `shared/types.ts` alongside `Task`/`Project`/`TaskLink` so
-`Op.ts` can import it via `@shared/types`. Two ops need a dedicated form (not a
-generic patch): `duty.update_cursor` so the cursor advance is monotonic SQL, and
-`duty.orphan_open { id: DutyId }` so the `catch_up: next` orphan is **one bulk
-`UPDATE`** rather than one statement per open instance (Stage 4 / `00` §4).
+`duty.orphan_stale` / `duty.orphan_all` / `duty.delete`. Add to `PreCheck`:
+`duty.exists`. Ensure `Duty` is re-exported from `shared/types.ts` alongside
+`Task`/`Project`/`TaskLink`. Three ops need a dedicated form (not a generic
+patch), each so it's **one bulk statement** regardless of row count:
+`duty.update_cursor` (monotonic cursor advance); `duty.orphan_stale { id, before }`
+(the `catch_up: next` orphan — pending instances *older than* the current
+occurrence); and `duty.orphan_all { id }` (the pre-delete orphan — every instance,
+any status).
 
 ### 4. Executor (`worker/src/storage/apply.ts`)
 
@@ -111,12 +120,21 @@ generic patch): `duty.update_cursor` so the cursor advance is monotonic SQL, and
   ```
   A no-op update (a slower driver whose `:new` is ≤ the stored cursor) is success,
   not an error — the faster driver already advanced it.
-- `case 'duty.orphan_open'`: one bulk statement, unbounded rows but a single
-  statement, so the `next` plan stays under the batch limit no matter how many
-  open instances exist:
+- `case 'duty.orphan_stale'`: one bulk statement — detach the duty's *stale open*
+  instances (pending **and** older than the occurrence being materialized). The
+  `occurrence_at < :before` bound is essential: it **excludes the current
+  occurrence**, so a stale replay that runs after another driver already inserted
+  the current instance cannot detach it (`00` §3). Idempotent — a second run
+  matches nothing.
   ```sql
-  UPDATE tasks SET duty_id = NULL, occurrence_at = NULL, updated_at = :now
-   WHERE duty_id = :id AND status = 'pending';
+  UPDATE tasks SET duty_id = NULL, occurrence_at = NULL, updated_at = :updatedAt
+   WHERE duty_id = :id AND status = 'pending' AND occurrence_at < :before;
+  ```
+- `case 'duty.orphan_all'`: one bulk statement — detach **every** instance of the
+  duty (any status), used before `duty.delete` so no `tasks.duty_id` FK dangles.
+  ```sql
+  UPDATE tasks SET duty_id = NULL, occurrence_at = NULL, updated_at = :updatedAt
+   WHERE duty_id = :id;
   ```
 - `case 'duty.exists'` precheck: a guarded existence statement, mirroring
   `task.exists` — the `ExistingRowGuard` machinery (`apply.ts:18`, `apply.ts:239`)

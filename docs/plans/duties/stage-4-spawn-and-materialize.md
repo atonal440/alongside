@@ -76,17 +76,16 @@ Algorithm (from `00` §2–§4):
 3. **Branch on `catch_up` (the per-run cap applies to `all` only):**
    - **`next`** → spawn exactly one at `latest` (the *true* latest due occurrence,
      never a cap boundary). **Orphan rule (`00` §3):** emit **one bulk op**
-     `duty.orphan_open { id }` (a single `UPDATE tasks SET duty_id=NULL,
-     occurrence_at=NULL WHERE duty_id=:id AND status='pending'`), **ordered before**
-     the `task.insert` at `latest`. This detaches every stale open instance in one
-     statement — *not* one `task.update` per instance, which could blow `apply`'s
-     100-statement batch limit for a duty with many opens (e.g. switched from
-     `all` to `next` with a backlog) and deadlock the plan on every run. Ordering
-     orphan-before-insert means the fresh `latest` instance (created after) is not
-     itself orphaned. `newCursor = latest`. Because the cursor only materializes
-     when `latest > cursor`, every pre-existing pending instance is genuinely stale
-     — safe to orphan wholesale. The `next` plan is thus a bounded ~3 statements
-     regardless of how far behind the duty is.
+     `duty.orphan_stale { id, before: latest }` — a single `UPDATE … WHERE
+     duty_id=:id AND status='pending' AND occurrence_at < :latest` — then the
+     `task.insert` at `latest`. This detaches every stale open instance in one
+     statement (not one `task.update` each, which could blow `apply`'s 100-statement
+     limit for a big backlog and deadlock). The `occurrence_at < latest` bound is
+     load-bearing: it **excludes the current occurrence**, so a *stale replay* that
+     runs after a concurrent driver already inserted the `latest` instance cannot
+     detach that valid current task (which would leave a duplicate/orphan). The
+     replay's orphan then matches nothing new and its insert hits the unique index
+     → benign no-op. `newCursor = latest`. Bounded ~3 statements however far behind.
    - **`all`** → `missed = occurrencesBetween(parts, dtstart, timezone, cursor,
      now)` **capped to the first `ctx.maxPerRun`** occurrences (keeps the plan under
      `apply`'s batch limit); one `task.insert` per occurrence. `newCursor =` the
@@ -131,7 +130,7 @@ async materializeDueDuties(now: IsoDateTime): Promise<{ spawned: number; ended: 
   `dutyFromRow` (skip-and-log parse failures so one corrupt duty can't stall the
   batch); fetch `priorSessionLog` (latest completed instance's `session_log`);
   build the plan with `maxPerRun`; `apply` it. (No need to enumerate open instances
-  — the `next` orphan is a single bulk `duty.orphan_open` op.) Aggregate counts;
+  — the `next` orphan is a single bulk `duty.orphan_stale` op.) Aggregate counts;
   isolate per-duty failures.
 
 ### 5. Duty backfill (moved here from Stage 1)
@@ -193,8 +192,10 @@ task's `duty_id`/`occurrence_at`. Idempotent (skip tasks that already have a
 - `setDutyStatusPlan(duty, next)` → guarded `duty.update` (active⇄paused,
   active/paused→ended; ended terminal). Pausing sets `next_occurrence_at = null`
   (gate skips it); resuming recomputes it from the cursor.
-- `deleteDutyPlan(duty)` → orphan every instance (`task.update { duty_id: null,
-  occurrence_at: null }`) then `duty.delete`. This is the decided behavior, not a
+- `deleteDutyPlan(duty)` → `duty.orphan_all { id }` (one bulk `UPDATE` detaching
+  **every** instance — pending *and* completed, so no `duty_id` FK dangles after
+  the delete) then `duty.delete`. Two statements regardless of instance count; the
+  pure planner needs no DB read of the instance list. Decided behavior, not a
   Stage 6 open question.
 
 ### 8. Tests (`worker/test/`)
@@ -204,8 +205,10 @@ task's `duty_id`/`occurrence_at`. Idempotent (skip tasks that already have a
   spawns 1 at the latest + advances cursor; `next` with an existing open instance
   **orphans it** (duty_id+occurrence_at nulled) and spawns one fresh; **`next` with
   ~150 open instances** (e.g. after an `all`→`next` switch) produces a bounded plan
-  (one bulk `duty.orphan_open` + insert + cursor, not 150 updates) that applies in
-  one batch instead of deadlocking; a finite rule
+  (one bulk `duty.orphan_stale` + insert + cursor, not 150 updates) that applies in
+  one batch instead of deadlocking; **a stale `next` replay after a concurrent run
+  already inserted `latest` does NOT orphan that current instance** (the
+  `occurrence_at < latest` bound excludes it) and produces no duplicate; a finite rule
   whose last occurrence ≤ now spawns the remainder then `status: 'ended'` +
   `next_occurrence_at: null`; **`COUNT=1` with `now < dtstart` does NOT end**;
   paused/ended spawn nothing; a zoned duty across a DST boundary keeps wall-clock
@@ -217,6 +220,13 @@ task's `duty_id`/`occurrence_at`. Idempotent (skip tasks that already have a
   **not** spawn immediately (gate is `firstOcc <= now`, not `dtstart <= now`), and
   seeds `next_occurrence_at = firstOcc`; a future-`dtstart` duty inserts with a
   populated (future) `next_occurrence_at` and spawns nothing.
+- Lifecycle: `end_duty` (`setDutyStatusPlan`) on an **infinite, never-exhausted**
+  duty writes a row that **passes `dutyFromRow`** (`ended` requires only
+  `next_occurrence_at IS NULL`, not exhaustion) — so reschedule-by-`end_duty` +
+  `create_duty` works for the common case; `end_duty` on a brand-new (null-cursor)
+  duty is also valid. `deleteDutyPlan` on a duty with **both pending and completed**
+  instances orphans **all** of them (`duty.orphan_all`) so no `duty_id` FK dangles,
+  in a bounded 2-statement plan.
 - Idempotency: apply the same plan twice → one instance, cursor unchanged (no
   regression); a stale-cursor plan is a monotonic no-op; an active not-yet-due
   duty keeps a populated `next_occurrence_at` (never nulled while merely not due).

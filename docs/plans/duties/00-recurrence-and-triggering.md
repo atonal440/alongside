@@ -101,25 +101,35 @@ migration path but is no longer the engine.
 `materializeDutyPlan(duty, now)` — pure, deterministic, no clock reads (`now` is
 the current UTC instant, passed in):
 
+This is the high-level shape; **Stage 4 §2 is authoritative** (it carries the exact
+op names, the `maxPerRun` cap, and the replay guards). `cursor = last_spawned_at`,
+`tz = duty.timezone`:
+
 ```
-if duty.status != 'active':            return empty plan            # paused/ended never spawn
-after   = duty.last_spawned_at          # null on a brand-new duty
-missed  = occurrencesBetween(parts, dtstart, after, now)            # [] when nothing is due yet
-if missed is empty:
-    if isSeriesExhausted(parts, dtstart, after):                    # finite rule ran out
-        return plan[ duty.update { status: 'ended' } ]
+if duty.status != 'active':                       return empty plan       # paused/ended never spawn
+latest = latestOccurrenceAtOrBefore(parts, dtstart, tz, now)              # newest occurrence <= now, or null
+if latest is null or latest <= cursor:                                    # nothing new is due
+    if isSeriesExhausted(parts, dtstart, tz, cursor):                     # finite rule ran out
+        return plan[ duty.update { status:'ended', next_occurrence_at:null } ]
     return empty plan
 
-spawnAt = applyCatchUp(duty.catch_up, missed)                       # see §3
-ops = spawnAt.map(t => task.insert(instanceFromTemplate(duty, occurrence_at=t)))
-newCursor = max(missed)                                             # advance past ALL missed, even if collapsed
-ops += duty.update { last_spawned_at: newCursor,
-                     status: isSeriesExhausted(parts, dtstart, newCursor) ? 'ended' : 'active' }
+if catch_up == 'next':
+    ops       = [ duty.orphan_stale(before=latest),                       # detach stale opens < latest (race-safe)
+                  task.insert(instance @ latest) ]                        # one current instance
+    newCursor = latest
+else:  # 'all'
+    due       = occurrencesBetween(parts, dtstart, tz, cursor, now)[:maxPerRun]
+    ops       = due.map(t => task.insert(instance @ t))
+    newCursor = last(due)
+
+nextOcc = nextOccurrenceAfter(parts, dtstart, tz, newCursor)              # null when series is exhausted
+ops += duty.update_cursor { last_spawned_at:newCursor, next_occurrence_at:nextOcc }   # monotonic
+if nextOcc is null: ops += duty.update { status:'ended' }
 return plan[ ...ops ]  with assertion duty.exists(duty.id)
 ```
 
-Note the cursor advances to `max(missed)` even when `catch_up: 'next'` collapses
-five missed occurrences into one spawned task. The cursor tracks *what the
+Note the cursor advances to the true latest occurrence even when `catch_up: 'next'`
+collapses many missed occurrences into one spawned task. The cursor tracks *what the
 calendar has produced*, not *how many tasks we chose to create* — otherwise the
 next tick would re-spawn the collapsed ones.
 
@@ -143,18 +153,22 @@ Two policies, stored per duty as `catch_up`:
 when the previous instance is *still open* (uncompleted) and new occurrences come
 due. The rule (decided; supersedes an earlier "re-date the open instance" draft):
 
-1. **Orphan the stale open instances.** Detach every still-pending instance of the
-   duty from the series by nulling *both* `duty_id` and `occurrence_at`, turning
-   them into plain standalone tasks. They're still there to finish or delete, but
-   no longer represent the duty's live position. This is **one bulk `UPDATE`**
-   (`duty.orphan_open`), not one statement per instance — so a duty with a large
-   backlog of opens (e.g. switched from `all` to `next`) can't produce a plan that
-   overflows the storage batch limit and deadlocks. Because materialization only
-   fires when the latest occurrence is *past* the cursor, every pre-existing
-   pending instance is genuinely stale, so orphaning them all is correct.
-2. **Spawn one fresh instance** for the latest due occurrence (ordered *after* the
-   bulk orphan, so it isn't itself detached), giving the duty exactly one *current*
-   instance.
+1. **Orphan the stale open instances.** Detach every still-pending instance *older
+   than the occurrence being materialized* by nulling *both* `duty_id` and
+   `occurrence_at`, turning them into plain standalone tasks. This is **one bulk
+   `UPDATE`** (`duty.orphan_stale { id, before: latest }` →
+   `… WHERE duty_id=:id AND status='pending' AND occurrence_at < :latest`), not one
+   statement per instance — so a big backlog (e.g. switched from `all` to `next`)
+   can't overflow the storage batch limit and deadlock. The **`occurrence_at <
+   latest` bound is essential, not just cosmetic**: a *stale replay* (a plan built
+   from an old cursor that commits after a concurrent driver already inserted the
+   `latest` instance) must not detach that valid current task — the bound excludes
+   it, so the replay orphans nothing new and its insert hits the unique index as a
+   benign no-op. (Ordering orphan-before-insert alone does **not** protect against a
+   *concurrent* plan, only against self-collision within one plan — the predicate
+   is what makes it race-safe.)
+2. **Spawn one fresh instance** for the latest due occurrence, giving the duty
+   exactly one *current* instance.
 3. **Advance the cursor** to the latest occurrence; the intermediate missed
    occurrences are simply dropped (never materialized) — that is what `next`
    means.

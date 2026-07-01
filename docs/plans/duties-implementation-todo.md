@@ -88,8 +88,12 @@ orders must never drift from each other or from the code.
 - [ ] `DutyDomain` (series incl. `timezone`, `nextOccurrenceAt`) + `dutyFromRow`
   invariants (cursor ≥ dtstart; `null`-cursor never `ended`; next_occurrence_at
   consistency).
-- [ ] `duty.insert/update/update_cursor/orphan_open/delete` ops + `duty.exists`
-  precheck (`orphan_open` = one bulk UPDATE so `next` orphaning stays bounded).
+- [ ] `duty.insert/update/update_cursor/orphan_stale/orphan_all/delete` ops +
+  `duty.exists` precheck (`orphan_stale`/`orphan_all` = bulk UPDATEs so `next`
+  orphaning and delete stay bounded; `orphan_stale` bounds `occurrence_at < latest`
+  to exclude the current instance on a stale replay).
+- [ ] `dutyFromRow` `ended` invariant is only `next_occurrence_at IS NULL` (not
+  exhaustion) — so `end_duty` / reschedule-by-end works for infinite duties.
 - [ ] **Monotonic** `duty.update_cursor` in `apply.ts` (compare-and-set; stale =
   no-op).
 - [ ] Tests: codec invariants, monotonic cursor, apply, brand parsers.

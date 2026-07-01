@@ -93,13 +93,15 @@ to the wider key.
 
 `catch_up: 'all'` spawns the full graph per missed occurrence; `next` collapses
 to one graph at the latest occurrence. The orphan rule (`00` §3) carries over
-directly: the single bulk `duty.orphan_open` op (`WHERE duty_id=:id AND
-status='pending'`) already detaches **all** stale open instances — every task of
-every prior open occurrence — in one statement, and it nulls only
-`duty_id`/`occurrence_at`, so the orphaned graph keeps its inter-task links. So no
-new per-occurrence orphan machinery is needed; it stays bounded regardless of how
-many occurrences or nodes are open. Test that an orphaned graph occurrence retains
-its internal `blocks` links.
+directly: the single bulk `duty.orphan_stale { id, before: latest }` op
+(`WHERE duty_id=:id AND status='pending' AND occurrence_at < :latest`) detaches
+**every task of every prior open occurrence** in one statement — while the
+`< latest` bound excludes the current occurrence's just-spawned graph — and it
+nulls only `duty_id`/`occurrence_at`, so orphaned graphs keep their inter-task
+links. No new per-occurrence orphan machinery is needed; it stays bounded
+regardless of how many occurrences or nodes are open. (`deleteDutyPlan` uses
+`duty.orphan_all` — every instance, any status.) Test that an orphaned graph
+occurrence retains its internal `blocks` links.
 
 ### 5. Surfaces
 
