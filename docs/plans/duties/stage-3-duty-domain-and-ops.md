@@ -86,11 +86,13 @@ export type DutyRow      = Duty;                        // import from @shared/t
 export type DutyRowPatch = Partial<Omit<DutyRow, 'id' | 'created_at'>>;
 ```
 
-Add to `Op`: `duty.insert` / `duty.update` / `duty.update_cursor` / `duty.delete`.
-Add to `PreCheck`: `duty.exists`. Ensure `Duty` is re-exported from
-`shared/types.ts` alongside `Task`/`Project`/`TaskLink` so `Op.ts` can import it
-via `@shared/types`. (`duty.update_cursor` exists specifically so the cursor
-advance can be executed as monotonic SQL — see Step 4 and `00` §4.)
+Add to `Op`: `duty.insert` / `duty.update` / `duty.update_cursor` /
+`duty.orphan_open` / `duty.delete`. Add to `PreCheck`: `duty.exists`. Ensure `Duty`
+is re-exported from `shared/types.ts` alongside `Task`/`Project`/`TaskLink` so
+`Op.ts` can import it via `@shared/types`. Two ops need a dedicated form (not a
+generic patch): `duty.update_cursor` so the cursor advance is monotonic SQL, and
+`duty.orphan_open { id: DutyId }` so the `catch_up: next` orphan is **one bulk
+`UPDATE`** rather than one statement per open instance (Stage 4 / `00` §4).
 
 ### 4. Executor (`worker/src/storage/apply.ts`)
 
@@ -109,6 +111,13 @@ advance can be executed as monotonic SQL — see Step 4 and `00` §4.)
   ```
   A no-op update (a slower driver whose `:new` is ≤ the stored cursor) is success,
   not an error — the faster driver already advanced it.
+- `case 'duty.orphan_open'`: one bulk statement, unbounded rows but a single
+  statement, so the `next` plan stays under the batch limit no matter how many
+  open instances exist:
+  ```sql
+  UPDATE tasks SET duty_id = NULL, occurrence_at = NULL, updated_at = :now
+   WHERE duty_id = :id AND status = 'pending';
+  ```
 - `case 'duty.exists'` precheck: a guarded existence statement, mirroring
   `task.exists` — the `ExistingRowGuard` machinery (`apply.ts:18`, `apply.ts:239`)
   already supports `entity: 'task' | 'project'`; widen it to include `'duty'`.

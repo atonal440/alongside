@@ -53,7 +53,6 @@ branch**. Still no triggers or public surfaces (Stages 5–6) — exercised by t
 ```ts
 export interface MaterializeCtx {
   now: IsoDateTime;                          // current UTC instant = through-bound + spawn timestamp
-  openInstanceIds: readonly TaskId[];        // pending instances of THIS duty (for the next-orphan rule)
   priorSessionLog: BoundedString<10_000> | null;
   mintTaskId: () => MintedTaskId;            // injected for deterministic tests
   maxPerRun: number;                         // cap on task.inserts per run — applies to catch_up:'all' ONLY (e.g. 50)
@@ -76,11 +75,18 @@ Algorithm (from `00` §2–§4):
    - else `ok(emptyPlan())`.
 3. **Branch on `catch_up` (the per-run cap applies to `all` only):**
    - **`next`** → spawn exactly one at `latest` (the *true* latest due occurrence,
-     never a cap boundary). **Orphan rule (`00` §3):** for each id in
-     `openInstanceIds`, emit `task.update { id, duty_id: null, occurrence_at: null,
-     updated_at: now }` (detach the stale instance), then one `task.insert` at
-     `latest`. `newCursor = latest`. The cap is irrelevant — `next` inserts one row
-     however far behind it is.
+     never a cap boundary). **Orphan rule (`00` §3):** emit **one bulk op**
+     `duty.orphan_open { id }` (a single `UPDATE tasks SET duty_id=NULL,
+     occurrence_at=NULL WHERE duty_id=:id AND status='pending'`), **ordered before**
+     the `task.insert` at `latest`. This detaches every stale open instance in one
+     statement — *not* one `task.update` per instance, which could blow `apply`'s
+     100-statement batch limit for a duty with many opens (e.g. switched from
+     `all` to `next` with a backlog) and deadlock the plan on every run. Ordering
+     orphan-before-insert means the fresh `latest` instance (created after) is not
+     itself orphaned. `newCursor = latest`. Because the cursor only materializes
+     when `latest > cursor`, every pre-existing pending instance is genuinely stale
+     — safe to orphan wholesale. The `next` plan is thus a bounded ~3 statements
+     regardless of how far behind the duty is.
    - **`all`** → `missed = occurrencesBetween(parts, dtstart, timezone, cursor,
      now)` **capped to the first `ctx.maxPerRun`** occurrences (keeps the plan under
      `apply`'s batch limit); one `task.insert` per occurrence. `newCursor =` the
@@ -123,9 +129,10 @@ async materializeDueDuties(now: IsoDateTime): Promise<{ spawned: number; ended: 
 - Otherwise load matching active duties **ordered by `next_occurrence_at` ascending**
   (most-overdue first, so nothing is starved under Stage 5's cap). For each:
   `dutyFromRow` (skip-and-log parse failures so one corrupt duty can't stall the
-  batch); gather `openInstanceIds` (pending instances of this duty) and
-  `priorSessionLog` (latest completed instance's `session_log`); build the plan
-  with `maxPerRun`; `apply` it. Aggregate counts; isolate per-duty failures.
+  batch); fetch `priorSessionLog` (latest completed instance's `session_log`);
+  build the plan with `maxPerRun`; `apply` it. (No need to enumerate open instances
+  — the `next` orphan is a single bulk `duty.orphan_open` op.) Aggregate counts;
+  isolate per-duty failures.
 
 ### 5. Duty backfill (moved here from Stage 1)
 
@@ -195,7 +202,10 @@ task's `duty_id`/`occurrence_at`. Idempotent (skip tasks that already have a
 - `materializeDutyPlan`: brand-new duty (`cursor=null`) at `now=dtstart` spawns
   one; a week past a daily duty under `all` spawns 7 (or `maxPerRun`), under `next`
   spawns 1 at the latest + advances cursor; `next` with an existing open instance
-  **orphans it** (duty_id+occurrence_at nulled) and spawns one fresh; a finite rule
+  **orphans it** (duty_id+occurrence_at nulled) and spawns one fresh; **`next` with
+  ~150 open instances** (e.g. after an `all`→`next` switch) produces a bounded plan
+  (one bulk `duty.orphan_open` + insert + cursor, not 150 updates) that applies in
+  one batch instead of deadlocking; a finite rule
   whose last occurrence ≤ now spawns the remainder then `status: 'ended'` +
   `next_occurrence_at: null`; **`COUNT=1` with `now < dtstart` does NOT end**;
   paused/ended spawn nothing; a zoned duty across a DST boundary keeps wall-clock

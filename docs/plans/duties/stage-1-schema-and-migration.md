@@ -60,12 +60,33 @@ and no `duty_id` is set on any task yet. Part A *does* change behavior (a due
 - Retire `IsoDate` as a domain/storage type (keep it, if at all, only as a
   presentation-formatter input). Full removal of the brand is finalized in Stage 10.
 
-### A2. Recurrence profile (hands off until Stage 2)
+### A2. Keep the legacy recurrence path working across the transition
 
 Leave `parseRrule` / `isDateOnlyProfile` (`shared/parse/recurrence.ts`) **intact**
-in this stage — the backfill (Stage 4) reads legacy `task.recurrence` through
-them, and Stage 2 adds `parseSeriesRrule` alongside. Removal of the date-only
-profile is Stage 10, not here.
+as *parsers* — Stage 2 adds `parseSeriesRrule` alongside, and removal is Stage 10.
+But there is a transitional trap: legacy recurring tasks survive from here until
+the Stage 4 backfill retires them, and the legacy path reads `due_date` as a
+**date-only** value — `recurrenceFromRow` calls `nextOccurrence(parts, due_date)`
+(which does `parseSchema(IsoDateSchema, from)` and splits on `-`), and
+`completeTaskPlan` spawns the next occurrence from it. After A3 rewrites `due_date`
+to a datetime (`…T12:00:00Z`), that path **throws on every read** of a recurring
+task (the datetime fails the `IsoDate` assertion), not just on completion — so the
+app can't even list recurring tasks during Stages 1–3.
+
+Add a **compatibility shim** so recurring rows keep validating and spawning until
+Stage 4 replaces the path:
+
+- `recurrenceFromRow` and the `completeTaskPlan` legacy branch derive the
+  date-only anchor from the now-datetime `due_date` by taking its date part
+  (`slice(0,10)`) before feeding the date-only RRULE math.
+- The occurrence they spawn is re-inflated to the migration convention — a
+  datetime at **noon UTC** (`<nextDate>T12:00:00Z`) — so the new task's `due_date`
+  matches the migrated representation and displays on the right calendar day.
+
+This shim is deleted in Stage 10 along with `parseRrule`/the date-only profile.
+(Alternatively you could defer migrating *recurring* tasks' `due_date` until the
+Stage 4 backfill and only convert one-off tasks here — but that leaves a
+mixed date-only/datetime column through Stages 1–3, which the shim avoids.)
 
 ### A3. Data migration
 
@@ -166,6 +187,11 @@ the migration header points to Stage 4 for the backfill.
   its original calendar date in a non-UTC (e.g. US Pacific) viewer zone; a post-migration
   write stores a minute-resolution instant (seconds truncated); the existing task
   suite (readiness, sort, `formatDue`) passes against datetime `due_date`.
+- **Legacy-recurrence shim (A2):** after migration, a recurring task still
+  **loads** (no `IsoDate` throw in `recurrenceFromRow`) and **completes** correctly
+  — the shim reads the date part of the datetime `due_date` for the RRULE math and
+  spawns the next occurrence at noon UTC. This is the transitional path used only
+  until the Stage 4 backfill.
 - **Schema:** `duties`/`Duty` typecheck; `next_occurrence_at` index present.
 - **Unique index:** duplicate `(duty_id, occurrence_at)` rejected; many
   `duty_id = NULL` rows all succeed (NULL-distinctness).

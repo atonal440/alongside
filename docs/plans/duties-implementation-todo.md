@@ -54,7 +54,10 @@ orders must never drift from each other or from the code.
   scheduling type; minute-resolution parser (**truncate-on-write**); migrate
   existing values to **noon UTC** (all-day preservation — displayed date stays
   stable in a non-UTC viewer zone); sweep worker + PWA date-only touch points
-  (`formatDue`, `taskSort` sentinel, readiness window, edit form).
+  (`formatDue`, `taskSort` sentinel, readiness window, edit form). **Legacy-
+  recurrence shim (A2):** adapt `recurrenceFromRow`/`completeTaskPlan` to read the
+  date part of the now-datetime `due_date` so recurring tasks keep loading and
+  spawning through Stages 1–3 (removed in Stage 10).
 - [ ] **Part B:** `duties` table (incl. `timezone`, `next_occurrence_at` + index)
   + `Duty` type; `tasks.duty_id`/`occurrence_at`; `action_log.duty_id`;
   `UNIQUE(duty_id, occurrence_at)` index; `schema.sql`.
@@ -80,7 +83,8 @@ orders must never drift from each other or from the code.
 - [ ] `DutyDomain` (series incl. `timezone`, `nextOccurrenceAt`) + `dutyFromRow`
   invariants (cursor ≥ dtstart; `null`-cursor never `ended`; next_occurrence_at
   consistency).
-- [ ] `duty.insert/update/update_cursor/delete` ops + `duty.exists` precheck.
+- [ ] `duty.insert/update/update_cursor/orphan_open/delete` ops + `duty.exists`
+  precheck (`orphan_open` = one bulk UPDATE so `next` orphaning stays bounded).
 - [ ] **Monotonic** `duty.update_cursor` in `apply.ts` (compare-and-set; stale =
   no-op).
 - [ ] Tests: codec invariants, monotonic cursor, apply, brand parsers.
@@ -165,8 +169,6 @@ orders must never drift from each other or from the code.
 
 ## Open decisions to confirm as stages are reached
 
-- Exact `openInstanceIds` shape passed into `materializeDutyPlan` for the `next`
-  orphan rule (Stage 4).
 - `maxPerRun` value (Stage 4) and per-tick duty cap + ordering (Stage 5, by
   `next_occurrence_at` asc).
 - Zoned-expansion implementation: `rrule` library tz support vs a small

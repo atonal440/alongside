@@ -196,6 +196,7 @@ export type DutyRowPatch = Partial<Omit<DutyRow, 'id' | 'created_at'>>;
   | { kind: 'duty.insert'; row: DutyRow }
   | { kind: 'duty.update'; id: DutyId; patch: DutyRowPatch }
   | { kind: 'duty.update_cursor'; id: DutyId; lastSpawnedAt: IsoDateTime; nextOccurrenceAt: IsoDateTime | null; updatedAt: IsoDateTime }
+  | { kind: 'duty.orphan_open'; id: DutyId; updatedAt: IsoDateTime }   // bulk-detach all open instances of a duty (one UPDATE)
   | { kind: 'duty.delete'; id: DutyId }
 
 // added to PreCheck:
@@ -343,7 +344,7 @@ carry `null` and every parser must accept `null`.
 | INPUT | `shared/parse/recurrence.ts` | `SeriesRrule`, `SeriesRruleParts`, `parseSeriesRrule`, anchor-zone-aware `occurrencesBetween`/`nextOccurrenceAfter`, `isSeriesExhausted` |
 | INPUT | `shared/parse/time.ts` | `Timezone` brand — per-duty rule-expansion input **and** PWA display (Phase 1, Decision 4) |
 | DOMAIN | `worker/src/domain/duty.ts` | `DutyTemplate`, `DutySeries` (incl. `timezone`, `nextOccurrenceAt`), `DutyDomain` union, `dutyFromRow` |
-| DOMAIN | `worker/src/domain/Op.ts` | `duty.insert/update/update_cursor/delete` ops, `duty.exists` precheck, `DutyRow`/`DutyRowPatch` |
+| DOMAIN | `worker/src/domain/Op.ts` | `duty.insert/update/update_cursor/orphan_open/delete` ops, `duty.exists` precheck, `DutyRow`/`DutyRowPatch` |
 | DOMAIN | `worker/src/domain/ops/duty.ts` | `createDutyPlan`, `updateDutyPlan`, `setDutyStatusPlan`, `deleteDutyPlan`, `materializeDutyPlan` |
 | ROW | `shared/schema.ts` | `duties` table (incl. `timezone`, `next_occurrence_at`), `tasks.duty_id`/`occurrence_at`, `action_log.duty_id`, unique index, `Duty` type |
 | ROW/WIRE | `shared/wire/rows.ts` | `DutyRowSchema`, `TaskRowSchema` += duty fields |

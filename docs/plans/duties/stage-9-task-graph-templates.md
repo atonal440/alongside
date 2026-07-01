@@ -92,11 +92,14 @@ to the wider key.
 ### 4. Catch-up with graphs
 
 `catch_up: 'all'` spawns the full graph per missed occurrence; `next` collapses
-to one graph at the latest occurrence. The orphan rule (`00` §3) generalizes to
-graphs: an *occurrence* is "open" if any of its instances is still pending, and a
-still-open prior occurrence is orphaned **as a unit** — null `duty_id` +
-`occurrence_at` on every task of that occurrence (keeping their inter-task links)
-before spawning the fresh graph. Specify and test this precisely.
+to one graph at the latest occurrence. The orphan rule (`00` §3) carries over
+directly: the single bulk `duty.orphan_open` op (`WHERE duty_id=:id AND
+status='pending'`) already detaches **all** stale open instances — every task of
+every prior open occurrence — in one statement, and it nulls only
+`duty_id`/`occurrence_at`, so the orphaned graph keeps its inter-task links. So no
+new per-occurrence orphan machinery is needed; it stays bounded regardless of how
+many occurrences or nodes are open. Test that an orphaned graph occurrence retains
+its internal `blocks` links.
 
 ### 5. Surfaces
 

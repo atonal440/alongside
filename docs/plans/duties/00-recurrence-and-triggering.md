@@ -143,12 +143,18 @@ Two policies, stored per duty as `catch_up`:
 when the previous instance is *still open* (uncompleted) and new occurrences come
 due. The rule (decided; supersedes an earlier "re-date the open instance" draft):
 
-1. **Orphan the stale instance.** Detach it from the series by nulling *both* its
-   `duty_id` and `occurrence_at`, turning it into a plain standalone task. It's
-   still there for you to finish or delete, but it no longer represents the duty's
-   live position, and it won't be mistaken for the current instance.
-2. **Spawn one fresh instance** for the latest due occurrence, so the duty always
-   has exactly one *current* instance.
+1. **Orphan the stale open instances.** Detach every still-pending instance of the
+   duty from the series by nulling *both* `duty_id` and `occurrence_at`, turning
+   them into plain standalone tasks. They're still there to finish or delete, but
+   no longer represent the duty's live position. This is **one bulk `UPDATE`**
+   (`duty.orphan_open`), not one statement per instance — so a duty with a large
+   backlog of opens (e.g. switched from `all` to `next`) can't produce a plan that
+   overflows the storage batch limit and deadlocks. Because materialization only
+   fires when the latest occurrence is *past* the cursor, every pre-existing
+   pending instance is genuinely stale, so orphaning them all is correct.
+2. **Spawn one fresh instance** for the latest due occurrence (ordered *after* the
+   bulk orphan, so it isn't itself detached), giving the duty exactly one *current*
+   instance.
 3. **Advance the cursor** to the latest occurrence; the intermediate missed
    occurrences are simply dropped (never materialized) — that is what `next`
    means.
@@ -156,9 +162,8 @@ due. The rule (decided; supersedes an earlier "re-date the open instance" draft)
 Honest tradeoff: if you never touch them, orphaned ex-instances accumulate as
 detached tasks. That is the deliberate cost of `next` — the alternative (silently
 re-dating last week's task to today) hides that you missed it. The pure
-`materializeDutyPlan` receives the open-instance info as input so it stays
-testable; the DB-facing `materializeDueDuties` supplies it. Stage 4 specifies the
-exact signature and the orphan op.
+`materializeDutyPlan` needs no per-instance input for this (the bulk op handles any
+count); Stage 4 specifies the exact op ordering.
 
 ## 4. Idempotency: the cron and a read will race
 
