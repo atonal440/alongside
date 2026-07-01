@@ -182,7 +182,9 @@ instance always has both; a one-off or orphaned task has neither.
 
 Note that `tasks.due_date` itself changes under Decision 4: it migrates from a
 date-only string to a UTC datetime (minute resolution), app-wide. Existing values
-become midnight UTC. See `duties/02-timestamp-model.md` and Stage 1 Part A.
+become **noon UTC** (all-day preservation, so the displayed calendar date is
+stable in the viewer's local zone). See `duties/02-timestamp-model.md` and Stage 1
+Part A.
 
 Idempotency backstop:
 
@@ -246,12 +248,17 @@ For each task with `recurrence != NULL` and `due_date != NULL`:
    `task_type`, `project_id`) from the task.
 2. Set the duty's `rrule = task.recurrence`, `dtstart = task.due_date`,
    `timezone = NULL` (legacy rules were UTC/date-only), `status = 'active'`,
-   `catch_up = 'next'`, `last_spawned_at = task.due_date` (this task *is* the
-   occurrence at `dtstart`), and `next_occurrence_at =` the first occurrence after
-   `dtstart`.
+   `catch_up = 'next'`. **Seed the cursor without assuming `due_date` is an
+   occurrence** (a legacy task can be valid with a `due_date` that is *not* a
+   rule-match — e.g. due Monday under `BYDAY=FR`). If `due_date` is the first
+   occurrence, `last_spawned_at = due_date` and `next_occurrence_at =` the next
+   occurrence after it; otherwise `last_spawned_at = NULL` and `next_occurrence_at
+   =` the first actual occurrence ≥ `dtstart`. (Stage 4 §5 gives the exact rule.)
+   This avoids seeding a cursor that fails the Stage 3 occurrence invariant and
+   would abort the transactional backfill.
 3. Point the task at the duty: `duty_id = <new duty>`,
-   `occurrence_at = task.due_date`. Leave the task's own `recurrence` column in
-   place but stop treating it as authoritative.
+   `occurrence_at = task.due_date` (kept as-is, even when off-calendar). Leave the
+   task's own `recurrence` column in place but stop treating it as authoritative.
 4. Validate the minted duty row through `dutyFromRow`; abort the whole backfill
    (transactional) if any row fails to parse.
 

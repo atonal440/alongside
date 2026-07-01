@@ -82,11 +82,20 @@ One instant type removes all three. This is why the change is a simplification.
   through = now)` compares instants. No zone, no ambiguity, deterministic.
 
 ### Migrated
-- Existing date-only `due_date` values (`"2026-06-30"`) become
-  `"2026-06-30T00:00:00Z"` — midnight UTC. This is a deterministic, lossy-forward
-  reinterpretation; document it in the migration header. Any UI that only ever
-  showed a date keeps showing a date (format the instant back to its date part).
-- Existing date-only recurrence rules are reinterpreted with the midnight-UTC
+- Existing date-only `due_date` values migrate to **noon UTC**, not midnight:
+  `"2026-06-30"` → `"2026-06-30T12:00:00Z"`. This is the all-day-preservation
+  choice: a date-only value carried the intent "this calendar day," and the PWA
+  renders instants in the **viewer's local zone**, so midnight UTC would show a day
+  early for anyone west of UTC (`…T00:00:00Z` is June 29 in US Pacific). Noon UTC
+  keeps the displayed calendar date stable for every offset from UTC−12 to UTC+11
+  (essentially all real zones); the only slippage is the extreme east (UTC+12…+14,
+  e.g. Kiribati), an acceptable edge for a personal task app. Document it in the
+  migration header. When a migrated value is rendered as a plain date, format the
+  instant's *date part in the viewer's local zone* — which now yields the original
+  date. (A truly rigorous all-day representation would need an explicit all-day
+  flag, but that reintroduces the date-only distinction this decision removes;
+  noon-UTC anchoring is the pragmatic single-representation answer.)
+- Existing date-only recurrence rules are reinterpreted with the noon-UTC
   `DTSTART` derived from the task's `due_date`, then folded into the duty they
   become (see the master's Migration Strategy).
 - `defer_until` / `focused_until` are already datetime; they only need to be
@@ -114,11 +123,14 @@ and `occurrencesBetween` is anchor-zone-aware in Stage 2. Two modes:
   as UTC instants. Unset ⇒ UTC expansion. It never puts a timezone on a timestamp
   and is never a user-global setting.
 
-The anchor zone is *intent*, not a creation fact. It **defaults** to the
-creator's zone, but it really means "which wall clock this rule follows," and it
-is editable — e.g. if the user relocates, or if they create a duty while
-travelling but want it pinned to home. A duty with no wall-clock intent leaves it
-unset and accepts UTC cadence.
+The anchor zone captures *intent* — "which wall clock this rule follows." It
+**defaults** to the creator's zone at create time (a duty made while travelling can
+still be pinned to home by choosing that zone), and a duty with no wall-clock
+intent leaves it unset and accepts UTC cadence. But like `rrule` and `dtstart`, it
+is **immutable after creation**: all three define the occurrence calendar, so
+editing the zone would strand `last_spawned_at` off the new calendar and violate
+the `dutyFromRow` cursor invariant. Re-zoning (e.g. after a permanent relocation)
+is therefore `end_duty` + `create_duty`, exactly like rescheduling (Pillar 5).
 
 ### Two conversions, two zones
 

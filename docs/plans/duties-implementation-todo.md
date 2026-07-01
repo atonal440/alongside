@@ -52,7 +52,8 @@ orders must never drift from each other or from the code.
 ### Stage 1 — Timestamp model + schema (`stage-1-schema-and-migration.md`)
 - [ ] **Part A:** `due_date` → UTC datetime app-wide; retire `IsoDate` as a
   scheduling type; minute-resolution parser (**truncate-on-write**); migrate
-  existing values to midnight UTC; sweep worker + PWA date-only touch points
+  existing values to **noon UTC** (all-day preservation — displayed date stays
+  stable in a non-UTC viewer zone); sweep worker + PWA date-only touch points
   (`formatDue`, `taskSort` sentinel, readiness window, edit form).
 - [ ] **Part B:** `duties` table (incl. `timezone`, `next_occurrence_at` + index)
   + `Duty` type; `tasks.duty_id`/`occurrence_at`; `action_log.duty_id`;

@@ -11,7 +11,8 @@ Two schema changes that share one pass over `tasks`, so it is reshaped once:
 - **Part A — Timestamp unification (app-wide, Decision 4).** Convert `due_date`
   from date-only to a UTC datetime (minute resolution), retire the `IsoDate`
   domain type in favor of `IsoDateTime`, and sweep the worker + PWA code that
-  assumed date-only. Migrate existing values to midnight UTC.
+  assumed date-only. Migrate existing values to **noon UTC** (all-day preservation
+  — see A3).
 - **Part B — Duties schema.** Add the `duties` table (including `timezone` and
   `next_occurrence_at`), the `tasks.duty_id` / `tasks.occurrence_at` columns,
   `action_log.duty_id`, and the `UNIQUE(duty_id, occurrence_at)` index.
@@ -69,8 +70,11 @@ profile is Stage 10, not here.
 ### A3. Data migration
 
 - `tasks.due_date`: rewrite each non-null date-only value `"YYYY-MM-DD"` →
-  `"YYYY-MM-DDT00:00:00Z"` (midnight UTC). Deterministic, lossy-forward; document
-  it in the migration header.
+  `"YYYY-MM-DDT12:00:00Z"` (**noon UTC**, not midnight). A date-only value meant
+  "this calendar day"; the PWA renders instants in the viewer's local zone, so
+  midnight UTC would display a day early west of UTC. Noon UTC preserves the
+  calendar date for all offsets UTC−12…+11 (`02-timestamp-model.md` "Migrated").
+  Deterministic, lossy-forward; document it in the migration header.
 - `defer_until`/`focused_until`: already datetime — no data change; new writes
   truncate to minute resolution.
 
@@ -158,7 +162,8 @@ the migration header points to Stage 4 for the backfill.
 
 ### B7. Tests (`worker/test/`)
 
-- **Part A:** a date-only `due_date` migrates to midnight UTC; a post-migration
+- **Part A:** a date-only `due_date` migrates to **noon UTC** and still renders as
+  its original calendar date in a non-UTC (e.g. US Pacific) viewer zone; a post-migration
   write stores a minute-resolution instant (seconds truncated); the existing task
   suite (readiness, sort, `formatDue`) passes against datetime `due_date`.
 - **Schema:** `duties`/`Duty` typecheck; `next_occurrence_at` index present.

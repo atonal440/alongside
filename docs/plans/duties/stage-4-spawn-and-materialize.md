@@ -132,12 +132,31 @@ async materializeDueDuties(now: IsoDateTime): Promise<{ spawned: number; ended: 
 Now that `parseSeriesRrule` and `dutyFromRow` exist, migrate legacy recurring
 tasks (`00`/master Migration Strategy). In one transaction, for each task with
 `recurrence != NULL` (assert `due_date != NULL`): mint a duty (`timezone: null`,
-`catch_up: 'next'`, `dtstart = due_date`, `last_spawned_at = due_date`,
-`next_occurrence_at = nextOccurrenceAfter(...)`); **validate it through
-`dutyFromRow` and abort the whole backfill if any row fails**; set the task's
-`duty_id`/`occurrence_at`. Idempotent (skip tasks that already have a `duty_id`).
-Run it before Step 6 so no recurring task is left un-migrated and no longer
-self-spawning.
+`catch_up: 'next'`, `dtstart = due_date`), then set the cursor **without assuming
+`due_date` is an occurrence** of the anchored rule. This matters: today
+`recurrenceFromRow` only requires that *some* `nextOccurrence(due_date)` exists —
+a task due Monday with `FREQ=WEEKLY;BYDAY=FR` is valid but Monday is **not** an
+occurrence of the anchored calendar. Seeding `last_spawned_at = due_date` on such a
+row would fail the Stage 3 cursor-is-an-occurrence invariant and — because the
+backfill is transactional and Step 6 removes completion spawning — abort the whole
+upgrade for a perfectly valid legacy row. So:
+
+- Compute `firstOcc = nextOccurrenceAfter(parts, dtstart, null, null)` (the first
+  actual occurrence ≥ `dtstart`).
+- **If `due_date` is an occurrence** (`firstOcc === due_date`): the legacy task *is*
+  the anchor occurrence — `last_spawned_at = due_date`,
+  `next_occurrence_at = nextOccurrenceAfter(..., due_date)`.
+- **Else (`due_date` is off-calendar):** leave `last_spawned_at = null` (a null
+  cursor is always valid) and `next_occurrence_at = firstOcc`. The legacy task
+  keeps `occurrence_at = due_date` as an off-calendar current instance (there is no
+  must-be-an-occurrence invariant on `occurrence_at`); the duty spawns `firstOcc`
+  on schedule, and the unique index makes the `firstOcc === due_date` case a
+  no-op if they ever coincide.
+
+**Validate every minted duty through `dutyFromRow`; abort the whole backfill if any
+row fails.** With the cursor seeded as above, no valid legacy row aborts. Set the
+task's `duty_id`/`occurrence_at`. Idempotent (skip tasks that already have a
+`duty_id`). Run it before Step 6.
 
 ### 6. Retire completion-driven spawn
 
@@ -194,7 +213,10 @@ self-spawning.
 - Carry-forward: a completed prior instance's `session_log` → new
   instance's `kickoff_note`.
 - Backfill: mixed recurring/plain tasks → validated duties; a duty row that would
-  fail `dutyFromRow` aborts the whole backfill; second run is a no-op.
+  fail `dutyFromRow` aborts the whole backfill; second run is a no-op. **An
+  off-calendar legacy task** (due Monday under `FREQ=WEEKLY;BYDAY=FR`) migrates
+  successfully — cursor `null`, `next_occurrence_at` = first Friday ≥ dtstart — and
+  does **not** abort the backfill.
 - Regression: completing a recurring/legacy task spawns nothing now.
 - `materializeDueDuties`: cheap gate short-circuits when nothing is due; a monthly
   duty spawned yesterday does **not** trip the gate today.
