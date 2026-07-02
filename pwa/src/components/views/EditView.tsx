@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAppState } from '../../hooks/useAppState';
 import { updateTaskAction, deleteTaskAction, createLinkAction, deleteLinkAction } from '../../context/actions';
 import { parseTaskForm, type FieldErrors } from '../../domain/taskForm';
+import { localDateOf } from '../../utils/design';
 import type { TaskUpdatePatch } from '../../domain/taskMutations';
 import type { TaskLink } from '../../types';
 
@@ -85,7 +86,10 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes ?? '');
   const [kickoff, setKickoff] = useState(task.kickoff_note ?? '');
-  const [dueDate, setDueDate] = useState(task.due_date ?? '');
+  // due_date is a UTC instant (Decision 4); the date input needs its date
+  // part in the viewer's local zone so a noon-UTC all-day value round-trips
+  // to the calendar date it was meant to represent.
+  const [dueDate, setDueDate] = useState(task.due_date ? localDateOf(task.due_date) : '');
   const [recurrence, setRecurrence] = useState(task.recurrence ?? '');
   const [sessionLog, setSessionLog] = useState(task.session_log ?? '');
   const [deferKind, setDeferKind] = useState(task.defer_kind);

@@ -1,7 +1,7 @@
 import type { Task, TaskLink } from '@shared/types';
 import { isReady, readinessScore } from '@shared/readiness';
 
-export function suggestQueue(tasks: Task[], _today: string, links: TaskLink[] = []): Task[] {
+export function suggestQueue(tasks: Task[], links: TaskLink[] = []): Task[] {
   const nowIso = new Date().toISOString();
   return tasks
     .filter(t => isReady(t, links, tasks, nowIso))

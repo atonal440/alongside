@@ -42,16 +42,16 @@ orders must never drift from each other or from the code.
 
 ## Foundation docs (read before implementing)
 
-- [ ] `duties/00-recurrence-and-triggering.md` — recurrence-as-series-anchor,
+- [x] `duties/00-recurrence-and-triggering.md` — recurrence-as-series-anchor,
   materialization algorithm, catch-up, idempotency, triggering.
-- [ ] `duties/01-type-system.md` — full inventory of brands, domain unions, Op
+- [x] `duties/01-type-system.md` — full inventory of brands, domain unions, Op
   variants, row/wire schemas, MCP registry entries, and where each lives.
-- [ ] `duties/02-timestamp-model.md` — minute-resolution-UTC substrate
+- [x] `duties/02-timestamp-model.md` — minute-resolution-UTC substrate
   (Decision 4): why date-only is abandoned, what it removes/enables, DST tradeoff.
-- [ ] `duties/03-transition-invariants.md` — per-stage rollout-safety checklist for
+- [x] `duties/03-transition-invariants.md` — per-stage rollout-safety checklist for
   the partially-migrated coexistence windows. **Each stage's acceptance step
   verifies its state's invariants**; note the Stage 4 ↔ 5 atomic cut-over.
-- [ ] `duties/04-invariants-and-contracts.md` — **canonical source of truth**:
+- [x] `duties/04-invariants-and-contracts.md` — **canonical source of truth**:
   schema of record, domain invariants (INV-A…L), calendar signatures, op catalog,
   and the operations × invariants matrix. `04` wins over any stage doc; run the
   matrix (§6) when adding/changing a mutation. Update `04` **first**, then reconcile
@@ -59,8 +59,8 @@ orders must never drift from each other or from the code.
 
 ## Phase 1 — Single-task duties
 
-### Stage 1 — Timestamp model + schema (`stage-1-schema-and-migration.md`)
-- [ ] **Part A:** `due_date` → UTC datetime app-wide; retire `IsoDate` as a
+### Stage 1 — Timestamp model + schema (`stage-1-schema-and-migration.md`) — done, `worker/migrations/007_duties.sql`
+- [x] **Part A:** `due_date` → UTC datetime app-wide; retire `IsoDate` as a
   scheduling type; minute-resolution parser (**truncate-on-write**); migrate
   existing values to **noon UTC** (all-day preservation — displayed date stays
   stable in a non-UTC viewer zone); sweep worker + PWA date-only touch points
@@ -68,14 +68,14 @@ orders must never drift from each other or from the code.
   recurrence shim (A2):** adapt `recurrenceFromRow`/`completeTaskPlan` to read the
   date part of the now-datetime `due_date` so recurring tasks keep loading and
   spawning through Stages 1–3 (removed in Stage 10).
-- [ ] **Part B:** `duties` table (incl. `timezone`, `next_occurrence_at` + index)
+- [x] **Part B:** `duties` table (incl. `timezone`, `next_occurrence_at` + index)
   + `Duty` type; `tasks.duty_id`/`occurrence_at`; `action_log.duty_id`;
   `UNIQUE(duty_id, occurrence_at)` index; `schema.sql`.
-- [ ] **Hand-written** `worker/migrations/007_*.sql` (Drizzle is a diff-preview
+- [x] **Hand-written** `worker/migrations/007_*.sql` (Drizzle is a diff-preview
   only — `drizzle.config.ts`).
-- [ ] **No duty backfill here** (moved to Stage 4). No `duty_id` set on any task.
-- [ ] Tests: Part A representation change; schema; unique-index NULL-distinctness.
-- [ ] `wrangler deploy --dry-run` + `verify` green.
+- [x] **No duty backfill here** (moved to Stage 4). No `duty_id` set on any task.
+- [x] Tests: Part A representation change; schema; unique-index NULL-distinctness.
+- [x] `wrangler deploy --dry-run` + `verify` green.
 
 ### Stage 2 — Series recurrence (`stage-2-series-recurrence.md`)
 - [ ] `SeriesRrule` / `SeriesRruleParts` / `parseSeriesRrule` (COUNT/UNTIL,
@@ -239,5 +239,66 @@ names `user_preferences`; Stage 5/00 ordering language aligned to
 
 ## Notes / deviations
 
-_(Record here as stages land: what changed from the work order and why, so
-sibling docs can be reconciled.)_
+### Stage 1 landed (2026-07-02)
+
+Single migration `worker/migrations/007_duties.sql` covers both Part A and
+Part B (one pass over `tasks`, per the stage doc's framing). `npm run verify`
+green; `wrangler d1 migrations apply --local` and a manual noon-UTC/unique-
+index/NULL-distinctness check (now also covered by `worker/test/schema.test.ts`,
+which runs `schema.sql` through Node's built-in `node:sqlite` — a new pattern,
+since no prior migration had DDL-level test coverage) both pass.
+
+**Two new minute-resolution parsers, not one** (`shared/parse/primitives.ts`).
+`01-type-system.md`'s `DutyRowSchema` sketch and `stage-3`'s "`parseIsoDateTime`
+for `dtstart`" both name the *existing* `parseIsoDateTime`/`IsoDateTimeSchema`
+for scheduling fields — but that parser must stay untouched for
+`created_at`/`updated_at` (LWW needs the sub-second precision), so it cannot
+also be the truncating one. Landed instead:
+- `parseIsoDateTimeMinute`/`IsoDateTimeMinuteSchema` — truncates a full instant
+  to `:00` seconds; UTC-normalizes any offset. Use for `dtstart`,
+  `last_spawned_at`, `next_occurrence_at`, `occurrence_at` in Stage 2+, and for
+  `defer_until`/`focused_until` write-time normalization (currently wired only
+  at `worker/src/db.ts`'s `parseRequiredDateTime` — the one place both REST and
+  MCP funnel through for those two fields).
+- `parseDueDateTime`/`DueDateTimeSchema` — same truncation, plus accepts a bare
+  `YYYY-MM-DD` and anchors it to noon UTC. `due_date` is the one scheduling
+  field still commonly set from a bare date (REST/MCP callers, the task edit
+  form's `type="date"` input), so it needs the fallback; the other scheduling
+  fields above never receive a bare date and use the non-fallback parser.
+- `parseIsoDateTime`/`IsoDateTimeSchema` (unchanged) stays reserved for
+  `created_at`/`updated_at` only.
+
+Stage 2/3 implementers: when you add `DutyRowSchema`/`dutyFromRow`, use
+`IsoDateTimeMinuteSchema`/`parseIsoDateTimeMinute` for `dtstart`,
+`last_spawned_at`, `next_occurrence_at` — not `parseIsoDateTime`. Fix this in
+`01-type-system.md` and `stage-3-duty-domain-and-ops.md` when you touch them.
+
+**`TaskRowSchema.duty_id` is unbranded** (`v.nullable(v.string())`) — Stage 3
+owns the `DutyId` brand/`mintDutyId`/`parseDutyId`; tighten this field then.
+`occurrence_at` already uses `IsoDateTimeMinuteSchema`.
+
+**`TASK_INSERT_COLUMNS`/`TASK_UPDATE_COLUMNS`** (`worker/src/storage/apply.ts`)
+were **not** extended with `duty_id`/`occurrence_at` — nothing writes non-null
+values to them yet, and `bindInsert`/`bindUpdate` silently drop any row/patch
+keys not in these allowlists, so the columns stay `NULL` either way. The
+`completeTaskPlan` legacy-recurrence spawn (`worker/src/domain/ops/task.ts`)
+sets `duty_id: null, occurrence_at: null` on the row it inserts only to satisfy
+`TaskRow`'s type (`Task` now requires those keys); the DB layer ignores them.
+**Stage 4 must add both columns to both allowlists** when the spawn engine
+starts writing real values.
+
+**`TaskFlowContext.today` was removed**, not just repointed — it was doing
+nothing `context.nowIso` didn't already do (that field already existed,
+already defaulted to `new Date().toISOString()`). `design.ts`'s `formatDue`,
+`taskSort`, and `readinessScore` wrapper all dropped their vestigial `today`/
+`_today` params for the same reason (`_today` in `readinessScore` and
+`suggestQueue` was already dead code pre-Stage-1). New helper:
+`design.ts` `localDateOf(iso)` — converts a stored UTC instant to the
+*viewer's* local `YYYY-MM-DD` (`toLocaleDateString('en-CA')`). This is not
+optional/cosmetic: it's why noon UTC (not midnight) was chosen for the
+migration in the first place, so every plain-date rendering of `due_date`
+(`formatDue`, `TaskMeta`, `DetailView`, the edit form's date input) goes
+through it rather than slicing the raw UTC string. `formatDue`/`TaskMeta`
+decide "Due today" by comparing viewer-local dates (so an all-day task due
+today never flips to "Overdue" mid-day); the overdue/future split and
+`readinessScore`'s due window otherwise compare instants directly.

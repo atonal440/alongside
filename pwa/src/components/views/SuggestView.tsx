@@ -10,20 +10,20 @@ import { parseQuickAddTitle } from '../../domain/taskForm';
 import { createTaskAction, completeTaskAction, deferTaskAction, focusTaskAction, unfocusTaskAction, reopenTaskAction } from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
 import { deriveTaskFlow, type TaskFlowActionId } from '../../utils/taskFlow';
+import { localDateOf } from '../../utils/design';
 import type { Project, Task, TaskLink } from '../../types';
 
 export function SuggestView() {
   const { state, dispatch } = useAppState();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [deferOpenForTaskId, setDeferOpenForTaskId] = useState<string | null>(null);
-  const today = new Date().toISOString().split('T')[0] ?? '';
-  const queue = suggestQueue(state.tasks, today, state.links);
+  const nowIso = new Date().toISOString();
+  const queue = suggestQueue(state.tasks, state.links);
   const config = { apiBase: state.apiBase, authToken: state.authToken };
   const selectedTask = selectedTaskId ? queue.find(t => t.id === selectedTaskId) : null;
   const task = selectedTask ?? queue[0];
   const deferTargetTask = deferOpenForTaskId ? state.tasks.find(t => t.id === deferOpenForTaskId) ?? null : null;
   const flow = task ? deriveTaskFlow(task, {
-    today,
     projects: state.projects,
     links: state.links,
     tasks: state.tasks,
@@ -173,7 +173,7 @@ export function SuggestView() {
           {renderCommandDeferMenu(null)}
           <EmptyState message="All clear. Add something with search." />
         </section>
-        <QueuePanel queue={[]} currentId={null} today={today} projects={state.projects} links={state.links} tasks={state.tasks} doneToday={0} onPick={handlePickQueueTask} />
+        <QueuePanel queue={[]} currentId={null} projects={state.projects} links={state.links} tasks={state.tasks} doneToday={0} onPick={handlePickQueueTask} />
       </div>
     );
   }
@@ -195,7 +195,7 @@ export function SuggestView() {
                 <CardContextStrip
                   focused={focused}
                   queueCount={queue.length}
-                  dueTodayCount={state.tasks.filter(t => t.status !== 'done' && t.due_date === today).length}
+                  dueTodayCount={state.tasks.filter(t => t.status !== 'done' && t.due_date && localDateOf(t.due_date) === localDateOf(nowIso)).length}
                 />
                     <TaskCard
                       flow={flow}
@@ -214,11 +214,10 @@ export function SuggestView() {
       <QueuePanel
         queue={queue}
         currentId={task.id}
-        today={today}
         projects={state.projects}
         links={state.links}
         tasks={state.tasks}
-        doneToday={state.tasks.filter(t => t.status === 'done' && t.updated_at.startsWith(today)).length}
+        doneToday={state.tasks.filter(t => t.status === 'done' && t.updated_at.startsWith(nowIso.slice(0, 10))).length}
         focused={focused}
         onPick={handlePickQueueTask}
       />
@@ -256,10 +255,9 @@ function CardContextStrip({ focused, queueCount, dueTodayCount }: {
   );
 }
 
-function QueuePanel({ queue, currentId, today, projects, links, tasks, doneToday, focused, onPick }: {
+function QueuePanel({ queue, currentId, projects, links, tasks, doneToday, focused, onPick }: {
   queue: Task[];
   currentId: string | null;
-  today: string;
   projects: Project[];
   links: TaskLink[];
   tasks: Task[];
@@ -276,7 +274,6 @@ function QueuePanel({ queue, currentId, today, projects, links, tasks, doneToday
       <div className="queue-list">
         {queue.map(task => {
           const flow = deriveTaskFlow(task, {
-            today,
             projects,
             links,
             tasks,

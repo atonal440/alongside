@@ -133,6 +133,46 @@ export const IsoDateTimeSchema = v.pipe(
   v.transform(value => value as IsoDateTime),
 );
 
+// Normalizes any valid ISO instant to minute-resolution UTC (seconds/millis
+// truncated, canonical `Z` offset). Audit timestamps (created_at/updated_at)
+// must NOT go through this — LWW merge needs their sub-second precision.
+// Use IsoDateTimeSchema/parseIsoDateTime for those instead.
+export function truncateToMinuteUtc(input: string): string {
+  return `${new Date(input).toISOString().slice(0, 16)}:00Z`;
+}
+
+// The one scheduling-datetime parser for fields that are already full
+// instants (defer_until, focused_until, and — from Stage 2 on — a duty's
+// dtstart/last_spawned_at/next_occurrence_at/occurrence_at): truncates to
+// minute resolution rather than rejecting sub-minute precision, so no wire
+// client breaks (Decision 4, `docs/plans/duties/02-timestamp-model.md`).
+export const IsoDateTimeMinuteSchema = v.pipe(
+  v.string(),
+  v.check(isIsoDateTimeString, 'Expected a valid ISO date-time with Z or an offset.'),
+  v.transform(value => truncateToMinuteUtc(value) as IsoDateTime),
+);
+
+export function parseIsoDateTimeMinute(input: unknown): Result<IsoDateTime, ValidationError[]> {
+  return parseSchema(IsoDateTimeMinuteSchema, input);
+}
+
+// due_date's parser: accepts either a bare calendar date (all-day intent —
+// anchored to noon UTC so the displayed date is stable for viewer zones
+// UTC-12..+11, see `02-timestamp-model.md` "Migrated") or a full instant
+// (truncated to minute resolution like IsoDateTimeMinuteSchema). due_date is
+// the one scheduling field still commonly set from a bare date (REST/MCP
+// callers, the task edit form's date picker).
+export const DueDateTimeSchema = v.pipe(
+  v.string(),
+  v.transform(value => (isIsoDateString(value) ? `${value}T12:00:00Z` : value)),
+  v.check(isIsoDateTimeString, 'Expected a valid ISO calendar date (YYYY-MM-DD) or date-time.'),
+  v.transform(value => truncateToMinuteUtc(value) as IsoDateTime),
+);
+
+export function parseDueDateTime(input: unknown): Result<IsoDateTime, ValidationError[]> {
+  return parseSchema(DueDateTimeSchema, input);
+}
+
 export const IanaTimezoneSchema = v.pipe(
   v.string(),
   v.check(isIanaTimezoneString, 'Expected an IANA timezone name.'),

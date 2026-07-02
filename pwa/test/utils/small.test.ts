@@ -4,7 +4,6 @@ import { buildBlocksMap, buildBlockedByMap } from '../../src/utils/linkMaps';
 import { suggestQueue } from '../../src/utils/suggestQueue';
 import { makeTask, makeLink } from '../helpers/fixtures';
 
-// suggestQueue calls new Date() internally — the `_today` param it accepts is unused.
 // Time isolation strategy: use OLD for updated_at (> 14 days ago → no recent-update bonus,
 // stable scores regardless of when tests run), and FAR_FUTURE for defer_until / focused_until
 // so those states are always active. This avoids injectable-time refactoring suggestQueue
@@ -70,7 +69,7 @@ describe('suggestQueue', () => {
   test('excludes done tasks', () => {
     const done = makeTask({ id: 't_done', status: 'done', updated_at: OLD });
     const pending = makeTask({ id: 't_pending', updated_at: OLD });
-    const queue = suggestQueue([done, pending], '2026-06-09');
+    const queue = suggestQueue([done, pending]);
     expect(queue.map(t => t.id)).not.toContain('t_done');
     expect(queue.map(t => t.id)).toContain('t_pending');
   });
@@ -78,14 +77,14 @@ describe('suggestQueue', () => {
   test('excludes someday tasks', () => {
     const someday = makeTask({ id: 't_someday', defer_kind: 'someday', updated_at: OLD });
     const pending = makeTask({ id: 't_pending', updated_at: OLD });
-    const queue = suggestQueue([someday, pending], '2026-06-09');
+    const queue = suggestQueue([someday, pending]);
     expect(queue.map(t => t.id)).not.toContain('t_someday');
   });
 
   test('excludes tasks deferred to future', () => {
     const deferred = makeTask({ id: 't_deferred', defer_kind: 'until', defer_until: FAR_FUTURE, updated_at: OLD });
     const pending = makeTask({ id: 't_pending', updated_at: OLD });
-    const queue = suggestQueue([deferred, pending], '2026-06-09');
+    const queue = suggestQueue([deferred, pending]);
     expect(queue.map(t => t.id)).not.toContain('t_deferred');
   });
 
@@ -93,19 +92,19 @@ describe('suggestQueue', () => {
     const blocked = makeTask({ id: 't_blocked', updated_at: OLD });
     const blocker = makeTask({ id: 't_blocker', status: 'pending', updated_at: OLD });
     const link = makeLink({ from_task_id: 't_blocker', to_task_id: 't_blocked', link_type: 'blocks' });
-    const queue = suggestQueue([blocked, blocker], '2026-06-09', [link]);
+    const queue = suggestQueue([blocked, blocker], [link]);
     expect(queue.map(t => t.id)).not.toContain('t_blocked');
   });
 
   test('higher-scoring task sorts first', () => {
     const high = makeTask({ id: 't_high', kickoff_note: 'kick', updated_at: OLD });
     const low = makeTask({ id: 't_low', kickoff_note: null, updated_at: OLD });
-    const queue = suggestQueue([low, high], '2026-06-09');
+    const queue = suggestQueue([low, high]);
     expect(queue[0]?.id).toBe('t_high');
   });
 
   test('returns empty array when all tasks are filtered', () => {
     const done = makeTask({ status: 'done', updated_at: OLD });
-    expect(suggestQueue([done], '2026-06-09')).toHaveLength(0);
+    expect(suggestQueue([done])).toHaveLength(0);
   });
 });

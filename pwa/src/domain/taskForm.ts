@@ -2,9 +2,9 @@ import { ok, err, type Result } from '@shared/result';
 import {
   parseNonEmpty,
   parseBounded,
+  parseDueDateTime,
   parseIsoDate,
   parseRrule,
-  type IsoDate,
   type IsoDateTime,
   type NonEmptyString,
   type BoundedString,
@@ -86,10 +86,11 @@ export function parseTaskForm(input: TaskFormInput): Result<TaskUpdatePatch, Fie
     }
   }
 
-  // dueDate — empty → null, non-empty → IsoDate
-  let dueDate: IsoDate | null = null;
+  // dueDate — empty → null, non-empty → IsoDateTime (the date-only picker
+  // value is anchored to noon UTC — see shared/parse/primitives.ts DueDateTimeSchema)
+  let dueDate: IsoDateTime | null = null;
   if (input.dueDate !== '') {
-    const r = parseIsoDate(input.dueDate);
+    const r = parseDueDateTime(input.dueDate);
     if (r.ok) {
       dueDate = r.value;
     } else {

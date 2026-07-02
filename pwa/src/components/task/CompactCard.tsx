@@ -3,17 +3,17 @@ import { taskMetaString } from './TaskMeta';
 
 interface Props {
   task: Task;
-  today: string;
+  nowIso: string;
   cssClass?: string;
   onComplete?: (id: string) => void;
   onDetail?: (id: string) => void;
 }
 
-export function CompactCard({ task, today, cssClass = '', onComplete, onDetail }: Props) {
+export function CompactCard({ task, nowIso, cssClass = '', onComplete, onDetail }: Props) {
   const done = task.status === 'done';
   const focused = !!task.focused_until && task.focused_until > new Date().toISOString();
   const label = focused ? 'Focused' : '';
-  const meta = taskMetaString(task, today);
+  const meta = taskMetaString(task, nowIso);
 
   return (
     <div className={`compact-card${done ? ' done' : ''}${cssClass ? ` ${cssClass}` : ''}`}>

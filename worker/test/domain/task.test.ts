@@ -37,6 +37,8 @@ function taskRow(overrides: Partial<Task> = {}): Task {
     kickoff_note: null,
     session_log: null,
     focused_until: null,
+    duty_id: null,
+    occurrence_at: null,
     ...overrides,
   };
 }
@@ -212,7 +214,7 @@ describe('completeTaskPlan', () => {
         title: 'Water the tomatoes',
         notes: null,
         status: 'pending',
-        due_date: '2026-05-29',
+        due_date: '2026-05-29T12:00:00Z',
         recurrence: 'FREQ=WEEKLY;INTERVAL=2',
         created_at: '2026-05-15T13:00:00.000Z',
         updated_at: '2026-05-15T13:00:00.000Z',
@@ -223,6 +225,8 @@ describe('completeTaskPlan', () => {
         kickoff_note: 'Finished the deep watering pass.',
         session_log: null,
         focused_until: null,
+        duty_id: null,
+        occurrence_at: null,
       },
     });
   });
@@ -242,7 +246,7 @@ describe('completeTaskPlan', () => {
       kind: 'task.insert',
       row: {
         title: 'Publish meeting minutes',
-        due_date: '2026-06-19',
+        due_date: '2026-06-19T12:00:00Z',
         recurrence: 'FREQ=MONTHLY;BYDAY=3FR',
         status: 'pending',
       },

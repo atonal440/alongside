@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import * as fc from 'fast-check';
 import { makeTask } from '../helpers/fixtures';
-import type { NonEmptyString, IsoDate, IsoDateTime, Rrule, BoundedString } from '@shared/parse';
+import type { NonEmptyString, IsoDateTime, Rrule, BoundedString } from '@shared/parse';
 import {
   newLocalTask,
   applyUpdate,
@@ -103,7 +103,7 @@ describe('applyUpdate', () => {
 
   test('setting both recurrence and due_date together → ok', () => {
     const task = makeTask({ due_date: null, recurrence: null });
-    const result = applyUpdate(task, { due_date: '2026-07-01' as IsoDate, recurrence: 'FREQ=WEEKLY' as Rrule }, NOW);
+    const result = applyUpdate(task, { due_date: '2026-07-01T12:00:00Z' as IsoDateTime, recurrence: 'FREQ=WEEKLY' as Rrule }, NOW);
     expect(result.ok).toBe(true);
   });
 

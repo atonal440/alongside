@@ -9,7 +9,7 @@ import { migrateLegacyDeferShape } from './db';
 // through without mutation.
 const NULLABLE_TASK_FIELDS = [
   'notes', 'due_date', 'recurrence', 'defer_until', 'project_id',
-  'kickoff_note', 'session_log', 'focused_until',
+  'kickoff_note', 'session_log', 'focused_until', 'duty_id', 'occurrence_at',
 ] as const;
 
 const NULLABLE_PROJECT_FIELDS = ['notes', 'kickoff_note'] as const;

@@ -14,7 +14,7 @@ import { readinessScore } from '@shared/readiness';
 import { unsafeBrand } from '@shared/brand';
 import type { ActiveDeferState, Plan, PendingTaskDomain, TaskDomain } from './domain';
 import type { IsoDateTime, MintedProjectId, MintedTaskId, TaskId, ValidationError } from './parse';
-import { parseIsoDateTime, parseTaskId } from './parse';
+import { parseDueDateTime, parseIsoDateTime, parseIsoDateTimeMinute, parseTaskId } from './parse';
 import { appErrorMessage, validationErrorResult, type AppError } from './domain/errors';
 import {
   clearDeferTaskPlan,
@@ -122,9 +122,22 @@ function withPath(path: string, errors: AppError): AppError {
   })));
 }
 
+// Truncates to minute resolution on write (Decision 4) — used for
+// focused_until/defer's `until`, which are always already-full instants.
 function parseRequiredDateTime(path: string, input: string): IsoDateTime {
-  const parsed = parseIsoDateTime(input);
+  const parsed = parseIsoDateTimeMinute(input);
   if (!parsed.ok) throwAppError(withPath(path, validationErrorResult(parsed.error)));
+  return parsed.value;
+}
+
+// due_date's write-time normalizer: accepts a bare date (noon UTC) or a full
+// instant (truncated to minute resolution) — see shared/parse/primitives.ts
+// DueDateTimeSchema. REST/MCP both funnel through this, since MCP passes
+// due_date straight through with no upstream validation.
+function parseOptionalDueDate(input: string | null | undefined): IsoDateTime | null {
+  if (input === null || input === undefined) return null;
+  const parsed = parseDueDateTime(input);
+  if (!parsed.ok) throwAppError(withPath('due_date', validationErrorResult(parsed.error)));
   return parsed.value;
 }
 
@@ -256,7 +269,7 @@ export class DB {
   }
 
   async addTask(input: TaskCreate): Promise<Task> {
-    const dueDate = input.due_date ?? null;
+    const dueDate = parseOptionalDueDate(input.due_date);
     const recurrence = input.recurrence ?? null;
 
     const timestamp = now();
@@ -276,6 +289,8 @@ export class DB {
       kickoff_note: input.kickoff_note ?? null,
       session_log: null,
       focused_until: null,
+      duty_id: null,
+      occurrence_at: null,
     };
     assertWritableTaskRow(task);
 
@@ -374,7 +389,7 @@ export class DB {
     const patch: Partial<typeof tasksTable.$inferInsert> = {};
     if (updates.title !== undefined)        patch.title = updates.title;
     if (updates.notes !== undefined)        patch.notes = updates.notes;
-    if (updates.due_date !== undefined)     patch.due_date = updates.due_date;
+    if (updates.due_date !== undefined)     patch.due_date = parseOptionalDueDate(updates.due_date);
     if (updates.recurrence !== undefined)   patch.recurrence = updates.recurrence;
     if (updates.task_type !== undefined)    patch.task_type = updates.task_type;
     if (updates.project_id !== undefined)   patch.project_id = updates.project_id;
@@ -615,6 +630,7 @@ export class DB {
       id: result.meta.last_row_id as number,
       tool_name: entry.tool_name,
       task_id: entry.task_id ?? null,
+      duty_id: null,
       title: entry.title,
       detail: entry.detail ?? null,
       created_at,

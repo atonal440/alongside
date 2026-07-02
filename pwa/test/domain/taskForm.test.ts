@@ -117,11 +117,11 @@ describe('parseTaskForm — dueDate', () => {
     expect(result.value.due_date).toBeNull();
   });
 
-  test('valid ISO date → IsoDate in patch', () => {
+  test('valid ISO date → anchored to noon UTC in patch (Decision 4 all-day convention)', () => {
     const result = parseTaskForm(baseInput({ dueDate: '2026-07-01' }));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.due_date).toBe('2026-07-01');
+    expect(result.value.due_date).toBe('2026-07-01T12:00:00Z');
   });
 
   test('invalid date string → error on dueDate', () => {

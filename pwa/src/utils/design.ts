@@ -34,14 +34,25 @@ export function projectColor(projectId: string | null | undefined): string {
   return PROJECT_COLORS[hash % PROJECT_COLORS.length] ?? '#9C8472';
 }
 
-export function formatDue(task: Pick<Task, 'due_date'>, today: string): string {
-  if (!task.due_date) return '';
-  if (task.due_date < today) return `Overdue ${task.due_date}`;
-  if (task.due_date === today) return 'Due today';
-  return `Due ${task.due_date}`;
+// due_date is a UTC instant (Decision 4). Displaying it as a plain date means
+// reading its date part back in the viewer's local zone — not slicing the
+// stored UTC string — so a noon-UTC all-day value (the migration convention)
+// renders on the calendar day it was meant to represent. See
+// docs/plans/duties/02-timestamp-model.md "Migrated" / "Presentation stays honest".
+export function localDateOf(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA');
 }
 
-export function readinessScore(task: Task, _today: string, links: TaskLink[] = [], tasks: Task[] = [], nowIso = new Date().toISOString()): number {
+export function formatDue(task: Pick<Task, 'due_date'>, nowIso: string): string {
+  if (!task.due_date) return '';
+  // "Due today" takes precedence over the instant comparison below so an
+  // all-day task due today never flips to "Overdue" mid-day.
+  if (localDateOf(task.due_date) === localDateOf(nowIso)) return 'Due today';
+  if (task.due_date < nowIso) return `Overdue ${localDateOf(task.due_date)}`;
+  return `Due ${localDateOf(task.due_date)}`;
+}
+
+export function readinessScore(task: Task, links: TaskLink[] = [], tasks: Task[] = [], nowIso = new Date().toISOString()): number {
   return sharedReadinessScore(task, nowIso, links, tasks);
 }
 
@@ -50,8 +61,8 @@ export function isBlocked(task: Task, links: TaskLink[], tasks: Task[] = []): bo
   return hasActiveBlocker(task, links, tasks);
 }
 
-export function taskSort(a: Task, b: Task, today: string, links: TaskLink[], tasks: Task[] = [], nowIso = new Date().toISOString()): number {
-  return readinessScore(b, today, links, tasks, nowIso) - readinessScore(a, today, links, tasks, nowIso)
+export function taskSort(a: Task, b: Task, links: TaskLink[], tasks: Task[] = [], nowIso = new Date().toISOString()): number {
+  return readinessScore(b, links, tasks, nowIso) - readinessScore(a, links, tasks, nowIso)
     || (a.due_date ?? '9999-99-99').localeCompare(b.due_date ?? '9999-99-99')
     || a.title.localeCompare(b.title);
 }

@@ -2,7 +2,7 @@ import * as v from 'valibot';
 import {
   boundedStringSchema,
   DeferKindSchema,
-  IsoDateSchema,
+  DueDateTimeSchema,
   IsoDateTimeSchema,
   LinkTypeSchema,
   ProjectIdSchema,
@@ -67,7 +67,7 @@ export const ImportQuerySchema = v.pipe(
 export const TaskCreateBodySchema = v.object({
   title: preservingTitleSchema(TASK_TITLE_MAX),
   notes: v.optional(v.nullable(boundedStringSchema(TASK_NOTES_MAX))),
-  due_date: v.optional(v.nullable(IsoDateSchema)),
+  due_date: v.optional(v.nullable(DueDateTimeSchema)),
   recurrence: v.optional(v.nullable(RruleSchema)),
   task_type: v.optional(TaskTypeSchema),
   project_id: v.optional(v.nullable(ProjectIdSchema)),
@@ -77,7 +77,7 @@ export const TaskCreateBodySchema = v.object({
 export const TaskUpdateBodySchema = v.object({
   title: v.optional(preservingTitleSchema(TASK_TITLE_MAX)),
   notes: v.optional(v.nullable(boundedStringSchema(TASK_NOTES_MAX))),
-  due_date: v.optional(v.nullable(IsoDateSchema)),
+  due_date: v.optional(v.nullable(DueDateTimeSchema)),
   recurrence: v.optional(v.nullable(RruleSchema)),
   kickoff_note: v.optional(v.nullable(boundedStringSchema(TASK_KICKOFF_MAX))),
   session_log: v.optional(v.nullable(boundedStringSchema(TASK_SESSION_LOG_MAX))),

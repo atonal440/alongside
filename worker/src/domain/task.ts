@@ -17,7 +17,7 @@ import type {
 import {
   parseBounded,
   parseDeferKind,
-  parseIsoDate,
+  parseDueDateTime,
   parseIsoDateTime,
   parseNonEmpty,
   parseProjectId,
@@ -27,6 +27,7 @@ import {
   parseTaskType,
   nextOccurrence,
 } from '../parse';
+import { unsafeBrand } from '@shared/brand';
 import { err, ok, type Result } from '@shared/result';
 import type { Task } from '@shared/types';
 import type { AppError } from './errors';
@@ -51,7 +52,7 @@ export interface TaskBase {
   notes: BoundedString<10_000> | null;
   taskType: TaskType;
   projectId: ProjectId | null;
-  dueDate: IsoDate | null;
+  dueDate: IsoDateTime | null;
   recurrence: Recurrence;
   kickoffNote: BoundedString<2_000> | null;
   sessionLog: BoundedString<10_000> | null;
@@ -100,9 +101,9 @@ function nullableBounded<const Max extends number>(
   return parsed.ok ? ok(parsed.value) : err(withPath(path, parsed.error));
 }
 
-function nullableIsoDate(path: string, input: string | null): Result<IsoDate | null, ValidationError[]> {
+function nullableDueDateTime(path: string, input: string | null): Result<IsoDateTime | null, ValidationError[]> {
   if (input === null) return ok(null);
-  const parsed = parseIsoDate(input);
+  const parsed = parseDueDateTime(input);
   return parsed.ok ? ok(parsed.value) : err(withPath(path, parsed.error));
 }
 
@@ -151,12 +152,22 @@ function focusFromRow(until: IsoDateTime | null): Focus {
   return until ? { kind: 'focused', until } : { kind: 'unfocused' };
 }
 
+// Legacy-recurrence shim (Stage 1 A2, `docs/plans/duties/stage-1-schema-and-migration.md`).
+// due_date is now a datetime, but the date-only RRULE math (`parseRrule`/
+// `nextOccurrence`) still expects an IsoDate anchor. Derive it from due_date's
+// date part rather than re-plumbing the legacy path through a datetime — this
+// shim is transitional and is deleted in Stage 10 once the Stage 4 backfill
+// retires legacy recurring tasks in favor of duties.
+function dateOnlyAnchor(dueDate: IsoDateTime): IsoDate {
+  return unsafeBrand<string, 'IsoDate'>(dueDate.slice(0, 10));
+}
+
 export function recurrenceFromRow(
   dueDateInput: string | null,
   recurrenceInput: string | null,
 ): Result<Recurrence, ValidationError[]> {
   const errors: ValidationError[] = [];
-  const dueDate = nullableIsoDate('due_date', dueDateInput);
+  const dueDate = nullableDueDateTime('due_date', dueDateInput);
   if (!dueDate.ok) errors.push(...dueDate.error);
 
   if (recurrenceInput === null) {
@@ -176,8 +187,10 @@ export function recurrenceFromRow(
 
   if (!parsedRule.ok || !dueDate.ok || dueDate.value === null || errors.length > 0) return err(errors);
 
+  const firstDue = dateOnlyAnchor(dueDate.value);
+
   try {
-    nextOccurrence(parsedRule.value.parts, dueDate.value);
+    nextOccurrence(parsedRule.value.parts, firstDue);
   } catch {
     return err([{
       path: ['recurrence'],
@@ -190,7 +203,7 @@ export function recurrenceFromRow(
     kind: 'recurring',
     rrule: parsedRule.value.rrule,
     parts: parsedRule.value.parts,
-    firstDue: dueDate.value,
+    firstDue,
   });
 }
 
@@ -215,7 +228,7 @@ export function taskFromRow(row: Task): Result<TaskDomain, ValidationError[]> {
   const projectId = nullableProjectId('project_id', row.project_id);
   if (!projectId.ok) errors.push(...projectId.error);
 
-  const dueDate = nullableIsoDate('due_date', row.due_date);
+  const dueDate = nullableDueDateTime('due_date', row.due_date);
   if (!dueDate.ok) errors.push(...dueDate.error);
 
   const recurrence = recurrenceFromRow(row.due_date, row.recurrence);

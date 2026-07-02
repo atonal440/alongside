@@ -152,7 +152,7 @@ export const TOOLS = [
       properties: {
         title: { type: 'string', description: 'Short, actionable title.' },
         notes: { type: 'string', description: 'Additional context or links.' },
-        due_date: { type: 'string', description: 'ISO 8601 date. Omit for undated.' },
+        due_date: { type: 'string', description: 'ISO 8601 date or datetime. A bare date is stored at noon UTC. Omit for undated.' },
         recurrence: { type: 'string', description: 'Infinite date-only RRULE (e.g. FREQ=WEEKLY;INTERVAL=2 or FREQ=MONTHLY;BYDAY=3FR). Requires due_date.' },
         task_type: { type: 'string', enum: ['action', 'plan'], description: '"action" (default) or "plan".' },
         project_id: { type: 'string', description: 'Associate with a project.' },
@@ -198,7 +198,7 @@ export const TOOLS = [
         title: { type: 'string' },
         notes: { type: 'string', description: 'Replaces existing notes.' },
         status: { type: 'string', enum: ['pending'], description: 'Use complete_task for "done", defer_task to defer, focus_task to put front-of-mind. Only valid value is "pending" (to reset a task).' },
-        due_date: { type: 'string', description: 'ISO 8601 date.' },
+        due_date: { type: 'string', description: 'ISO 8601 date or datetime. A bare date is stored at noon UTC.' },
         recurrence: { type: 'string', description: 'Infinite date-only RRULE.' },
         task_type: { type: 'string', enum: ['action', 'plan'] },
         project_id: { type: 'string', description: 'Move to project, or null to remove.' },

@@ -3,12 +3,11 @@ import { deriveTaskFlow, TASK_FLOW_CHART } from '../../src/utils/taskFlow';
 import type { TaskFlowContext } from '../../src/utils/taskFlow';
 import { makeTask, makeLink, makeProject } from '../helpers/fixtures';
 
-const TODAY = '2026-06-09';
 const NOW = '2026-06-09T12:00:00.000Z';
 const FAR_FUTURE_ISO = '2099-12-31T00:00:00.000Z';
 
 function ctx(overrides: Partial<TaskFlowContext> = {}): TaskFlowContext {
-  return { today: TODAY, nowIso: NOW, projects: [], links: [], ...overrides };
+  return { nowIso: NOW, projects: [], links: [], ...overrides };
 }
 
 describe('deriveTaskFlow — mode precedence', () => {
@@ -48,9 +47,6 @@ describe('deriveTaskFlow — mode precedence', () => {
     expect(deriveTaskFlow(task, ctx()).mode).toBe('done');
   });
 
-  // Guard against accidentally threading context.today (date-only string) into isFocused/isDeferred
-  // instead of nowIso. A date-only string '2026-06-09' sorts *before* '2026-06-09T09:00:00.000Z'
-  // so the comparison would wrongly read the expired focus as still active.
   test('focus expired earlier the same day → mode "ready", not "focused"', () => {
     const task = makeTask({ focused_until: '2026-06-09T09:00:00.000Z' }); // expired at 09:00
     expect(deriveTaskFlow(task, ctx()).mode).toBe('ready');               // nowIso is 12:00

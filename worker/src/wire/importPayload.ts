@@ -4,6 +4,7 @@ import type { ActionLog, Task } from '@shared/types';
 import type { Result } from '@shared/result';
 import { err, ok } from '@shared/result';
 import {
+  IsoDateTimeMinuteSchema,
   IsoDateTimeSchema,
   parseSchema,
   positiveIntSchema,
@@ -29,13 +30,16 @@ function prefixErrors(path: string, errors: ValidationError[]): ValidationError[
 }
 
 // Import-only task schema: tolerates pre-006 legacy snoozed_until rows and
-// normalizes them into the current defer_kind / defer_until shape.
+// normalizes them into the current defer_kind / defer_until shape. Also
+// tolerates pre-Stage-1 exports that predate duty_id/occurrence_at.
 const ImportTaskRowSchema = v.pipe(
   v.object({
     ...taskRowEntries,
     defer_until: v.optional(v.nullable(IsoDateTimeSchema), null),
     defer_kind: v.optional(DeferKindSchema),
     snoozed_until: v.optional(v.nullable(IsoDateTimeSchema), null),
+    duty_id: v.optional(v.nullable(v.string()), null),
+    occurrence_at: v.optional(v.nullable(IsoDateTimeMinuteSchema), null),
   }),
   v.transform((row): Task => {
     const hasCurrentDeferFields = row.defer_kind !== undefined;
@@ -62,15 +66,19 @@ const ImportTaskRowSchema = v.pipe(
       kickoff_note: row.kickoff_note,
       session_log: row.session_log,
       focused_until: row.focused_until,
+      duty_id: row.duty_id,
+      occurrence_at: row.occurrence_at,
     };
   }),
 );
 
+// Tolerates pre-Stage-1 exports that predate duty_id.
 export const ActionLogRowSchema = v.pipe(
   v.object({
     id: positiveIntSchema(Number.MAX_SAFE_INTEGER),
     tool_name: ToolNameSchema,
     task_id: v.nullable(TaskIdSchema),
+    duty_id: v.optional(v.nullable(v.string()), null),
     title: boundedStringSchema(ACTION_TITLE_MAX),
     detail: v.nullable(boundedStringSchema(ACTION_DETAIL_MAX)),
     created_at: IsoDateTimeSchema,

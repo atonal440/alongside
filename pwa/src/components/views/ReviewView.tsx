@@ -30,9 +30,9 @@ export function ReviewView() {
     .filter(task => task.status !== 'done' && !focusedIds.has(task.id) && (task.session_log || hasExpiredFocus(task)))
     .slice(0, 4);
   const nextTask = useMemo(() => {
-    return suggestQueue(state.tasks, today, state.links)
+    return suggestQueue(state.tasks, state.links)
       .find(task => !focusedIds.has(task.id)) ?? null;
-  }, [focusedIds, state.links, state.tasks, today]);
+  }, [focusedIds, state.links, state.tasks]);
 
   function handleEdit(id: string) {
     dispatch({ type: 'SET_EDITING', id });

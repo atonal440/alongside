@@ -25,11 +25,11 @@ A task is **ready** when it is pending, not deferred, and not blocked by an unfi
 | `session_log` present | +15 |
 | `focused_until` in future | +12 |
 | `updated_at` within 14 days | +8 |
-| `due_date` is past | +10 |
-| `due_date` is today | +7 |
-| `due_date` within next 7 days | +3 |
+| `due_date` is in the past | +10 |
+| `due_date` is within the next 24h | +7 |
+| `due_date` within the next 7 days | +3 |
 
-Max possible score: 75. No clamping applied — consumers use values for relative ordering only.
+`due_date` is a UTC instant (Decision 4, `docs/plans/duties/02-timestamp-model.md`) — the due window compares instants against `nowIso`, not calendar days; there is no date-only "today" bucket at this layer (the PWA's `formatDue`/`TaskMeta` labels handle the viewer-local "Due today" distinction separately, on top of this score). Max possible score: 75. No clamping applied — consumers use values for relative ordering only.
 
 ## See Also
 

@@ -1,7 +1,6 @@
 import type { Task } from '@shared/types';
 import type {
   BoundedString,
-  IsoDate,
   IsoDateTime,
   NonEmptyString,
   Rrule,
@@ -28,7 +27,7 @@ export type DeferInput =
 export interface TaskUpdatePatch {
   title?: NonEmptyString<200>;
   notes?: BoundedString<10000> | null;
-  due_date?: IsoDate | null;
+  due_date?: IsoDateTime | null;
   recurrence?: Rrule | null;
   task_type?: string;
   project_id?: string | null;
@@ -63,6 +62,8 @@ export function newLocalTask(
     kickoff_note: null,
     session_log: null,
     focused_until: null,
+    duty_id: null,
+    occurrence_at: null,
   };
 }
 

@@ -35,6 +35,8 @@ function taskRow(overrides: Partial<Task> = {}): Task {
     kickoff_note: null,
     session_log: null,
     focused_until: null,
+    duty_id: null,
+    occurrence_at: null,
     ...overrides,
   };
 }
@@ -250,7 +252,7 @@ describe('DB plan application paths', () => {
     expect(result?.completed).toMatchObject({ id: task.id, status: 'done' });
     expect(result?.next).toMatchObject({
       title: task.title,
-      due_date: '2026-05-22',
+      due_date: '2026-05-22T12:00:00Z',
       recurrence: 'FREQ=WEEKLY',
       kickoff_note: 'Finished this round',
       status: 'pending',
@@ -276,7 +278,7 @@ describe('DB plan application paths', () => {
 
     expect(result?.next).toMatchObject({
       title: 'Publish meeting minutes',
-      due_date: '2026-06-19',
+      due_date: '2026-06-19T12:00:00Z',
       recurrence: 'FREQ=MONTHLY;BYDAY=3FR',
       status: 'pending',
     });
@@ -433,7 +435,9 @@ describe('DB task lifecycle patch boundaries', () => {
     {
       label: 'timed deferral',
       updates: { defer_kind: 'until', defer_until: '2026-05-16T09:00:00.000Z' },
-      expected: { defer_kind: 'until', defer_until: '2026-05-16T09:00:00.000Z' },
+      // defer's `until` is written through the minute-resolution parser
+      // (Decision 4) — milliseconds are truncated on write.
+      expected: { defer_kind: 'until', defer_until: '2026-05-16T09:00:00Z' },
     },
   ] satisfies Array<{ label: string; updates: TaskUpdate; expected: Partial<Task> }>)(
     'clears focus when PATCH applies a $label without focused_until',

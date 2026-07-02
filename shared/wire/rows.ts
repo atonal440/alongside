@@ -5,7 +5,8 @@ import type { Result } from '../result';
 import {
   boundedStringSchema,
   DeferKindSchema,
-  IsoDateSchema,
+  DueDateTimeSchema,
+  IsoDateTimeMinuteSchema,
   IsoDateTimeSchema,
   LinkTypeSchema,
   parseSchema,
@@ -40,12 +41,16 @@ function rowTitleSchema<const Max extends number>(max: Max) {
 
 // Canonical task row entries — current wire shape only (no legacy snoozed_until).
 // The worker's import pipeline spreads these and overlays optional legacy fields.
+//
+// duty_id is a plain nullable string for now — the branded DutyId parser lands
+// in Stage 3 (`docs/plans/duties/stage-3-duty-domain-and-ops.md`), which should
+// tighten this to `v.nullable(DutyIdSchema)`. No duty ever sets it in Stage 1.
 export const taskRowEntries = {
   id: TaskIdSchema,
   title: rowTitleSchema(TASK_TITLE_MAX),
   notes: v.nullable(boundedStringSchema(TASK_NOTES_MAX)),
   status: TaskStatusSchema,
-  due_date: v.nullable(IsoDateSchema),
+  due_date: v.nullable(DueDateTimeSchema),
   recurrence: v.nullable(RruleSchema),
   created_at: IsoDateTimeSchema,
   updated_at: IsoDateTimeSchema,
@@ -56,6 +61,8 @@ export const taskRowEntries = {
   kickoff_note: v.nullable(boundedStringSchema(TASK_KICKOFF_MAX)),
   session_log: v.nullable(boundedStringSchema(TASK_SESSION_LOG_MAX)),
   focused_until: v.nullable(IsoDateTimeSchema),
+  duty_id: v.nullable(v.string()),
+  occurrence_at: v.nullable(IsoDateTimeMinuteSchema),
 };
 
 export const TaskRowSchema = v.pipe(

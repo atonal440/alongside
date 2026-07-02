@@ -1,4 +1,4 @@
-export type { Task, Project, TaskLink, ActionLog } from './schema';
+export type { Task, Project, TaskLink, ActionLog, Duty } from './schema';
 
 import type { Task, Project } from './schema';
 

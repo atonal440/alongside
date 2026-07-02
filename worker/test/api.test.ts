@@ -21,6 +21,8 @@ function taskRow(overrides: Partial<Task> = {}): Task {
     kickoff_note: null,
     session_log: null,
     focused_until: null,
+    duty_id: null,
+    occurrence_at: null,
     ...overrides,
   };
 }
@@ -369,7 +371,7 @@ describe('REST API route schemas', () => {
     expect(response.status).toBe(201);
     expect(received).toMatchObject({
       title: 'Write tests',
-      due_date: '2026-05-21',
+      due_date: '2026-05-21T12:00:00Z',
       task_type: 'plan',
     });
     await expect(response.json()).resolves.toMatchObject({
