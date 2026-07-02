@@ -1,5 +1,5 @@
 import type { Task } from '../../types';
-import { localDateOf } from '../../utils/design';
+import { isAllDayDueDate, localDateOf } from '../../utils/design';
 
 interface Props {
   task: Task;
@@ -9,11 +9,13 @@ interface Props {
 export function taskMetaString(task: Task, nowIso: string): string {
   const parts: string[] = [];
   if (task.due_date) {
-    // Instant comparison first — mirrors formatDue (pwa/src/utils/design.ts):
-    // a due_date with a real time-of-day must go overdue the moment it
-    // passes, not stay "Due today" until local midnight.
-    if (task.due_date < nowIso) parts.push(`Overdue · ${localDateOf(task.due_date)}`);
-    else if (localDateOf(task.due_date) === localDateOf(nowIso)) parts.push('Due today');
+    // Mirrors formatDue (pwa/src/utils/design.ts): an all-day due_date
+    // (noon-UTC anchor) stays "Due today" all day; a genuinely timed
+    // due_date goes overdue the instant it passes.
+    const dueToday = localDateOf(task.due_date) === localDateOf(nowIso);
+    const overdue = task.due_date < nowIso;
+    if (dueToday && (isAllDayDueDate(task.due_date) || !overdue)) parts.push('Due today');
+    else if (overdue) parts.push(`Overdue · ${localDateOf(task.due_date)}`);
     else parts.push(localDateOf(task.due_date));
   }
   if (task.recurrence) parts.push('Recurring');

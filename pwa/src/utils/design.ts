@@ -43,15 +43,24 @@ export function localDateOf(iso: string): string {
   return new Date(iso).toLocaleDateString('en-CA');
 }
 
+// Decision 4 has no explicit all-day flag by design (02-timestamp-model.md
+// "Presentation stays honest" — a flag would reintroduce the date-only
+// distinction it removes). Every all-day due_date — from the PWA's date-only
+// picker, a bare-date REST/MCP write, or the migration — is anchored to
+// exactly noon UTC, so that's the heuristic: treat it as "all-day due today"
+// while it's still the viewer's local day, even past the noon-UTC instant.
+// Any other time-of-day is a genuine timed due_date and goes overdue the
+// moment it passes, same local day or not.
+export function isAllDayDueDate(dueDate: string): boolean {
+  return dueDate.endsWith('T12:00:00Z');
+}
+
 export function formatDue(task: Pick<Task, 'due_date'>, nowIso: string): string {
   if (!task.due_date) return '';
-  // Instant comparison first: a due_date with a real time-of-day (settable
-  // via MCP/REST, not just the PWA's date-only picker) must go overdue the
-  // moment it passes, not stay "Due today" until local midnight. Only once a
-  // due_date is still current/future do we check the viewer-local calendar
-  // date for the "Due today" label.
-  if (task.due_date < nowIso) return `Overdue ${localDateOf(task.due_date)}`;
-  if (localDateOf(task.due_date) === localDateOf(nowIso)) return 'Due today';
+  const dueToday = localDateOf(task.due_date) === localDateOf(nowIso);
+  const overdue = task.due_date < nowIso;
+  if (dueToday && (isAllDayDueDate(task.due_date) || !overdue)) return 'Due today';
+  if (overdue) return `Overdue ${localDateOf(task.due_date)}`;
   return `Due ${localDateOf(task.due_date)}`;
 }
 

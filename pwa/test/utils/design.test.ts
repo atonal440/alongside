@@ -67,6 +67,15 @@ describe('formatDue', () => {
     // NOW is 12:00Z; due at 09:00Z the same day is 3h in the past.
     expect(formatDue(makeTask({ due_date: '2026-06-09T09:00:00Z' }), NOW)).toBe('Overdue 2026-06-09');
   });
+
+  // Regression: an all-day due_date (noon-UTC anchor) must stay "Due today"
+  // for the whole local day, even once its instant has technically passed —
+  // only a genuinely timed due_date (a different time-of-day) should flip to
+  // Overdue mid-day. Without this, most viewer zones would see their own
+  // date-picker-created "due today" tasks go Overdue by mid-morning.
+  test('all-day due date stays "Due today" even after its noon-UTC instant passes', () => {
+    expect(formatDue(makeTask({ due_date: '2026-06-09T12:00:00Z' }), '2026-06-09T20:00:00.000Z')).toBe('Due today');
+  });
 });
 
 // Stage 1 B7 (docs/plans/duties/stage-1-schema-and-migration.md): a date-only
