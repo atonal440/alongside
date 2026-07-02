@@ -124,15 +124,27 @@ const PendingOpSchema = v.variant('op', [
 // older build, still sitting in IndexedDB when the app updates): such an op
 // has due_date but no due_all_day key at all. The worker derives due_all_day
 // from due_date's shape when it's omitted, which is wrong here — a queued
-// op's due_date is already fully normalized, not the bare date the derivation
-// expects. It is NOT safe to assume "missing ⇒ was all-day": a build between
-// the existingDueDate preservation fix and due_all_day itself could have
-// queued a task.update that resent an existing *timed* due_date verbatim
-// (unrelated-field edit, date unchanged). So this uses the same signal the
-// server-side migration backfill uses on the same kind of already-collapsed
-// legacy data (worker/migrations/008_due_all_day.sql): exactly noon UTC is
-// the all-day anchor every source that predates this field could produce
-// on purpose; anything else was necessarily submitted with a real time.
+// op's due_date already went through this build's OWN normalization at
+// submit time, not the fresh-input shape the derivation expects. Three
+// generations of "no due_all_day key" can be sitting in the same queue:
+//   1. Pre-Stage-1 builds: due_date is still a bare "YYYY-MM-DD" (Decision 4
+//      hadn't landed) — unambiguously all-day, same as a fresh bare-date
+//      submission today.
+//   2. Stage-1-era builds (after due_date became a UTC instant, before
+//      due_all_day): the date-only picker always produced the noon-UTC
+//      anchor — all-day — but a build with the existingDueDate preservation
+//      fix (before due_all_day itself) could resend an existing *timed*
+//      due_date verbatim on an unrelated-field edit — not all-day.
+// So: no "T" ⇒ bare date ⇒ all-day (case 1). Exactly noon UTC ⇒ the one
+// instant every all-day source before this field could produce on purpose
+// ⇒ all-day (case 2, ambiguous-but-default, same signal the server-side
+// migration backfill uses on the same kind of already-collapsed data —
+// worker/migrations/008_due_all_day.sql). Anything else was necessarily
+// submitted with a real time.
+function legacyIsAllDay(dueDate: string): boolean {
+  return !dueDate.includes('T') || dueDate.endsWith('T12:00:00Z');
+}
+
 function needsDueAllDayRepair(body: TaskCreateBody | TaskUpdateBody): boolean {
   return !!body.due_date && !('due_all_day' in body);
 }
@@ -141,11 +153,11 @@ function repairMissingDueAllDay(op: PendingOp): PendingOp {
   // Handled as two separate narrowed branches, not one combined condition —
   // spreading `op` after narrowing a compound `||` condition doesn't reliably
   // keep TS's discriminated-union structure (op/body would stop lining up).
-  if (op.op === 'task.create' && needsDueAllDayRepair(op.body)) {
-    return { ...op, body: { ...op.body, due_all_day: !!op.body.due_date?.endsWith('T12:00:00Z') } };
+  if (op.op === 'task.create' && needsDueAllDayRepair(op.body) && op.body.due_date) {
+    return { ...op, body: { ...op.body, due_all_day: legacyIsAllDay(op.body.due_date) } };
   }
-  if (op.op === 'task.update' && needsDueAllDayRepair(op.body)) {
-    return { ...op, body: { ...op.body, due_all_day: !!op.body.due_date?.endsWith('T12:00:00Z') } };
+  if (op.op === 'task.update' && needsDueAllDayRepair(op.body) && op.body.due_date) {
+    return { ...op, body: { ...op.body, due_all_day: legacyIsAllDay(op.body.due_date) } };
   }
   return op;
 }

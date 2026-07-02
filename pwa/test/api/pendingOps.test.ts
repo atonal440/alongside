@@ -283,6 +283,17 @@ describe('parsePendingOp', () => {
     if (r.ok && r.value.op === 'task.update') expect(r.value.body.due_all_day).toBe(false);
   });
 
+  test('task.update: bare-date due_date (pre-Stage-1 op) → backfilled to true', () => {
+    // Simulates an op queued before due_date even became a datetime
+    // (Decision 4) — still a plain "YYYY-MM-DD", no "T" at all.
+    const r = parsePendingOp({
+      ...baseFields, op: 'task.update', taskId: 't_abc001',
+      body: { due_date: '2026-07-01' },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok && r.value.op === 'task.update') expect(r.value.body.due_all_day).toBe(true);
+  });
+
   test('due_all_day explicitly present is left untouched (current-build ops)', () => {
     const r = parsePendingOp({
       ...baseFields, op: 'task.update', taskId: 't_abc001',

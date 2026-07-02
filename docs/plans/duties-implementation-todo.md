@@ -379,7 +379,20 @@ data the new column can't see:**
   already-normalized noon-UTC instant a *bare date* becomes and derives
   `due_all_day: false` — wrong, it was all-day. Fixed:
   `pwa/src/api/pendingOps.ts` `repairMissingDueAllDay`, applied in
-  `parsePendingOp` — a queued op with `due_date` and no `due_all_day` key is
-  unambiguously pre-dating the field (current code always sends them paired),
-  so it's backfilled to `true` on read, before the op ever reaches the
-  network.
+  `parsePendingOp`.
+
+  This one took three passes to get right, which is worth recording so the
+  next person doesn't re-walk it: first cut backfilled `due_all_day: true`
+  unconditionally for any missing key — wrong, because a build with the
+  `existingDueDate` preservation fix (1082d58) but not yet `due_all_day`
+  itself could queue a `task.update` that resent a genuinely *timed*
+  `due_date` verbatim on an unrelated-field edit. Second cut switched to the
+  noon-UTC signal (matching the migration backfill) — still wrong, because it
+  didn't account for ops queued even earlier, before Decision 4's `due_date`
+  datetime unification, where `due_date` can still be a bare `YYYY-MM-DD`
+  with no `T` at all. The actual queue can hold **three** generations of
+  shape (bare date / Stage-1-era noon-UTC-or-preserved-timed / current
+  paired-with-due_all_day); `legacyIsAllDay` now checks for a bare date
+  first, then falls back to the noon-UTC signal. Same lesson as the
+  migration backfill, just with one more generation of drift to account for
+  because client state persists longer than a server column does.
