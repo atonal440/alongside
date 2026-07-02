@@ -137,6 +137,26 @@ describe('parseTaskForm — dueDate', () => {
     if (result.ok) return;
     expect(result.error.dueDate).toBeDefined();
   });
+
+  // Regression: a due_date with a real time-of-day (settable via MCP/REST,
+  // not just this date-only picker) must survive an edit-form save that
+  // doesn't touch the due date — otherwise saving an unrelated field (title,
+  // notes, ...) silently collapses it to the noon-UTC all-day anchor.
+  test('unchanged date preserves an existing due_date with a real time-of-day', () => {
+    const original = '2026-07-01T09:30:00Z';
+    const result = parseTaskForm(baseInput({ dueDate: '2026-07-01', existingDueDate: original }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.due_date).toBe(original);
+  });
+
+  test('changed date re-anchors to noon UTC, discarding the old time-of-day', () => {
+    const original = '2026-07-01T09:30:00Z';
+    const result = parseTaskForm(baseInput({ dueDate: '2026-07-15', existingDueDate: original }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.due_date).toBe('2026-07-15T12:00:00Z');
+  });
 });
 
 describe('parseTaskForm — recurrence', () => {

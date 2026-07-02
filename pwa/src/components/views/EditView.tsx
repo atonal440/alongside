@@ -109,6 +109,7 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
       deferKind,
       deferUntil,
       ...(task.defer_until !== null ? { existingDeferUntil: task.defer_until } : {}),
+      ...(task.due_date !== null ? { existingDueDate: task.due_date } : {}),
     });
     if (!result.ok) {
       setFieldErrors(result.error);

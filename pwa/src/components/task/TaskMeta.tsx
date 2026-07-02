@@ -9,10 +9,11 @@ interface Props {
 export function taskMetaString(task: Task, nowIso: string): string {
   const parts: string[] = [];
   if (task.due_date) {
-    // "Due today" takes precedence over the instant comparison so an all-day
-    // task due today never flips to "Overdue" mid-day — mirrors formatDue.
-    if (localDateOf(task.due_date) === localDateOf(nowIso)) parts.push('Due today');
-    else if (task.due_date < nowIso) parts.push(`Overdue · ${localDateOf(task.due_date)}`);
+    // Instant comparison first — mirrors formatDue (pwa/src/utils/design.ts):
+    // a due_date with a real time-of-day must go overdue the moment it
+    // passes, not stay "Due today" until local midnight.
+    if (task.due_date < nowIso) parts.push(`Overdue · ${localDateOf(task.due_date)}`);
+    else if (localDateOf(task.due_date) === localDateOf(nowIso)) parts.push('Due today');
     else parts.push(localDateOf(task.due_date));
   }
   if (task.recurrence) parts.push('Recurring');

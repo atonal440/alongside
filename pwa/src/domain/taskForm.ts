@@ -16,6 +16,7 @@ import {
   TASK_KICKOFF_MAX,
   TASK_SESSION_LOG_MAX,
 } from '@shared/wire/rows';
+import { localDateOf } from '../utils/design';
 import type { TaskUpdatePatch } from './taskMutations';
 
 export interface TaskFormInput {
@@ -30,6 +31,11 @@ export interface TaskFormInput {
   // Original ISO timestamp from task.defer_until — preserved when deferUntil
   // date is unchanged, so editing unrelated fields doesn't silently shift time.
   existingDeferUntil?: string;
+  // Original due_date — preserved when the date-only picker's value still
+  // matches its viewer-local date, so editing an unrelated field doesn't
+  // silently collapse a due_date with a real time-of-day (e.g. one set via
+  // MCP/REST) down to the noon-UTC all-day anchor. Mirrors existingDeferUntil.
+  existingDueDate?: string;
 }
 
 export type FieldErrors = Partial<Record<keyof TaskFormInput, string>>;
@@ -87,14 +93,21 @@ export function parseTaskForm(input: TaskFormInput): Result<TaskUpdatePatch, Fie
   }
 
   // dueDate — empty → null, non-empty → IsoDateTime (the date-only picker
-  // value is anchored to noon UTC — see shared/parse/primitives.ts DueDateTimeSchema)
+  // value is anchored to noon UTC — see shared/parse/primitives.ts DueDateTimeSchema).
+  // Preserve the original due_date when its viewer-local date is unchanged, so
+  // editing an unrelated field doesn't silently collapse a due_date with a
+  // real time-of-day to the noon-UTC all-day anchor (mirrors existingDeferUntil).
   let dueDate: IsoDateTime | null = null;
   if (input.dueDate !== '') {
-    const r = parseDueDateTime(input.dueDate);
-    if (r.ok) {
-      dueDate = r.value;
+    if (input.existingDueDate && localDateOf(input.existingDueDate) === input.dueDate) {
+      dueDate = input.existingDueDate as IsoDateTime;
     } else {
-      errors.dueDate = r.error[0]?.message ?? 'Invalid date.';
+      const r = parseDueDateTime(input.dueDate);
+      if (r.ok) {
+        dueDate = r.value;
+      } else {
+        errors.dueDate = r.error[0]?.message ?? 'Invalid date.';
+      }
     }
   }
 

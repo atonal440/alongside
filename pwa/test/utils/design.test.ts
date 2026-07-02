@@ -59,6 +59,14 @@ describe('formatDue', () => {
   test('future due date → "Due YYYY-MM-DD"', () => {
     expect(formatDue(makeTask({ due_date: '2026-07-01T12:00:00Z' }), NOW)).toBe('Due 2026-07-01');
   });
+
+  // Regression: a due_date with a real time-of-day (settable via MCP/REST)
+  // that has already passed must show as overdue even on the same local day
+  // — the "Due today" bucket must not mask an already-past instant.
+  test('due earlier today with an explicit time → Overdue, not "Due today"', () => {
+    // NOW is 12:00Z; due at 09:00Z the same day is 3h in the past.
+    expect(formatDue(makeTask({ due_date: '2026-06-09T09:00:00Z' }), NOW)).toBe('Overdue 2026-06-09');
+  });
 });
 
 // Stage 1 B7 (docs/plans/duties/stage-1-schema-and-migration.md): a date-only

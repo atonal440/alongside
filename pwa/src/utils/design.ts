@@ -45,10 +45,13 @@ export function localDateOf(iso: string): string {
 
 export function formatDue(task: Pick<Task, 'due_date'>, nowIso: string): string {
   if (!task.due_date) return '';
-  // "Due today" takes precedence over the instant comparison below so an
-  // all-day task due today never flips to "Overdue" mid-day.
-  if (localDateOf(task.due_date) === localDateOf(nowIso)) return 'Due today';
+  // Instant comparison first: a due_date with a real time-of-day (settable
+  // via MCP/REST, not just the PWA's date-only picker) must go overdue the
+  // moment it passes, not stay "Due today" until local midnight. Only once a
+  // due_date is still current/future do we check the viewer-local calendar
+  // date for the "Due today" label.
   if (task.due_date < nowIso) return `Overdue ${localDateOf(task.due_date)}`;
+  if (localDateOf(task.due_date) === localDateOf(nowIso)) return 'Due today';
   return `Due ${localDateOf(task.due_date)}`;
 }
 
