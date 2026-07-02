@@ -51,6 +51,9 @@ export const taskRowEntries = {
   notes: v.nullable(boundedStringSchema(TASK_NOTES_MAX)),
   status: TaskStatusSchema,
   due_date: v.nullable(DueDateTimeSchema),
+  // Null on legacy rows (predates this column); treated as all-day (true)
+  // wherever read — see shared/schema.ts's due_all_day comment.
+  due_all_day: v.nullable(v.boolean()),
   recurrence: v.nullable(RruleSchema),
   created_at: IsoDateTimeSchema,
   updated_at: IsoDateTimeSchema,

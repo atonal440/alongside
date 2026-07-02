@@ -31,7 +31,8 @@ function prefixErrors(path: string, errors: ValidationError[]): ValidationError[
 
 // Import-only task schema: tolerates pre-006 legacy snoozed_until rows and
 // normalizes them into the current defer_kind / defer_until shape. Also
-// tolerates pre-Stage-1 exports that predate duty_id/occurrence_at.
+// tolerates pre-Stage-1 exports that predate duty_id/occurrence_at, and
+// pre-due_all_day exports (defaults null, read as all-day).
 const ImportTaskRowSchema = v.pipe(
   v.object({
     ...taskRowEntries,
@@ -40,6 +41,7 @@ const ImportTaskRowSchema = v.pipe(
     snoozed_until: v.optional(v.nullable(IsoDateTimeSchema), null),
     duty_id: v.optional(v.nullable(v.string()), null),
     occurrence_at: v.optional(v.nullable(IsoDateTimeMinuteSchema), null),
+    due_all_day: v.optional(v.nullable(v.boolean()), null),
   }),
   v.transform((row): Task => {
     const hasCurrentDeferFields = row.defer_kind !== undefined;
@@ -56,6 +58,7 @@ const ImportTaskRowSchema = v.pipe(
       notes: row.notes,
       status: row.status,
       due_date: row.due_date,
+      due_all_day: row.due_all_day,
       recurrence: row.recurrence,
       created_at: row.created_at,
       updated_at: row.updated_at,

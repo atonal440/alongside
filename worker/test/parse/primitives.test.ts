@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  parseDueDateParts,
   parseDueDateTime,
   parseIanaTimezone,
   parseIsoDate,
@@ -89,5 +90,36 @@ describe('parseDueDateTime (due_date parser: bare date or datetime)', () => {
 
   it('rejects garbage input', () => {
     expect(parseDueDateTime('tomorrow').ok).toBe(false);
+  });
+});
+
+// due_all_day (codex-flagged follow-up to Stage 1, docs/plans/duties-implementation-todo.md
+// "Notes / deviations"): parseDueDateParts is the only place that can derive
+// it, since a bare date vs. a full datetime is indistinguishable once
+// due_date is stored as an instant.
+describe('parseDueDateParts (write-time source of truth for due_all_day)', () => {
+  it('a bare calendar date → all-day, anchored to noon UTC', () => {
+    const parsed = parseDueDateParts('2026-06-30');
+    expect(parsed.ok).toBe(true);
+    expect(parsed.ok && parsed.value).toEqual({ due_date: '2026-06-30T12:00:00Z', due_all_day: true });
+  });
+
+  it('a full datetime → not all-day, truncated to minute resolution', () => {
+    const parsed = parseDueDateParts('2026-06-30T09:30:45.123Z');
+    expect(parsed.ok).toBe(true);
+    expect(parsed.ok && parsed.value).toEqual({ due_date: '2026-06-30T09:30:00Z', due_all_day: false });
+  });
+
+  it('a datetime that happens to normalize to noon UTC is still not all-day', () => {
+    // The known, accepted residual ambiguity: this is indistinguishable from
+    // all-day once *read back* from storage, but parseDueDateParts sees the
+    // as-submitted shape and gets it right at write time.
+    const parsed = parseDueDateParts('2026-06-30T05:00:00-07:00');
+    expect(parsed.ok).toBe(true);
+    expect(parsed.ok && parsed.value).toEqual({ due_date: '2026-06-30T12:00:00Z', due_all_day: false });
+  });
+
+  it('rejects garbage input', () => {
+    expect(parseDueDateParts('tomorrow').ok).toBe(false);
   });
 });

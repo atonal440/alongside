@@ -34,6 +34,7 @@ function taskRow(overrides: Partial<Task> = {}): Task {
     kickoff_note: null,
     session_log: null,
     focused_until: null,
+    due_all_day: null,
     duty_id: null,
     occurrence_at: null,
     ...overrides,
@@ -174,7 +175,7 @@ describe('applyPlan', () => {
       TASK_EXISTS_GUARD_SQL,
       TASK_EXISTS_GUARD_SQL,
       'UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?',
-      'INSERT INTO tasks (id,title,notes,status,due_date,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      'INSERT INTO tasks (id,title,notes,status,due_date,due_all_day,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     ]);
   });
 

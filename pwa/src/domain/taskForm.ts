@@ -31,11 +31,14 @@ export interface TaskFormInput {
   // Original ISO timestamp from task.defer_until — preserved when deferUntil
   // date is unchanged, so editing unrelated fields doesn't silently shift time.
   existingDeferUntil?: string;
-  // Original due_date — preserved when the date-only picker's value still
-  // matches its viewer-local date, so editing an unrelated field doesn't
-  // silently collapse a due_date with a real time-of-day (e.g. one set via
-  // MCP/REST) down to the noon-UTC all-day anchor. Mirrors existingDeferUntil.
+  // Original due_date/due_all_day — preserved when the date-only picker's
+  // value still matches its viewer-local date, so editing an unrelated field
+  // doesn't silently collapse a due_date with a real time-of-day (e.g. one
+  // set via MCP/REST) down to the noon-UTC all-day anchor. Mirrors
+  // existingDeferUntil. This picker can only ever express all-day intent, so
+  // a genuinely *changed* date always ends up due_all_day: true.
   existingDueDate?: string;
+  existingDueAllDay?: boolean;
 }
 
 export type FieldErrors = Partial<Record<keyof TaskFormInput, string>>;
@@ -94,13 +97,16 @@ export function parseTaskForm(input: TaskFormInput): Result<TaskUpdatePatch, Fie
 
   // dueDate — empty → null, non-empty → IsoDateTime (the date-only picker
   // value is anchored to noon UTC — see shared/parse/primitives.ts DueDateTimeSchema).
-  // Preserve the original due_date when its viewer-local date is unchanged, so
-  // editing an unrelated field doesn't silently collapse a due_date with a
-  // real time-of-day to the noon-UTC all-day anchor (mirrors existingDeferUntil).
+  // Preserve the original due_date/due_all_day when the picker's date is
+  // unchanged, so editing an unrelated field doesn't silently collapse a
+  // due_date with a real time-of-day to the noon-UTC all-day anchor (mirrors
+  // existingDeferUntil).
   let dueDate: IsoDateTime | null = null;
+  let dueAllDay = true;
   if (input.dueDate !== '') {
     if (input.existingDueDate && localDateOf(input.existingDueDate) === input.dueDate) {
       dueDate = input.existingDueDate as IsoDateTime;
+      dueAllDay = input.existingDueAllDay ?? true;
     } else {
       const r = parseDueDateTime(input.dueDate);
       if (r.ok) {
@@ -158,6 +164,7 @@ export function parseTaskForm(input: TaskFormInput): Result<TaskUpdatePatch, Fie
     notes,
     kickoff_note: kickoffNote,
     due_date: dueDate,
+    due_all_day: dueAllDay,
     recurrence,
     session_log: sessionLog,
     defer_kind: input.deferKind,

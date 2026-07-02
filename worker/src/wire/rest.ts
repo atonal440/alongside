@@ -2,7 +2,7 @@ import * as v from 'valibot';
 import {
   boundedStringSchema,
   DeferKindSchema,
-  DueDateTimeSchema,
+  DueDateStringSchema,
   IsoDateTimeSchema,
   LinkTypeSchema,
   ProjectIdSchema,
@@ -64,10 +64,17 @@ export const ImportQuerySchema = v.pipe(
   v.transform(query => ({ dry_run: query.dry_run ?? false })),
 );
 
+// due_date is validated but NOT transformed here (DueDateStringSchema, not
+// DueDateTimeSchema) — collapsing a bare date to its noon-UTC instant this
+// early would destroy the bare-date-vs-datetime distinction before db.ts's
+// parseDueDateParts can derive due_all_day from it. due_all_day is optional
+// so simple callers get it auto-derived; the PWA sends it explicitly to
+// preserve an existing value across an edit that doesn't touch the due date.
 export const TaskCreateBodySchema = v.object({
   title: preservingTitleSchema(TASK_TITLE_MAX),
   notes: v.optional(v.nullable(boundedStringSchema(TASK_NOTES_MAX))),
-  due_date: v.optional(v.nullable(DueDateTimeSchema)),
+  due_date: v.optional(v.nullable(DueDateStringSchema)),
+  due_all_day: v.optional(v.boolean()),
   recurrence: v.optional(v.nullable(RruleSchema)),
   task_type: v.optional(TaskTypeSchema),
   project_id: v.optional(v.nullable(ProjectIdSchema)),
@@ -77,7 +84,8 @@ export const TaskCreateBodySchema = v.object({
 export const TaskUpdateBodySchema = v.object({
   title: v.optional(preservingTitleSchema(TASK_TITLE_MAX)),
   notes: v.optional(v.nullable(boundedStringSchema(TASK_NOTES_MAX))),
-  due_date: v.optional(v.nullable(DueDateTimeSchema)),
+  due_date: v.optional(v.nullable(DueDateStringSchema)),
+  due_all_day: v.optional(v.boolean()),
   recurrence: v.optional(v.nullable(RruleSchema)),
   kickoff_note: v.optional(v.nullable(boundedStringSchema(TASK_KICKOFF_MAX))),
   session_log: v.optional(v.nullable(boundedStringSchema(TASK_SESSION_LOG_MAX))),

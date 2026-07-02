@@ -302,3 +302,61 @@ through it rather than slicing the raw UTC string. `formatDue`/`TaskMeta`
 decide "Due today" by comparing viewer-local dates (so an all-day task due
 today never flips to "Overdue" mid-day); the overdue/future split and
 `readinessScore`'s due window otherwise compare instants directly.
+
+### `tasks.due_all_day` added (2026-07-02, same day, codex-flagged follow-up)
+
+`formatDue`/`TaskMeta`'s "same local day ⇒ never Overdue" rule (above) went
+through two more codex review rounds after landing, converging on a real
+schema addition rather than a smarter heuristic — recorded here because it
+changes facts stated elsewhere in this doc and in `01-type-system.md`/
+`02-timestamp-model.md`.
+
+**The problem:** making the overdue check instant-first (so a *timed*
+due_date goes overdue the moment it passes, not at local midnight) broke the
+*common* case — an all-day due_date (noon-UTC anchor, from the PWA's own date
+picker) went "Overdue" the moment local time passed noon UTC, e.g. 5am PDT.
+A `isAllDayDueDate(dueDate)` heuristic (treat exactly `T12:00:00Z` as all-day)
+fixed that, but has an irreducible false positive: a genuinely timed due_date
+that normalizes to exactly noon UTC (e.g. `05:00:00-07:00` via REST/MCP) is
+byte-identical to an all-day one once stored — no heuristic on the stored
+value can tell them apart, because the "was a time explicitly given"
+information is real information, and a lossy convention can't reconstruct
+what it never kept.
+
+**The fix:** `tasks.due_all_day` (nullable boolean, `shared/schema.ts` — this
+supersedes `02-timestamp-model.md`'s "no explicit all-day flag by design" and
+`04`'s schema-of-record silence on the point; both predate this decision and
+should be reconciled if you're touching them). `NULL` on every pre-existing
+row (nothing before this could set a genuinely timed due_date via this app's
+own UI) and treated as all-day wherever read.
+
+**Where it's derived, and why only once:** `due_all_day` can only be computed
+from the *as-submitted* input shape — a bare date is all-day, a full instant
+is timed — never from an already-stored `due_date`, for the same
+byte-identical reason above. `shared/parse/primitives.ts` `parseDueDateParts`
+is the one function that does this; `worker/src/db.ts`'s `resolveDueDate` is
+the one call site (used by both `addTask` and `updateTask`, so both REST and
+MCP get it for free without any new tool-schema surface). `resolveDueDate`
+also accepts an explicit `due_all_day` override, which wins over derivation —
+this is how the PWA preserves an existing timed due_date's flag when an
+edit-form save doesn't touch the due date (`existingDueAllDay` in
+`taskForm.ts`, mirroring the pre-existing `existingDueDate`/
+`existingDeferUntil` pattern). REST's `due_date` body field switched from
+`DueDateTimeSchema` (which collapses a bare date to its noon-UTC instant) to
+the new `DueDateStringSchema` (validates shape only) specifically so
+`resolveDueDate` still sees the original bare-vs-datetime shape — collapsing
+it at the wire boundary would have defeated the whole point.
+
+`formatDue`/`taskMetaString` now read `task.due_all_day ?? true` directly
+instead of the `isAllDayDueDate` heuristic (deleted). `worker/test/schema.test.ts`
+and `shared/parse/primitives.test.ts` cover the column and `parseDueDateParts`
+respectively, including the residual case codex flagged (a datetime that
+normalizes to noon UTC still derives `due_all_day: false` when parsed from
+its original shape — the bug was only in trying to reconstruct that fact
+*after* storage).
+
+**Stage 2+ implementers:** duties' `dtstart` has the identical ambiguity
+("every day" vs. "every day at 9am") and will need the same treatment —
+either its own `all_day`-style column, or an explicit decision that duty
+recurrence is always timed. Don't reach for a noon-UTC heuristic there; it's
+the exact mistake this section documents undoing.

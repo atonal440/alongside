@@ -173,6 +173,42 @@ export function parseDueDateTime(input: unknown): Result<IsoDateTime, Validation
   return parseSchema(DueDateTimeSchema, input);
 }
 
+// Validates a due_date write-input's shape WITHOUT collapsing it to an
+// instant — unlike DueDateTimeSchema, which normalizes a bare date to noon
+// UTC. Used at wire boundaries (REST) that need to reject garbage early but
+// must not destroy the bare-date-vs-datetime distinction before it reaches
+// parseDueDateParts, which is what actually derives due_all_day from it.
+export const DueDateStringSchema = v.pipe(
+  v.string(),
+  v.check(value => isIsoDateString(value) || isIsoDateTimeString(value), 'Expected a valid ISO calendar date (YYYY-MM-DD) or date-time.'),
+);
+
+export interface DueDateParts {
+  due_date: IsoDateTime;
+  due_all_day: boolean;
+}
+
+// The write-time source of truth for due_all_day: a bare calendar date
+// ("2026-06-30") is all-day intent, anchored to noon UTC; a full instant is
+// a genuinely timed due_date. This distinction is only recoverable from the
+// as-submitted input shape — once due_date is stored as an instant, a
+// timed value that happens to land on noon UTC is indistinguishable from an
+// all-day one (see shared/schema.ts's due_all_day comment). Callers that
+// already know due_all_day (the PWA, preserving an unrelated edit) should
+// pass their own value instead of relying on this.
+export function parseDueDateParts(input: unknown): Result<DueDateParts, ValidationError[]> {
+  if (typeof input !== 'string') {
+    return err([validationError('type', 'Expected a string.')]);
+  }
+  if (isIsoDateString(input)) {
+    return ok({ due_date: truncateToMinuteUtc(`${input}T12:00:00Z`) as IsoDateTime, due_all_day: true });
+  }
+  if (isIsoDateTimeString(input)) {
+    return ok({ due_date: truncateToMinuteUtc(input) as IsoDateTime, due_all_day: false });
+  }
+  return err([validationError('due_date', 'Expected a valid ISO calendar date (YYYY-MM-DD) or date-time.')]);
+}
+
 export const IanaTimezoneSchema = v.pipe(
   v.string(),
   v.check(isIanaTimezoneString, 'Expected an IANA timezone name.'),

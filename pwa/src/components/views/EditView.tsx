@@ -28,6 +28,7 @@ export function EditView() {
         notes: task.notes,
         kickoff_note: task.kickoff_note,
         due_date: task.due_date,
+        due_all_day: task.due_all_day,
         recurrence: task.recurrence,
         session_log: task.session_log,
         defer_kind: task.defer_kind,
@@ -65,6 +66,7 @@ interface EditFormProps {
     notes: string | null;
     kickoff_note: string | null;
     due_date: string | null;
+    due_all_day: boolean | null;
     recurrence: string | null;
     session_log: string | null;
     defer_kind: 'none' | 'until' | 'someday';
@@ -110,6 +112,7 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
       deferUntil,
       ...(task.defer_until !== null ? { existingDeferUntil: task.defer_until } : {}),
       ...(task.due_date !== null ? { existingDueDate: task.due_date } : {}),
+      ...(task.due_all_day !== null ? { existingDueAllDay: task.due_all_day } : {}),
     });
     if (!result.ok) {
       setFieldErrors(result.error);

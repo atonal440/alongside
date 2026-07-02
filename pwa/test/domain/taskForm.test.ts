@@ -117,11 +117,12 @@ describe('parseTaskForm — dueDate', () => {
     expect(result.value.due_date).toBeNull();
   });
 
-  test('valid ISO date → anchored to noon UTC in patch (Decision 4 all-day convention)', () => {
+  test('valid ISO date → anchored to noon UTC, due_all_day true (Decision 4 all-day convention)', () => {
     const result = parseTaskForm(baseInput({ dueDate: '2026-07-01' }));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.due_date).toBe('2026-07-01T12:00:00Z');
+    expect(result.value.due_all_day).toBe(true);
   });
 
   test('invalid date string → error on dueDate', () => {
@@ -141,21 +142,33 @@ describe('parseTaskForm — dueDate', () => {
   // Regression: a due_date with a real time-of-day (settable via MCP/REST,
   // not just this date-only picker) must survive an edit-form save that
   // doesn't touch the due date — otherwise saving an unrelated field (title,
-  // notes, ...) silently collapses it to the noon-UTC all-day anchor.
-  test('unchanged date preserves an existing due_date with a real time-of-day', () => {
+  // notes, ...) silently collapses it to the noon-UTC all-day anchor. This
+  // also requires preserving due_all_day itself (existingDueAllGay: false),
+  // not just due_date — the flag is what fixes the codex-flagged bug for real.
+  test('unchanged date preserves an existing timed due_date and its due_all_day', () => {
     const original = '2026-07-01T09:30:00Z';
-    const result = parseTaskForm(baseInput({ dueDate: '2026-07-01', existingDueDate: original }));
+    const result = parseTaskForm(baseInput({
+      dueDate: '2026-07-01',
+      existingDueDate: original,
+      existingDueAllDay: false,
+    }));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.due_date).toBe(original);
+    expect(result.value.due_all_day).toBe(false);
   });
 
-  test('changed date re-anchors to noon UTC, discarding the old time-of-day', () => {
+  test('changed date re-anchors to noon UTC with due_all_day true, discarding the old time-of-day', () => {
     const original = '2026-07-01T09:30:00Z';
-    const result = parseTaskForm(baseInput({ dueDate: '2026-07-15', existingDueDate: original }));
+    const result = parseTaskForm(baseInput({
+      dueDate: '2026-07-15',
+      existingDueDate: original,
+      existingDueAllDay: false,
+    }));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.due_date).toBe('2026-07-15T12:00:00Z');
+    expect(result.value.due_all_day).toBe(true);
   });
 });
 

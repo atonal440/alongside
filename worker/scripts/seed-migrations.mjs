@@ -28,6 +28,7 @@ const applied = [
   '005_remove_active_status.sql',
   '006_defer.sql',
   '007_duties.sql',
+  '008_due_all_day.sql',
 ];
 
 const inserts = applied

@@ -28,6 +28,7 @@ export interface TaskUpdatePatch {
   title?: NonEmptyString<200>;
   notes?: BoundedString<10000> | null;
   due_date?: IsoDateTime | null;
+  due_all_day?: boolean;
   recurrence?: Rrule | null;
   task_type?: string;
   project_id?: string | null;
@@ -52,6 +53,7 @@ export function newLocalTask(
     notes: null,
     status: 'pending',
     due_date: null,
+    due_all_day: null,
     recurrence: null,
     created_at: nowIso,
     updated_at: nowIso,

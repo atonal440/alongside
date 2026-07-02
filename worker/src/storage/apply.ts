@@ -29,6 +29,7 @@ const TASK_INSERT_COLUMNS = [
   'notes',
   'status',
   'due_date',
+  'due_all_day',
   'recurrence',
   'created_at',
   'updated_at',
@@ -46,6 +47,7 @@ const TASK_UPDATE_COLUMNS = [
   'notes',
   'status',
   'due_date',
+  'due_all_day',
   'recurrence',
   'updated_at',
   'defer_until',
@@ -205,6 +207,13 @@ function bindPreCheckGuard(d1: D1Database, check: PreCheck): PlannedStatement[] 
   }
 }
 
+// D1/SQLite's raw bind() rejects JS booleans outright (unlike Drizzle's own
+// insert/update paths, which convert boolean-mode columns internally) — this
+// raw layer has to do that conversion itself.
+function toBindable(value: unknown): unknown {
+  return typeof value === 'boolean' ? (value ? 1 : 0) : value;
+}
+
 function bindInsert<Row extends Record<string, unknown>>(
   d1: D1Database,
   table: string,
@@ -212,7 +221,7 @@ function bindInsert<Row extends Record<string, unknown>>(
   row: Row,
 ): D1PreparedStatement {
   const placeholders = columns.map(() => '?').join(',');
-  const values = columns.map(column => row[column]);
+  const values = columns.map(column => toBindable(row[column]));
   return d1
     .prepare(`INSERT INTO ${table} (${columns.join(',')}) VALUES (${placeholders})`)
     .bind(...values);
@@ -230,7 +239,7 @@ function bindUpdate<Patch extends Record<string, unknown>>(
   if (columns.length === 0) return null;
 
   const setClause = columns.map(column => `${column} = ?`).join(', ');
-  const values = columns.map(column => patch[column]);
+  const values = columns.map(column => toBindable(patch[column]));
   return d1
     .prepare(`UPDATE ${table} SET ${setClause} WHERE ${idColumn} = ?`)
     .bind(...values, id);

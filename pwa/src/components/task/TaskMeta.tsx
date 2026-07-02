@@ -1,5 +1,5 @@
 import type { Task } from '../../types';
-import { isAllDayDueDate, localDateOf } from '../../utils/design';
+import { localDateOf } from '../../utils/design';
 
 interface Props {
   task: Task;
@@ -10,11 +10,13 @@ export function taskMetaString(task: Task, nowIso: string): string {
   const parts: string[] = [];
   if (task.due_date) {
     // Mirrors formatDue (pwa/src/utils/design.ts): an all-day due_date
-    // (noon-UTC anchor) stays "Due today" all day; a genuinely timed
-    // due_date goes overdue the instant it passes.
+    // stays "Due today" all day; a genuinely timed due_date goes overdue
+    // the instant it passes. due_all_day is null on legacy rows — treated
+    // as all-day.
     const dueToday = localDateOf(task.due_date) === localDateOf(nowIso);
     const overdue = task.due_date < nowIso;
-    if (dueToday && (isAllDayDueDate(task.due_date) || !overdue)) parts.push('Due today');
+    const allDay = task.due_all_day ?? true;
+    if (dueToday && (allDay || !overdue)) parts.push('Due today');
     else if (overdue) parts.push(`Overdue · ${localDateOf(task.due_date)}`);
     else parts.push(localDateOf(task.due_date));
   }

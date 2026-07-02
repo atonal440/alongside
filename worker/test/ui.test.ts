@@ -20,6 +20,7 @@ function taskRow(overrides: Partial<Task> = {}): Task {
     kickoff_note: null,
     session_log: null,
     focused_until: null,
+    due_all_day: null,
     duty_id: null,
     occurrence_at: null,
     ...overrides,

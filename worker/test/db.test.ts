@@ -35,6 +35,7 @@ function taskRow(overrides: Partial<Task> = {}): Task {
     kickoff_note: null,
     session_log: null,
     focused_until: null,
+    due_all_day: null,
     duty_id: null,
     occurrence_at: null,
     ...overrides,
@@ -260,7 +261,7 @@ describe('DB plan application paths', () => {
     expect(batches).toHaveLength(1);
     expect(mutationSqls(batches[0])).toEqual([
       'UPDATE tasks SET status = ?, updated_at = ?, defer_until = ?, defer_kind = ?, focused_until = ? WHERE id = ?',
-      'INSERT INTO tasks (id,title,notes,status,due_date,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      'INSERT INTO tasks (id,title,notes,status,due_date,due_all_day,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     ]);
   });
 
@@ -423,6 +424,44 @@ describe('DB task lifecycle patch boundaries', () => {
       recurrence: 'FREQ=YEARLY;INTERVAL=2;BYMONTH=2;BYMONTHDAY=29',
     })).rejects.toMatchObject({
       appError: { kind: 'validation' },
+    });
+  });
+
+  // due_all_day resolution (codex-flagged follow-up to Stage 1,
+  // docs/plans/duties-implementation-todo.md "Notes / deviations"):
+  // db.updateTask/addTask is the single choke point both REST and MCP funnel
+  // through, so its derive-vs-override behavior is worth covering directly.
+  it('derives due_all_day from a bare date when not supplied', async () => {
+    const { db, getStoredTask } = dbWithTask(taskRow());
+
+    await db.updateTask('t_abc12', { due_date: '2026-06-01' });
+
+    expect(getStoredTask()).toMatchObject({
+      due_date: '2026-06-01T12:00:00Z',
+      due_all_day: true,
+    });
+  });
+
+  it('derives due_all_day: false from a full datetime when not supplied', async () => {
+    const { db, getStoredTask } = dbWithTask(taskRow());
+
+    await db.updateTask('t_abc12', { due_date: '2026-06-01T09:30:00Z' });
+
+    expect(getStoredTask()).toMatchObject({
+      due_date: '2026-06-01T09:30:00Z',
+      due_all_day: false,
+    });
+  });
+
+  it('an explicit due_all_day overrides derivation (the PWA preserving an unrelated edit)', async () => {
+    const { db, getStoredTask } = dbWithTask(taskRow());
+
+    // A bare date would normally derive due_all_day: true — explicit false wins.
+    await db.updateTask('t_abc12', { due_date: '2026-06-01', due_all_day: false });
+
+    expect(getStoredTask()).toMatchObject({
+      due_date: '2026-06-01T12:00:00Z',
+      due_all_day: false,
     });
   });
 

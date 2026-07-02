@@ -41,6 +41,13 @@ export const tasks = sqliteTable('tasks', {
   notes:         text('notes'),
   status:        text('status', { enum: ['pending', 'done'] }).notNull().default('pending'),
   due_date:      text('due_date'),
+  // Explicit all-day marker — replaces inferring "no time was specified"
+  // from due_date's instant (unrecoverable once stored: a genuinely timed
+  // due_date that happens to normalize to the same instant an all-day one
+  // would use is indistinguishable from it). Null on legacy/pre-migration
+  // rows; treated as "all-day" (true) wherever read. See
+  // docs/plans/duties-implementation-todo.md "Notes / deviations".
+  due_all_day:   integer('due_all_day', { mode: 'boolean' }),
   recurrence:    text('recurrence'),
   created_at:    text('created_at').notNull(),
   updated_at:    text('updated_at').notNull(),

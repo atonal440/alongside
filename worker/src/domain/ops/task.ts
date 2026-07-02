@@ -66,6 +66,9 @@ export function completeTaskPlan(task: PendingTaskDomain, input: CompleteTaskPla
       notes: task.notes,
       status: 'pending',
       due_date: nextDueDateTime,
+      // Legacy date-only RRULEs have no time component (AGENTS.md) — every
+      // spawned occurrence is all-day by construction.
+      due_all_day: true,
       recurrence: task.recurrence.rrule,
       created_at: input.completedAt,
       updated_at: input.completedAt,

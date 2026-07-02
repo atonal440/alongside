@@ -77,3 +77,35 @@ describe('worker/schema.sql — due_date is a datetime column (Stage 1 Part A)',
     expect(row.due_date).toBe('2026-07-15T12:00:00Z');
   });
 });
+
+// due_all_day (codex-flagged follow-up, docs/plans/duties-implementation-todo.md
+// "Notes / deviations"): explicit marker replacing the noon-UTC-instant
+// heuristic, which couldn't distinguish "no time specified" from "genuinely
+// due at noon UTC" once due_date was stored.
+describe('worker/schema.sql — due_all_day column', () => {
+  it('adds a nullable due_all_day column to tasks', () => {
+    const db = freshDb();
+    const columns = db.prepare('PRAGMA table_info(tasks)').all() as { name: string; notnull: number }[];
+    const dueAllDay = columns.find(c => c.name === 'due_all_day');
+    expect(dueAllDay).toBeDefined();
+    expect(dueAllDay?.notnull).toBe(0);
+  });
+
+  it('stores explicit 0/1 and leaves it NULL when omitted', () => {
+    const db = freshDb();
+    db.exec(`
+      INSERT INTO tasks (id, title, created_at, updated_at, due_date, due_all_day)
+      VALUES ('t_timed', 'Standup', '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z', '2026-07-02T09:00:00Z', 0);
+      INSERT INTO tasks (id, title, created_at, updated_at, due_date, due_all_day)
+      VALUES ('t_allday', 'Pay rent', '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z', '2026-07-05T12:00:00Z', 1);
+      INSERT INTO tasks (id, title, created_at, updated_at)
+      VALUES ('t_legacy', 'Predates the column', '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z');
+    `);
+    const rows = db.prepare('SELECT id, due_all_day FROM tasks ORDER BY id').all() as { id: string; due_all_day: number | null }[];
+    expect(rows).toEqual([
+      { id: 't_allday', due_all_day: 1 },
+      { id: 't_legacy', due_all_day: null },
+      { id: 't_timed', due_all_day: 0 },
+    ]);
+  });
+});

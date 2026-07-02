@@ -8,7 +8,7 @@ import { migrateLegacyDeferShape } from './db';
 // being quarantined. Only run this if the initial parse failed — valid rows pass
 // through without mutation.
 const NULLABLE_TASK_FIELDS = [
-  'notes', 'due_date', 'recurrence', 'defer_until', 'project_id',
+  'notes', 'due_date', 'due_all_day', 'recurrence', 'defer_until', 'project_id',
   'kickoff_note', 'session_log', 'focused_until', 'duty_id', 'occurrence_at',
 ] as const;
 

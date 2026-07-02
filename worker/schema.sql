@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   notes         TEXT,
   status        TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'done'
   due_date      TEXT,               -- UTC datetime, minute resolution, nullable (Decision 4)
+  due_all_day   INTEGER,            -- explicit all-day marker (0/1), nullable; NULL treated as all-day (true)
   recurrence    TEXT,               -- iCal RRULE string, nullable (legacy; superseded by duties)
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL,
