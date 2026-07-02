@@ -100,7 +100,7 @@ Create a new task.
 |---|---|---|---|
 | `title` | `string` | yes | Task title. |
 | `notes` | `string` | no | Freeform notes. |
-| `due_date` | `string` | no | ISO 8601 date (e.g. `2026-04-15`). |
+| `due_date` | `string` | no | ISO 8601 date or datetime. A bare date (e.g. `2026-04-15`) is all-day, stored at noon UTC; a full datetime is a genuine deadline at that moment. |
 | `recurrence` | `string` | no | Infinite date-only RRULE (e.g. `FREQ=WEEKLY;INTERVAL=1`, `FREQ=MONTHLY;BYDAY=3FR`). |
 | `task_type` | `'action'\|'plan'\|'recurring'` | no | Defaults to `'action'`. |
 | `project_id` | `string` | no | Associate with a project. |
@@ -121,7 +121,7 @@ Update one or more fields on an existing task. Only provided fields are changed.
 | `task_id` | `string` | yes | |
 | `title` | `string` | no | |
 | `notes` | `string` | no | |
-| `due_date` | `string` | no | |
+| `due_date` | `string` | no | ISO 8601 date or datetime — same all-day/timed rule as `add_task`. |
 | `recurrence` | `string` | no | |
 | `task_type` | `string` | no | |
 | `project_id` | `string` | no | |
@@ -351,7 +351,8 @@ Update the kickoff note on a task or project. A kickoff note is a forward-lookin
   title:         string,
   notes:         string | null,
   status:        'pending' | 'done',
-  due_date:      string | null,   // ISO 8601 date
+  due_date:      string | null,   // ISO 8601 datetime, minute resolution
+  due_all_day:   boolean | null,  // all-day vs. timed; null (predates field) reads as all-day
   recurrence:    string | null,   // iCal RRULE
   task_type:     'action' | 'plan',
   project_id:    string | null,
