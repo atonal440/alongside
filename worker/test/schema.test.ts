@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
@@ -13,6 +13,21 @@ function freshDb(): InstanceType<typeof DatabaseSync> {
   const schema = readFileSync(schemaPath, 'utf8');
   const db = new DatabaseSync(':memory:');
   db.exec(schema);
+  return db;
+}
+
+// Applies real migration files in order, up to (and excluding) `stopBefore` —
+// e.g. dbFromMigrations('008_due_all_day.sql') simulates a database that has
+// everything through 007 but not yet 008, for testing a migration's backfill
+// against pre-existing data (which a fresh schema.sql install never has).
+function dbFromMigrations(stopBefore?: string): InstanceType<typeof DatabaseSync> {
+  const dir = fileURLToPath(new URL('../migrations', import.meta.url));
+  const files = readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
+  const db = new DatabaseSync(':memory:');
+  for (const file of files) {
+    if (file === stopBefore) break;
+    db.exec(readFileSync(`${dir}/${file}`, 'utf8'));
+  }
   return db;
 }
 
@@ -106,6 +121,34 @@ describe('worker/schema.sql — due_all_day column', () => {
       { id: 't_allday', due_all_day: 1 },
       { id: 't_legacy', due_all_day: null },
       { id: 't_timed', due_all_day: 0 },
+    ]);
+  });
+
+  // Codex-flagged: Stage 1 (007) already let REST/MCP write a full-instant
+  // due_date, so a database migrating straight from 007 to 008 can have
+  // pre-existing timed due_date rows, not just noon-UTC ones. 008 must
+  // backfill those as due_all_day = 0, not leave them NULL (⇒ misread as
+  // all-day, masking an already-passed deadline as "Due today").
+  it('008 backfills pre-existing non-noon due_date rows as due_all_day = 0', () => {
+    const db = dbFromMigrations('008_due_all_day.sql');
+    db.exec(`
+      INSERT INTO tasks (id, title, created_at, updated_at, due_date)
+      VALUES ('t_timed', 'Standup', '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z', '2026-07-02T09:00:00Z');
+      INSERT INTO tasks (id, title, created_at, updated_at, due_date)
+      VALUES ('t_allday', 'Pay rent', '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z', '2026-07-05T12:00:00Z');
+      INSERT INTO tasks (id, title, created_at, updated_at)
+      VALUES ('t_undated', 'No due date', '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z');
+    `);
+
+    db.exec(readFileSync(fileURLToPath(new URL('../migrations/008_due_all_day.sql', import.meta.url)), 'utf8'));
+
+    const rows = db.prepare('SELECT id, due_all_day FROM tasks ORDER BY id').all() as { id: string; due_all_day: number | null }[];
+    expect(rows).toEqual([
+      // Ambiguous (could be all-day or coincidentally timed at noon) — left
+      // NULL, read as all-day. Documented, accepted residual imprecision.
+      { id: 't_allday', due_all_day: null },
+      { id: 't_timed', due_all_day: 0 },
+      { id: 't_undated', due_all_day: null },
     ]);
   });
 });

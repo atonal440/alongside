@@ -6,9 +6,16 @@
 -- once stored, so the inference is fundamentally lossy. due_all_day makes the
 -- distinction explicit instead of inferred.
 --
--- Nullable, not backfilled: every pre-existing row predates any way to set a
--- genuinely timed due_date via this app's own UI, so NULL is correctly read
--- as "all-day" everywhere (see docs/pwa/utils/design.md). New writes always
--- store an explicit 0/1.
+-- Nullable. Backfilled where it can be known for certain: any due_date NOT
+-- at exactly noon UTC was necessarily set with a real time-of-day (Stage 1
+-- already let REST/MCP write a full instant, not just a bare date), so it's
+-- due_all_day = 0. Rows at exactly noon UTC are left NULL — genuinely
+-- ambiguous between "all-day" and "coincidentally timed at noon" — and read
+-- as all-day everywhere (see docs/pwa/utils/design.md), same as any new
+-- write that doesn't specify due_all_day explicitly.
 
 ALTER TABLE tasks ADD COLUMN due_all_day INTEGER;
+
+UPDATE tasks
+SET due_all_day = 0
+WHERE due_date IS NOT NULL AND due_date NOT LIKE '%T12:00:00Z';

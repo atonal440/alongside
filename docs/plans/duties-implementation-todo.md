@@ -360,3 +360,26 @@ its original shape — the bug was only in trying to reconstruct that fact
 either its own `all_day`-style column, or an explicit decision that duty
 recurrence is always timed. Don't reach for a noon-UTC heuristic there; it's
 the exact mistake this section documents undoing.
+
+**Two more gaps codex caught in the same round, both about *pre-existing*
+data the new column can't see:**
+- The migration didn't backfill anything, on the theory that nothing could
+  predate the column. False — Stage 1 (007) already let REST/MCP write a
+  full-instant `due_date`, so a real upgrade path could have timed rows
+  before 008 runs. Fixed: `008_due_all_day.sql` now backfills any `due_date`
+  NOT at exactly noon UTC to `due_all_day = 0` (definitely timed); rows at
+  exactly noon UTC stay `NULL` (genuinely ambiguous, read as all-day, same as
+  any other unspecified case). Covered by a new `worker/test/schema.test.ts`
+  case that applies the real migration files in order via a new
+  `dbFromMigrations(stopBefore)` helper, so the backfill runs against
+  pre-existing data the way a real upgrade would.
+- Offline PWA writes queued before this landed (IndexedDB `pendingOps`, made
+  by an older build) have `due_date` but no `due_all_day` key. Flushing them
+  unchanged would hit the server's auto-derive path, which sees the
+  already-normalized noon-UTC instant a *bare date* becomes and derives
+  `due_all_day: false` — wrong, it was all-day. Fixed:
+  `pwa/src/api/pendingOps.ts` `repairMissingDueAllDay`, applied in
+  `parsePendingOp` — a queued op with `due_date` and no `due_all_day` key is
+  unambiguously pre-dating the field (current code always sends them paired),
+  so it's backfilled to `true` on read, before the op ever reaches the
+  network.

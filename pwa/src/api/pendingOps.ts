@@ -120,6 +120,33 @@ const PendingOpSchema = v.variant('op', [
   v.object({ ...baseFields, op: v.literal('link.delete'), body: LinkBodySchema }),
 ]);
 
+// Repair for ops queued before due_all_day existed (offline writes made by an
+// older build, still sitting in IndexedDB when the app updates): such an op
+// has due_date but no due_all_day key at all. The worker derives due_all_day
+// from due_date's shape when it's omitted — but a queued op's due_date is
+// already the fully-normalized noon-UTC instant this app's date-only picker
+// always produced, not a bare date, so that derivation would land on false
+// (timed) instead of true (all-day). due_all_day is only ever omitted here
+// by an op predating the field, since parseTaskForm always sends it paired
+// with due_date now — so "missing" unambiguously means "was all-day".
+function needsDueAllDayRepair(body: TaskCreateBody | TaskUpdateBody): boolean {
+  return !!body.due_date && !('due_all_day' in body);
+}
+
+function repairMissingDueAllDay(op: PendingOp): PendingOp {
+  // Handled as two separate narrowed branches, not one combined condition —
+  // spreading `op` after narrowing a compound `||` condition doesn't reliably
+  // keep TS's discriminated-union structure (op/body would stop lining up).
+  if (op.op === 'task.create' && needsDueAllDayRepair(op.body)) {
+    return { ...op, body: { ...op.body, due_all_day: true } };
+  }
+  if (op.op === 'task.update' && needsDueAllDayRepair(op.body)) {
+    return { ...op, body: { ...op.body, due_all_day: true } };
+  }
+  return op;
+}
+
 export function parsePendingOp(input: unknown): Result<PendingOp, ValidationError[]> {
-  return parseSchema(PendingOpSchema, input) as Result<PendingOp, ValidationError[]>;
+  const parsed = parseSchema(PendingOpSchema, input) as Result<PendingOp, ValidationError[]>;
+  return parsed.ok ? { ...parsed, value: repairMissingDueAllDay(parsed.value) } : parsed;
 }
