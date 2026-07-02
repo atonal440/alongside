@@ -123,12 +123,16 @@ const PendingOpSchema = v.variant('op', [
 // Repair for ops queued before due_all_day existed (offline writes made by an
 // older build, still sitting in IndexedDB when the app updates): such an op
 // has due_date but no due_all_day key at all. The worker derives due_all_day
-// from due_date's shape when it's omitted — but a queued op's due_date is
-// already the fully-normalized noon-UTC instant this app's date-only picker
-// always produced, not a bare date, so that derivation would land on false
-// (timed) instead of true (all-day). due_all_day is only ever omitted here
-// by an op predating the field, since parseTaskForm always sends it paired
-// with due_date now — so "missing" unambiguously means "was all-day".
+// from due_date's shape when it's omitted, which is wrong here — a queued
+// op's due_date is already fully normalized, not the bare date the derivation
+// expects. It is NOT safe to assume "missing ⇒ was all-day": a build between
+// the existingDueDate preservation fix and due_all_day itself could have
+// queued a task.update that resent an existing *timed* due_date verbatim
+// (unrelated-field edit, date unchanged). So this uses the same signal the
+// server-side migration backfill uses on the same kind of already-collapsed
+// legacy data (worker/migrations/008_due_all_day.sql): exactly noon UTC is
+// the all-day anchor every source that predates this field could produce
+// on purpose; anything else was necessarily submitted with a real time.
 function needsDueAllDayRepair(body: TaskCreateBody | TaskUpdateBody): boolean {
   return !!body.due_date && !('due_all_day' in body);
 }
@@ -138,10 +142,10 @@ function repairMissingDueAllDay(op: PendingOp): PendingOp {
   // spreading `op` after narrowing a compound `||` condition doesn't reliably
   // keep TS's discriminated-union structure (op/body would stop lining up).
   if (op.op === 'task.create' && needsDueAllDayRepair(op.body)) {
-    return { ...op, body: { ...op.body, due_all_day: true } };
+    return { ...op, body: { ...op.body, due_all_day: !!op.body.due_date?.endsWith('T12:00:00Z') } };
   }
   if (op.op === 'task.update' && needsDueAllDayRepair(op.body)) {
-    return { ...op, body: { ...op.body, due_all_day: true } };
+    return { ...op, body: { ...op.body, due_all_day: !!op.body.due_date?.endsWith('T12:00:00Z') } };
   }
   return op;
 }
