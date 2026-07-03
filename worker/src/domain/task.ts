@@ -165,6 +165,7 @@ function dateOnlyAnchor(dueDate: IsoDateTime): IsoDate {
 export function recurrenceFromRow(
   dueDateInput: string | null,
   recurrenceInput: string | null,
+  dueAllDayInput: boolean | null = null,
 ): Result<Recurrence, ValidationError[]> {
   const errors: ValidationError[] = [];
   const dueDate = nullableDueDateTime('due_date', dueDateInput);
@@ -182,6 +183,20 @@ export function recurrenceFromRow(
       path: ['due_date'],
       code: 'required',
       message: 'due_date is required when recurrence is set.',
+    });
+  }
+
+  // The legacy RRULE math (nextOccurrence, below) is date-only — it has no
+  // way to carry a time-of-day into the spawned occurrence, so completing a
+  // recurring task with a genuinely timed due_date would silently discard
+  // that time and spawn the next occurrence all-day (Stage 1 A2 shim;
+  // codex-flagged on PR #40). Reject the combination at write time instead
+  // of losing data at completion time.
+  if (dueAllDayInput === false) {
+    errors.push({
+      path: ['due_all_day'],
+      code: 'invalid_state',
+      message: 'Recurring tasks must have an all-day due date; timed recurrence is not supported yet.',
     });
   }
 
@@ -231,7 +246,7 @@ export function taskFromRow(row: Task): Result<TaskDomain, ValidationError[]> {
   const dueDate = nullableDueDateTime('due_date', row.due_date);
   if (!dueDate.ok) errors.push(...dueDate.error);
 
-  const recurrence = recurrenceFromRow(row.due_date, row.recurrence);
+  const recurrence = recurrenceFromRow(row.due_date, row.recurrence, row.due_all_day);
   if (!recurrence.ok) errors.push(...recurrence.error);
 
   const kickoffNote = nullableBounded('kickoff_note', 2_000, row.kickoff_note);

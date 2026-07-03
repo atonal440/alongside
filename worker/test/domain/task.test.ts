@@ -100,6 +100,27 @@ describe('task recurrence domain codec', () => {
       }));
     }
   });
+
+  // Codex-flagged (PR #40): the legacy RRULE math is date-only and has no way
+  // to carry a time-of-day into a spawned occurrence — completing a recurring
+  // task with a timed due_date would silently discard the time and spawn the
+  // next occurrence all-day. Reject at write time instead.
+  it('rejects recurrence paired with a genuinely timed due_date', () => {
+    const result = recurrenceFromRow('2026-07-01T09:30:00Z', 'FREQ=WEEKLY', false);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContainEqual(expect.objectContaining({
+        path: ['due_all_day'],
+        code: 'invalid_state',
+      }));
+    }
+  });
+
+  it('allows recurrence with an all-day due_date (due_all_day: true or null)', () => {
+    expect(recurrenceFromRow('2026-07-01', 'FREQ=WEEKLY', true).ok).toBe(true);
+    expect(recurrenceFromRow('2026-07-01', 'FREQ=WEEKLY', null).ok).toBe(true);
+  });
 });
 
 describe('task defer/focus lifecycle codec', () => {

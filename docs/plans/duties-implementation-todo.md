@@ -396,3 +396,25 @@ data the new column can't see:**
   first, then falls back to the noon-UTC signal. Same lesson as the
   migration backfill, just with one more generation of drift to account for
   because client state persists longer than a server column does.
+
+### Two more PR review rounds (2026-07-02, same day)
+
+- `db.updateTask` only copied `due_all_day` into the patch inside the
+  `due_date` branch, so a PATCH of just `{ due_all_day: false }` — no
+  `due_date` — fell through to the empty-patch check and silently no-op'd.
+  That's exactly the operation needed to correct an ambiguous noon-UTC row
+  the migration backfill left `NULL`. Fixed with an `else if
+  (updates.due_all_day !== undefined)` branch alongside the `due_date` one.
+- The legacy RRULE math (`nextOccurrence`, date-only) has no way to carry a
+  time-of-day into a spawned occurrence — `completeTaskPlan`'s A2 shim always
+  re-inflates the next occurrence to the noon-UTC anchor. Once `due_date`
+  could carry a real time (this stage), nothing stopped a caller from
+  creating a *recurring* task with a *timed* `due_date`, and completing it
+  would silently discard that time on the next spawn. Fixed by rejecting the
+  combination at write time: `recurrenceFromRow` takes a third
+  `dueAllDayInput` parameter and errors `path: ['due_all_day'], code:
+  'invalid_state'` when recurrence is set and `due_all_day === false`. This
+  makes "legacy recurring tasks are all-day" a real enforced invariant rather
+  than a comment `completeTaskPlan` hoped stayed true — worth knowing before
+  Stage 2's series-recurrence model has to decide whether timed recurrence is
+  ever supported for real.

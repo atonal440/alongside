@@ -209,6 +209,18 @@ describe('DB task recurrence boundaries', () => {
       recurrence: 'FREQ=DAILY',
     })).rejects.toBeInstanceOf(DomainOperationError);
   });
+
+  // Codex-flagged (PR #40): the legacy RRULE math is date-only and would
+  // silently discard a real time-of-day when spawning the next occurrence.
+  it('rejects recurring tasks with a genuinely timed due_date before persistence', async () => {
+    await expect(dbWithoutStorage().addTask({
+      title: 'Timed repeat',
+      due_date: '2026-07-01T09:30:00Z',
+      recurrence: 'FREQ=WEEKLY',
+    })).rejects.toMatchObject({
+      appError: { kind: 'validation' },
+    });
+  });
 });
 
 describe('DB project and preference write boundaries', () => {
