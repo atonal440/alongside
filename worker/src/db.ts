@@ -406,6 +406,11 @@ export class DB {
       const resolved = resolveDueDate(updates.due_date, updates.due_all_day);
       patch.due_date = resolved.due_date;
       patch.due_all_day = resolved.due_all_day;
+    } else if (updates.due_all_day !== undefined) {
+      // due_all_day-only update: no due_date rewrite, just correcting the
+      // all-day/timed classification on an existing due_date (e.g. fixing an
+      // ambiguous noon-UTC row the migration backfill left NULL).
+      patch.due_all_day = updates.due_all_day;
     }
     if (updates.recurrence !== undefined)   patch.recurrence = updates.recurrence;
     if (updates.task_type !== undefined)    patch.task_type = updates.task_type;

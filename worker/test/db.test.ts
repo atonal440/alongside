@@ -465,6 +465,21 @@ describe('DB task lifecycle patch boundaries', () => {
     });
   });
 
+  // Codex-flagged (PR #40): a due_all_day-only PATCH — no due_date rewrite —
+  // must still take effect. This is how an ambiguous noon-UTC row left NULL
+  // by the migration backfill gets corrected after the fact.
+  it('a due_all_day-only update (no due_date) is applied, not silently dropped', async () => {
+    const { db, getStoredTask } = dbWithTask(taskRow({
+      due_date: '2026-06-01T12:00:00Z',
+      due_all_day: null,
+    }));
+
+    const result = await db.updateTask('t_abc12', { due_all_day: false });
+
+    expect(result).toMatchObject({ due_date: '2026-06-01T12:00:00Z', due_all_day: false });
+    expect(getStoredTask()).toMatchObject({ due_date: '2026-06-01T12:00:00Z', due_all_day: false });
+  });
+
   it.each([
     {
       label: 'someday deferral',
