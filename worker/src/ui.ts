@@ -5,12 +5,27 @@ import { appErrorMessage, appErrorStatus } from './domain/errors';
 import { UiRouteSpecs } from './wire/ui';
 import { parseRoute } from './wire/route';
 
+// This is the server-rendered initial HTML — the Worker has no viewer zone to
+// render into (unlike the client-side dueDateLabel() in the <script> block
+// below, which runs in the iframe's browser and can), so it formats in UTC.
+// An all-day due_date (due_all_day true/null, incl. legacy rows) shows just
+// the date; a genuinely timed one (false) also shows its UTC time, or it's
+// indistinguishable from an all-day task.
+function dueDateLabel(task: Pick<Task, 'due_date' | 'due_all_day'>): string {
+  if (!task.due_date) return '';
+  const date = task.due_date.slice(0, 10);
+  if (task.due_all_day === false) {
+    return `${date} at ${task.due_date.slice(11, 16)} UTC`;
+  }
+  return date;
+}
+
 function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
   const taskRows = tasks.map(t => `
     <div class="task" data-id="${t.id}">
       <input type="checkbox" data-id="${t.id}" />
       <span class="title">${escapeHtml(t.title)}</span>
-      ${t.due_date ? `<span class="due">${escapeHtml(t.due_date)}</span>` : ''}
+      ${t.due_date ? `<span class="due">${escapeHtml(dueDateLabel(t))}</span>` : ''}
     </div>
   `).join('');
 
@@ -105,7 +120,7 @@ function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
           const data = await res.json();
           taskEl.classList.add('done');
           if (data.next) {
-            showToast('Done! Next: <span class="next">' + escapeHtml(data.next.due_date) + '</span>');
+            showToast('Done! Next: <span class="next">' + escapeHtml(dueDateLabel(data.next)) + '</span>');
           }
           window.parent?.postMessage({ type: 'task-completed', taskId: id }, '*');
         }
@@ -139,7 +154,7 @@ function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
         '<div class="task" data-id="' + t.id + '">' +
         '<input type="checkbox" data-id="' + t.id + '" />' +
         '<span class="title">' + escapeHtml(t.title) + '</span>' +
-        (t.due_date ? '<span class="due">' + escapeHtml(t.due_date) + '</span>' : '') +
+        (t.due_date ? '<span class="due">' + escapeHtml(dueDateLabel(t)) + '</span>' : '') +
         '</div>'
       ).join('');
     }
@@ -148,6 +163,22 @@ function renderActiveTasksHTML(tasks: Task[], baseUrl: string): string {
       const d = document.createElement('div');
       d.textContent = str || '';
       return d.innerHTML;
+    }
+
+    // Unlike the server-rendered initial markup above, this runs in the
+    // iframe's browser and can render in the viewer's local zone — mirroring
+    // pwa/src/utils/design.ts dueDateLabel. An all-day due_date (due_all_day
+    // true/null, incl. legacy rows) shows just the date; a genuinely timed
+    // one (false) also shows its local time, or it's indistinguishable from
+    // an all-day task.
+    function dueDateLabel(task) {
+      if (!task || !task.due_date) return '';
+      const d = new Date(task.due_date);
+      const date = d.toLocaleDateString('en-CA');
+      if (task.due_all_day === false) {
+        return date + ' at ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      }
+      return date;
     }
 
     function showToast(html) {

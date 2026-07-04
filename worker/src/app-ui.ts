@@ -224,7 +224,7 @@ export function getAppHtml(): string {
       if (displayedTaskIds.length === 0) return;
 
       if (sc.next) {
-        showToast('Done! Next: <span class="next">' + escapeHtml(sc.next.due_date || '') + '</span>');
+        showToast('Done! Next: <span class="next">' + escapeHtml(dueDateLabel(sc.next)) + '</span>');
       }
       refreshDisplayed();
     }
@@ -275,7 +275,7 @@ export function getAppHtml(): string {
           '<input type="checkbox" data-id="' + escapeAttr(t.id) + '"' + (t.status === 'done' ? ' checked' : '') + ' />' +
           '<span class="title">' + escapeHtml(t.title) + '</span>' +
           (projectName && !currentProject ? '<span class="project-tag">' + escapeHtml(projectName) + '</span>' : '') +
-          (t.due_date ? '<span class="due">' + escapeHtml(t.due_date) + '</span>' : '') +
+          (t.due_date ? '<span class="due">' + escapeHtml(dueDateLabel(t)) + '</span>' : '') +
           '<span class="status-badge ' + statusClass + '">' + escapeHtml(t.status || 'pending') + '</span>' +
           '</div>';
       }).join('');
@@ -301,7 +301,7 @@ export function getAppHtml(): string {
             try { resultData = JSON.parse(result.content[0].text); } catch {}
           }
           if (resultData?.next) {
-            showToast('Done! Next: <span class="next">' + escapeHtml(resultData.next.due_date || '') + '</span>');
+            showToast('Done! Next: <span class="next">' + escapeHtml(dueDateLabel(resultData.next)) + '</span>');
           }
         } else {
           await rpcRequest('tools/call', {
@@ -335,6 +335,22 @@ export function getAppHtml(): string {
 
     function escapeAttr(str) {
       return (str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    }
+
+    // due_date is a UTC instant (Decision 4); this widget runs in the
+    // viewer's browser, so — mirroring pwa/src/utils/design.ts dueDateLabel —
+    // it can and should render in the viewer's local zone. An all-day
+    // due_date (due_all_day true/null, incl. legacy rows) shows just the
+    // date; a genuinely timed one (false) also shows its local time, or it's
+    // indistinguishable from an all-day task.
+    function dueDateLabel(task) {
+      if (!task || !task.due_date) return '';
+      const d = new Date(task.due_date);
+      const date = d.toLocaleDateString('en-CA');
+      if (task.due_all_day === false) {
+        return date + ' at ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      }
+      return date;
     }
 
     function showToast(html) {

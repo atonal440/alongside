@@ -426,3 +426,20 @@ data the new column can't see:**
   the new `localTimeOf`), used by `formatDue`, `TaskMeta`, and `DetailView`'s
   raw due-date span. "Due today"/"Overdue" both grew a timed variant that
   includes the time for the same reason.
+- The same raw-`due_date` problem existed in the two worker-rendered
+  surfaces, `worker/src/ui.ts` (the `/ui/active` iframe widget) and
+  `worker/src/app-ui.ts` (the MCP App widget) — both still interpolated
+  `t.due_date` verbatim, so an all-day task showed its noon-UTC storage
+  artifact and a timed task showed raw UTC with no indication it even had a
+  time. These needed a `dueDateLabel` in **two places each**, not one,
+  because the two rendering contexts have different zone access: the
+  server-rendered initial HTML in `ui.ts` runs inside the Worker, which has
+  no viewer-zone information at all, so its `dueDateLabel` formats in UTC
+  (plain date when all-day/legacy, `'<date> at <time> UTC'` when timed);
+  the `<script>` block in that same file's HTML, and all of `app-ui.ts`
+  (which is entirely client-side), run in the iframe's actual browser and
+  get a second, separate `dueDateLabel` that mirrors `design.ts` — real
+  `Intl` local-zone formatting via `toLocaleDateString`/`toLocaleTimeString`.
+  Same all-day/timed branching logic as the PWA, just duplicated per
+  environment instead of shared, since these widgets are plain template
+  strings with no import graph into `pwa/src`.
