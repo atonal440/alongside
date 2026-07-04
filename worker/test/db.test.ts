@@ -524,4 +524,23 @@ describe('DB task lifecycle patch boundaries', () => {
       });
     },
   );
+
+  // Codex-flagged (PR #40): parseDeferInput's minute-resolution truncation
+  // only runs when defer_kind is also present in the same PATCH — a
+  // standalone defer_until update on a task already defer_kind: 'until'
+  // used to copy the raw value straight into the patch, persisting
+  // seconds/millis in violation of Decision 4.
+  it('truncates a standalone defer_until update (no defer_kind in the PATCH) to minute resolution', async () => {
+    const { db, getStoredTask } = dbWithTask(taskRow({
+      defer_kind: 'until',
+      defer_until: '2026-05-16T09:00:00Z',
+    }));
+
+    const result = await db.updateTask('t_abc12', {
+      defer_until: '2026-05-16T10:30:45.123Z',
+    });
+
+    expect(result).toMatchObject({ defer_until: '2026-05-16T10:30:00Z' });
+    expect(getStoredTask()).toMatchObject({ defer_until: '2026-05-16T10:30:00Z' });
+  });
 });

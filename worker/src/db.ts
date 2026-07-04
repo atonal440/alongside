@@ -418,7 +418,16 @@ export class DB {
     if (updates.kickoff_note !== undefined) patch.kickoff_note = updates.kickoff_note;
     if (updates.session_log !== undefined)  patch.session_log = updates.session_log;
     if (updates.status !== undefined)       patch.status = updates.status;
-    if (updates.defer_until !== undefined)  patch.defer_until = updates.defer_until;
+    // Parsed here (not just via parseDeferInput below) because that only
+    // runs when defer_kind is also present in this same PATCH — a
+    // standalone defer_until update on a task that's already defer_kind:
+    // 'until' would otherwise skip the minute-resolution parser entirely
+    // and persist raw seconds/millis, violating Decision 4.
+    if (updates.defer_until !== undefined) {
+      patch.defer_until = updates.defer_until === null
+        ? null
+        : parseRequiredDateTime('defer_until', updates.defer_until);
+    }
     if (updates.defer_kind !== undefined)   patch.defer_kind = updates.defer_kind;
     if (updates.focused_until !== undefined) patch.focused_until = updates.focused_until;
 

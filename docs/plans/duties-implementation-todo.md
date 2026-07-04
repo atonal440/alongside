@@ -476,3 +476,12 @@ data the new column can't see:**
     repairs' choice of defaulting ambiguous noon-UTC to `true` — both read
     identically at render time, so there was no reason to diverge from the
     migration's own precedent here.
+- `db.updateTask`'s minute-resolution truncation for `defer_until`
+  (`parseRequiredDateTime`, part of Decision 4) only ran inside
+  `parseDeferInput`, which only runs when `defer_kind` is also present in
+  the same PATCH. A standalone `{ defer_until: "...123Z" }` on a task
+  already `defer_kind: 'until'` copied the raw value straight into the
+  patch, persisting seconds/millis. Fixed by parsing `defer_until`
+  whenever it's provided (not just alongside `defer_kind`), mirroring the
+  `due_all_day`-only-update fix from the earlier PR round — same "narrow
+  field-presence check skips the real parser" shape of bug.
