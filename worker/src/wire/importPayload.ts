@@ -29,6 +29,19 @@ function prefixErrors(path: string, errors: ValidationError[]): ValidationError[
   return errors.map(error => ({ ...error, path: [path, ...error.path] }));
 }
 
+// Same legacy inference as the migration 008 backfill: an export produced
+// after due_date became a datetime but before due_all_day existed has no
+// due_all_day key at all, and a due_date NOT at exactly noon UTC was
+// necessarily set with a real time-of-day — so it's due_all_day: false, not
+// the default null (read as all-day everywhere, which would silently drop
+// the time on restore). A noon-UTC due_date stays null — genuinely
+// ambiguous, same as the migration leaves it.
+function inferLegacyDueAllDay(dueDate: string | null, dueAllDay: boolean | null): boolean | null {
+  if (dueAllDay !== null) return dueAllDay;
+  if (dueDate === null) return null;
+  return dueDate.endsWith('T12:00:00Z') ? null : false;
+}
+
 // Import-only task schema: tolerates pre-006 legacy snoozed_until rows and
 // normalizes them into the current defer_kind / defer_until shape. Also
 // tolerates pre-Stage-1 exports that predate duty_id/occurrence_at, and
@@ -58,7 +71,7 @@ const ImportTaskRowSchema = v.pipe(
       notes: row.notes,
       status: row.status,
       due_date: row.due_date,
-      due_all_day: row.due_all_day,
+      due_all_day: inferLegacyDueAllDay(row.due_date, row.due_all_day),
       recurrence: row.recurrence,
       created_at: row.created_at,
       updated_at: row.updated_at,

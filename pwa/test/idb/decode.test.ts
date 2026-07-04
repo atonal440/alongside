@@ -61,6 +61,27 @@ describe('decodeTaskRows — missing nullable fields repair', () => {
     expect(rows[0]!.session_log).toBeNull();
     expect(report.repaired).toBe(1);
   });
+
+  // Codex-flagged (PR #40): a pre-due_all_day build could sync a timed
+  // due_date; defaulting the missing due_all_day to null would render it as
+  // all-day and lose the time.
+  test('task with a timed due_date missing due_all_day infers false, not null', () => {
+    const old = { ...makeTask({ id: 't_aaa001', due_date: '2026-07-02T09:00:00Z' }) };
+    delete (old as Record<string, unknown>)['due_all_day'];
+    const { rows, report } = decodeTaskRows([old]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.due_all_day).toBe(false);
+    expect(report.repaired).toBe(1);
+  });
+
+  test('task with a noon-UTC due_date missing due_all_day infers true', () => {
+    const old = { ...makeTask({ id: 't_aaa001', due_date: '2026-07-02T12:00:00Z' }) };
+    delete (old as Record<string, unknown>)['due_all_day'];
+    const { rows, report } = decodeTaskRows([old]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.due_all_day).toBe(true);
+    expect(report.repaired).toBe(1);
+  });
 });
 
 describe('decodeTaskRows — legacy enum repair (migration 002/004/005)', () => {

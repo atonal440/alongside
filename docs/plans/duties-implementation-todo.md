@@ -453,3 +453,26 @@ data the new column can't see:**
   sync, stranding the optimistic local row indefinitely. Fixed by mirroring
   the worker's rejection client-side (same message text) when
   `dueAllDay === false` and recurrence is set.
+- Two more spots defaulted a missing `due_all_day` to `null` (read as
+  all-day) without checking whether `due_date` was actually a genuinely
+  timed instant — the same class of bug as the pendingOps/decode fixes
+  above, just in two surfaces those rounds hadn't reached yet:
+  - `pwa/src/idb/decode.ts`'s `fillMissingNullableTaskFields` filled every
+    absent nullable field with `null` uniformly, including `due_all_day` on
+    a task synced by a pre-`due_all_day` build with a real timed
+    `due_date` — silently losing the time until a server resync. Fixed by
+    special-casing `due_all_day` in that loop to call the now-exported
+    `legacyIsAllDay` from `pwa/src/api/pendingOps.ts` (already the same
+    bare-date-then-noon-UTC heuristic used for the pendingOps repair)
+    instead of defaulting to `null`.
+  - `worker/src/wire/importPayload.ts`'s `ImportTaskRowSchema` passed
+    `row.due_all_day` straight through, so a legacy export (post-Decision-4
+    datetime, pre-`due_all_day`) with a timed `due_date` and no
+    `due_all_day` key imported as `null`, permanently discarding the time
+    on restore. Fixed with a new `inferLegacyDueAllDay` helper mirroring
+    migration 008's backfill exactly: a `due_date` not at exactly noon UTC
+    becomes `due_all_day: false`; a noon-UTC one stays `null` (genuinely
+    ambiguous, same as the migration leaves it) rather than the client-side
+    repairs' choice of defaulting ambiguous noon-UTC to `true` — both read
+    identically at render time, so there was no reason to diverge from the
+    migration's own precedent here.

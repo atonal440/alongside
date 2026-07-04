@@ -141,7 +141,7 @@ const PendingOpSchema = v.variant('op', [
 // migration backfill uses on the same kind of already-collapsed data —
 // worker/migrations/008_due_all_day.sql). Anything else was necessarily
 // submitted with a real time.
-function legacyIsAllDay(dueDate: string): boolean {
+export function legacyIsAllDay(dueDate: string): boolean {
   return !dueDate.includes('T') || dueDate.endsWith('T12:00:00Z');
 }
 

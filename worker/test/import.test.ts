@@ -134,6 +134,29 @@ describe('import payload parsing', () => {
       defer_until: '2026-05-16T09:00:00.000Z',
     });
   });
+
+  // Codex-flagged (PR #40): an export produced after due_date became a
+  // datetime but before due_all_day existed has no due_all_day key at all —
+  // mirrors migration 008's backfill inference, not a blanket null/all-day.
+  it('infers due_all_day: false for a legacy export with a timed due_date', () => {
+    const { due_all_day: _dueAllDay, ...legacyTask } = taskRow({
+      project_id: 'p_abc12',
+      due_date: '2026-07-02T09:00:00.000Z',
+    });
+    const parsed = expectOk(parseImport(exportPayload({ tasks: [legacyTask] })));
+
+    expect(parsed.tasks[0].due_all_day).toBe(false);
+  });
+
+  it('leaves due_all_day null for a legacy export with a noon-UTC due_date', () => {
+    const { due_all_day: _dueAllDay, ...legacyTask } = taskRow({
+      project_id: 'p_abc12',
+      due_date: '2026-07-02T12:00:00.000Z',
+    });
+    const parsed = expectOk(parseImport(exportPayload({ tasks: [legacyTask] })));
+
+    expect(parsed.tasks[0].due_all_day).toBeNull();
+  });
 });
 
 describe('planImport', () => {
