@@ -117,7 +117,13 @@ export function parseTaskForm(input: TaskFormInput): Result<TaskUpdatePatch, Fie
     }
   }
 
-  // recurrence — empty → null, non-empty → Rrule + cross-field check
+  // recurrence — empty → null, non-empty → Rrule + cross-field check.
+  // Mirrors worker/src/domain/task.ts recurrenceFromRow: a genuinely timed
+  // due_date (due_all_day: false, only reachable here via the
+  // existingDueAllDay preservation above — the picker itself can only
+  // produce all-day dates) can't carry recurrence. Rejecting client-side
+  // avoids queuing a PATCH the worker will 4xx on, which would otherwise
+  // strand an offline edit in an unsyncable optimistic state indefinitely.
   let recurrence: Rrule | null = null;
   if (input.recurrence !== '') {
     const r = parseRrule(input.recurrence);
@@ -125,6 +131,9 @@ export function parseTaskForm(input: TaskFormInput): Result<TaskUpdatePatch, Fie
       recurrence = r.value.rrule;
       if (!dueDate && !errors.dueDate) {
         errors.recurrence = 'Recurrence requires a due date.';
+        recurrence = null;
+      } else if (dueAllDay === false) {
+        errors.recurrence = 'Recurring tasks must have an all-day due date; timed recurrence is not supported yet.';
         recurrence = null;
       }
     } else {

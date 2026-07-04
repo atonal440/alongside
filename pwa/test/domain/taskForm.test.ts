@@ -208,6 +208,21 @@ describe('parseTaskForm — recurrence', () => {
     }));
     expect(result.ok).toBe(true);
   });
+
+  // Codex-flagged (PR #40): mirrors the worker's recurrenceFromRow rejection
+  // of recurrence on a timed due_date, so an offline edit can't queue a
+  // PATCH the worker will reject.
+  test('cross-field: recurrence with a preserved timed due date → error on recurrence', () => {
+    const result = parseTaskForm(baseInput({
+      recurrence: 'FREQ=DAILY;INTERVAL=1',
+      dueDate: '2026-07-01',
+      existingDueDate: '2026-07-01T09:30:00Z',
+      existingDueAllDay: false,
+    }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.recurrence).toMatch(/all-day/i);
+  });
 });
 
 describe('parseTaskForm — defer', () => {

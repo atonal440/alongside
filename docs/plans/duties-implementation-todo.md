@@ -443,3 +443,13 @@ data the new column can't see:**
   Same all-day/timed branching logic as the PWA, just duplicated per
   environment instead of shared, since these widgets are plain template
   strings with no import graph into `pwa/src`.
+- `pwa/src/domain/taskForm.ts`'s recurrence cross-field check only rejected
+  a missing due date, not a timed one — so editing a task that already had
+  a real timed `due_date` (`due_all_day: false`, only reachable through the
+  `existingDueAllDay` preservation path since the date-only picker itself
+  can only ever produce all-day dates) and adding a recurrence would build
+  a patch the worker's `recurrenceFromRow` invariant (added earlier this
+  round) rejects with a 4xx. Offline, that queues a PATCH that can never
+  sync, stranding the optimistic local row indefinitely. Fixed by mirroring
+  the worker's rejection client-side (same message text) when
+  `dueAllDay === false` and recurrence is set.
