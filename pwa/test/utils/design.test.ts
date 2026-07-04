@@ -1,10 +1,12 @@
-import { describe, test, expect, afterEach } from 'vitest';
+import { describe, test, expect, afterEach, beforeEach } from 'vitest';
 import fc from 'fast-check';
 import {
   isFocused,
   isDeferred,
   formatDue,
   localDateOf,
+  localTimeOf,
+  dueDateLabel,
   projectColor,
   projectTitle,
   firstNoteEntry,
@@ -42,6 +44,16 @@ describe('isDeferred', () => {
 });
 
 describe('formatDue', () => {
+  // Time-of-day formatting (localTimeOf) is not zone-stable like the
+  // noon-UTC date trick — pin TZ so the timed-due-date assertions below are
+  // deterministic regardless of the machine running the tests.
+  const originalTz = process.env['TZ'];
+  beforeEach(() => { process.env['TZ'] = 'UTC'; });
+  afterEach(() => {
+    if (originalTz === undefined) delete process.env['TZ'];
+    else process.env['TZ'] = originalTz;
+  });
+
   test('no due date → empty string', () => {
     expect(formatDue(makeTask({ due_date: null }), NOW)).toBe('');
   });
@@ -63,9 +75,20 @@ describe('formatDue', () => {
   // Regression: a genuinely timed due_date (due_all_day: false — settable via
   // MCP/REST) that has already passed must show as overdue even on the same
   // local day — the "Due today" bucket must not mask an already-past instant.
-  test('timed due date earlier today → Overdue, not "Due today"', () => {
+  test('timed due date earlier today → Overdue with time, not "Due today"', () => {
     // NOW is 12:00Z; due at 09:00Z the same day is 3h in the past.
-    expect(formatDue(makeTask({ due_date: '2026-06-09T09:00:00Z', due_all_day: false }), NOW)).toBe('Overdue 2026-06-09');
+    expect(formatDue(makeTask({ due_date: '2026-06-09T09:00:00Z', due_all_day: false }), NOW)).toBe('Overdue 2026-06-09 at 9:00 AM');
+  });
+
+  // Codex-flagged (PR #40): a timed due_date is a real public part of the
+  // due-date contract (REST/MCP can set a full datetime directly) — showing
+  // only the date would make it indistinguishable from an all-day task.
+  test('timed due date due later today → "Due today at <time>"', () => {
+    expect(formatDue(makeTask({ due_date: '2026-06-09T18:00:00Z', due_all_day: false }), NOW)).toBe('Due today at 6:00 PM');
+  });
+
+  test('timed due date in the future → "Due <date> at <time>"', () => {
+    expect(formatDue(makeTask({ due_date: '2026-07-04T17:30:00Z', due_all_day: false }), NOW)).toBe('Due 2026-07-04 at 5:30 PM');
   });
 
   // Regression: an all-day due_date must stay "Due today" for the whole
@@ -81,6 +104,39 @@ describe('formatDue', () => {
   // must be treated as all-day, same as explicit true.
   test('null due_all_day (legacy row) is treated as all-day', () => {
     expect(formatDue(makeTask({ due_date: '2026-06-09T12:00:00Z', due_all_day: null }), '2026-06-09T20:00:00.000Z')).toBe('Due today');
+  });
+});
+
+// dueDateLabel/localTimeOf (codex-flagged follow-up, PR #40): TaskMeta and
+// DetailView's raw "- Due <label>" span both call dueDateLabel directly, so
+// this is worth testing on its own, not just through formatDue's composed
+// labels above.
+describe('dueDateLabel — all-day never shows a time, timed always does', () => {
+  const originalTz = process.env['TZ'];
+  beforeEach(() => { process.env['TZ'] = 'UTC'; });
+  afterEach(() => {
+    if (originalTz === undefined) delete process.env['TZ'];
+    else process.env['TZ'] = originalTz;
+  });
+
+  test('no due date → empty string', () => {
+    expect(dueDateLabel(makeTask({ due_date: null }))).toBe('');
+  });
+
+  test('all-day (true) → date only', () => {
+    expect(dueDateLabel(makeTask({ due_date: '2026-07-04T12:00:00Z', due_all_day: true }))).toBe('2026-07-04');
+  });
+
+  test('all-day (null, legacy row) → date only', () => {
+    expect(dueDateLabel(makeTask({ due_date: '2026-07-04T12:00:00Z', due_all_day: null }))).toBe('2026-07-04');
+  });
+
+  test('timed (false) → date and local time', () => {
+    expect(dueDateLabel(makeTask({ due_date: '2026-07-04T17:30:00Z', due_all_day: false }))).toBe('2026-07-04 at 5:30 PM');
+  });
+
+  test('localTimeOf formats an instant as viewer-local hour:minute', () => {
+    expect(localTimeOf('2026-07-04T09:05:00Z')).toBe('9:05 AM');
   });
 });
 

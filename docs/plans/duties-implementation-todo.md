@@ -418,3 +418,11 @@ data the new column can't see:**
   than a comment `completeTaskPlan` hoped stayed true — worth knowing before
   Stage 2's series-recurrence model has to decide whether timed recurrence is
   ever supported for real.
+- `formatDue`/`TaskMeta`/`DetailView` rendered every due date as a plain
+  date, even a genuinely timed one (`due_all_day: false`) — indistinguishable
+  from an all-day task in the UI even though REST/MCP can set a real
+  datetime directly. Fixed: `design.ts` `dueDateLabel(task)` is now the
+  shared label (date alone when all-day, `'<date> at <time>'` when timed via
+  the new `localTimeOf`), used by `formatDue`, `TaskMeta`, and `DetailView`'s
+  raw due-date span. "Due today"/"Overdue" both grew a timed variant that
+  includes the time for the same reason.

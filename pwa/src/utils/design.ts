@@ -43,6 +43,21 @@ export function localDateOf(iso: string): string {
   return new Date(iso).toLocaleDateString('en-CA');
 }
 
+export function localTimeOf(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+// An all-day due_date never shows a time — its noon-UTC instant is a storage
+// artifact (Decision 4), not intent, so `localDateOf` alone is the honest
+// label. A genuinely timed one (due_all_day: false) is a real public part of
+// the due-date contract now (REST/MCP can set a full datetime directly), so
+// it must show the time too, or it's indistinguishable from an all-day task.
+export function dueDateLabel(task: Pick<Task, 'due_date' | 'due_all_day'>): string {
+  if (!task.due_date) return '';
+  const date = localDateOf(task.due_date);
+  return task.due_all_day === false ? `${date} at ${localTimeOf(task.due_date)}` : date;
+}
+
 export function formatDue(task: Pick<Task, 'due_date' | 'due_all_day'>, nowIso: string): string {
   if (!task.due_date) return '';
   const dueToday = localDateOf(task.due_date) === localDateOf(nowIso);
@@ -52,9 +67,11 @@ export function formatDue(task: Pick<Task, 'due_date' | 'due_all_day'>, nowIso: 
   // day even past its noon-UTC instant; a genuinely timed one goes overdue
   // the moment it passes, same local day or not.
   const allDay = task.due_all_day ?? true;
-  if (dueToday && (allDay || !overdue)) return 'Due today';
-  if (overdue) return `Overdue ${localDateOf(task.due_date)}`;
-  return `Due ${localDateOf(task.due_date)}`;
+  if (dueToday && (allDay || !overdue)) {
+    return allDay ? 'Due today' : `Due today at ${localTimeOf(task.due_date)}`;
+  }
+  if (overdue) return `Overdue ${dueDateLabel(task)}`;
+  return `Due ${dueDateLabel(task)}`;
 }
 
 export function readinessScore(task: Task, links: TaskLink[] = [], tasks: Task[] = [], nowIso = new Date().toISOString()): number {

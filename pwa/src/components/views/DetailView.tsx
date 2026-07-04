@@ -2,7 +2,7 @@ import { useAppState } from '../../hooks/useAppState';
 import { completeTaskAction, focusTaskAction } from '../../context/actions';
 import { pushNav } from '../../hooks/useHistory';
 import { Markdown } from '../common/Markdown';
-import { formatDue, localDateOf, projectColor } from '../../utils/design';
+import { dueDateLabel, formatDue, projectColor } from '../../utils/design';
 import type { Task } from '../../types';
 
 export function DetailView() {
@@ -88,7 +88,7 @@ export function DetailView() {
             <span className="list-item-dot" style={{ background: projectColor(task.project_id) }} />
             {projectLabel}
             {statusLabel && <span>- {statusLabel}</span>}
-            {task.due_date && <span>- Due {localDateOf(task.due_date)}</span>}
+            {task.due_date && <span>- Due {dueDateLabel(task)}</span>}
             {task.recurrence && <span>- Recurring</span>}
           </div>
           <h1 className="detail-title">{task.title}</h1>
