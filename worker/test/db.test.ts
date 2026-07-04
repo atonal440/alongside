@@ -35,6 +35,9 @@ function taskRow(overrides: Partial<Task> = {}): Task {
     kickoff_note: null,
     session_log: null,
     focused_until: null,
+    due_all_day: null,
+    duty_id: null,
+    occurrence_at: null,
     ...overrides,
   };
 }
@@ -206,6 +209,18 @@ describe('DB task recurrence boundaries', () => {
       recurrence: 'FREQ=DAILY',
     })).rejects.toBeInstanceOf(DomainOperationError);
   });
+
+  // Codex-flagged (PR #40): the legacy RRULE math is date-only and would
+  // silently discard a real time-of-day when spawning the next occurrence.
+  it('rejects recurring tasks with a genuinely timed due_date before persistence', async () => {
+    await expect(dbWithoutStorage().addTask({
+      title: 'Timed repeat',
+      due_date: '2026-07-01T09:30:00Z',
+      recurrence: 'FREQ=WEEKLY',
+    })).rejects.toMatchObject({
+      appError: { kind: 'validation' },
+    });
+  });
 });
 
 describe('DB project and preference write boundaries', () => {
@@ -250,7 +265,7 @@ describe('DB plan application paths', () => {
     expect(result?.completed).toMatchObject({ id: task.id, status: 'done' });
     expect(result?.next).toMatchObject({
       title: task.title,
-      due_date: '2026-05-22',
+      due_date: '2026-05-22T12:00:00Z',
       recurrence: 'FREQ=WEEKLY',
       kickoff_note: 'Finished this round',
       status: 'pending',
@@ -258,7 +273,7 @@ describe('DB plan application paths', () => {
     expect(batches).toHaveLength(1);
     expect(mutationSqls(batches[0])).toEqual([
       'UPDATE tasks SET status = ?, updated_at = ?, defer_until = ?, defer_kind = ?, focused_until = ? WHERE id = ?',
-      'INSERT INTO tasks (id,title,notes,status,due_date,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      'INSERT INTO tasks (id,title,notes,status,due_date,due_all_day,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     ]);
   });
 
@@ -276,7 +291,7 @@ describe('DB plan application paths', () => {
 
     expect(result?.next).toMatchObject({
       title: 'Publish meeting minutes',
-      due_date: '2026-06-19',
+      due_date: '2026-06-19T12:00:00Z',
       recurrence: 'FREQ=MONTHLY;BYDAY=3FR',
       status: 'pending',
     });
@@ -424,6 +439,59 @@ describe('DB task lifecycle patch boundaries', () => {
     });
   });
 
+  // due_all_day resolution (codex-flagged follow-up to Stage 1,
+  // docs/plans/duties-implementation-todo.md "Notes / deviations"):
+  // db.updateTask/addTask is the single choke point both REST and MCP funnel
+  // through, so its derive-vs-override behavior is worth covering directly.
+  it('derives due_all_day from a bare date when not supplied', async () => {
+    const { db, getStoredTask } = dbWithTask(taskRow());
+
+    await db.updateTask('t_abc12', { due_date: '2026-06-01' });
+
+    expect(getStoredTask()).toMatchObject({
+      due_date: '2026-06-01T12:00:00Z',
+      due_all_day: true,
+    });
+  });
+
+  it('derives due_all_day: false from a full datetime when not supplied', async () => {
+    const { db, getStoredTask } = dbWithTask(taskRow());
+
+    await db.updateTask('t_abc12', { due_date: '2026-06-01T09:30:00Z' });
+
+    expect(getStoredTask()).toMatchObject({
+      due_date: '2026-06-01T09:30:00Z',
+      due_all_day: false,
+    });
+  });
+
+  it('an explicit due_all_day overrides derivation (the PWA preserving an unrelated edit)', async () => {
+    const { db, getStoredTask } = dbWithTask(taskRow());
+
+    // A bare date would normally derive due_all_day: true — explicit false wins.
+    await db.updateTask('t_abc12', { due_date: '2026-06-01', due_all_day: false });
+
+    expect(getStoredTask()).toMatchObject({
+      due_date: '2026-06-01T12:00:00Z',
+      due_all_day: false,
+    });
+  });
+
+  // Codex-flagged (PR #40): a due_all_day-only PATCH — no due_date rewrite —
+  // must still take effect. This is how an ambiguous noon-UTC row left NULL
+  // by the migration backfill gets corrected after the fact.
+  it('a due_all_day-only update (no due_date) is applied, not silently dropped', async () => {
+    const { db, getStoredTask } = dbWithTask(taskRow({
+      due_date: '2026-06-01T12:00:00Z',
+      due_all_day: null,
+    }));
+
+    const result = await db.updateTask('t_abc12', { due_all_day: false });
+
+    expect(result).toMatchObject({ due_date: '2026-06-01T12:00:00Z', due_all_day: false });
+    expect(getStoredTask()).toMatchObject({ due_date: '2026-06-01T12:00:00Z', due_all_day: false });
+  });
+
   it.each([
     {
       label: 'someday deferral',
@@ -433,7 +501,9 @@ describe('DB task lifecycle patch boundaries', () => {
     {
       label: 'timed deferral',
       updates: { defer_kind: 'until', defer_until: '2026-05-16T09:00:00.000Z' },
-      expected: { defer_kind: 'until', defer_until: '2026-05-16T09:00:00.000Z' },
+      // defer's `until` is written through the minute-resolution parser
+      // (Decision 4) — milliseconds are truncated on write.
+      expected: { defer_kind: 'until', defer_until: '2026-05-16T09:00:00Z' },
     },
   ] satisfies Array<{ label: string; updates: TaskUpdate; expected: Partial<Task> }>)(
     'clears focus when PATCH applies a $label without focused_until',
@@ -454,4 +524,23 @@ describe('DB task lifecycle patch boundaries', () => {
       });
     },
   );
+
+  // Codex-flagged (PR #40): parseDeferInput's minute-resolution truncation
+  // only runs when defer_kind is also present in the same PATCH — a
+  // standalone defer_until update on a task already defer_kind: 'until'
+  // used to copy the raw value straight into the patch, persisting
+  // seconds/millis in violation of Decision 4.
+  it('truncates a standalone defer_until update (no defer_kind in the PATCH) to minute resolution', async () => {
+    const { db, getStoredTask } = dbWithTask(taskRow({
+      defer_kind: 'until',
+      defer_until: '2026-05-16T09:00:00Z',
+    }));
+
+    const result = await db.updateTask('t_abc12', {
+      defer_until: '2026-05-16T10:30:45.123Z',
+    });
+
+    expect(result).toMatchObject({ defer_until: '2026-05-16T10:30:00Z' });
+    expect(getStoredTask()).toMatchObject({ defer_until: '2026-05-16T10:30:00Z' });
+  });
 });

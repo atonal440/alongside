@@ -2,9 +2,9 @@ import { ok, err, type Result } from '@shared/result';
 import {
   parseNonEmpty,
   parseBounded,
+  parseDueDateTime,
   parseIsoDate,
   parseRrule,
-  type IsoDate,
   type IsoDateTime,
   type NonEmptyString,
   type BoundedString,
@@ -16,6 +16,7 @@ import {
   TASK_KICKOFF_MAX,
   TASK_SESSION_LOG_MAX,
 } from '@shared/wire/rows';
+import { localDateOf } from '../utils/design';
 import type { TaskUpdatePatch } from './taskMutations';
 
 export interface TaskFormInput {
@@ -30,6 +31,14 @@ export interface TaskFormInput {
   // Original ISO timestamp from task.defer_until — preserved when deferUntil
   // date is unchanged, so editing unrelated fields doesn't silently shift time.
   existingDeferUntil?: string;
+  // Original due_date/due_all_day — preserved when the date-only picker's
+  // value still matches its viewer-local date, so editing an unrelated field
+  // doesn't silently collapse a due_date with a real time-of-day (e.g. one
+  // set via MCP/REST) down to the noon-UTC all-day anchor. Mirrors
+  // existingDeferUntil. This picker can only ever express all-day intent, so
+  // a genuinely *changed* date always ends up due_all_day: true.
+  existingDueDate?: string;
+  existingDueAllDay?: boolean;
 }
 
 export type FieldErrors = Partial<Record<keyof TaskFormInput, string>>;
@@ -86,18 +95,35 @@ export function parseTaskForm(input: TaskFormInput): Result<TaskUpdatePatch, Fie
     }
   }
 
-  // dueDate — empty → null, non-empty → IsoDate
-  let dueDate: IsoDate | null = null;
+  // dueDate — empty → null, non-empty → IsoDateTime (the date-only picker
+  // value is anchored to noon UTC — see shared/parse/primitives.ts DueDateTimeSchema).
+  // Preserve the original due_date/due_all_day when the picker's date is
+  // unchanged, so editing an unrelated field doesn't silently collapse a
+  // due_date with a real time-of-day to the noon-UTC all-day anchor (mirrors
+  // existingDeferUntil).
+  let dueDate: IsoDateTime | null = null;
+  let dueAllDay = true;
   if (input.dueDate !== '') {
-    const r = parseIsoDate(input.dueDate);
-    if (r.ok) {
-      dueDate = r.value;
+    if (input.existingDueDate && localDateOf(input.existingDueDate) === input.dueDate) {
+      dueDate = input.existingDueDate as IsoDateTime;
+      dueAllDay = input.existingDueAllDay ?? true;
     } else {
-      errors.dueDate = r.error[0]?.message ?? 'Invalid date.';
+      const r = parseDueDateTime(input.dueDate);
+      if (r.ok) {
+        dueDate = r.value;
+      } else {
+        errors.dueDate = r.error[0]?.message ?? 'Invalid date.';
+      }
     }
   }
 
-  // recurrence — empty → null, non-empty → Rrule + cross-field check
+  // recurrence — empty → null, non-empty → Rrule + cross-field check.
+  // Mirrors worker/src/domain/task.ts recurrenceFromRow: a genuinely timed
+  // due_date (due_all_day: false, only reachable here via the
+  // existingDueAllDay preservation above — the picker itself can only
+  // produce all-day dates) can't carry recurrence. Rejecting client-side
+  // avoids queuing a PATCH the worker will 4xx on, which would otherwise
+  // strand an offline edit in an unsyncable optimistic state indefinitely.
   let recurrence: Rrule | null = null;
   if (input.recurrence !== '') {
     const r = parseRrule(input.recurrence);
@@ -105,6 +131,9 @@ export function parseTaskForm(input: TaskFormInput): Result<TaskUpdatePatch, Fie
       recurrence = r.value.rrule;
       if (!dueDate && !errors.dueDate) {
         errors.recurrence = 'Recurrence requires a due date.';
+        recurrence = null;
+      } else if (dueAllDay === false) {
+        errors.recurrence = 'Recurring tasks must have an all-day due date; timed recurrence is not supported yet.';
         recurrence = null;
       }
     } else {
@@ -144,6 +173,7 @@ export function parseTaskForm(input: TaskFormInput): Result<TaskUpdatePatch, Fie
     notes,
     kickoff_note: kickoffNote,
     due_date: dueDate,
+    due_all_day: dueAllDay,
     recurrence,
     session_log: sessionLog,
     defer_kind: input.deferKind,

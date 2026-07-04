@@ -11,6 +11,7 @@ export interface TaskCreateBody {
   title: string;
   notes?: string | null;
   due_date?: string | null;
+  due_all_day?: boolean;
   recurrence?: string | null;
   task_type?: string;
   project_id?: string | null;
@@ -21,6 +22,7 @@ export type TaskUpdateBody = Partial<{
   title: string;
   notes: string | null;
   due_date: string | null;
+  due_all_day: boolean;
   recurrence: string | null;
   task_type: string;
   project_id: string | null;

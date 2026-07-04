@@ -54,12 +54,16 @@ Define `DutyTemplate`, `DutySeries`, `DutyBase`, the three status variants, the
 
 - Brand each column (`parseDutyId`, `parseNonEmpty(200, …)` for title,
   `nullableBounded` for notes/kickoff, `parseTaskType`, `nullableProjectId`,
-  `parseSeriesRrule` for `rrule`, `parseIsoDateTime` for `dtstart` (a UTC instant
-  now — Decision 4), nullable `parseTimezone` for `timezone`, `parseDutyStatus`,
-  `parseCatchUpPolicy`, nullable `parseIsoDateTime` for `last_spawned_at` and
-  `next_occurrence_at`, `parseIsoDateTime` for timestamps). Reuse the `nullable*`
-  helpers from `worker/src/domain/task.ts:93-119` — extract them to a shared
-  module if that's cleaner than duplicating.
+  `parseSeriesRrule` for `rrule`, `parseIsoDateTimeMinute` for `dtstart` (a UTC
+  instant now — Decision 4; this is the truncating scheduling parser landed in
+  Stage 1, **not** `parseIsoDateTime`, which stays reserved for
+  `created_at`/`updated_at`), nullable `parseTimezone` for `timezone`,
+  `parseDutyStatus`, `parseCatchUpPolicy`, nullable `parseIsoDateTimeMinute` for
+  `last_spawned_at` and `next_occurrence_at`, `parseIsoDateTime` for
+  `created_at`/`updated_at`). Reuse the `nullableDueDateTime`-style helpers from
+  `worker/src/domain/task.ts` — extract them to a shared module if that's
+  cleaner than duplicating (see `docs/plans/duties-implementation-todo.md`
+  "Notes / deviations" for why there are two minute-resolution parsers).
 - Cross-field invariants (accumulate as `ValidationError[]`, same style as
   `taskFromRow`) — expand the rule using the duty's own `timezone`:
   - `parts.until` present ⇒ `until >= dtstart`.

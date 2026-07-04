@@ -42,16 +42,16 @@ orders must never drift from each other or from the code.
 
 ## Foundation docs (read before implementing)
 
-- [ ] `duties/00-recurrence-and-triggering.md` — recurrence-as-series-anchor,
+- [x] `duties/00-recurrence-and-triggering.md` — recurrence-as-series-anchor,
   materialization algorithm, catch-up, idempotency, triggering.
-- [ ] `duties/01-type-system.md` — full inventory of brands, domain unions, Op
+- [x] `duties/01-type-system.md` — full inventory of brands, domain unions, Op
   variants, row/wire schemas, MCP registry entries, and where each lives.
-- [ ] `duties/02-timestamp-model.md` — minute-resolution-UTC substrate
+- [x] `duties/02-timestamp-model.md` — minute-resolution-UTC substrate
   (Decision 4): why date-only is abandoned, what it removes/enables, DST tradeoff.
-- [ ] `duties/03-transition-invariants.md` — per-stage rollout-safety checklist for
+- [x] `duties/03-transition-invariants.md` — per-stage rollout-safety checklist for
   the partially-migrated coexistence windows. **Each stage's acceptance step
   verifies its state's invariants**; note the Stage 4 ↔ 5 atomic cut-over.
-- [ ] `duties/04-invariants-and-contracts.md` — **canonical source of truth**:
+- [x] `duties/04-invariants-and-contracts.md` — **canonical source of truth**:
   schema of record, domain invariants (INV-A…L), calendar signatures, op catalog,
   and the operations × invariants matrix. `04` wins over any stage doc; run the
   matrix (§6) when adding/changing a mutation. Update `04` **first**, then reconcile
@@ -59,8 +59,8 @@ orders must never drift from each other or from the code.
 
 ## Phase 1 — Single-task duties
 
-### Stage 1 — Timestamp model + schema (`stage-1-schema-and-migration.md`)
-- [ ] **Part A:** `due_date` → UTC datetime app-wide; retire `IsoDate` as a
+### Stage 1 — Timestamp model + schema (`stage-1-schema-and-migration.md`) — done, `worker/migrations/007_duties.sql`
+- [x] **Part A:** `due_date` → UTC datetime app-wide; retire `IsoDate` as a
   scheduling type; minute-resolution parser (**truncate-on-write**); migrate
   existing values to **noon UTC** (all-day preservation — displayed date stays
   stable in a non-UTC viewer zone); sweep worker + PWA date-only touch points
@@ -68,14 +68,14 @@ orders must never drift from each other or from the code.
   recurrence shim (A2):** adapt `recurrenceFromRow`/`completeTaskPlan` to read the
   date part of the now-datetime `due_date` so recurring tasks keep loading and
   spawning through Stages 1–3 (removed in Stage 10).
-- [ ] **Part B:** `duties` table (incl. `timezone`, `next_occurrence_at` + index)
+- [x] **Part B:** `duties` table (incl. `timezone`, `next_occurrence_at` + index)
   + `Duty` type; `tasks.duty_id`/`occurrence_at`; `action_log.duty_id`;
   `UNIQUE(duty_id, occurrence_at)` index; `schema.sql`.
-- [ ] **Hand-written** `worker/migrations/007_*.sql` (Drizzle is a diff-preview
+- [x] **Hand-written** `worker/migrations/007_*.sql` (Drizzle is a diff-preview
   only — `drizzle.config.ts`).
-- [ ] **No duty backfill here** (moved to Stage 4). No `duty_id` set on any task.
-- [ ] Tests: Part A representation change; schema; unique-index NULL-distinctness.
-- [ ] `wrangler deploy --dry-run` + `verify` green.
+- [x] **No duty backfill here** (moved to Stage 4). No `duty_id` set on any task.
+- [x] Tests: Part A representation change; schema; unique-index NULL-distinctness.
+- [x] `wrangler deploy --dry-run` + `verify` green.
 
 ### Stage 2 — Series recurrence (`stage-2-series-recurrence.md`)
 - [ ] `SeriesRrule` / `SeriesRruleParts` / `parseSeriesRrule` (COUNT/UNTIL,
@@ -239,5 +239,249 @@ names `user_preferences`; Stage 5/00 ordering language aligned to
 
 ## Notes / deviations
 
-_(Record here as stages land: what changed from the work order and why, so
-sibling docs can be reconciled.)_
+### Stage 1 landed (2026-07-02)
+
+Single migration `worker/migrations/007_duties.sql` covers both Part A and
+Part B (one pass over `tasks`, per the stage doc's framing). `npm run verify`
+green; `wrangler d1 migrations apply --local` and a manual noon-UTC/unique-
+index/NULL-distinctness check (now also covered by `worker/test/schema.test.ts`,
+which runs `schema.sql` through Node's built-in `node:sqlite` — a new pattern,
+since no prior migration had DDL-level test coverage) both pass.
+
+**Two new minute-resolution parsers, not one** (`shared/parse/primitives.ts`).
+`01-type-system.md`'s `DutyRowSchema` sketch and `stage-3`'s "`parseIsoDateTime`
+for `dtstart`" both name the *existing* `parseIsoDateTime`/`IsoDateTimeSchema`
+for scheduling fields — but that parser must stay untouched for
+`created_at`/`updated_at` (LWW needs the sub-second precision), so it cannot
+also be the truncating one. Landed instead:
+- `parseIsoDateTimeMinute`/`IsoDateTimeMinuteSchema` — truncates a full instant
+  to `:00` seconds; UTC-normalizes any offset. Use for `dtstart`,
+  `last_spawned_at`, `next_occurrence_at`, `occurrence_at` in Stage 2+, and for
+  `defer_until`/`focused_until` write-time normalization (currently wired only
+  at `worker/src/db.ts`'s `parseRequiredDateTime` — the one place both REST and
+  MCP funnel through for those two fields).
+- `parseDueDateTime`/`DueDateTimeSchema` — same truncation, plus accepts a bare
+  `YYYY-MM-DD` and anchors it to noon UTC. `due_date` is the one scheduling
+  field still commonly set from a bare date (REST/MCP callers, the task edit
+  form's `type="date"` input), so it needs the fallback; the other scheduling
+  fields above never receive a bare date and use the non-fallback parser.
+- `parseIsoDateTime`/`IsoDateTimeSchema` (unchanged) stays reserved for
+  `created_at`/`updated_at` only.
+
+Stage 2/3 implementers: when you add `DutyRowSchema`/`dutyFromRow`, use
+`IsoDateTimeMinuteSchema`/`parseIsoDateTimeMinute` for `dtstart`,
+`last_spawned_at`, `next_occurrence_at` — not `parseIsoDateTime`. Fix this in
+`01-type-system.md` and `stage-3-duty-domain-and-ops.md` when you touch them.
+
+**`TaskRowSchema.duty_id` is unbranded** (`v.nullable(v.string())`) — Stage 3
+owns the `DutyId` brand/`mintDutyId`/`parseDutyId`; tighten this field then.
+`occurrence_at` already uses `IsoDateTimeMinuteSchema`.
+
+**`TASK_INSERT_COLUMNS`/`TASK_UPDATE_COLUMNS`** (`worker/src/storage/apply.ts`)
+were **not** extended with `duty_id`/`occurrence_at` — nothing writes non-null
+values to them yet, and `bindInsert`/`bindUpdate` silently drop any row/patch
+keys not in these allowlists, so the columns stay `NULL` either way. The
+`completeTaskPlan` legacy-recurrence spawn (`worker/src/domain/ops/task.ts`)
+sets `duty_id: null, occurrence_at: null` on the row it inserts only to satisfy
+`TaskRow`'s type (`Task` now requires those keys); the DB layer ignores them.
+**Stage 4 must add both columns to both allowlists** when the spawn engine
+starts writing real values.
+
+**`TaskFlowContext.today` was removed**, not just repointed — it was doing
+nothing `context.nowIso` didn't already do (that field already existed,
+already defaulted to `new Date().toISOString()`). `design.ts`'s `formatDue`,
+`taskSort`, and `readinessScore` wrapper all dropped their vestigial `today`/
+`_today` params for the same reason (`_today` in `readinessScore` and
+`suggestQueue` was already dead code pre-Stage-1). New helper:
+`design.ts` `localDateOf(iso)` — converts a stored UTC instant to the
+*viewer's* local `YYYY-MM-DD` (`toLocaleDateString('en-CA')`). This is not
+optional/cosmetic: it's why noon UTC (not midnight) was chosen for the
+migration in the first place, so every plain-date rendering of `due_date`
+(`formatDue`, `TaskMeta`, `DetailView`, the edit form's date input) goes
+through it rather than slicing the raw UTC string. `formatDue`/`TaskMeta`
+decide "Due today" by comparing viewer-local dates (so an all-day task due
+today never flips to "Overdue" mid-day); the overdue/future split and
+`readinessScore`'s due window otherwise compare instants directly.
+
+### `tasks.due_all_day` added (2026-07-02, same day, codex-flagged follow-up)
+
+`formatDue`/`TaskMeta`'s "same local day ⇒ never Overdue" rule (above) went
+through two more codex review rounds after landing, converging on a real
+schema addition rather than a smarter heuristic — recorded here because it
+changes facts stated elsewhere in this doc and in `01-type-system.md`/
+`02-timestamp-model.md`.
+
+**The problem:** making the overdue check instant-first (so a *timed*
+due_date goes overdue the moment it passes, not at local midnight) broke the
+*common* case — an all-day due_date (noon-UTC anchor, from the PWA's own date
+picker) went "Overdue" the moment local time passed noon UTC, e.g. 5am PDT.
+A `isAllDayDueDate(dueDate)` heuristic (treat exactly `T12:00:00Z` as all-day)
+fixed that, but has an irreducible false positive: a genuinely timed due_date
+that normalizes to exactly noon UTC (e.g. `05:00:00-07:00` via REST/MCP) is
+byte-identical to an all-day one once stored — no heuristic on the stored
+value can tell them apart, because the "was a time explicitly given"
+information is real information, and a lossy convention can't reconstruct
+what it never kept.
+
+**The fix:** `tasks.due_all_day` (nullable boolean, `shared/schema.ts` — this
+supersedes `02-timestamp-model.md`'s "no explicit all-day flag by design" and
+`04`'s schema-of-record silence on the point; both predate this decision and
+should be reconciled if you're touching them). `NULL` on every pre-existing
+row (nothing before this could set a genuinely timed due_date via this app's
+own UI) and treated as all-day wherever read.
+
+**Where it's derived, and why only once:** `due_all_day` can only be computed
+from the *as-submitted* input shape — a bare date is all-day, a full instant
+is timed — never from an already-stored `due_date`, for the same
+byte-identical reason above. `shared/parse/primitives.ts` `parseDueDateParts`
+is the one function that does this; `worker/src/db.ts`'s `resolveDueDate` is
+the one call site (used by both `addTask` and `updateTask`, so both REST and
+MCP get it for free without any new tool-schema surface). `resolveDueDate`
+also accepts an explicit `due_all_day` override, which wins over derivation —
+this is how the PWA preserves an existing timed due_date's flag when an
+edit-form save doesn't touch the due date (`existingDueAllDay` in
+`taskForm.ts`, mirroring the pre-existing `existingDueDate`/
+`existingDeferUntil` pattern). REST's `due_date` body field switched from
+`DueDateTimeSchema` (which collapses a bare date to its noon-UTC instant) to
+the new `DueDateStringSchema` (validates shape only) specifically so
+`resolveDueDate` still sees the original bare-vs-datetime shape — collapsing
+it at the wire boundary would have defeated the whole point.
+
+`formatDue`/`taskMetaString` now read `task.due_all_day ?? true` directly
+instead of the `isAllDayDueDate` heuristic (deleted). `worker/test/schema.test.ts`
+and `shared/parse/primitives.test.ts` cover the column and `parseDueDateParts`
+respectively, including the residual case codex flagged (a datetime that
+normalizes to noon UTC still derives `due_all_day: false` when parsed from
+its original shape — the bug was only in trying to reconstruct that fact
+*after* storage).
+
+**Stage 2+ implementers:** duties' `dtstart` has the identical ambiguity
+("every day" vs. "every day at 9am") and will need the same treatment —
+either its own `all_day`-style column, or an explicit decision that duty
+recurrence is always timed. Don't reach for a noon-UTC heuristic there; it's
+the exact mistake this section documents undoing.
+
+**Two more gaps codex caught in the same round, both about *pre-existing*
+data the new column can't see:**
+- The migration didn't backfill anything, on the theory that nothing could
+  predate the column. False — Stage 1 (007) already let REST/MCP write a
+  full-instant `due_date`, so a real upgrade path could have timed rows
+  before 008 runs. Fixed: `008_due_all_day.sql` now backfills any `due_date`
+  NOT at exactly noon UTC to `due_all_day = 0` (definitely timed); rows at
+  exactly noon UTC stay `NULL` (genuinely ambiguous, read as all-day, same as
+  any other unspecified case). Covered by a new `worker/test/schema.test.ts`
+  case that applies the real migration files in order via a new
+  `dbFromMigrations(stopBefore)` helper, so the backfill runs against
+  pre-existing data the way a real upgrade would.
+- Offline PWA writes queued before this landed (IndexedDB `pendingOps`, made
+  by an older build) have `due_date` but no `due_all_day` key. Flushing them
+  unchanged would hit the server's auto-derive path, which sees the
+  already-normalized noon-UTC instant a *bare date* becomes and derives
+  `due_all_day: false` — wrong, it was all-day. Fixed:
+  `pwa/src/api/pendingOps.ts` `repairMissingDueAllDay`, applied in
+  `parsePendingOp`.
+
+  This one took three passes to get right, which is worth recording so the
+  next person doesn't re-walk it: first cut backfilled `due_all_day: true`
+  unconditionally for any missing key — wrong, because a build with the
+  `existingDueDate` preservation fix (1082d58) but not yet `due_all_day`
+  itself could queue a `task.update` that resent a genuinely *timed*
+  `due_date` verbatim on an unrelated-field edit. Second cut switched to the
+  noon-UTC signal (matching the migration backfill) — still wrong, because it
+  didn't account for ops queued even earlier, before Decision 4's `due_date`
+  datetime unification, where `due_date` can still be a bare `YYYY-MM-DD`
+  with no `T` at all. The actual queue can hold **three** generations of
+  shape (bare date / Stage-1-era noon-UTC-or-preserved-timed / current
+  paired-with-due_all_day); `legacyIsAllDay` now checks for a bare date
+  first, then falls back to the noon-UTC signal. Same lesson as the
+  migration backfill, just with one more generation of drift to account for
+  because client state persists longer than a server column does.
+
+### Two more PR review rounds (2026-07-02, same day)
+
+- `db.updateTask` only copied `due_all_day` into the patch inside the
+  `due_date` branch, so a PATCH of just `{ due_all_day: false }` — no
+  `due_date` — fell through to the empty-patch check and silently no-op'd.
+  That's exactly the operation needed to correct an ambiguous noon-UTC row
+  the migration backfill left `NULL`. Fixed with an `else if
+  (updates.due_all_day !== undefined)` branch alongside the `due_date` one.
+- The legacy RRULE math (`nextOccurrence`, date-only) has no way to carry a
+  time-of-day into a spawned occurrence — `completeTaskPlan`'s A2 shim always
+  re-inflates the next occurrence to the noon-UTC anchor. Once `due_date`
+  could carry a real time (this stage), nothing stopped a caller from
+  creating a *recurring* task with a *timed* `due_date`, and completing it
+  would silently discard that time on the next spawn. Fixed by rejecting the
+  combination at write time: `recurrenceFromRow` takes a third
+  `dueAllDayInput` parameter and errors `path: ['due_all_day'], code:
+  'invalid_state'` when recurrence is set and `due_all_day === false`. This
+  makes "legacy recurring tasks are all-day" a real enforced invariant rather
+  than a comment `completeTaskPlan` hoped stayed true — worth knowing before
+  Stage 2's series-recurrence model has to decide whether timed recurrence is
+  ever supported for real.
+- `formatDue`/`TaskMeta`/`DetailView` rendered every due date as a plain
+  date, even a genuinely timed one (`due_all_day: false`) — indistinguishable
+  from an all-day task in the UI even though REST/MCP can set a real
+  datetime directly. Fixed: `design.ts` `dueDateLabel(task)` is now the
+  shared label (date alone when all-day, `'<date> at <time>'` when timed via
+  the new `localTimeOf`), used by `formatDue`, `TaskMeta`, and `DetailView`'s
+  raw due-date span. "Due today"/"Overdue" both grew a timed variant that
+  includes the time for the same reason.
+- The same raw-`due_date` problem existed in the two worker-rendered
+  surfaces, `worker/src/ui.ts` (the `/ui/active` iframe widget) and
+  `worker/src/app-ui.ts` (the MCP App widget) — both still interpolated
+  `t.due_date` verbatim, so an all-day task showed its noon-UTC storage
+  artifact and a timed task showed raw UTC with no indication it even had a
+  time. These needed a `dueDateLabel` in **two places each**, not one,
+  because the two rendering contexts have different zone access: the
+  server-rendered initial HTML in `ui.ts` runs inside the Worker, which has
+  no viewer-zone information at all, so its `dueDateLabel` formats in UTC
+  (plain date when all-day/legacy, `'<date> at <time> UTC'` when timed);
+  the `<script>` block in that same file's HTML, and all of `app-ui.ts`
+  (which is entirely client-side), run in the iframe's actual browser and
+  get a second, separate `dueDateLabel` that mirrors `design.ts` — real
+  `Intl` local-zone formatting via `toLocaleDateString`/`toLocaleTimeString`.
+  Same all-day/timed branching logic as the PWA, just duplicated per
+  environment instead of shared, since these widgets are plain template
+  strings with no import graph into `pwa/src`.
+- `pwa/src/domain/taskForm.ts`'s recurrence cross-field check only rejected
+  a missing due date, not a timed one — so editing a task that already had
+  a real timed `due_date` (`due_all_day: false`, only reachable through the
+  `existingDueAllDay` preservation path since the date-only picker itself
+  can only ever produce all-day dates) and adding a recurrence would build
+  a patch the worker's `recurrenceFromRow` invariant (added earlier this
+  round) rejects with a 4xx. Offline, that queues a PATCH that can never
+  sync, stranding the optimistic local row indefinitely. Fixed by mirroring
+  the worker's rejection client-side (same message text) when
+  `dueAllDay === false` and recurrence is set.
+- Two more spots defaulted a missing `due_all_day` to `null` (read as
+  all-day) without checking whether `due_date` was actually a genuinely
+  timed instant — the same class of bug as the pendingOps/decode fixes
+  above, just in two surfaces those rounds hadn't reached yet:
+  - `pwa/src/idb/decode.ts`'s `fillMissingNullableTaskFields` filled every
+    absent nullable field with `null` uniformly, including `due_all_day` on
+    a task synced by a pre-`due_all_day` build with a real timed
+    `due_date` — silently losing the time until a server resync. Fixed by
+    special-casing `due_all_day` in that loop to call the now-exported
+    `legacyIsAllDay` from `pwa/src/api/pendingOps.ts` (already the same
+    bare-date-then-noon-UTC heuristic used for the pendingOps repair)
+    instead of defaulting to `null`.
+  - `worker/src/wire/importPayload.ts`'s `ImportTaskRowSchema` passed
+    `row.due_all_day` straight through, so a legacy export (post-Decision-4
+    datetime, pre-`due_all_day`) with a timed `due_date` and no
+    `due_all_day` key imported as `null`, permanently discarding the time
+    on restore. Fixed with a new `inferLegacyDueAllDay` helper mirroring
+    migration 008's backfill exactly: a `due_date` not at exactly noon UTC
+    becomes `due_all_day: false`; a noon-UTC one stays `null` (genuinely
+    ambiguous, same as the migration leaves it) rather than the client-side
+    repairs' choice of defaulting ambiguous noon-UTC to `true` — both read
+    identically at render time, so there was no reason to diverge from the
+    migration's own precedent here.
+- `db.updateTask`'s minute-resolution truncation for `defer_until`
+  (`parseRequiredDateTime`, part of Decision 4) only ran inside
+  `parseDeferInput`, which only runs when `defer_kind` is also present in
+  the same PATCH. A standalone `{ defer_until: "...123Z" }` on a task
+  already `defer_kind: 'until'` copied the raw value straight into the
+  patch, persisting seconds/millis. Fixed by parsing `defer_until`
+  whenever it's provided (not just alongside `defer_kind`), mirroring the
+  `due_all_day`-only-update fix from the earlier PR round — same "narrow
+  field-presence check skips the real parser" shape of bug.

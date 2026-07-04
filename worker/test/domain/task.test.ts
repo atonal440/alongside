@@ -37,6 +37,9 @@ function taskRow(overrides: Partial<Task> = {}): Task {
     kickoff_note: null,
     session_log: null,
     focused_until: null,
+    due_all_day: null,
+    duty_id: null,
+    occurrence_at: null,
     ...overrides,
   };
 }
@@ -96,6 +99,27 @@ describe('task recurrence domain codec', () => {
         code: 'invalid_state',
       }));
     }
+  });
+
+  // Codex-flagged (PR #40): the legacy RRULE math is date-only and has no way
+  // to carry a time-of-day into a spawned occurrence — completing a recurring
+  // task with a timed due_date would silently discard the time and spawn the
+  // next occurrence all-day. Reject at write time instead.
+  it('rejects recurrence paired with a genuinely timed due_date', () => {
+    const result = recurrenceFromRow('2026-07-01T09:30:00Z', 'FREQ=WEEKLY', false);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContainEqual(expect.objectContaining({
+        path: ['due_all_day'],
+        code: 'invalid_state',
+      }));
+    }
+  });
+
+  it('allows recurrence with an all-day due_date (due_all_day: true or null)', () => {
+    expect(recurrenceFromRow('2026-07-01', 'FREQ=WEEKLY', true).ok).toBe(true);
+    expect(recurrenceFromRow('2026-07-01', 'FREQ=WEEKLY', null).ok).toBe(true);
   });
 });
 
@@ -212,7 +236,8 @@ describe('completeTaskPlan', () => {
         title: 'Water the tomatoes',
         notes: null,
         status: 'pending',
-        due_date: '2026-05-29',
+        due_date: '2026-05-29T12:00:00Z',
+        due_all_day: true,
         recurrence: 'FREQ=WEEKLY;INTERVAL=2',
         created_at: '2026-05-15T13:00:00.000Z',
         updated_at: '2026-05-15T13:00:00.000Z',
@@ -223,6 +248,8 @@ describe('completeTaskPlan', () => {
         kickoff_note: 'Finished the deep watering pass.',
         session_log: null,
         focused_until: null,
+        duty_id: null,
+        occurrence_at: null,
       },
     });
   });
@@ -242,7 +269,7 @@ describe('completeTaskPlan', () => {
       kind: 'task.insert',
       row: {
         title: 'Publish meeting minutes',
-        due_date: '2026-06-19',
+        due_date: '2026-06-19T12:00:00Z',
         recurrence: 'FREQ=MONTHLY;BYDAY=3FR',
         status: 'pending',
       },

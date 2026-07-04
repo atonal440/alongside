@@ -14,7 +14,7 @@ import { readinessScore } from '@shared/readiness';
 import { unsafeBrand } from '@shared/brand';
 import type { ActiveDeferState, Plan, PendingTaskDomain, TaskDomain } from './domain';
 import type { IsoDateTime, MintedProjectId, MintedTaskId, TaskId, ValidationError } from './parse';
-import { parseIsoDateTime, parseTaskId } from './parse';
+import { parseDueDateParts, parseIsoDateTime, parseIsoDateTimeMinute, parseTaskId } from './parse';
 import { appErrorMessage, validationErrorResult, type AppError } from './domain/errors';
 import {
   clearDeferTaskPlan,
@@ -122,10 +122,35 @@ function withPath(path: string, errors: AppError): AppError {
   })));
 }
 
+// Truncates to minute resolution on write (Decision 4) — used for
+// focused_until/defer's `until`, which are always already-full instants.
 function parseRequiredDateTime(path: string, input: string): IsoDateTime {
-  const parsed = parseIsoDateTime(input);
+  const parsed = parseIsoDateTimeMinute(input);
   if (!parsed.ok) throwAppError(withPath(path, validationErrorResult(parsed.error)));
   return parsed.value;
+}
+
+// due_date's write-time resolver: the single choke point both REST and MCP
+// funnel through (MCP passes due_date straight through with no upstream
+// validation; REST validates shape only, via DueDateStringSchema, so this is
+// still the first real parse). due_all_day is used as-is when the caller
+// supplies it explicitly (the PWA does this to preserve an existing value
+// across an edit that doesn't touch the due date); otherwise it's derived
+// from whether due_date was written as a bare date or a full instant — see
+// shared/parse/primitives.ts parseDueDateParts.
+function resolveDueDate(
+  dueDateInput: string | null | undefined,
+  allDayInput: boolean | null | undefined,
+): { due_date: IsoDateTime | null; due_all_day: boolean | null } {
+  if (dueDateInput === null || dueDateInput === undefined) {
+    return { due_date: null, due_all_day: null };
+  }
+  const parsed = parseDueDateParts(dueDateInput);
+  if (!parsed.ok) throwAppError(withPath('due_date', validationErrorResult(parsed.error)));
+  return {
+    due_date: parsed.value.due_date,
+    due_all_day: allDayInput ?? parsed.value.due_all_day,
+  };
 }
 
 function parseDeferInput(kind: 'until' | 'someday', until?: string | null): ActiveDeferState {
@@ -256,7 +281,7 @@ export class DB {
   }
 
   async addTask(input: TaskCreate): Promise<Task> {
-    const dueDate = input.due_date ?? null;
+    const resolvedDueDate = resolveDueDate(input.due_date, input.due_all_day);
     const recurrence = input.recurrence ?? null;
 
     const timestamp = now();
@@ -265,7 +290,8 @@ export class DB {
       title: input.title,
       notes: input.notes ?? null,
       status: 'pending',
-      due_date: dueDate,
+      due_date: resolvedDueDate.due_date,
+      due_all_day: resolvedDueDate.due_all_day,
       recurrence,
       created_at: timestamp,
       updated_at: timestamp,
@@ -276,6 +302,8 @@ export class DB {
       kickoff_note: input.kickoff_note ?? null,
       session_log: null,
       focused_until: null,
+      duty_id: null,
+      occurrence_at: null,
     };
     assertWritableTaskRow(task);
 
@@ -374,14 +402,32 @@ export class DB {
     const patch: Partial<typeof tasksTable.$inferInsert> = {};
     if (updates.title !== undefined)        patch.title = updates.title;
     if (updates.notes !== undefined)        patch.notes = updates.notes;
-    if (updates.due_date !== undefined)     patch.due_date = updates.due_date;
+    if (updates.due_date !== undefined) {
+      const resolved = resolveDueDate(updates.due_date, updates.due_all_day);
+      patch.due_date = resolved.due_date;
+      patch.due_all_day = resolved.due_all_day;
+    } else if (updates.due_all_day !== undefined) {
+      // due_all_day-only update: no due_date rewrite, just correcting the
+      // all-day/timed classification on an existing due_date (e.g. fixing an
+      // ambiguous noon-UTC row the migration backfill left NULL).
+      patch.due_all_day = updates.due_all_day;
+    }
     if (updates.recurrence !== undefined)   patch.recurrence = updates.recurrence;
     if (updates.task_type !== undefined)    patch.task_type = updates.task_type;
     if (updates.project_id !== undefined)   patch.project_id = updates.project_id;
     if (updates.kickoff_note !== undefined) patch.kickoff_note = updates.kickoff_note;
     if (updates.session_log !== undefined)  patch.session_log = updates.session_log;
     if (updates.status !== undefined)       patch.status = updates.status;
-    if (updates.defer_until !== undefined)  patch.defer_until = updates.defer_until;
+    // Parsed here (not just via parseDeferInput below) because that only
+    // runs when defer_kind is also present in this same PATCH — a
+    // standalone defer_until update on a task that's already defer_kind:
+    // 'until' would otherwise skip the minute-resolution parser entirely
+    // and persist raw seconds/millis, violating Decision 4.
+    if (updates.defer_until !== undefined) {
+      patch.defer_until = updates.defer_until === null
+        ? null
+        : parseRequiredDateTime('defer_until', updates.defer_until);
+    }
     if (updates.defer_kind !== undefined)   patch.defer_kind = updates.defer_kind;
     if (updates.focused_until !== undefined) patch.focused_until = updates.focused_until;
 
@@ -615,6 +661,7 @@ export class DB {
       id: result.meta.last_row_id as number,
       tool_name: entry.tool_name,
       task_id: entry.task_id ?? null,
+      duty_id: null,
       title: entry.title,
       detail: entry.detail ?? null,
       created_at,

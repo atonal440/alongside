@@ -1,9 +1,12 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, afterEach, beforeEach } from 'vitest';
 import fc from 'fast-check';
 import {
   isFocused,
   isDeferred,
   formatDue,
+  localDateOf,
+  localTimeOf,
+  dueDateLabel,
   projectColor,
   projectTitle,
   firstNoteEntry,
@@ -13,7 +16,6 @@ import {
 import { makeTask, makeProject } from '../helpers/fixtures';
 
 const NOW = '2026-06-09T12:00:00.000Z';
-const TODAY = '2026-06-09';
 const FUTURE = '2026-12-31T00:00:00.000Z';
 const OLD_UPDATED = '2025-01-01T00:00:00.000Z';
 
@@ -42,20 +44,127 @@ describe('isDeferred', () => {
 });
 
 describe('formatDue', () => {
+  // Time-of-day formatting (localTimeOf) is not zone-stable like the
+  // noon-UTC date trick — pin TZ so the timed-due-date assertions below are
+  // deterministic regardless of the machine running the tests.
+  const originalTz = process.env['TZ'];
+  beforeEach(() => { process.env['TZ'] = 'UTC'; });
+  afterEach(() => {
+    if (originalTz === undefined) delete process.env['TZ'];
+    else process.env['TZ'] = originalTz;
+  });
+
   test('no due date → empty string', () => {
-    expect(formatDue(makeTask({ due_date: null }), TODAY)).toBe('');
+    expect(formatDue(makeTask({ due_date: null }), NOW)).toBe('');
   });
 
   test('past due date → Overdue prefix', () => {
-    expect(formatDue(makeTask({ due_date: '2026-06-01' }), TODAY)).toBe('Overdue 2026-06-01');
+    // Noon UTC on both sides keeps the local-date comparison stable across
+    // any viewer zone from UTC-12..+11 (Decision 4's all-day convention).
+    expect(formatDue(makeTask({ due_date: '2026-06-01T12:00:00Z' }), NOW)).toBe('Overdue 2026-06-01');
   });
 
   test('due today → "Due today"', () => {
-    expect(formatDue(makeTask({ due_date: TODAY }), TODAY)).toBe('Due today');
+    expect(formatDue(makeTask({ due_date: NOW }), NOW)).toBe('Due today');
   });
 
   test('future due date → "Due YYYY-MM-DD"', () => {
-    expect(formatDue(makeTask({ due_date: '2026-07-01' }), TODAY)).toBe('Due 2026-07-01');
+    expect(formatDue(makeTask({ due_date: '2026-07-01T12:00:00Z' }), NOW)).toBe('Due 2026-07-01');
+  });
+
+  // Regression: a genuinely timed due_date (due_all_day: false — settable via
+  // MCP/REST) that has already passed must show as overdue even on the same
+  // local day — the "Due today" bucket must not mask an already-past instant.
+  test('timed due date earlier today → Overdue with time, not "Due today"', () => {
+    // NOW is 12:00Z; due at 09:00Z the same day is 3h in the past.
+    expect(formatDue(makeTask({ due_date: '2026-06-09T09:00:00Z', due_all_day: false }), NOW)).toBe('Overdue 2026-06-09 at 9:00 AM');
+  });
+
+  // Codex-flagged (PR #40): a timed due_date is a real public part of the
+  // due-date contract (REST/MCP can set a full datetime directly) — showing
+  // only the date would make it indistinguishable from an all-day task.
+  test('timed due date due later today → "Due today at <time>"', () => {
+    expect(formatDue(makeTask({ due_date: '2026-06-09T18:00:00Z', due_all_day: false }), NOW)).toBe('Due today at 6:00 PM');
+  });
+
+  test('timed due date in the future → "Due <date> at <time>"', () => {
+    expect(formatDue(makeTask({ due_date: '2026-07-04T17:30:00Z', due_all_day: false }), NOW)).toBe('Due 2026-07-04 at 5:30 PM');
+  });
+
+  // Regression: an all-day due_date must stay "Due today" for the whole
+  // local day, even once its instant has technically passed — only a
+  // genuinely timed due_date should flip to Overdue mid-day. Without this,
+  // most viewer zones would see their own date-picker-created "due today"
+  // tasks go Overdue by mid-morning.
+  test('all-day due date stays "Due today" even after its instant passes', () => {
+    expect(formatDue(makeTask({ due_date: '2026-06-09T12:00:00Z', due_all_day: true }), '2026-06-09T20:00:00.000Z')).toBe('Due today');
+  });
+
+  // Regression: due_all_day is null on legacy rows (predates the column) —
+  // must be treated as all-day, same as explicit true.
+  test('null due_all_day (legacy row) is treated as all-day', () => {
+    expect(formatDue(makeTask({ due_date: '2026-06-09T12:00:00Z', due_all_day: null }), '2026-06-09T20:00:00.000Z')).toBe('Due today');
+  });
+});
+
+// dueDateLabel/localTimeOf (codex-flagged follow-up, PR #40): TaskMeta and
+// DetailView's raw "- Due <label>" span both call dueDateLabel directly, so
+// this is worth testing on its own, not just through formatDue's composed
+// labels above.
+describe('dueDateLabel — all-day never shows a time, timed always does', () => {
+  const originalTz = process.env['TZ'];
+  beforeEach(() => { process.env['TZ'] = 'UTC'; });
+  afterEach(() => {
+    if (originalTz === undefined) delete process.env['TZ'];
+    else process.env['TZ'] = originalTz;
+  });
+
+  test('no due date → empty string', () => {
+    expect(dueDateLabel(makeTask({ due_date: null }))).toBe('');
+  });
+
+  test('all-day (true) → date only', () => {
+    expect(dueDateLabel(makeTask({ due_date: '2026-07-04T12:00:00Z', due_all_day: true }))).toBe('2026-07-04');
+  });
+
+  test('all-day (null, legacy row) → date only', () => {
+    expect(dueDateLabel(makeTask({ due_date: '2026-07-04T12:00:00Z', due_all_day: null }))).toBe('2026-07-04');
+  });
+
+  test('timed (false) → date and local time', () => {
+    expect(dueDateLabel(makeTask({ due_date: '2026-07-04T17:30:00Z', due_all_day: false }))).toBe('2026-07-04 at 5:30 PM');
+  });
+
+  test('localTimeOf formats an instant as viewer-local hour:minute', () => {
+    expect(localTimeOf('2026-07-04T09:05:00Z')).toBe('9:05 AM');
+  });
+});
+
+// Stage 1 B7 (docs/plans/duties/stage-1-schema-and-migration.md): a date-only
+// due_date migrates to noon UTC and must still render as its original
+// calendar date for a non-UTC viewer — the whole reason noon (not midnight)
+// was chosen. localDateOf is what formatDue/TaskMeta/EditView use to convert
+// the stored UTC instant into the viewer's local calendar date.
+describe('localDateOf — viewer-zone rendering of a noon-UTC migrated value', () => {
+  const originalTz = process.env['TZ'];
+  afterEach(() => {
+    if (originalTz === undefined) delete process.env['TZ'];
+    else process.env['TZ'] = originalTz;
+  });
+
+  test('renders on the original calendar date in US Pacific (west of UTC)', () => {
+    process.env['TZ'] = 'America/Los_Angeles';
+    expect(localDateOf('2026-06-30T12:00:00Z')).toBe('2026-06-30');
+  });
+
+  test('renders on the original calendar date in UTC', () => {
+    process.env['TZ'] = 'UTC';
+    expect(localDateOf('2026-06-30T12:00:00Z')).toBe('2026-06-30');
+  });
+
+  test('slips a day in the extreme east (UTC+14) — the documented acceptable edge', () => {
+    process.env['TZ'] = 'Pacific/Kiritimati';
+    expect(localDateOf('2026-06-30T12:00:00Z')).toBe('2026-07-01');
   });
 });
 
@@ -119,25 +228,25 @@ describe('taskSort', () => {
   test('higher readiness score comes first', () => {
     const a = makeTask({ id: 't_a', kickoff_note: 'kick', updated_at: OLD_UPDATED });
     const b = makeTask({ id: 't_b', updated_at: OLD_UPDATED });
-    expect(taskSort(a, b, TODAY, [])).toBeLessThan(0); // a sorts before b
+    expect(taskSort(a, b, [])).toBeLessThan(0); // a sorts before b
   });
 
   test('equal readiness: earlier due date comes first', () => {
-    const a = makeTask({ id: 't_a', due_date: '2026-07-01', updated_at: OLD_UPDATED });
-    const b = makeTask({ id: 't_b', due_date: '2026-08-01', updated_at: OLD_UPDATED });
-    expect(taskSort(a, b, TODAY, [])).toBeLessThan(0);
+    const a = makeTask({ id: 't_a', due_date: '2026-07-01T12:00:00Z', updated_at: OLD_UPDATED });
+    const b = makeTask({ id: 't_b', due_date: '2026-08-01T12:00:00Z', updated_at: OLD_UPDATED });
+    expect(taskSort(a, b, [])).toBeLessThan(0);
   });
 
   test('no due date sorts last (after tasks with due dates)', () => {
-    const a = makeTask({ id: 't_a', due_date: '2026-07-01', updated_at: OLD_UPDATED });
+    const a = makeTask({ id: 't_a', due_date: '2026-07-01T12:00:00Z', updated_at: OLD_UPDATED });
     const b = makeTask({ id: 't_b', due_date: null, updated_at: OLD_UPDATED });
-    expect(taskSort(a, b, TODAY, [])).toBeLessThan(0);
+    expect(taskSort(a, b, [])).toBeLessThan(0);
   });
 
   test('equal readiness and due date: title alphabetical', () => {
     const a = makeTask({ id: 't_a', title: 'Alpha', updated_at: OLD_UPDATED });
     const b = makeTask({ id: 't_b', title: 'Bravo', updated_at: OLD_UPDATED });
-    expect(taskSort(a, b, TODAY, [])).toBeLessThan(0);
+    expect(taskSort(a, b, [])).toBeLessThan(0);
   });
 
   test('comparator is antisymmetric for arbitrary task pairs', () => {
@@ -145,19 +254,19 @@ describe('taskSort', () => {
       fc.property(
         fc.record({
           kickoff_note: fc.option(fc.string({ minLength: 1 }), { nil: null }),
-          due_date: fc.option(fc.constantFrom('2026-06-01', TODAY, '2026-07-01', null), { nil: null }),
+          due_date: fc.option(fc.constantFrom('2026-06-01T12:00:00Z', NOW, '2026-07-01T12:00:00Z', null), { nil: null }),
           title: fc.string({ minLength: 1 }),
         }),
         fc.record({
           kickoff_note: fc.option(fc.string({ minLength: 1 }), { nil: null }),
-          due_date: fc.option(fc.constantFrom('2026-06-01', TODAY, '2026-07-01', null), { nil: null }),
+          due_date: fc.option(fc.constantFrom('2026-06-01T12:00:00Z', NOW, '2026-07-01T12:00:00Z', null), { nil: null }),
           title: fc.string({ minLength: 1 }),
         }),
         (aFields, bFields) => {
           const a = makeTask({ id: 't_a', updated_at: OLD_UPDATED, ...aFields });
           const b = makeTask({ id: 't_b', updated_at: OLD_UPDATED, ...bFields });
-          const ab = taskSort(a, b, TODAY, [], [a, b], NOW);
-          const ba = taskSort(b, a, TODAY, [], [b, a], NOW);
+          const ab = taskSort(a, b, [], [a, b], NOW);
+          const ba = taskSort(b, a, [], [b, a], NOW);
           return Math.sign(ab) === -Math.sign(ba) || (ab === 0 && ba === 0);
         },
       ),
@@ -166,23 +275,17 @@ describe('taskSort', () => {
 });
 
 describe('readinessScore', () => {
-  test('_today is ignored — passing wrong today does not change the score', () => {
-    const task = makeTask({ kickoff_note: 'kick', updated_at: OLD_UPDATED });
-    // _today is ignored by the wrapper; both calls should produce identical scores
-    expect(readinessScore(task, '1970-01-01', [], [], NOW)).toBe(readinessScore(task, '9999-99-99', [], [], NOW));
-  });
-
-  test('nowIso controls focus evaluation, not _today', () => {
+  test('nowIso controls focus evaluation', () => {
     // focused_until at 09:00; nowIso is 12:00 same day → not focused
     const notFocused = makeTask({ focused_until: '2026-06-09T09:00:00.000Z', updated_at: OLD_UPDATED });
     // focused_until at 15:00; nowIso is 12:00 → focused (+12)
     const focused = makeTask({ focused_until: '2026-06-09T15:00:00.000Z', updated_at: OLD_UPDATED });
-    expect(readinessScore(focused, TODAY, [], [], NOW) - readinessScore(notFocused, TODAY, [], [], NOW)).toBe(12);
+    expect(readinessScore(focused, [], [], NOW) - readinessScore(notFocused, [], [], NOW)).toBe(12);
   });
 
   test('produces expected absolute score for a known task', () => {
     // base 10, kickoff +20, updated_at > 14 days ago (0), no due_date (0) = 30
     const task = makeTask({ kickoff_note: 'kick', updated_at: OLD_UPDATED });
-    expect(readinessScore(task, TODAY, [], [], NOW)).toBe(30);
+    expect(readinessScore(task, [], [], NOW)).toBe(30);
   });
 });

@@ -21,6 +21,9 @@ function taskRow(overrides: Partial<Task> = {}): Task {
     kickoff_note: null,
     session_log: null,
     focused_until: null,
+    due_all_day: null,
+    duty_id: null,
+    occurrence_at: null,
     ...overrides,
   };
 }
@@ -367,6 +370,9 @@ describe('REST API route schemas', () => {
     );
 
     expect(response.status).toBe(201);
+    // due_date is validated but not transformed at the REST boundary anymore
+    // — db.ts's resolveDueDate is the single place that normalizes it and
+    // derives due_all_day, so REST/MCP both go through the same logic.
     expect(received).toMatchObject({
       title: 'Write tests',
       due_date: '2026-05-21',

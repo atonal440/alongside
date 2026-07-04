@@ -241,4 +241,74 @@ describe('parsePendingOp', () => {
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.id).toBe(42);
   });
+
+  // Regression (codex-flagged follow-up to due_all_day, docs/plans/duties-implementation-todo.md
+  // "Notes / deviations"): an op queued by a build predating due_all_day has
+  // due_date but no due_all_day key. The worker would otherwise derive
+  // due_all_day from due_date's shape as if it were a fresh submission — wrong,
+  // since a queued op's due_date is already fully normalized. Backfilled using
+  // the same noon-UTC signal the server-side migration backfill uses on the
+  // same kind of already-collapsed data: exactly noon UTC → all-day; anything
+  // else → timed. (Unconditionally assuming "missing ⇒ all-day" was the bug
+  // codex caught here — a build between the existingDueDate preservation fix
+  // and due_all_day itself could queue a task.update that resent an existing
+  // *timed* due_date verbatim on an unrelated-field edit.)
+  test('task.create: noon-UTC due_date with no due_all_day key → backfilled to true', () => {
+    const r = parsePendingOp({
+      ...baseFields, op: 'task.create', localId: 't_loc001',
+      body: { title: 'Hi', due_date: '2026-07-01T12:00:00Z' },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok && r.value.op === 'task.create') expect(r.value.body.due_all_day).toBe(true);
+  });
+
+  test('task.update: noon-UTC due_date with no due_all_day key → backfilled to true', () => {
+    const r = parsePendingOp({
+      ...baseFields, op: 'task.update', taskId: 't_abc001',
+      body: { due_date: '2026-07-01T12:00:00Z' },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok && r.value.op === 'task.update') expect(r.value.body.due_all_day).toBe(true);
+  });
+
+  test('task.update: non-noon due_date with no due_all_day key → backfilled to false, not true', () => {
+    // Simulates a legacy queued op that preserved a genuinely timed due_date
+    // verbatim (existingDueDate, pre-dating due_all_day) on an edit that
+    // didn't touch the due date.
+    const r = parsePendingOp({
+      ...baseFields, op: 'task.update', taskId: 't_abc001',
+      body: { due_date: '2026-07-01T09:30:00Z' },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok && r.value.op === 'task.update') expect(r.value.body.due_all_day).toBe(false);
+  });
+
+  test('task.update: bare-date due_date (pre-Stage-1 op) → backfilled to true', () => {
+    // Simulates an op queued before due_date even became a datetime
+    // (Decision 4) — still a plain "YYYY-MM-DD", no "T" at all.
+    const r = parsePendingOp({
+      ...baseFields, op: 'task.update', taskId: 't_abc001',
+      body: { due_date: '2026-07-01' },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok && r.value.op === 'task.update') expect(r.value.body.due_all_day).toBe(true);
+  });
+
+  test('due_all_day explicitly present is left untouched (current-build ops)', () => {
+    const r = parsePendingOp({
+      ...baseFields, op: 'task.update', taskId: 't_abc001',
+      body: { due_date: '2026-07-01T09:30:00Z', due_all_day: false },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok && r.value.op === 'task.update') expect(r.value.body.due_all_day).toBe(false);
+  });
+
+  test('no due_date → due_all_day is not invented', () => {
+    const r = parsePendingOp({
+      ...baseFields, op: 'task.update', taskId: 't_abc001',
+      body: { title: 'Retitled' },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok && r.value.op === 'task.update') expect('due_all_day' in r.value.body).toBe(false);
+  });
 });

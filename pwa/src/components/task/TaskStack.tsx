@@ -5,14 +5,14 @@ import type { Task } from '../../types';
 interface Props {
   root: Task;
   blocked: Task[];
-  today: string;
+  nowIso: string;
   onComplete: (id: string) => void;
   onDetail: (id: string) => void;
 }
 
-export function TaskStack({ root, blocked, today, onComplete, onDetail }: Props) {
+export function TaskStack({ root, blocked, nowIso, onComplete, onDetail }: Props) {
   const [open, setOpen] = useState(false);
-  const meta = taskMetaString(root, today);
+  const meta = taskMetaString(root, nowIso);
 
   return (
     <div className="stack-card">

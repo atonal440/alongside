@@ -290,20 +290,29 @@ export const DutyRowSchema = v.object({
   id: DutyIdSchema, title: NonEmptyStringSchema(200), notes: v.nullable(...),
   kickoff_note: v.nullable(...), task_type: TaskTypeSchema,
   project_id: v.nullable(ProjectIdSchema),
-  rrule: SeriesRruleSchema, dtstart: IsoDateTimeSchema,
+  rrule: SeriesRruleSchema, dtstart: IsoDateTimeMinuteSchema,
   timezone: v.nullable(TimezoneSchema),
   status: DutyStatusSchema, catch_up: CatchUpPolicySchema,
-  last_spawned_at: v.nullable(IsoDateTimeSchema),
-  next_occurrence_at: v.nullable(IsoDateTimeSchema),
+  last_spawned_at: v.nullable(IsoDateTimeMinuteSchema),
+  next_occurrence_at: v.nullable(IsoDateTimeMinuteSchema),
   created_at: IsoDateTimeSchema, updated_at: IsoDateTimeSchema,
 });
 ```
 
-Extend `TaskRowSchema` with `duty_id: v.nullable(DutyIdSchema)` and
-`occurrence_at: v.nullable(IsoDateTimeSchema)` (and note the pre-existing
-`due_date` field is now `IsoDateTimeSchema`, not date-only — Decision 4, applied
-app-wide in Stage 1 Part A). **Wire field names never change** once shipped (the
-pwa-type-safety contract).
+Note the split: `dtstart`/`last_spawned_at`/`next_occurrence_at` use
+`IsoDateTimeMinuteSchema` (the truncating scheduling parser landed in Stage 1),
+while `created_at`/`updated_at` keep the plain `IsoDateTimeSchema` — that one
+must stay untouched for LWW's sub-second precision, so it can't also be the
+truncating parser. See `docs/plans/duties-implementation-todo.md`
+"Notes / deviations" for the full reasoning.
+
+Stage 1 already extended `TaskRowSchema` with `duty_id: v.nullable(v.string())`
+(unbranded — tighten to `DutyIdSchema` once it exists) and
+`occurrence_at: v.nullable(IsoDateTimeMinuteSchema)`, and repointed the
+pre-existing `due_date` field at `DueDateTimeSchema` (accepts a bare date,
+anchored to noon UTC, or a full instant — not plain `IsoDateTimeSchema`,
+since `due_date` is still commonly set from a bare date). **Wire field names
+never change** once shipped (the pwa-type-safety contract).
 
 ## WIRE layer
 

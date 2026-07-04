@@ -2,7 +2,7 @@
 
 ## Functions
 
-**`suggestQueue(tasks, _today, links?)`** — Returns an ordered array of tasks for the Suggest view. Filters with `isReady` from `shared/readiness.ts`, then sorts by `readinessScore` (also from shared) so the ordering matches `get_ready_tasks` over MCP. The first item is what `SuggestView` shows as the main card; the remaining items populate the sidebar queue. The `_today` parameter is accepted for call-site compatibility but ignored — `nowIso` is derived internally via `new Date().toISOString()`.
+**`suggestQueue(tasks, links?)`** — Returns an ordered array of tasks for the Suggest view. Filters with `isReady` from `shared/readiness.ts`, then sorts by `readinessScore` (also from shared) so the ordering matches `get_ready_tasks` over MCP. The first item is what `SuggestView` shows as the main card; the remaining items populate the sidebar queue. `nowIso` is derived internally via `new Date().toISOString()` — there's no way to inject a different clock.
 
 ## See Also
 

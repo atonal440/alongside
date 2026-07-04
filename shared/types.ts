@@ -1,12 +1,12 @@
-export type { Task, Project, TaskLink, ActionLog } from './schema';
+export type { Task, Project, TaskLink, ActionLog, Duty } from './schema';
 
 import type { Task, Project } from './schema';
 
 export type TaskCreate = Pick<Task, 'title'> &
-  Partial<Pick<Task, 'notes' | 'due_date' | 'recurrence' | 'task_type' | 'project_id' | 'kickoff_note'>>;
+  Partial<Pick<Task, 'notes' | 'due_date' | 'due_all_day' | 'recurrence' | 'task_type' | 'project_id' | 'kickoff_note'>>;
 
 export type TaskUpdate = Partial<Pick<Task,
-  'title' | 'notes' | 'due_date' | 'recurrence' | 'task_type' | 'project_id' |
+  'title' | 'notes' | 'due_date' | 'due_all_day' | 'recurrence' | 'task_type' | 'project_id' |
   'kickoff_note' | 'session_log' | 'status' | 'defer_until' | 'defer_kind' | 'focused_until'>>;
 
 export type ProjectCreate = Pick<Project, 'title'> & Partial<Pick<Project, 'kickoff_note' | 'notes'>>;

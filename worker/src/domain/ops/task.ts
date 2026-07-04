@@ -1,6 +1,7 @@
 import type { Result } from '@shared/result';
 import { err, ok } from '@shared/result';
 import { nextOccurrence, type IsoDateTime, type MintedTaskId } from '../../parse';
+import { unsafeBrand } from '@shared/brand';
 import type { AppError } from '../errors';
 import type { Plan } from '../Op';
 import type { TaskRow } from '../Op';
@@ -54,13 +55,20 @@ export function completeTaskPlan(task: PendingTaskDomain, input: CompleteTaskPla
     }
 
     const nextDue = nextOccurrence(task.recurrence.parts, task.recurrence.firstDue);
+    // A2 shim: re-inflate the date-only next occurrence to the migration's
+    // noon-UTC convention so the spawned task's due_date matches the
+    // datetime representation every other due_date now uses.
+    const nextDueDateTime = unsafeBrand<string, 'IsoDateTime'>(`${nextDue}T12:00:00Z`);
     const nextKickoff = task.sessionLog ?? task.kickoffNote;
     const next: TaskRow = {
       id: input.nextTaskId,
       title: task.title,
       notes: task.notes,
       status: 'pending',
-      due_date: nextDue,
+      due_date: nextDueDateTime,
+      // Legacy date-only RRULEs have no time component (AGENTS.md) — every
+      // spawned occurrence is all-day by construction.
+      due_all_day: true,
       recurrence: task.recurrence.rrule,
       created_at: input.completedAt,
       updated_at: input.completedAt,
@@ -71,6 +79,8 @@ export function completeTaskPlan(task: PendingTaskDomain, input: CompleteTaskPla
       kickoff_note: nextKickoff,
       session_log: null,
       focused_until: null,
+      duty_id: null,
+      occurrence_at: null,
     };
 
     ops.push({ kind: 'task.insert', row: next });

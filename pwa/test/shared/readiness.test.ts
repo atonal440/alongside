@@ -12,7 +12,9 @@ import { makeTask, makeLink } from '../helpers/fixtures';
 const NOW = '2026-06-09T12:00:00.000Z';
 const FUTURE = '2026-12-31T00:00:00.000Z';
 const PAST = '2026-01-01T00:00:00.000Z';
-const TODAY = NOW.slice(0, 10);
+// due_date is a UTC instant (Decision 4); the due window compares instants
+// against NOW, not calendar days — see shared/readiness.ts.
+const DUE_SOON = '2026-06-09T18:00:00.000Z'; // 6h after NOW, within the next 24h
 
 describe('isDeferred', () => {
   test('someday → true regardless of defer_until', () => {
@@ -152,21 +154,21 @@ describe('readinessScore', () => {
   test('overdue due_date adds 10', () => {
     const old = '2025-01-01T00:00:00.000Z';
     const base = readinessScore(makeTask({ updated_at: old }), NOW);
-    const overdue = readinessScore(makeTask({ due_date: '2026-06-01', updated_at: old }), NOW);
+    const overdue = readinessScore(makeTask({ due_date: '2026-06-01T12:00:00Z', updated_at: old }), NOW);
     expect(overdue - base).toBe(10);
   });
 
-  test('due today adds 7', () => {
+  test('due within the next 24h adds 7', () => {
     const old = '2025-01-01T00:00:00.000Z';
     const base = readinessScore(makeTask({ updated_at: old }), NOW);
-    const today = readinessScore(makeTask({ due_date: TODAY, updated_at: old }), NOW);
-    expect(today - base).toBe(7);
+    const dueSoon = readinessScore(makeTask({ due_date: DUE_SOON, updated_at: old }), NOW);
+    expect(dueSoon - base).toBe(7);
   });
 
   test('due within 7 days adds 3', () => {
     const old = '2025-01-01T00:00:00.000Z';
     const base = readinessScore(makeTask({ updated_at: old }), NOW);
-    const soon = readinessScore(makeTask({ due_date: '2026-06-15', updated_at: old }), NOW);
+    const soon = readinessScore(makeTask({ due_date: '2026-06-15T12:00:00Z', updated_at: old }), NOW);
     expect(soon - base).toBe(3);
   });
 
@@ -178,7 +180,7 @@ describe('readinessScore', () => {
           kickoff_note: fc.option(fc.string(), { nil: null }),
           session_log: fc.option(fc.string(), { nil: null }),
           due_date: fc.option(
-            fc.constantFrom('2026-06-01', TODAY, '2026-06-15', '2026-12-31'),
+            fc.constantFrom('2026-06-01T12:00:00Z', DUE_SOON, '2026-06-15T12:00:00Z', '2026-12-31T12:00:00Z'),
             { nil: null },
           ),
           focused_until: fc.option(fc.constantFrom(FUTURE, PAST), { nil: null }),

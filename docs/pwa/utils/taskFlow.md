@@ -4,7 +4,7 @@ Typed task-flow model used by cards, queues, lists, and detail surfaces. It maps
 
 ## Exports
 
-**`TaskFlowContext`** — Context passed into `deriveTaskFlow`: date, projects, links, optional full task list, surface, and selection state. Supplying `tasks` lets blocked/focused/readiness states distinguish active blockers from completed upstream blockers.
+**`TaskFlowContext`** — Context passed into `deriveTaskFlow`: optional `nowIso` (defaults to the current time), projects, links, optional full task list, surface, and selection state. Supplying `tasks` lets blocked/focused/readiness states distinguish active blockers from completed upstream blockers. There is no separate date-only `today` field — `due_date` is a UTC instant (Decision 4), so `formatDue`/`readinessScore` both derive everything from `nowIso`.
 
 **`TASK_FLOW_CHART`** — Declarative state table for `done`, `focused`, `someday`, `deferred`, `blocked`, and `ready` tasks, including per-surface actions. Ready and focused tasks expose a `defer` action; deferred and someday tasks expose a `reopen` action that clears the deferral.
 

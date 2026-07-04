@@ -44,7 +44,8 @@ Create a new task.
 |---|---|---|---|
 | `title` | `string` | yes | |
 | `notes` | `string` | no | |
-| `due_date` | `string \| null` | no | ISO 8601 date |
+| `due_date` | `string \| null` | no | ISO 8601 date or datetime. A bare date (`2026-04-15`) is all-day, anchored to noon UTC; a full datetime is a genuine deadline at that moment. |
+| `due_all_day` | `boolean` | no | Overrides the all-day/timed inference from `due_date`'s shape. Rarely needed — the PWA sends this explicitly to preserve an existing value when an edit doesn't touch the due date. |
 | `recurrence` | `string` | no | Infinite date-only RRULE |
 | `task_type` | `string` | no | `action` or `plan` |
 | `project_id` | `string \| null` | no | Existing project ID |
@@ -58,7 +59,7 @@ Create a new task.
 
 Partial update. Only provided fields are changed.
 
-**Request body:** any subset of `{ title, notes, due_date, recurrence, kickoff_note, session_log, task_type, project_id, status, defer_until, defer_kind, focused_until }`. Use `POST /api/tasks/:id/complete` to mark a task done; direct `status: "done"` updates are rejected.
+**Request body:** any subset of `{ title, notes, due_date, due_all_day, recurrence, kickoff_note, session_log, task_type, project_id, status, defer_until, defer_kind, focused_until }`. Use `POST /api/tasks/:id/complete` to mark a task done; direct `status: "done"` updates are rejected.
 
 **Response:** `Task` — 404 if not found.
 
@@ -203,7 +204,8 @@ Full field reference for the task object returned by all endpoints:
 | `title` | `string` | no | |
 | `notes` | `string` | yes | |
 | `status` | `string` | no | `pending` or `done` |
-| `due_date` | `string` | yes | ISO 8601 date |
+| `due_date` | `string` | yes | ISO 8601 datetime, minute resolution. A date-only value on write is anchored to noon UTC |
+| `due_all_day` | `boolean` | yes | Whether `due_date` is all-day (no real time-of-day) vs. a genuine timed deadline. `null` on rows that predate this field — treat as all-day |
 | `recurrence` | `string` | yes | iCal RRULE string |
 | `task_type` | `string` | no | `action` or `plan` |
 | `project_id` | `string` | yes | FK to projects table |

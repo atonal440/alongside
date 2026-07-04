@@ -117,11 +117,12 @@ describe('parseTaskForm — dueDate', () => {
     expect(result.value.due_date).toBeNull();
   });
 
-  test('valid ISO date → IsoDate in patch', () => {
+  test('valid ISO date → anchored to noon UTC, due_all_day true (Decision 4 all-day convention)', () => {
     const result = parseTaskForm(baseInput({ dueDate: '2026-07-01' }));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.due_date).toBe('2026-07-01');
+    expect(result.value.due_date).toBe('2026-07-01T12:00:00Z');
+    expect(result.value.due_all_day).toBe(true);
   });
 
   test('invalid date string → error on dueDate', () => {
@@ -136,6 +137,38 @@ describe('parseTaskForm — dueDate', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.dueDate).toBeDefined();
+  });
+
+  // Regression: a due_date with a real time-of-day (settable via MCP/REST,
+  // not just this date-only picker) must survive an edit-form save that
+  // doesn't touch the due date — otherwise saving an unrelated field (title,
+  // notes, ...) silently collapses it to the noon-UTC all-day anchor. This
+  // also requires preserving due_all_day itself (existingDueAllGay: false),
+  // not just due_date — the flag is what fixes the codex-flagged bug for real.
+  test('unchanged date preserves an existing timed due_date and its due_all_day', () => {
+    const original = '2026-07-01T09:30:00Z';
+    const result = parseTaskForm(baseInput({
+      dueDate: '2026-07-01',
+      existingDueDate: original,
+      existingDueAllDay: false,
+    }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.due_date).toBe(original);
+    expect(result.value.due_all_day).toBe(false);
+  });
+
+  test('changed date re-anchors to noon UTC with due_all_day true, discarding the old time-of-day', () => {
+    const original = '2026-07-01T09:30:00Z';
+    const result = parseTaskForm(baseInput({
+      dueDate: '2026-07-15',
+      existingDueDate: original,
+      existingDueAllDay: false,
+    }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.due_date).toBe('2026-07-15T12:00:00Z');
+    expect(result.value.due_all_day).toBe(true);
   });
 });
 
@@ -174,6 +207,21 @@ describe('parseTaskForm — recurrence', () => {
       dueDate: '2026-07-04',
     }));
     expect(result.ok).toBe(true);
+  });
+
+  // Codex-flagged (PR #40): mirrors the worker's recurrenceFromRow rejection
+  // of recurrence on a timed due_date, so an offline edit can't queue a
+  // PATCH the worker will reject.
+  test('cross-field: recurrence with a preserved timed due date → error on recurrence', () => {
+    const result = parseTaskForm(baseInput({
+      recurrence: 'FREQ=DAILY;INTERVAL=1',
+      dueDate: '2026-07-01',
+      existingDueDate: '2026-07-01T09:30:00Z',
+      existingDueAllDay: false,
+    }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.recurrence).toMatch(/all-day/i);
   });
 });
 

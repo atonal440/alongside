@@ -34,14 +34,47 @@ export function projectColor(projectId: string | null | undefined): string {
   return PROJECT_COLORS[hash % PROJECT_COLORS.length] ?? '#9C8472';
 }
 
-export function formatDue(task: Pick<Task, 'due_date'>, today: string): string {
-  if (!task.due_date) return '';
-  if (task.due_date < today) return `Overdue ${task.due_date}`;
-  if (task.due_date === today) return 'Due today';
-  return `Due ${task.due_date}`;
+// due_date is a UTC instant (Decision 4). Displaying it as a plain date means
+// reading its date part back in the viewer's local zone — not slicing the
+// stored UTC string — so a noon-UTC all-day value (the migration convention)
+// renders on the calendar day it was meant to represent. See
+// docs/plans/duties/02-timestamp-model.md "Migrated" / "Presentation stays honest".
+export function localDateOf(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA');
 }
 
-export function readinessScore(task: Task, _today: string, links: TaskLink[] = [], tasks: Task[] = [], nowIso = new Date().toISOString()): number {
+export function localTimeOf(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+// An all-day due_date never shows a time — its noon-UTC instant is a storage
+// artifact (Decision 4), not intent, so `localDateOf` alone is the honest
+// label. A genuinely timed one (due_all_day: false) is a real public part of
+// the due-date contract now (REST/MCP can set a full datetime directly), so
+// it must show the time too, or it's indistinguishable from an all-day task.
+export function dueDateLabel(task: Pick<Task, 'due_date' | 'due_all_day'>): string {
+  if (!task.due_date) return '';
+  const date = localDateOf(task.due_date);
+  return task.due_all_day === false ? `${date} at ${localTimeOf(task.due_date)}` : date;
+}
+
+export function formatDue(task: Pick<Task, 'due_date' | 'due_all_day'>, nowIso: string): string {
+  if (!task.due_date) return '';
+  const dueToday = localDateOf(task.due_date) === localDateOf(nowIso);
+  const overdue = task.due_date < nowIso;
+  // due_all_day is null on legacy rows (predates the column) — treated as
+  // all-day. An all-day due date stays "Due today" for the whole viewer-local
+  // day even past its noon-UTC instant; a genuinely timed one goes overdue
+  // the moment it passes, same local day or not.
+  const allDay = task.due_all_day ?? true;
+  if (dueToday && (allDay || !overdue)) {
+    return allDay ? 'Due today' : `Due today at ${localTimeOf(task.due_date)}`;
+  }
+  if (overdue) return `Overdue ${dueDateLabel(task)}`;
+  return `Due ${dueDateLabel(task)}`;
+}
+
+export function readinessScore(task: Task, links: TaskLink[] = [], tasks: Task[] = [], nowIso = new Date().toISOString()): number {
   return sharedReadinessScore(task, nowIso, links, tasks);
 }
 
@@ -50,8 +83,8 @@ export function isBlocked(task: Task, links: TaskLink[], tasks: Task[] = []): bo
   return hasActiveBlocker(task, links, tasks);
 }
 
-export function taskSort(a: Task, b: Task, today: string, links: TaskLink[], tasks: Task[] = [], nowIso = new Date().toISOString()): number {
-  return readinessScore(b, today, links, tasks, nowIso) - readinessScore(a, today, links, tasks, nowIso)
+export function taskSort(a: Task, b: Task, links: TaskLink[], tasks: Task[] = [], nowIso = new Date().toISOString()): number {
+  return readinessScore(b, links, tasks, nowIso) - readinessScore(a, links, tasks, nowIso)
     || (a.due_date ?? '9999-99-99').localeCompare(b.due_date ?? '9999-99-99')
     || a.title.localeCompare(b.title);
 }

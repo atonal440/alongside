@@ -1,6 +1,7 @@
 import type { Project, Task, TaskLink } from '@shared/types';
 import type { ValidationError } from '@shared/parse';
 import { parseTaskRow, parseProjectRow, parseTaskLinkRow } from '@shared/wire/rows';
+import { legacyIsAllDay } from '../api/pendingOps';
 import { migrateLegacyDeferShape } from './db';
 
 // Default any nullable task/project field that is completely absent to null so
@@ -8,8 +9,8 @@ import { migrateLegacyDeferShape } from './db';
 // being quarantined. Only run this if the initial parse failed — valid rows pass
 // through without mutation.
 const NULLABLE_TASK_FIELDS = [
-  'notes', 'due_date', 'recurrence', 'defer_until', 'project_id',
-  'kickoff_note', 'session_log', 'focused_until',
+  'notes', 'due_date', 'due_all_day', 'recurrence', 'defer_until', 'project_id',
+  'kickoff_note', 'session_log', 'focused_until', 'duty_id', 'occurrence_at',
 ] as const;
 
 const NULLABLE_PROJECT_FIELDS = ['notes', 'kickoff_note'] as const;
@@ -32,11 +33,20 @@ function migrateLegacyTaskEnums(value: Record<string, unknown>): boolean {
   return changed;
 }
 
+// due_all_day is a special case among the nullable fields: a row synced by a
+// pre-due_all_day build can carry a genuinely timed due_date, and defaulting
+// it to null (→ rendered as all-day) would silently lose that time forever.
+// Same legacy inference as the migration backfill (worker/migrations/008)
+// and the pendingOps repair (../api/pendingOps.ts legacyIsAllDay).
 function fillMissingNullableTaskFields(value: Record<string, unknown>): boolean {
   let changed = false;
   for (const field of NULLABLE_TASK_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(value, field)) {
-      value[field] = null;
+      if (field === 'due_all_day' && typeof value['due_date'] === 'string') {
+        value[field] = legacyIsAllDay(value['due_date']);
+      } else {
+        value[field] = null;
+      }
       changed = true;
     }
   }

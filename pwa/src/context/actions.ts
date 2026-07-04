@@ -11,6 +11,7 @@ import { idbGetAllTasks, idbPutTask, idbDeleteTask } from '../idb/tasks';
 import { idbPutLink, idbDeleteLink } from '../idb/links';
 import { idbGetPendingOps, idbQueueOp } from '../idb/pendingOps';
 import { genId } from '../utils/genId';
+import { localDateOf } from '../utils/design';
 import {
   newLocalTask,
   applyUpdate,
@@ -181,7 +182,8 @@ export async function completeTaskAction(
     if (result.value.next) {
       await idbPutTask(result.value.next);
       dispatch({ type: 'UPSERT_TASK', task: result.value.next });
-      return `Done! Next: <span class="next-date">${result.value.next.due_date}</span>`;
+      const nextDue = result.value.next.due_date;
+      return `Done! Next: <span class="next-date">${nextDue ? localDateOf(nextDue) : ''}</span>`;
     }
   } else if (shouldQueue(result)) {
     await idbQueueOp({ op: 'task.complete', taskId: id });

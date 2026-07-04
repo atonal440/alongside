@@ -7,6 +7,7 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     notes: null,
     status: 'pending',
     due_date: null,
+    due_all_day: true,
     recurrence: null,
     created_at: '2026-06-09T10:00:00.000Z',
     updated_at: '2026-06-09T10:00:00.000Z',
@@ -17,6 +18,8 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     kickoff_note: null,
     session_log: null,
     focused_until: null,
+    duty_id: null,
+    occurrence_at: null,
     ...overrides,
   };
 }

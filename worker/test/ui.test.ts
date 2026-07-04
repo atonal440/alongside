@@ -20,6 +20,9 @@ function taskRow(overrides: Partial<Task> = {}): Task {
     kickoff_note: null,
     session_log: null,
     focused_until: null,
+    due_all_day: null,
+    duty_id: null,
+    occurrence_at: null,
     ...overrides,
   };
 }
@@ -91,6 +94,39 @@ describe('UI route schemas', () => {
     await expect(response.json()).resolves.toMatchObject({
       completed: { id: 't_abc12', status: 'done' },
     });
+  });
+
+  // Codex-flagged (PR #40): the server-rendered widget has no viewer zone, so
+  // it formats due_date in UTC — distinguishing all-day (date only) from
+  // genuinely timed (date + UTC time), rather than dumping the raw instant.
+  it('renders an all-day due_date as a plain date', async () => {
+    const db = {
+      listFocusedTasks: async () => [taskRow({ due_date: '2026-07-04T12:00:00Z', due_all_day: true })],
+    };
+
+    const response = await handleUiRequest(
+      request('GET', '/ui/active'),
+      new URL('http://127.0.0.1:8787/ui/active'),
+      db as never,
+    );
+
+    const html = await response.text();
+    expect(html).toContain('<span class="due">2026-07-04</span>');
+  });
+
+  it('renders a timed due_date with its UTC time', async () => {
+    const db = {
+      listFocusedTasks: async () => [taskRow({ due_date: '2026-07-04T17:30:00Z', due_all_day: false })],
+    };
+
+    const response = await handleUiRequest(
+      request('GET', '/ui/active'),
+      new URL('http://127.0.0.1:8787/ui/active'),
+      db as never,
+    );
+
+    const html = await response.text();
+    expect(html).toContain('<span class="due">2026-07-04 at 17:30 UTC</span>');
   });
 
   it('maps complete transition failures to JSON errors', async () => {
