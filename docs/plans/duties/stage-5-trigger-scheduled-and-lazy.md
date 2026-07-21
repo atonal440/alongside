@@ -101,8 +101,8 @@ endpoints — only list/sync reads, to keep write paths lean.
 ### 4. Timezone: not at the trigger edge
 
 There is **no** timezone to plumb *at this stage*. Decision 4 removes the global
-`timezone` preference and `todayInZone` resolver an earlier draft placed here — the
-scheduled handler and lazy hook both just pass a UTC `now`. The per-duty anchor
+`timezone` preference and the `todayInTz`/`nowInTz` date resolvers — the scheduled
+handler and lazy hook both just pass a UTC `now`. The per-duty anchor
 zone that Phase 1 *does* ship (`duties.timezone`) is consumed **inside**
 `occurrencesBetween` per duty (Stage 2), not at the trigger edge — the driver
 never touches it. Viewer-side display formatting is a separate client concern
@@ -140,7 +140,9 @@ never touches it. Viewer-side display formatting is a separate client concern
   cap tests green.
 - Opening a list path after a due instant returns the spawned instance with no
   cron tick required; the cron spawns it with no client connected.
-- No timezone resolution exists anywhere in the spawn path.
+- No global or trigger-edge timezone/date resolution exists in the spawn path;
+  per-duty wall-clock conversion occurs only inside the Stage 2 recurrence
+  primitives.
 - Write/single-GET paths do not call the materialize hook.
 - **Transition invariants — State B/C (`duties/03`):** this stage completes the
   Stage 4 ↔ 5 atomic cut-over — verify that after deploy, recurrence is served by

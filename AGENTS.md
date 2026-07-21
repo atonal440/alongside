@@ -105,7 +105,7 @@ Then reload the PWA.
 
 - `nanoid` v3 is used in the worker because v3 supports CommonJS, which Wrangler bundles more reliably than v4+ in this project.
 - Auth is a single static bearer token from `AUTH_TOKEN`. The `/ui/*` routes skip auth so the iframe widget can be embedded.
-- Recurrence uses an `rrule`-backed, infinite date-only RRULE profile: `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY`, optional `INTERVAL`, and date-level `BY*` filters. `COUNT`, `UNTIL`, time parts, recurrence sets, and exceptions are intentionally unsupported until recurrence has a series anchor model.
+- Recurrence has two profiles during the duties rollout. Legacy task `Rrule` remains infinite/date-only (`DAILY|WEEKLY|MONTHLY|YEARLY` plus its date filters) until Stage 10. Duty-only `SeriesRrule` adds `HOURLY|MINUTELY`, `COUNT|UNTIL`, and `BYHOUR|BYMINUTE`; it rejects `SECONDLY`, `BYSECOND`, recurrence sets, and exceptions. `COUNT` and `UNTIL` are mutually exclusive; UNTIL is basic UTC datetime text normalized to minute UTC. Zoned series expansion uses deterministic, host-independent `Intl` wall-clock conversion (spring gaps skip, fall folds choose the earliest UTC instant), with a named 10,000-occurrence guard. Duty `dtstart` is always timed — no bare-date/all-day/noon inference.
 - The MCP endpoint is `/mcp` and expects JSON-RPC POST requests.
 - PWA sync is local-first: writes go to IndexedDB immediately, then flush to the worker. Merge is last-write-wins on `updated_at`.
 - State management is `useReducer` plus React context. Async ops are plain async functions in `pwa/src/context/actions.ts` that take `dispatch` as a parameter.

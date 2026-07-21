@@ -107,7 +107,9 @@ Extend the discriminated pending-op union with duty ops:
   instances. Add a comment making this explicit so a future contributor doesn't
   "helpfully" add one and fork the clock.
 - `parseDutyForm` (`pwa/src/domain/`): brand the duty editor's raw inputs at
-  submit (boundary #3), mirroring `parseTaskForm`. Stage 8 consumes it.
+  submit (boundary #3), mirroring `parseTaskForm`. Its `dtstart` path requires a
+  local date **and time**, resolves it to minute UTC, and has no task-style
+  `due_all_day`/noon inference. Stage 8 consumes it.
 
 ### 6. State (`pwa/src/context/`)
 
@@ -125,7 +127,8 @@ Extend the discriminated pending-op union with duty ops:
 - `pendingOps`: duty ops parse; temp-id rebinding rewrites a queued
   `duty.update` after the create resolves.
 - `dutyMutations`: create builds a valid optimistic row; resume-from-ended
-  rejected; recurrence↔dtstart guard.
+  rejected; recurrence↔dtstart guard; bare-date dtstart rejected and a timed
+  value remains timed even when its UTC value happens to be noon.
 - `sync` (stubbed fetch): a pull that returns a new server-spawned instance
   stores it; a 4xx duty create is dropped + toasted, not requeued.
 

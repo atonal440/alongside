@@ -59,6 +59,8 @@ Route specs + handlers:
   list is served (else it shows a stale past `next_occurrence_at`).
 - `POST /api/duties` (`DutyCreateBody`: title, notes?, kickoff_note?, task_type?,
   project_id?, rrule, dtstart, `timezone?`, catch_up?) → the created `Duty` row.
+  `dtstart` is a required full datetime normalized to minute UTC; a bare date is
+  invalid, and duties have no `due_all_day` or noon-inference path.
 - `PATCH /api/duties/:duty_id` (`DutyUpdateBody`: **template fields + `catch_up` +
   `status` only — never `rrule`/`dtstart`/`timezone`**, the whole series anchor is
   immutable) → the updated `Duty` row. A body attempting to set
@@ -67,7 +69,7 @@ Route specs + handlers:
 - `DELETE /api/duties/:duty_id` → `{ deleted: true, duty_id }` (matching the
   existing delete convention).
 
-Bodies reference the shared brands (`SeriesRruleSchema`, `IsoDateTimeSchema`,
+Bodies reference the shared brands (`SeriesRruleSchema`, `IsoDateTimeMinuteSchema`,
 `TimezoneSchema`, `DutyStatusSchema`, `CatchUpPolicySchema`) so malformed input is
 a `validation` error at the edge. **Loose-parse trap:** the wire specs use valibot
 `v.object`, which *strips* unknown keys — so merely omitting
@@ -85,7 +87,8 @@ Add and register (`TOOL_NAMES`) these tools, each with a JSON-schema arg spec an
 an action-log entry:
 
 - `create_duty` — title (req), notes, kickoff_note, task_type, project_id,
-  rrule (req, `SeriesRrule`), dtstart (req, UTC ISO datetime), `timezone?` (IANA
+  rrule (req, `SeriesRrule`), dtstart (req, full ISO datetime; normalized to
+  minute UTC; no bare date/all-day inference), `timezone?` (IANA
   anchor zone for wall-clock-stable recurrence; omit for UTC), catch_up
   (`next`|`all`, default `next`). Returns the created duty; if it materialized a
   first instance, include it.
@@ -104,6 +107,11 @@ an action-log entry:
 - Tool descriptions must teach the model the model: a duty is a template + a
   schedule; instances appear automatically; completing an instance does not
   affect the schedule.
+
+Duty surface descriptions must publish the exact `SeriesRrule` boundary:
+`DAILY|WEEKLY|MONTHLY|YEARLY|HOURLY|MINUTELY`, legacy date filters plus
+`COUNT|UNTIL|BYHOUR|BYMINUTE`, no `SECONDLY|BYSECOND`, and mutually-exclusive
+COUNT/basic-UTC-datetime UNTIL (`YYYYMMDDTHHMMSSZ`, normalized to minute UTC).
 
 Optionally add `show_duties` (an App widget, mirroring `show_tasks`) — but this
 can slip to Stage 8/9; mark it optional.
@@ -171,14 +179,17 @@ must ship with the backfill. See Stage 4 §5b and `03` State C.
   Replace the recurrence prose in `add_task`/`complete_task` with the duties
   model and a pointer to the new duty tools.
 - Add a full "Duties" section to `docs/mcp-tools.md` documenting every new tool,
-  and a "Duty Object Shape" block. Update the tool count in the header
+  and a "Duty Object Shape" block, including the timed-only DTSTART and exact
+  series profile/UNTIL syntax above. Update the tool count in the header
   (`docs/mcp-tools.md:3` says "18 tools").
 - Update `docs/api.md` with the `/api/duties*` endpoints and the new task fields.
 
 ### 8. Tests (`worker/test/`)
 
 - REST: create/list/patch/delete duty happy paths; malformed rrule/dtstart/status/
-  timezone → 4xx `validation`; a PATCH attempting `rrule`/`dtstart`/`timezone` →
+  timezone → 4xx `validation`, including bare-date dtstart, `SECONDLY`/`BYSECOND`,
+  and non-basic/non-UTC UNTIL forms; a PATCH attempting
+  `rrule`/`dtstart`/`timezone` →
   **explicitly rejected with a 409/validation error** (assert the response, not
   just that the anchor didn't change — the loose body parse would silently strip);
   pause→resume→end transitions; resume-ended → 409; delete orphans instances

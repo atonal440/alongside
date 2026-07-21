@@ -4,6 +4,8 @@ Part of `docs/plans/duties.md`. Prerequisite: Stage 1. Read
 `00-recurrence-and-triggering.md` §2, `01-type-system.md`'s "Series recurrence"
 section, and `02-timestamp-model.md` first.
 
+**Status:** complete (2026-07-21).
+
 > **Canonical signatures:** `04-invariants-and-contracts.md` §4 is authoritative
 > for the calendar-primitive signatures implemented here — if this doc drifts,
 > `04` wins.
@@ -19,6 +21,7 @@ UTC instants (Decision 4); there is **no** `today` resolver and **no** *global*
 timezone — the only zone in this module is the per-duty anchor-zone parameter
 consumed during rule expansion. Pure functions only. This is the calendar math
 the whole engine stands on, so it gets the heaviest test coverage of any stage.
+Duty `DTSTART` is always timed: no bare date, all-day flag, or noon inference.
 
 ## Context for a cold start
 
@@ -40,11 +43,16 @@ the whole engine stands on, so it gets the heaviest test coverage of any stage.
 
 ```ts
 export type SeriesRrule = Brand<string, 'SeriesRrule'>;
+export type SeriesRruleFreq = RruleFreq | 'HOURLY' | 'MINUTELY';
 
-export interface SeriesRruleParts extends RruleParts {
+export interface SeriesRruleParts extends Omit<RruleParts, 'source' | 'freq'> {
+  source: SeriesRrule;
+  freq: SeriesRruleFreq;
   count?: PositiveInt<10_000>;
-  until?: IsoDateTime;   // UTC instant
+  until?: IsoDateTime;   // basic-UTC UNTIL normalized to minute UTC
 }
+
+export const SERIES_OCCURRENCE_CAP = 10_000;
 ```
 
 `parseSeriesRrule(input)`:
@@ -54,12 +62,15 @@ export interface SeriesRruleParts extends RruleParts {
   `isDateOnlyProfile` and its date-only rejections are not applied to series
   rules. (Leave the legacy `parseRrule`/`isDateOnlyProfile` untouched for the
   backfill path; series rules simply don't use them.)
-- Add `COUNT` and `UNTIL` to a **series-specific** supported-key set (don't mutate
-  the shared `SUPPORTED_KEYS` the infinite parser uses).
-- `COUNT`: positive integer `1..10_000` (caps materialization loops; document it).
-- `UNTIL`: a UTC instant. Reject a bare date with no time only if you choose to
-  require explicit times; otherwise normalize a date to midnight UTC. Cross-field
-  `UNTIL >= dtstart` is checked in the domain codec (Stage 3), not here.
+- Use a **series-specific** profile (don't mutate the legacy parser): frequencies
+  `DAILY|WEEKLY|MONTHLY|YEARLY|HOURLY|MINUTELY`; keys are the legacy date-filter
+  set plus `COUNT`, `UNTIL`, `BYHOUR`, and `BYMINUTE`. Reject `SECONDLY`,
+  `BYSECOND`, recurrence sets, and exceptions; minute resolution is the floor.
+- `COUNT`: positive integer `1..SERIES_OCCURRENCE_CAP` (10,000).
+- `UNTIL`: accept only RFC/basic UTC datetime syntax `YYYYMMDDTHHMMSSZ`; validate
+  it and normalize `parts.until` to `YYYY-MM-DDTHH:MM:00Z`. Reject bare dates,
+  extended ISO, offsets, and local forms. Cross-field `UNTIL >= dtstart` is
+  checked in the domain codec (Stage 3), not here.
 - Reject a rule with **both** `COUNT` and `UNTIL`.
 - Drop the infinite requirement. **Do not** try to reject "empty series" here:
   whether a rule yields any occurrence is **anchor-dependent** (e.g.
@@ -96,21 +107,24 @@ export function latestOccurrenceAtOrBefore(
 - Build the rule with `dtstart` as the **fixed anchor instant** (not `after`).
   This is the core difference from `nextOccurrence`.
 - **Anchor-zone expansion (Phase 1, Decision 4).** When `timezone` is `null`,
-  expand in UTC. When set, expand the rule against that IANA zone: generate the
-  rule's *wall-clock* occurrences in the zone and convert each to a UTC instant
-  using the offset in effect on that date — so consecutive daily occurrences are
-  usually 24h apart but 23h/25h across a DST boundary, keeping the wall-clock time
-  stable. Return values are **always UTC instants** either way. Use a zone-aware
-  path (a small `Intl.DateTimeFormat`/offset helper, or the `rrule` library's tz
-  support if reliable in Workers — validate in tests). DST-transition edge cases
-  (nonexistent/doubled wall-clock times) fall back to the library's skip/first-
-  match behavior; do not add custom handling (master Out of Scope).
+  or explicit `UTC`, expand in UTC. Otherwise generate the rule's floating
+  *wall-clock* occurrences and invert each with `Intl.DateTimeFormat` in the IANA
+  zone — never through the host process timezone or `rrule`'s host-sensitive
+  `tzid` path. Consecutive daily occurrences are usually 24h apart but 23h/25h
+  across a DST boundary, keeping wall time stable. Return values are **always UTC
+  instants**. A nonexistent spring-gap wall time is skipped; a repeated fall-fold
+  wall time deterministically selects the earliest matching UTC instant.
 - Enumerate occurrences `> after` (or `>= dtstart` when `after === null`) and
   `<= through`. Respect the rule's own `COUNT`/`UNTIL` so a finite rule stops.
+  UNTIL inclusively bounds the resolved UTC instants. COUNT counts resolved valid
+  instants, so a nonexistent wall-clock candidate skipped in a DST gap does not
+  consume the count.
 - Return `IsoDateTime[]`, ascending. Stop at `limit` when given (callers pass
-  `maxPerRun`), else hard-cap length (e.g. 10 000) as a runaway guard and throw/log
-  on cap hit. The `limit` matters: a far-behind high-frequency `all` duty must be
-  bounded by `maxPerRun` *before* enumeration so it never trips the runaway cap.
+  `maxPerRun`); `limit` must be an integer from 0 through
+  `SERIES_OCCURRENCE_CAP`. Without it, cap output at exactly 10,000 and throw
+  `SeriesExpansionLimitError` if the requested window would exceed that guard.
+  The `limit` matters: a far-behind high-frequency `all` duty must be bounded by
+  `maxPerRun` *before* enumeration so it never trips the runaway cap.
   `nextOccurrenceAfter` (rule `.after`) maintains
   `next_occurrence_at`; `latestOccurrenceAtOrBefore` (rule `.before(instant,
   inclusive=true)`) gives the newest due occurrence without enumerating — used by
@@ -143,23 +157,28 @@ duty to `ended` (Stage 4).
 Add the `Timezone` brand — IANA membership via `Intl.supportedValuesOf('timeZone')`
 — and `parseTimezone`. It is a real Phase-1 input consumed by `occurrencesBetween`
 above (rule expansion) and reused PWA-side for display. There is **no** per-user
-`todayInZone` resolver and no global timezone preference; the materializer still
-takes a plain UTC `now` (Stage 5) and passes each duty's own `timezone` into
-`occurrencesBetween`.
+date resolver or global timezone preference: remove `todayInTz` and `nowInTz`,
+while retaining `nowUtc`. The materializer still takes a plain UTC `now` (Stage 5)
+and passes each duty's own `timezone` into `occurrencesBetween`.
 
 ### 5. Tests (`worker/test/` — deep-coverage stage)
 
 - `parseSeriesRrule`: accepts `FREQ=DAILY;COUNT=30`,
-  `FREQ=WEEKLY;UNTIL=…Z`, a time-of-day rule (`FREQ=DAILY` from a datetime
-  `DTSTART` at 09:00Z), and all the infinite forms; rejects `COUNT=0`,
-  `COUNT=99999`, and `COUNT`+`UNTIL` together. It does **not** test "empty series"
+  `FREQ=WEEKLY;UNTIL=20261231T235900Z`, `HOURLY`, `MINUTELY`, `BYHOUR`,
+  `BYMINUTE`, and all legacy infinite forms; verifies UNTIL's canonical-minute
+  normalization; rejects `COUNT=0`, count above `SERIES_OCCURRENCE_CAP`,
+  `COUNT`+`UNTIL`, unsupported UNTIL shapes, `SECONDLY`, and `BYSECOND`. It does
+  **not** test "empty series"
   — that check is anchor-dependent and lives in `createDutyPlan` (04 INV-I / Stage
   4), so the empty-series rejection is tested there, not here.
 - `occurrencesBetween` with `limit`: a far-behind high-frequency rule returns
   exactly `limit` results and does **not** throw on the runaway cap.
 - `occurrencesBetween`: table-driven over the Step 2 edge cases; a monthly
   `BYDAY=3FR` proving the anchor is fixed (spawn instants don't drift with
-  `after`); a sub-day rule; the runaway cap.
+  `after`); sub-day rules; null/UTC equivalence; host-timezone independence;
+  spring-gap skip and fall-fold-first behavior (including COUNT continuing past a
+  skipped gap); true-UTC UNTIL bounds; the named cap/error and explicit limit
+  validation.
 - `isSeriesExhausted`: finite rule before/at/after last occurrence; infinite → false.
 - `fast-check` properties: `occurrencesBetween` output is ascending, all in
   `(after, through]`, length ≤ cap; each element round-trips as a valid
@@ -173,13 +192,17 @@ takes a plain UTC `now` (Stage 5) and passes each duty's own `timezone` into
 Update the recurrence reference doc with the series profile, the datetime
 `DTSTART` semantics, `COUNT`/`UNTIL` support, and the fact that series rules are
 **not** date-only — contrasting with the legacy infinite `parseRrule` that backs
-the task column until Stage 10.
+the task column until Stage 10. Document the exact time-part subset, UTC-basic
+UNTIL normalization, deterministic zoned conversion, and named cap/error.
 
 ## Acceptance criteria
 
 - `npm --prefix worker run typecheck` / `test` pass; new suites green.
 - Legacy `parseRrule`/`nextOccurrence` behavior unchanged.
-- No global `todayInZone` resolver or user-wide timezone preference exists; the
+- The duty contract carries only a full, timed `dtstart`; later duty boundaries
+  must reject bare dates and must not infer all-day/noon semantics.
+- No global date resolver or user-wide timezone preference exists; `todayInTz`
+  and `nowInTz` are absent and `nowUtc` remains. The
   only timezone use is the per-duty anchor zone passed into `occurrencesBetween`.
 - Root `npm run verify` passes.
 - Check off Stage 2 in the implementation todo.

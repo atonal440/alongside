@@ -38,7 +38,10 @@ orders must never drift from each other or from the code.
   (truncate-on-write); no date-only fields; `due_date` migrates to a datetime
   app-wide. **Anchor zone is in Phase 1**: `duties.timezone` (nullable) expands a
   duty's rule in an IANA zone so wall-clock times survive DST; instants stored are
-  always UTC. No global timezone preference; no `todayInZone`.
+  always UTC. No global timezone preference or date resolver; `todayInTz` and
+  `nowInTz` are removed while `nowUtc` remains. Duty `dtstart` is always timed:
+  no bare date, `due_all_day`, or noon inference (09:00 is an explicit Stage 8 UI
+  default).
 
 ## Foundation docs (read before implementing)
 
@@ -77,16 +80,24 @@ orders must never drift from each other or from the code.
 - [x] Tests: Part A representation change; schema; unique-index NULL-distinctness.
 - [x] `wrangler deploy --dry-run` + `verify` green.
 
-### Stage 2 — Series recurrence (`stage-2-series-recurrence.md`)
-- [ ] `SeriesRrule` / `SeriesRruleParts` / `parseSeriesRrule` (COUNT/UNTIL,
-  time-capable). *Adds* the series profile; legacy date-only profile removal is
-  Stage 10.
-- [ ] **Anchor-zone-aware** `occurrencesBetween` + `nextOccurrenceAfter` (over
-  instants, expand in `timezone` when set, UTC when null) + runaway cap.
-- [ ] `isSeriesExhausted` (nullable `after`; `null`-cursor `COUNT=1` not exhausted).
-- [ ] `Timezone` brand + `parseTimezone`. No global `todayInZone`/preference.
-- [ ] Deep tests incl. DST-crossing zoned rule + fast-check; legacy `parseRrule`
-  unchanged.
+### Stage 2 — Series recurrence (`stage-2-series-recurrence.md`) — done
+- [x] Parallel `SeriesRrule` / `SeriesRruleFreq` / `SeriesRruleParts` /
+  `parseSeriesRrule`: legacy frequencies plus series-only `HOURLY|MINUTELY` and
+  `BYHOUR|BYMINUTE`; reject `SECONDLY|BYSECOND`; mutually-exclusive COUNT/basic-
+  UTC UNTIL, with UNTIL normalized to minute UTC. Legacy date-only profile remains
+  unchanged until Stage 10.
+- [x] **Anchor-zone-aware** `occurrencesBetween` + `nextOccurrenceAfter` +
+  `latestOccurrenceAtOrBefore`: null/explicit UTC alias; host-independent `Intl`
+  floating-wall conversion; spring gaps skip and fall folds choose the first UTC
+  instant.
+- [x] Named `SERIES_OCCURRENCE_CAP = 10_000`, `SeriesExpansionLimitError`, and
+  validated explicit `limit` (integer `0..cap`).
+- [x] `isSeriesExhausted` (nullable `after`; `null`-cursor `COUNT=1` not exhausted).
+- [x] `Timezone` brand/schema/parser; remove global `todayInTz`/`nowInTz`, retain
+  `nowUtc`.
+- [x] Deep tests cover parser/profile boundaries, fixed anchors, finite bounds,
+  UTC/null equivalence, host-TZ independence, DST gap/fold policy, cap/limit, and
+  fast-check properties; legacy `parseRrule` regression remains covered.
 
 ### Stage 3 — Duty domain + Op/apply (`stage-3-duty-domain-and-ops.md`)
 - [ ] `DutyId` / `DutyStatus` / `CatchUpPolicy` (+ `Timezone`) brands + `mintDutyId`.
@@ -201,8 +212,6 @@ orders must never drift from each other or from the code.
 
 - `maxPerRun` value (Stage 4) and per-tick duty cap + ordering (Stage 5, by
   `next_occurrence_at` asc).
-- Zoned-expansion implementation: `rrule` library tz support vs a small
-  `Intl`-offset helper — validate in Workers (Stage 2).
 - Template storage shape — normalized tables vs JSON blob (Stage 9; leaning
   normalized).
 - Whether legacy `parseRrule`/`nextOccurrence` + date-only profile are deleted or
@@ -355,11 +364,11 @@ normalizes to noon UTC still derives `due_all_day: false` when parsed from
 its original shape — the bug was only in trying to reconstruct that fact
 *after* storage).
 
-**Stage 2+ implementers:** duties' `dtstart` has the identical ambiguity
-("every day" vs. "every day at 9am") and will need the same treatment —
-either its own `all_day`-style column, or an explicit decision that duty
-recurrence is always timed. Don't reach for a noon-UTC heuristic there; it's
-the exact mistake this section documents undoing.
+**Resolved for duties in Stage 2:** duty recurrence is always timed. `dtstart`
+uses the minute-resolution datetime parser, never accepts a bare date, and has no
+`all_day`-style column or noon-UTC heuristic. Stage 8 may prefill 09:00 as an
+explicit editor default. Legacy backfill can still preserve a migrated task's
+noon anchor; that is migration history, not new-duty inference.
 
 **Two more gaps codex caught in the same round, both about *pre-existing*
 data the new column can't see:**
@@ -485,3 +494,28 @@ data the new column can't see:**
   whenever it's provided (not just alongside `defer_kind`), mirroring the
   `due_all_day`-only-update fix from the earlier PR round — same "narrow
   field-presence check skips the real parser" shape of bug.
+
+### Stage 2 landed (2026-07-21)
+
+Stage 2 added a parallel duty-only recurrence profile without changing legacy
+task recurrence. `SeriesRrule` supports the legacy frequencies plus `HOURLY` and
+`MINUTELY`, and the legacy filters plus `COUNT`, `UNTIL`, `BYHOUR`, and
+`BYMINUTE`; `SECONDLY` and `BYSECOND` remain outside the minute-resolution
+contract. `COUNT` and `UNTIL` are mutually exclusive. UNTIL accepts only basic
+UTC datetime syntax, is normalized in parsed parts to canonical minute UTC, and
+inclusively bounds resolved UTC instants. COUNT counts resolved valid instants;
+skipping a nonexistent DST-gap candidate does not consume it.
+
+Zoned expansion does not use `rrule`'s host-sensitive tzid path. It expands a
+floating wall clock and resolves it with `Intl.DateTimeFormat`, producing the same
+result under any host `TZ`; spring gaps skip and fall folds choose the earliest
+matching UTC instant. Null and explicit `UTC` are aliases. The public runaway
+guard is named `SERIES_OCCURRENCE_CAP = 10_000`, with
+`SeriesExpansionLimitError`; an explicit integer `limit` in `0..cap` stops
+cleanly before it.
+
+`shared/parse/time.ts` now owns the duty-local `Timezone` brand/schema/parser and
+retains `nowUtc`; the obsolete global date resolvers `todayInTz` and `nowInTz`
+were removed. The duty contract is explicitly always timed: no bare-date
+`dtstart`, duty `due_all_day`, or noon inference. The legacy noon-UTC backfill is
+unchanged.

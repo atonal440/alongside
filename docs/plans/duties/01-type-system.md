@@ -69,11 +69,16 @@ profile:
 
 ```ts
 export type SeriesRrule = Brand<string, 'SeriesRrule'>;
+export type SeriesRruleFreq = RruleFreq | 'HOURLY' | 'MINUTELY';
 
-export interface SeriesRruleParts extends RruleParts {
+export interface SeriesRruleParts extends Omit<RruleParts, 'source' | 'freq'> {
+  source: SeriesRrule;
+  freq: SeriesRruleFreq;
   count?: PositiveInt<10_000>;   // from COUNT=
-  until?: IsoDateTime;           // from UNTIL= (UTC instant)
+  until?: IsoDateTime;           // basic-UTC UNTIL, normalized to minute UTC
 }
+
+export const SERIES_OCCURRENCE_CAP = 10_000;
 
 export const SeriesRruleSchema = v.pipe(v.string(),
   v.check(value => parseSeriesRrule(value).ok, …),
@@ -83,16 +88,23 @@ export function parseSeriesRrule(input: unknown):
   Result<{ rrule: SeriesRrule; parts: SeriesRruleParts }, ValidationError[]>;
 ```
 
-`parseSeriesRrule` extends `SUPPORTED_KEYS` with `COUNT` and `UNTIL`, drops the
-`isNonEmptyInfiniteRule` requirement (finite is now legal), and **drops the
-date-only profile entirely** — the rule is expanded against a datetime `DTSTART`
-in UTC, which is `rrule`'s native mode. It adds:
+`parseSeriesRrule` uses a separate supported profile without weakening legacy
+`parseRrule`. Series frequencies are
+`DAILY|WEEKLY|MONTHLY|YEARLY|HOURLY|MINUTELY`; its keys are the legacy date-level
+filters plus `COUNT`, `UNTIL`, `BYHOUR`, and `BYMINUTE`. `SECONDLY`, `BYSECOND`,
+recurrence sets, and exceptions are rejected. The series parser drops the
+`isNonEmptyInfiniteRule` requirement (finite is legal) and the legacy date-only
+restriction — duties expand from a timed `DTSTART`. It adds:
 
-- `COUNT` must be a positive integer ≤ 10 000 (bounds the materialization loop).
-- `UNTIL` must be a UTC instant and be ≥ `dtstart` (validated where `dtstart` is
-  known — the domain codec, since the parser sees the rule string alone).
-- The rule must still produce **at least one** occurrence from `dtstart`
-  (an empty series is a user error, not a valid duty).
+- `COUNT` must be a positive integer ≤ `SERIES_OCCURRENCE_CAP` (10 000).
+- `UNTIL` must use basic UTC datetime syntax `YYYYMMDDTHHMMSSZ`; it is normalized
+  to `YYYY-MM-DDTHH:MM:00Z` in `parts.until` and must be ≥ `dtstart` (validated
+  where `dtstart` is known — the domain codec, since the parser sees the rule
+  string alone). Bare-date, extended-ISO, offset, and local forms reject.
+- `COUNT` and `UNTIL` are mutually exclusive.
+- At duty creation (not in this parser), the anchored rule must produce **at
+  least one** occurrence from `dtstart`; an empty series is a user error, not a
+  valid duty.
 
 The calendar primitives, working in instants and **anchor-zone-aware** — every one
 takes the duty's `timezone` (null = expand in UTC) so zoned duties stay
@@ -102,7 +114,8 @@ materialization call:
 
 ```ts
 export function occurrencesBetween(parts: SeriesRruleParts, dtstart: IsoDateTime,
-  timezone: Timezone | null, after: IsoDateTime | null, through: IsoDateTime): IsoDateTime[];
+  timezone: Timezone | null, after: IsoDateTime | null, through: IsoDateTime,
+  limit?: number): IsoDateTime[];
 export function nextOccurrenceAfter(parts: SeriesRruleParts, dtstart: IsoDateTime,
   timezone: Timezone | null, after: IsoDateTime | null): IsoDateTime | null;
 export function latestOccurrenceAtOrBefore(parts: SeriesRruleParts, dtstart: IsoDateTime,
@@ -111,13 +124,20 @@ export function isSeriesExhausted(parts: SeriesRruleParts, dtstart: IsoDateTime,
   timezone: Timezone | null, after: IsoDateTime | null): boolean;
 ```
 
+Null and explicit `UTC` have identical expansion semantics. Named zones use a
+host-timezone-independent `Intl.DateTimeFormat` floating-wall-clock conversion:
+spring-gap wall times are skipped and fall-fold wall times choose the earliest
+matching UTC instant. Without `limit`, an expansion beyond
+`SERIES_OCCURRENCE_CAP` throws `SeriesExpansionLimitError`; `limit` must be an
+integer from 0 through the cap and stops cleanly when reached.
+
 `nextOccurrence` (the old, single-arg, UTC-only primitive) stays as-is only for the
 legacy migration path.
 
 ### Timezone — a per-duty rule-expansion input (Phase 1, Decision 4)
 
-`Timezone` is a real Phase-1 brand (IANA membership via
-`Intl.supportedValuesOf('timeZone')`), added in Stage 2/3:
+`Timezone` is a real Phase-1 brand (exact `UTC` or membership in the runtime's
+`Intl.supportedValuesOf('timeZone')` list), added in Stage 2:
 
 ```ts
 export type Timezone = Brand<string, 'Timezone'>;
@@ -127,10 +147,11 @@ export function parseTimezone(input: unknown): Result<Timezone, ValidationError[
 It is a **per-duty, nullable** field (`duties.timezone`), used *only* to expand a
 duty's rule (`occurrencesBetween` — Stage 2), never a user-global setting and
 never stored on an instant. The materializer itself still takes a plain UTC `now`;
-the zone is consulted inside `occurrencesBetween` for that duty. The same brand is
-reused PWA-side for **display** (formatting an instant into the viewer's local
-zone). Two narrow uses — expansion and display — per `02-timestamp-model.md`'s
-"two conversions, two zones."
+the zone is consulted inside `occurrencesBetween` for that duty. Null and explicit
+`UTC` are aliases. The old global date resolvers `todayInTz` and `nowInTz` are
+removed; `nowUtc` remains. The same brand is reused PWA-side for the duty
+anchor-zone input and schedule summaries. Viewer-local display uses the device's
+separate zone. These are the two conversions in `02-timestamp-model.md`.
 
 ## DOMAIN layer (`worker/src/domain/`)
 
@@ -151,7 +172,7 @@ export interface DutyTemplate {
 export interface DutySeries {
   rrule: SeriesRrule;
   parts: SeriesRruleParts;
-  dtstart: IsoDateTime;            // immutable anchor
+  dtstart: IsoDateTime;            // immutable, always-timed anchor; never a bare date
   timezone: Timezone | null;      // anchor zone for expansion; null = UTC
   cursor: IsoDateTime | null;     // last_spawned_at
   nextOccurrenceAt: IsoDateTime | null;   // next un-spawned occurrence; drives the due-gate
@@ -183,8 +204,9 @@ export function dutyFromRow(row: DutyRow): Result<DutyDomain, ValidationError[]>
   off the calendar means a corrupt row.
 - `nextOccurrenceAt`, if non-null, must be a real occurrence of the rule —
   strictly after `cursor` when the cursor is set, or **at or after `dtstart`**
-  when the cursor is null (a new/backfilled duty seeds `nextOccurrenceAt =
-  dtstart`, the un-spawned first occurrence) — consistent with the anchor zone.
+  when the cursor is null. A new/backfilled duty seeds the first actual occurrence
+  at or after the anchor, which may be later than `dtstart` when filters exclude
+  the anchor — consistent with the anchor zone.
 - An `ended` duty must have `nextOccurrenceAt = null` — and that is the *only*
   requirement. `ended` is terminal, reached by exhaustion **or** by `end_duty`
   (the canonical reschedule/re-zone path). An infinite duty is never "exhausted",
@@ -304,7 +326,9 @@ Note the split: `dtstart`/`last_spawned_at`/`next_occurrence_at` use
 while `created_at`/`updated_at` keep the plain `IsoDateTimeSchema` — that one
 must stay untouched for LWW's sub-second precision, so it can't also be the
 truncating parser. See `docs/plans/duties-implementation-todo.md`
-"Notes / deviations" for the full reasoning.
+"Notes / deviations" for the full reasoning. Duty `dtstart` is always timed:
+the wire accepts a full datetime and never routes it through task
+`DueDateTimeSchema`, `due_all_day`, or noon-UTC inference.
 
 Stage 1 already extended `TaskRowSchema` with `duty_id: v.nullable(v.string())`
 (unbranded — tighten to `DutyIdSchema` once it exists) and
@@ -349,8 +373,8 @@ Per `docs/plans/pwa-type-safety.md`, every new boundary needs a parser + tests:
   discriminated pending-op union, with temp-id rebinding for `MintedDutyId` just
   like tasks.
 - **Form parser** (`pwa/src/domain/`): a `parseDutyForm` branding the duty
-  editor's raw inputs (title, rrule, dtstart, timezone, catch_up) at submit,
-  mirroring `parseTaskForm`.
+  editor's raw inputs (title, rrule, timed local `dtstart`, timezone, catch_up) at
+  submit, mirroring `parseTaskForm` but with no task-style all-day/noon path.
 - **Local mutations** (`pwa/src/domain/`): duty mutation guards, but **no local
   materialization** — the PWA never spawns instances (master Pillar 6). Duty
   create/edit/pause/delete are optimistic; instance appearance is server-driven.

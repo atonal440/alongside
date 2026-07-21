@@ -11,6 +11,14 @@ Alongside today leans on TypeScript as a hint layer and on hand-written shape ch
 
 Goal: introduce a single, layered type system in the worker where untrusted JSON, URL params, query params, form data, and imported rows are parsed once at the edge, internal code receives validated branded types, and illegal states fail to compile. The same architecture should later extend to the PWA, but that is out of scope for this first pass. This plan supersedes the existing `docs/plans/type-driven-safety.md`.
 
+> **Historical recurrence/time note:** the `IanaTimezone`/`nowInTz` and single
+> date-only-RRULE examples below describe this completed migration's original task
+> foundation. Duties Stage 2 supersedes those narrow claims: `nowUtc` remains,
+> `todayInTz`/`nowInTz` are removed, `Timezone` is a duty-local anchor-zone brand,
+> and `SeriesRrule` is a parallel timed profile. See
+> `docs/shared/parse/time.md` and `docs/shared/parse/recurrence.md` for current
+> contracts.
+
 ## Design Pillars
 
 1. **Four layers, one direction.** Wire (`unknown` from JSON) → Input (parsed, branded) → Domain (discriminated unions of branded values) → Row (DB storage). Conversion functions cross layers; everything in between speaks the layer's vocabulary only.

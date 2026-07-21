@@ -23,25 +23,30 @@ re-caught.
 | D3 | Server authoritative for spawning; the PWA never materializes locally. | master P6 |
 | D4 | Completion is decoupled from spawning; `completeTaskPlan` no longer spawns. | `00` §7 |
 | D5 | Phased: single-task first (Stages 1–8), task-graph template later (Stage 9). | master |
-| D6 | Minute-resolution UTC on every stored scheduling timestamp; no date-only fields. | `02` |
-| D7 | Per-duty **anchor zone** (`timezone`) expands the rule; instants stored are always UTC; no global tz. | `02` |
+| D6 | Minute-resolution UTC on every stored scheduling timestamp; tasks preserve all-day intent separately in `due_all_day`. | `02` |
+| D7 | Per-duty **anchor zone** (`timezone`) expands the rule; instants stored are always UTC; no global tz/date resolver. Null and explicit `UTC` have identical expansion semantics. | `02` |
 | D8 | The series anchor — `rrule` + `dtstart` + `timezone` — is **immutable**; reschedule/re-zone = `end_duty` + `create_duty`. | `02`, INV-A |
 | D9 | `catch_up: next` orphans stale opens + spawns one current; `all` spawns each (capped). | `00` §3 |
 | D10 | Delete-duty **orphans** every instance (keeps tasks), stops future spawns. | `00`, INV-H |
+| D11 | Duty recurrence uses a parallel `SeriesRrule` profile; the legacy infinite/date-only task profile remains unchanged until Stage 10. | `01`, Stage 2 |
+| D12 | Duty `dtstart` is always a real time. Duties have no all-day flag, accept no bare-date anchor, and perform no noon/all-day inference. | `02`, Stage 2 |
 
 ## 2. Schema of record
 
 **`duties`** — `id` (`d_…`), `title`, `notes`, `kickoff_note`,
 `task_type`(`action|plan`), `project_id`(FK→projects), `rrule`,
-`dtstart`(UTC datetime, **immutable**), `timezone`(nullable IANA, **immutable**;
-null⇒UTC expansion), `status`(`active|paused|ended`), `catch_up`(`next|all`),
+`dtstart`(minute-resolution UTC datetime, **immutable and always timed**; never a
+bare date and never inferred as noon/all-day), `timezone`(nullable IANA,
+**immutable**; null or explicit `UTC`⇒UTC expansion),
+`status`(`active|paused|ended`), `catch_up`(`next|all`),
 `last_spawned_at`(cursor, nullable), `next_occurrence_at`(nullable — see INV-C),
 `created_at`, `updated_at`.
 
 **`tasks`** += `duty_id`(FK→duties, nullable) and `occurrence_at`(nullable UTC
 datetime). Paired: both set or both null (INV-E). `due_date` is now a UTC datetime
-(D6). *Phase 2 adds* `template_node_key` (non-null on every duty instance, null on
-one-off tasks).
+(D6), with `due_all_day` as the separate nullable intent marker for task due dates;
+that task-only marker is not part of duties. *Phase 2 adds* `template_node_key`
+(non-null on every duty instance, null on one-off tasks).
 
 **`action_log`** += `duty_id`(nullable).
 
@@ -110,8 +115,30 @@ The authoritative statements `dutyFromRow` and the planners enforce:
 
 ## 4. Calendar-primitive signatures (`shared/parse/recurrence.ts`)
 
-All are anchor-zone-aware — every one takes the duty's `timezone` (null ⇒ UTC
-expansion). Passing UTC-only for a zoned duty silently drifts it across DST.
+The legacy `Rrule` profile remains infinite and date-only: frequencies
+`DAILY|WEEKLY|MONTHLY|YEARLY`, optional `INTERVAL`, and its existing date-level
+filters. The parallel duty-only `SeriesRrule` profile supports those frequencies
+plus `HOURLY|MINUTELY`, and adds `COUNT`, `UNTIL`, `BYHOUR`, and `BYMINUTE` to the
+legacy date-filter keys. `COUNT` and `UNTIL` are mutually exclusive. `SECONDLY`,
+`BYSECOND`, recurrence sets, and exceptions remain unsupported.
+
+`UNTIL` accepts only the RFC/basic UTC datetime form `YYYYMMDDTHHMMSSZ`; parsing
+normalizes it to the canonical minute-resolution UTC instant
+`YYYY-MM-DDTHH:MM:00Z` stored in `SeriesRruleParts.until`. Bare dates, extended-ISO
+text, local datetimes, and numeric offsets are rejected. UNTIL is an inclusive
+bound on the resolved UTC occurrence instants. `COUNT` likewise counts resolved,
+valid occurrence instants: a nonexistent wall-clock candidate skipped in a DST
+gap does **not** consume a count slot.
+
+All four primitives are anchor-zone-aware — every one takes the duty's
+`timezone`. Null and explicit `UTC` both expand in UTC. Other zones use a
+host-timezone-independent `Intl.DateTimeFormat` floating-wall-clock conversion:
+a nonexistent spring-gap wall time is skipped and a repeated fall-fold wall time
+chooses the earliest matching UTC instant. Passing UTC-only for a zoned duty would
+silently drift it across DST.
+
+`TimezoneSchema` accepts exact `UTC` or a value present in the runtime's
+`Intl.supportedValuesOf('timeZone')` list; noncanonical aliases are rejected.
 
 ```ts
 occurrencesBetween(parts, dtstart: IsoDateTime, timezone: Timezone | null,
@@ -125,6 +152,12 @@ latestOccurrenceAtOrBefore(parts, dtstart: IsoDateTime, timezone: Timezone | nul
 isSeriesExhausted(parts, dtstart: IsoDateTime, timezone: Timezone | null,
                   after: IsoDateTime | null): boolean
 ```
+
+`SERIES_OCCURRENCE_CAP = 10_000` is the public expansion guard and the maximum
+`COUNT`. Without an explicit `limit`, an expansion that would return more than the
+cap throws `SeriesExpansionLimitError`. An explicit `limit` must be an integer in
+`0..SERIES_OCCURRENCE_CAP` and stops cleanly at that many results. This guard is
+separate from Stage 4's smaller, caller-selected `maxPerRun` materialization cap.
 
 `nextOccurrence(parts, from)` — the legacy, single-arg, UTC-only primitive —
 survives **only** for the migration/legacy-recurrence path (Stage 1 A2 shim,
@@ -174,7 +207,7 @@ one of these cells — e.g. `end_duty`×INV-D, materialize-`next`×INV-G.)
 | `end_duty` (`setDutyStatusPlan→ended`) | INV-D (`next_occurrence_at=NULL`; **no** exhaustion requirement — works for infinite duties). |
 | `delete_duty` (`deleteDutyPlan`) | INV-H (`duty.orphan_all` then `duty.delete`); INV-J (bounded 2 statements). |
 | materialize `next` | INV-G (`orphan_stale{before:latest}` excludes current) + INV-K (unique index on the insert); INV-C (advance cursor + `next_occurrence_at`); INV-J (bulk orphan); **INV-L (status guard — no spawn if paused/ended between plan-build and apply)**. |
-| materialize `all` | INV-J (`maxPerRun` cap **passed into `occurrencesBetween` as `limit`** — expand at most `maxPerRun`, never the 10k runaway cap; remainder next run) + INV-K + **INV-L (status guard)**. |
+| materialize `all` | INV-J (`maxPerRun` cap **passed into `occurrencesBetween` as `limit`** — expand at most `maxPerRun`, never `SERIES_OCCURRENCE_CAP`; remainder next run) + INV-K + **INV-L (status guard)**. |
 | materialize → exhausted | INV-D (`status='ended'`, `next_occurrence_at=NULL`); the `null`-cursor `COUNT=1`/future-`dtstart` case is **not** ended prematurely; **INV-L (only from a still-active row)**. |
 | complete instance (`completeTask`) | INV-F (spawns nothing — the materializer owns recurrence); session_log→next kickoff carried by the materializer. |
 | backfill (Stage 4) | INV-B (cursor = `due_date` only if it is an occurrence, else `null` + `next_occurrence_at=firstOcc`); INV-F (paired with retiring completion-spawn); validate each row via `dutyFromRow`. |

@@ -16,8 +16,11 @@ really date-only complexity in disguise.
   a duty's `dtstart`, and a spawned instance's `occurrence_at` — is a UTC ISO-8601
   instant at **minute** resolution (`YYYY-MM-DDTHH:MM:00Z`; seconds truncated,
   no offset other than `Z`).
-- There are **no date-only fields**, and **no timezone is ever stored on a
-  timestamp**. The one anticipated exception is a duty's optional *anchor zone* —
+- There are **no date-only timestamp fields**, and **no timezone is ever stored on
+  a timestamp**. Tasks preserve whether a due date was submitted without a time in
+  the separate `due_all_day` intent marker. Duties deliberately do not: a duty's
+  `dtstart` is always timed, accepts no bare date, and performs no noon/all-day
+  inference. The one scheduling companion is a duty's optional *anchor zone* —
   a rule-expansion parameter, not a property of any stored time — described under
   the DST tradeoff below.
 - Timezone is otherwise a **presentation concern**: the PWA formats instants into
@@ -65,21 +68,26 @@ One instant type removes all three. This is why the change is a simplification.
 - The `IsoDate` brand as a domain/storage type. It survives, if at all, only as
   an input to a presentation formatter. Domain fields that were `IsoDate | null`
   become `IsoDateTime | null`.
-- The date-only RRULE profile: `isDateOnlyProfile` and the special-casing that
-  rejects time parts. RRULEs are expanded with a datetime `DTSTART` in UTC.
-- The `todayInZone` resolver and the `timezone`-in-the-spawn-path plumbing that
-  `00`/Stage 5 originally described. The materializer takes a UTC `now`, not a
-  zone-resolved `today`.
+- The date-only restriction from the **duty series path**. Stage 2 adds a parallel
+  timed `SeriesRrule`; legacy `parseRrule`/`isDateOnlyProfile` remain unchanged for
+  task migration until Stage 10.
+- The global date resolvers `todayInTz` and `nowInTz`, plus the
+  `timezone`-at-the-trigger-edge plumbing an earlier draft described. The
+  materializer takes a UTC `now`, not a zone-resolved `today`; `nowUtc` remains.
 - The "two vocabularies" hazard — there is one vocabulary, `IsoDateTime` (UTC).
 
 ### Enabled
 - **Time-of-day and sub-day recurrence**, which were out of scope purely because
   of date-only. "Every weekday at 09:00 UTC", "every 30 minutes" are now
-  expressible. (Sub-cron-interval recurrence — e.g. every 5 minutes against a
-  15-minute cron — spawns with up to one cron interval of lag; lazy-on-read
-  closes the gap the instant a client looks. Note it, don't forbid it.)
+  expressible through the series-only `HOURLY`/`MINUTELY` frequencies and
+  `BYHOUR`/`BYMINUTE` filters. Minute resolution is the floor: `SECONDLY` and
+  `BYSECOND` remain unsupported. (Sub-cron-interval recurrence — e.g. every 5
+  minutes against a 15-minute cron — spawns with up to one cron interval of lag;
+  lazy-on-read closes the gap the instant a client looks. Note it, don't forbid
+  it.)
 - **`now`-based materialization.** `occurrencesBetween(parts, dtstart, after,
-  through = now)` compares instants. No zone, no ambiguity, deterministic.
+  through = now)` compares instants. The optional per-duty zone is consumed only
+  during rule expansion; there is no global date resolution.
 
 ### Migrated
 - Existing date-only `due_date` values migrate to **noon UTC**, not midnight:
@@ -92,9 +100,10 @@ One instant type removes all three. This is why the change is a simplification.
   e.g. Kiribati), an acceptable edge for a personal task app. Document it in the
   migration header. When a migrated value is rendered as a plain date, format the
   instant's *date part in the viewer's local zone* — which now yields the original
-  date. (A truly rigorous all-day representation would need an explicit all-day
-  flag, but that reintroduces the date-only distinction this decision removes;
-  noon-UTC anchoring is the pragmatic single-representation answer.)
+  date. The landed schema also preserves that task-only intent explicitly in
+  `tasks.due_all_day`; downstream code reads the marker instead of trying to infer
+  all-day intent from a noon instant. Duties have no equivalent marker because
+  their anchor is always timed.
 - Existing date-only recurrence rules are reinterpreted with the noon-UTC
   `DTSTART` derived from the task's `due_date`, then folded into the duty they
   become (see the master's Migration Strategy).
@@ -122,6 +131,13 @@ and `occurrencesBetween` is anchor-zone-aware in Stage 2. Two modes:
   used **only to expand the rule**; the occurrences it produces are still stored
   as UTC instants. Unset ⇒ UTC expansion. It never puts a timezone on a timestamp
   and is never a user-global setting.
+
+Stage 2 implements zoned expansion as floating wall-clock recurrence plus an
+`Intl.DateTimeFormat` conversion to UTC, without consulting the host process
+timezone. A nonexistent wall time in a spring-forward gap is skipped; a repeated
+wall time in a fall-back fold selects the earliest matching UTC instant. Null and
+explicit `UTC` use the same UTC expansion path. These are fixed engine semantics,
+not behavior delegated to `rrule`'s host-sensitive timezone support.
 
 The anchor zone captures *intent* — "which wall clock this rule follows." It
 **defaults** to the creator's zone at create time (a duty made while travelling can
@@ -182,12 +198,13 @@ user-wide timezone setting driving what spawns.
 ## Presentation stays honest
 
 This is the display half of the two-conversions model above, plus its input
-mirror. Dropping date-only does not mean the UI shows raw UTC. The PWA continues
-to render friendly values — "Today", "Jun 30", "in 2 days", a due time when one is
-set — by formatting the stored UTC instant in the viewer's local zone. A date picker still
-exists; it just resolves the chosen local date (and optional time) to a UTC
-instant at submit, the same parse-at-the-boundary discipline every other input
-follows. The difference from before is that the ambiguity is resolved **once, at
+mirror. Dropping date-only storage does not mean the UI shows raw UTC. The PWA
+continues to render friendly values — "Today", "Jun 30", "in 2 days", a due time
+when one is set — by formatting the stored UTC instant in the viewer's local zone.
+Task input may still accept a bare date and preserve it as `due_all_day`; duty
+input requires a local date **and time** and resolves that pair to a UTC instant at
+submit. Stage 8 may prefill 09:00 as the explicit duty-editor default, but it never
+treats the duty as all-day or derives noon. The ambiguity is resolved **once, at
 the edge, in the direction of an instant**, instead of being re-resolved at every
 comparison.
 
