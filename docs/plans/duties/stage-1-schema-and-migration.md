@@ -123,7 +123,7 @@ export const duties = sqliteTable('duties', {
   task_type:          text('task_type', { enum: ['action', 'plan'] }).notNull().default('action'),
   project_id:         text('project_id').references(() => projects.id),
   rrule:              text('rrule').notNull(),
-  dtstart:            text('dtstart').notNull(),          // UTC datetime, minute resolution; immutable
+  dtstart:            text('dtstart').notNull(),          // always-timed UTC datetime, minute resolution; immutable; no bare-date/noon inference
   timezone:           text('timezone'),                   // optional IANA anchor zone; null = expand in UTC
   status:             text('status', { enum: ['active', 'paused', 'ended'] }).notNull().default('active'),
   catch_up:           text('catch_up', { enum: ['next', 'all'] }).notNull().default('next'),

@@ -78,14 +78,25 @@ for the reasoning.
    timestamp is a UTC instant at minute resolution. A duty's `dtstart` and each
    `occurrence_at` are UTC instants; the materializer compares against a UTC `now`,
    not a global zone-resolved `today`. This is app-wide (it migrates
-   `tasks.due_date` from date-only to a datetime) and deletes the global
-   today-resolver and the date-only RRULE profile. **Phase 1 also ships the
-   optional per-duty anchor zone** (`duties.timezone`): when set, a duty's rule is
+   `tasks.due_date` from date-only to a datetime) and deletes the global date
+   resolvers. Stage 2 adds a parallel timed series profile while the legacy
+   date-only task profile remains for migration through Stage 10. **Phase 1 also
+   ships the optional per-duty anchor zone** (`duties.timezone`): when set, a duty's rule is
    *expanded* in that IANA zone so wall-clock times stay stable across DST; the
    occurrence instants it produces are still stored in UTC. Unset ⇒ UTC expansion.
    A timezone is thus a per-duty rule-expansion input, never a property of a
    stored timestamp, and never a user-global setting. The full reasoning, the
    two-conversions model, and the migration are in `duties/02-timestamp-model.md`.
+5. **Duty anchors are always timed.** A duty accepts a full datetime `dtstart`,
+   not a bare date, and has no `due_all_day` flag. New-duty creation never infers
+   noon or all-day intent; Stage 8's 09:00 is an explicit editor default. This is
+   intentionally different from task `due_date`, whose all-day intent is stored
+   separately in `tasks.due_all_day`.
+6. **Series recurrence is an explicit supported subset.** Duty-only
+   `SeriesRrule` adds `HOURLY|MINUTELY`, `COUNT|UNTIL`, and
+   `BYHOUR|BYMINUTE` to the legacy frequency/filter set. It rejects `SECONDLY`,
+   `BYSECOND`, recurrence sets, and exceptions. `UNTIL` is basic UTC datetime
+   text normalized to minute UTC; `COUNT` and `UNTIL` are mutually exclusive.
 
 ## Design Pillars
 
@@ -155,9 +166,9 @@ duties
   kickoff_note     text                 template: seeds each instance's kickoff_note
   task_type        text enum(action|plan) NOT NULL default 'action'   template
   project_id       text FK projects     template (nullable)
-  rrule            text NOT NULL        series recurrence (finite allowed: COUNT/UNTIL; time-capable)
-  dtstart          text NOT NULL        series anchor instant (UTC datetime, minute resolution); immutable
-  timezone         text                 optional IANA anchor zone for rule expansion; null = UTC; immutable (series-defining)
+  rrule            text NOT NULL        SeriesRrule; exact finite/time subset in Decision 6
+  dtstart          text NOT NULL        always-timed series anchor (minute UTC; no bare-date/noon inference); immutable
+  timezone         text                 optional IANA anchor zone; null/UTC = UTC expansion; immutable (series-defining)
   status           text enum(active|paused|ended) NOT NULL default 'active'
   catch_up         text enum(next|all) NOT NULL default 'next'
   last_spawned_at  text                 cursor: occurrence instant of newest instance, null = none yet
@@ -183,8 +194,9 @@ instance always has both; a one-off or orphaned task has neither.
 Note that `tasks.due_date` itself changes under Decision 4: it migrates from a
 date-only string to a UTC datetime (minute resolution), app-wide. Existing values
 become **noon UTC** (all-day preservation, so the displayed calendar date is
-stable in the viewer's local zone). See `duties/02-timestamp-model.md` and Stage 1
-Part A.
+stable in the viewer's local zone), and task-only `due_all_day` records that
+intent explicitly. Duty anchors do not reuse either mechanism. See
+`duties/02-timestamp-model.md` and Stage 1 Part A.
 
 Idempotency backstop:
 
@@ -321,7 +333,7 @@ Implementation stages (cold-start work orders in `docs/plans/duties/`):
 | Stage | File | Scope |
 |---|---|---|
 | 1 | `stage-1-schema-and-migration.md` | **Part A:** app-wide minute-resolution-UTC unification (`due_date`→datetime, retire `IsoDate`, migrate). **Part B:** `duties` table (incl. `timezone`, `next_occurrence_at`), `tasks.duty_id`/`occurrence_at`, `action_log.duty_id`, unique index, hand-written SQL migration, `schema.sql`. **No duty backfill here** (moved to Stage 4). |
-| 2 | `stage-2-series-recurrence.md` | Extend `shared/parse/recurrence.ts`: finite, time-capable `SeriesRrule` (COUNT/UNTIL); `dtstart`-anchored, **anchor-zone-aware** `occurrencesBetween`/`nextOccurrenceAfter`/`latestOccurrenceAtOrBefore` over instants; `isSeriesExhausted`. *Adds* the series profile; legacy date-only profile removal is deferred to Stage 10. |
+| 2 | `stage-2-series-recurrence.md` | **Complete:** parallel `SeriesRrule` (`HOURLY`/`MINUTELY`, `BYHOUR`/`BYMINUTE`, mutually-exclusive COUNT/basic-UTC UNTIL; no SECONDLY/BYSECOND); fixed timed `dtstart`; host-independent `Intl` zoned expansion (gap-skip/fold-first; null=UTC); four calendar primitives; named 10,000 expansion cap/error. Legacy date-only profile removal is deferred to Stage 10. |
 | 3 | `stage-3-duty-domain-and-ops.md` | `DutyId`/`DutyStatus`/`CatchUpPolicy`/`Timezone` brands; `worker/src/domain/duty.ts` `DutyDomain`; `duty.*` `Op` variants + `duty.exists` precheck; monotonic-cursor `apply.ts` execution. |
 | 4 | `stage-4-spawn-and-materialize.md` | `materializeDutyPlan` (catch-up, orphan-on-`next`, `next_occurrence_at` maintenance, per-run cap, live-status guard, exhaustion → `ended`); monotonic cursor; **duty backfill** (validated); **export/import + wipe** (moved here — duties exist from the backfill); retire `completeTaskPlan`'s spawn branch. |
 | 5 | `stage-5-trigger-scheduled-and-lazy.md` | `wrangler.toml` cron, `scheduled()` handler, runtime budget, lazy-on-read hook in list/sync endpoints. |
@@ -333,13 +345,12 @@ Implementation stages (cold-start work orders in `docs/plans/duties/`):
 
 ## Out of Scope
 
-- **DST-transition edge cases in rule expansion.** Wall-clock-stable recurrence
-  *is* in Phase 1 (the anchor zone, Decision 4), but when an anchored wall-clock
-  time lands in a nonexistent (spring-forward) or doubled (fall-back) hour, we
-  rely on the `rrule` library's default skip/first-match behavior rather than
-  adding custom handling; Stage 8's editor steers users toward safe hours. A
-  user-*global* timezone setting is also out of scope — the zone is always
-  per-duty.
+- **Configurable DST-transition policy.** Wall-clock-stable recurrence is in
+  Phase 1 and has deterministic engine semantics: host-independent `Intl`
+  conversion skips nonexistent spring-gap times and chooses the earliest UTC
+  instant in a fall fold. User-selectable alternatives are out of scope; Stage
+  8's editor still steers users toward safe hours. A user-*global* timezone
+  setting is also out of scope — the zone is always per-duty.
 - **A `duty_occurrences` ledger** with per-occurrence skip/backfill history. The
   cursor model is deliberately lighter; `duties/00` records the upgrade path if
   it is ever needed.

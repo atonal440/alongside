@@ -41,8 +41,9 @@ materialization yet** (that's Stage 4) — this stage is the type-safe substrate
 - `enums.ts`: `DUTY_STATUSES = ['active','paused','ended']`,
   `CATCH_UP_POLICIES = ['next','all']`, their `Brand` types, `parseDutyStatus`,
   `parseCatchUpPolicy`. Re-export from `shared/parse/index.ts`.
-- `time.ts`: the `Timezone` brand + `parseTimezone` (if Stage 2 didn't already
-  land it) — needed by `dutyFromRow` to brand the nullable `timezone` column.
+- `time.ts`: reuse the `Timezone` brand/schema/parser landed in Stage 2 — needed
+  by `dutyFromRow` to brand the nullable `timezone` column. Null and explicit
+  `UTC` have identical recurrence semantics; there is no global date resolver.
 - Minting: add `mintDutyId()` next to `mintTaskId` (`worker/src/db.ts:86`),
   `d_${nanoid(5)}` branded `MintedDutyId`.
 
@@ -64,6 +65,8 @@ Define `DutyTemplate`, `DutySeries`, `DutyBase`, the three status variants, the
   `worker/src/domain/task.ts` — extract them to a shared module if that's
   cleaner than duplicating (see `docs/plans/duties-implementation-todo.md`
   "Notes / deviations" for why there are two minute-resolution parsers).
+  Duty `dtstart` is always timed: never use task `DueDateTimeSchema`,
+  `due_all_day`, or noon inference for it.
 - Cross-field invariants (accumulate as `ValidationError[]`, same style as
   `taskFromRow`) — expand the rule using the duty's own `timezone`:
   - `parts.until` present ⇒ `until >= dtstart`.
@@ -73,9 +76,10 @@ Define `DutyTemplate`, `DutySeries`, `DutyBase`, the three status variants, the
     ending exactly at `cursor`, or an `isOccurrence` helper).
   - `next_occurrence_at` present ⇒ it is a real occurrence of the rule that is
     strictly after `cursor` **when the cursor is set**, or **at or after
-    `dtstart`** when the cursor is null (a brand-new/backfilled duty has
-    `next_occurrence_at === dtstart`, the un-spawned first occurrence — do not
-    require strictly-after here), consistent with the rule + zone.
+    `dtstart`** when the cursor is null (a brand-new/backfilled duty stores the
+    first actual occurrence at or after the anchor, which can be later than
+    `dtstart` when filters exclude it — do not require strictly-after here),
+    consistent with the rule + zone.
   - `status === 'ended'` ⇒ `next_occurrence_at IS NULL`. That is the **only**
     invariant on `ended` — do **not** also require `isSeriesExhausted`. `ended` is a
     terminal state reachable two ways: a finite series ran out (exhaustion), *or*

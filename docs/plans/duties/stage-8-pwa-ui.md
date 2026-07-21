@@ -43,7 +43,9 @@ a one-off. This completes Phase 1 — duties are usable end to end.
   presentation only, per Decision 4), and the catch-up policy.
 - A cadence-summary helper in `pwa/src/utils/design.ts` that turns
   `SeriesRruleParts` into a short label. Keep it best-effort and total (never
-  throws; falls back to the raw rrule string).
+  throws; falls back to the raw rrule string). Handle `HOURLY`, `MINUTELY`,
+  `BYHOUR`, and `BYMINUTE`; do not assume the legacy task recurrence selector's
+  smaller vocabulary.
 - Per-row actions via the existing action-affordance pattern: Edit, Pause/Resume,
   End, Delete (Delete confirms and warns instances remain).
 - Wire the view into `App.tsx` and the reducer's view set; add a nav affordance.
@@ -54,7 +56,8 @@ a one-off. This completes Phase 1 — duties are usable end to end.
   reusing `EditView`'s recurrence input + error affordance), **dtstart** (a
   local date/time picker that resolves to a UTC instant at submit — Decision 4;
   default the time to a sensible hour, e.g. 09:00, when the user picks only a
-  date — this default is now *honest* because the anchor zone keeps it stable),
+  date — this is an explicit timed value, not an all-day/noon inference; duty
+  submission never sends a bare date and duties have no `due_all_day`),
   **timezone** (an IANA anchor-zone select, defaulting to the browser's
   `Intl.DateTimeFormat().resolvedOptions().timeZone`, with an explicit "UTC / no
   anchor" option; set ⇒ "daily at 9" stays 9am across DST — Decision 4),
@@ -92,11 +95,12 @@ a one-off. This completes Phase 1 — duties are usable end to end.
 - `DutiesView`: renders duties grouped by status; cadence summary for daily /
   weekly / monthly-nth / finite; delete confirmation copy warns instances remain.
 - `DutyEditView`: invalid rrule shows the field error and does not submit; valid
-  submit dispatches the create/update action with branded values.
+  submit dispatches the create/update action with branded values; choosing only a
+  date produces the explicit 09:00 default, never a bare-date/all-day duty.
 - `TaskMeta`: a task with `duty_id` shows the "from duty" badge; a legacy
   recurrence-only task shows "Recurring"; a plain task shows neither.
 - `design.ts` cadence summary: table-driven, total (never throws), fallback to
-  raw rrule for an unrecognized shape.
+  raw rrule for an unrecognized shape, with hourly/minutely and time-filter cases.
 
 ### 6. Docs
 

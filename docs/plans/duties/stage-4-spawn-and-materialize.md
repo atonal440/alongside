@@ -26,7 +26,8 @@ branch**. Still no triggers or public surfaces (Stages 5–6) — exercised by t
   is the current spawn site: its `recurrence.kind === 'recurring'` branch
   (`ops/task.ts:48-77`) builds the next task and carries `sessionLog ??
   kickoffNote` forward. **This branch is deleted here.**
-- From Stage 2: `occurrencesBetween(parts, dtstart, timezone, after, through)`,
+- From Stage 2: `occurrencesBetween(parts, dtstart, timezone, after, through,
+  limit?)`,
   `nextOccurrenceAfter(...)`, `isSeriesExhausted(...)` — all anchor-zone-aware.
 - From Stage 3: `DutyDomain`, `duty.insert/update/update_cursor/delete`,
   `duty.exists`, monotonic `duty.update_cursor` in `apply`.
@@ -94,8 +95,9 @@ Algorithm (from `00` §2–§4):
    - **`all`** → `missed = occurrencesBetween(parts, dtstart, timezone, cursor,
      now, /*limit*/ ctx.maxPerRun)` — **pass `maxPerRun` as the expansion limit**,
      don't expand-all-then-slice. A minutely duty months behind has millions of
-     occurrences; `occurrencesBetween` would hit its ~10 000 runaway cap and
-     throw/log, failing *every* materialization even though we only want 50. With
+     occurrences; `occurrencesBetween` would hit `SERIES_OCCURRENCE_CAP` (10,000)
+     and throw `SeriesExpansionLimitError`, failing *every* materialization even
+     though we only want 50. With
      the limit it stops at `maxPerRun`. One `task.insert` per returned occurrence;
      `newCursor =` the last spawned; the remainder is picked up next run (safe —
      the cursor only advances past what we spawned).
@@ -239,7 +241,10 @@ import wipe FK-fails or leaves stale/colliding duty rows (`03` State C). Extend
   can't do (Stage 2) — it lives here because it needs `dtstart`. Otherwise:
   materialize immediately only if `firstOcc <= now` — **not** `dtstart <= now`,
   which would spawn early for filtered rules. If `firstOcc > now`, just insert the
-  duty (it fires later via the gate).
+  duty (it fires later via the gate). The create input carries a full, timed
+  minute-resolution `dtstart`; reject bare dates and never infer all-day/noon.
+  The Stage 4 legacy backfill preserving noon-UTC task anchors is the explicit
+  migration exception, not the new-duty input contract.
 - `updateDutyPlan(duty, patch)` → `duty.update` on **template fields and
   `catch_up` only**. The series anchor — `rrule`, `dtstart`, **and `timezone`** —
   is immutable (all three define the occurrence calendar; editing any would strand

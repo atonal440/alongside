@@ -1,35 +1,46 @@
-import { unsafeBrand } from '../brand';
+import * as v from 'valibot';
+import { unsafeBrand, type Brand } from '../brand';
+import type { Result } from '../result';
 import {
   parseIsoDate,
   parseIsoDateTime,
   parseIanaTimezone,
+  parseSchema,
   type IanaTimezone,
   type IsoDate,
   type IsoDateTime,
+  type ValidationError,
 } from './primitives';
 
 export { parseIsoDate, parseIsoDateTime, parseIanaTimezone };
 export type { IanaTimezone, IsoDate, IsoDateTime };
 
+/** A duty-local IANA zone used to expand its recurrence rule. */
+export type Timezone = Brand<string, 'Timezone'>;
+
+let supportedTimezones: ReadonlySet<string> | undefined;
+
+function isSupportedTimezone(value: string): boolean {
+  if (value === 'UTC') return true;
+  if (!supportedTimezones) {
+    const intl = Intl as typeof Intl & {
+      supportedValuesOf?: (key: 'timeZone') => string[];
+    };
+    supportedTimezones = new Set(intl.supportedValuesOf?.('timeZone') ?? []);
+  }
+  return supportedTimezones.has(value);
+}
+
+export const TimezoneSchema = v.pipe(
+  v.string(),
+  v.check(isSupportedTimezone, 'Expected a canonical IANA timezone name or UTC.'),
+  v.transform(value => value as Timezone),
+);
+
+export function parseTimezone(input: unknown): Result<Timezone, ValidationError[]> {
+  return parseSchema(TimezoneSchema, input);
+}
+
 export function nowUtc(): IsoDateTime {
   return unsafeBrand<string, 'IsoDateTime'>(new Date().toISOString());
-}
-
-export function todayInTz(tz: IanaTimezone, date = new Date()): IsoDate {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
-  return unsafeBrand<string, 'IsoDate'>(`${values['year']}-${values['month']}-${values['day']}`);
-}
-
-export function nowInTz(tz: IanaTimezone): { date: IsoDate; dateTime: IsoDateTime } {
-  const current = new Date();
-  return {
-    date: todayInTz(tz, current),
-    dateTime: unsafeBrand<string, 'IsoDateTime'>(current.toISOString()),
-  };
 }

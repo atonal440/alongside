@@ -93,10 +93,15 @@ Reconcile every doc with the shipped system (`AGENTS.md` documentation rule):
 - `AGENTS.md` "Key Decisions": replace the completion-driven recurrence line
   with the duties model (series anchor, cron + lazy-read spawning, server
   authoritative). Update the recurrence caveat that said COUNT/UNTIL are
-  unsupported — they are, for duties. Add the timestamp-model decision
+  unsupported — duties use the exact Stage 2 series profile while the legacy
+  task profile is removed here. Preserve the series contract in the final docs:
+  HOURLY/MINUTELY and BYHOUR/BYMINUTE, no SECONDLY/BYSECOND, basic-UTC UNTIL
+  normalized to minute UTC, deterministic host-independent Intl gap-skip and
+  fold-first expansion, and the named 10,000 cap/error. Add the timestamp-model decision
   (minute-resolution UTC everywhere; no date-only fields; per-duty anchor zone for
-  wall-clock-stable recurrence; no global timezone) and note `due_date` is now a
-  datetime.
+  wall-clock-stable recurrence; no global timezone/date resolver), note
+  `due_date` is now a datetime with task-only `due_all_day`, and keep duty
+  `dtstart` explicitly always timed with no all-day/noon inference.
 - `docs/overview.md`: add duties to the architecture overview.
 - `docs/mcp-tools.md`: final pass — duty tools, duty object shape, task
   `duty_id`/`occurrence_at`, recurrence removed from `add_task`, tool count

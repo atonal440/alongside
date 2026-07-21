@@ -1,13 +1,23 @@
 # shared/parse/time.ts
 
-Time helpers built on the branded primitive date/time types.
+Time helpers and the duty-local recurrence-zone boundary.
+
+## Types and schema
+
+**`Timezone`** — Branded IANA timezone used only as a duty's recurrence anchor
+zone.
+
+**`TimezoneSchema` / `parseTimezone(input)`** — Accept exact `UTC` or membership
+in the runtime's canonical `Intl.supportedValuesOf('timeZone')` list and return
+the duty-specific brand. Noncanonical aliases are rejected. Nullability is a
+caller concern; recurrence treats null and explicit `UTC` identically.
 
 ## Functions
 
 **`nowUtc()`** — Returns the current timestamp as a branded `IsoDateTime`.
 
-**`todayInTz(tz, date?)`** — Returns the calendar date for a given IANA timezone.
-
-**`nowInTz(tz)`** — Returns both the timezone-local date and current UTC date-time.
-
 The module also re-exports `parseIsoDate`, `parseIsoDateTime`, and `parseIanaTimezone`.
+
+There is intentionally no global or user-wide date resolver. Stage 2 removed
+`todayInTz` and `nowInTz`; zoned calendar conversion occurs only inside the
+series recurrence primitives using each duty's own `Timezone`.

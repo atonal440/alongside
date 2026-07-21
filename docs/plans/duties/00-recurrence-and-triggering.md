@@ -54,6 +54,14 @@ duty.rrule     the recurrence, now allowed to be finite (COUNT / UNTIL) and time
 duty.last_spawned_at   cursor: the occurrence instant of the newest spawned instance
 ```
 
+This is a separate, duty-only profile. `SeriesRrule` accepts
+`DAILY|WEEKLY|MONTHLY|YEARLY|HOURLY|MINUTELY`, the legacy date filters, and
+`COUNT|UNTIL|BYHOUR|BYMINUTE`; it rejects `SECONDLY`, `BYSECOND`, recurrence
+sets, and exceptions. `COUNT` and `UNTIL` are mutually exclusive. `UNTIL` uses
+basic UTC datetime syntax (`YYYYMMDDTHHMMSSZ`) and is normalized to a canonical
+minute UTC instant. The legacy infinite/date-only task parser remains unchanged
+until Stage 10.
+
 (Timestamps are UTC instants at minute resolution — see `02-timestamp-model.md`.
 The engine below works entirely in instants; there is no date-only value and no
 "today". That is what makes the trigger section (§5) and timezone handling (§6)
@@ -66,8 +74,9 @@ is what makes the rest correct:
   `dtstart=2026-03-20` yields 2026-03-20, 2026-04-17, 2026-05-15, … regardless of
   when any instance was completed or whether one was skipped.
 - **Finite series become expressible.** `FREQ=DAILY;COUNT=30` from a fixed
-  `dtstart` has exactly 30 occurrences. `FREQ=WEEKLY;UNTIL=20261231` stops at
-  year end. When the cursor passes the last occurrence, the duty is *done* —
+  `dtstart` has exactly 30 occurrences.
+  `FREQ=WEEKLY;UNTIL=20261231T235900Z` stops at year end. When the cursor passes
+  the last occurrence, the duty is *done* —
   `status` transitions to `ended`.
 - **The cursor decouples spawn from completion.** "What's the next occurrence to
   spawn" is `occurrencesBetween(rule, dtstart, after=last_spawned_at,
@@ -81,7 +90,7 @@ Stage 2 adds one function that the whole engine leans on:
 ```ts
 // All occurrence instants strictly after `after`, up to and including `through`.
 // `after = null` means "from dtstart inclusive". Bounded and finite: it stops at
-// `through`, at the rule's own COUNT/UNTIL, or at a hard cap.
+// `through`, at the rule's own COUNT/UNTIL, or at SERIES_OCCURRENCE_CAP.
 occurrencesBetween(parts: SeriesRruleParts, dtstart: IsoDateTime,
                    after: IsoDateTime | null, through: IsoDateTime): IsoDateTime[]
 ```
@@ -95,6 +104,11 @@ isSeriesExhausted(parts: SeriesRruleParts, dtstart: IsoDateTime, after: IsoDateT
 
 (These sketches omit the per-duty `timezone` and `limit` parameters for
 readability — the canonical, anchor-zone-aware signatures are `04` §4.)
+
+`SERIES_OCCURRENCE_CAP` is 10,000. Without an explicit limit, exceeding it throws
+`SeriesExpansionLimitError`; callers may pass an integer limit from 0 through the
+cap to stop cleanly before that guard. Stage 4 passes its separate `maxPerRun` as
+this limit.
 
 `nextOccurrence` (the old strictly-after-one primitive) stays for the legacy
 migration path but is no longer the engine.
@@ -312,6 +326,12 @@ and neither ever lands on a stored timestamp. The materializer still takes a pla
 UTC `now`; the zone is consulted *inside* `occurrencesBetween` for a given duty,
 not at the trigger edge.
 
+The conversion is deterministic and independent of the host process timezone:
+Stage 2 expands a floating wall clock and uses `Intl.DateTimeFormat` to resolve it
+in the duty's zone. A nonexistent spring-gap time is skipped; a repeated fall-fold
+time chooses the earliest matching UTC instant. Null and explicit `UTC` are
+aliases. The engine does not delegate this policy to `rrule`'s timezone path.
+
 ## 7. Completion, after duties
 
 Once duties own spawning, completing a duty instance is just completing a task:
@@ -330,6 +350,10 @@ rule (§3) keeps exactly one *current* instance (older opens are detached).
 
 ## Decided (were open questions)
 
+- **A duty is always timed.** `dtstart` is a full minute-resolution datetime;
+  duty creation rejects a bare date and never infers noon or all-day intent.
+  Duties have no `due_all_day` field. Stage 8 may prefill 09:00 as an explicit
+  editor default; legacy noon-UTC backfill anchors remain migration history.
 - **`dtstart` is immutable.** Rescheduling a duty is `end_duty` + `create_duty`,
   not an in-place `dtstart`/`rrule` edit. Keeps the series anchor a stable fact
   and avoids "what happens to already-spawned future instances" (there are none to
