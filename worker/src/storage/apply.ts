@@ -178,6 +178,14 @@ async function runPreCheck(d1: D1Database, check: PreCheck): Promise<Result<void
       return runExistingRowCheck(d1, { entity: 'project', id: check.id });
     case 'link.blocks_acyclic':
       return runBlocksAcyclicCheck(d1, check.from, check.to);
+    case 'planning.revision': {
+      try {
+        const row = await d1.prepare('SELECT revision FROM planning_settings WHERE id = 1').first<{ revision: number }>();
+        return (row?.revision ?? null) === check.expected ? ok(undefined) : err({ kind: 'conflict', message: 'Planning settings revision changed.' });
+      } catch (cause) {
+        return err(storageError('Failed to read planning revision.', cause));
+      }
+    }
     case 'custom':
       return err({
         kind: 'invariant_violation',
@@ -200,6 +208,15 @@ function bindPreCheckGuard(d1: D1Database, check: PreCheck): PlannedStatement[] 
       return [bindExistingRowGuard(d1, { entity: 'project', id: check.id })];
     case 'link.blocks_acyclic':
       return [bindBlocksAcyclicGuard(d1, check.from, check.to)];
+    case 'planning.revision': {
+      // Fail a NOT NULL constraint inside the same batch if the precondition
+      // changed after planning. A pre-read alone cannot prevent an overwrite.
+      const condition = check.expected === null
+        ? 'EXISTS (SELECT 1 FROM planning_settings WHERE id = 1)'
+        : 'NOT EXISTS (SELECT 1 FROM planning_settings WHERE id = 1 AND revision = ?)';
+      const statement = d1.prepare(`INSERT INTO planning_settings (id,timezone,created_at,updated_at) SELECT 1,NULL,'','' WHERE ${condition}`);
+      return [guardedStatement(check.expected === null ? statement : statement.bind(check.expected))];
+    }
     case 'custom':
       return [];
     default:
@@ -259,6 +276,23 @@ function guardedStatement(statement: D1PreparedStatement, guard?: ExistingRowGua
 
 function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
   switch (op.kind) {
+    case 'planning.replace':
+      return [
+        guardedStatement(d1.prepare(`INSERT INTO planning_settings(id,timezone,buffer_minutes,revision,created_at,updated_at) VALUES(1,?,?,?,?,?)
+          ON CONFLICT(id) DO UPDATE SET timezone=excluded.timezone,buffer_minutes=excluded.buffer_minutes,revision=excluded.revision,updated_at=excluded.updated_at`)
+          .bind(op.settings.timezone, op.settings.bufferMinutes, op.settings.revision, op.now, op.now)),
+        guardedStatement(d1.prepare('DELETE FROM planning_working_hours WHERE settings_id = 1')),
+        ...op.settings.workingHours.map(hour => guardedStatement(d1.prepare('INSERT INTO planning_working_hours(settings_id,weekday,start_time,end_time) VALUES(1,?,?,?)').bind(hour.weekday, hour.start, hour.end))),
+      ];
+    case 'receipt.insert':
+      return [guardedStatement(d1.prepare('INSERT INTO command_receipts(command_id,payload_hash,result_json,created_at) VALUES(?,?,?,?)')
+        .bind(op.result.commandId, op.result.payloadHash, JSON.stringify(op.result), op.result.serverNow))];
+    case 'command.audit':
+      return [guardedStatement(d1.prepare('INSERT INTO command_audit(command_id,actor,reason,changes_json,created_at) VALUES(?,?,?,?,?)')
+        .bind(op.commandId, op.actor, op.reason, JSON.stringify(op.result.changes), op.result.serverNow))];
+    case 'command.feed':
+      return op.result.changes.map(change => guardedStatement(d1.prepare(`INSERT INTO change_feed(command_id,entity,entity_id,revision,operation,payload_json,created_at) VALUES(?,?,?,?,'upsert',?,?)`)
+        .bind(op.result.commandId, change.entity, change.id, change.after.revision, JSON.stringify(change.after), op.result.serverNow)));
     case 'task.insert':
       return [guardedStatement(bindInsert(d1, 'tasks', TASK_INSERT_COLUMNS, op.row))];
     case 'task.update': {

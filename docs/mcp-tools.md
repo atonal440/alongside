@@ -391,3 +391,25 @@ plan, counting guards/logs/side effects. Oversized work returns structured
 `capacity_exceeded` diagnostics (`requiredStatements`, `limit`, `retryable:
 false`) without applying any part of the plan. Replacement imports cannot be
 split into independent wipes; larger restore support requires staging.
+
+## Reliable planning settings (initial v2 command family)
+
+| Tool | Purpose |
+| --- | --- |
+| `get_planning_settings` | Read complete settings and revision, or null before setup |
+| `export_planning_settings` | Export portable preference values without revision or credentials |
+| `preview_changes` | Preview exactly one `planning.set` with no writes |
+| `apply_changes` | Commit that command with revision guard, receipt, audit and feed |
+
+Read/export take `{}`. Preview/apply use the strict envelope shown in
+[reliable settings commands](shared/reliable-settings-commands.md). Caller IDs
+are `c_` plus 5–64 ID characters; expected revision is null for first setup and
+numeric thereafter. Same ID/payload returns the original applied result; a
+different payload conflicts. A preview is not a lock. Revision conflicts carry
+current values and require an explicit rebase with a new ID. Tool errors expose
+`isError: true` and versioned `structuredContent.error`.
+
+Only planning settings use this protocol so far. Task commands, graph references,
+offline command overlays and full delta sync remain gated. Settings export is a
+preferences document, not a full backup; restore non-null values through
+`planning.set` using `actor: import` and the destination's expected revision.

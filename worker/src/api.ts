@@ -1,4 +1,5 @@
 import { handleFoundationRequest } from './foundation';
+import { handleCommandRequest } from './commands';
 import { DB, DomainOperationError } from './db';
 import type { InferOutput } from 'valibot';
 import type { ValidationError } from '@shared/parse';
@@ -52,6 +53,8 @@ function hasReservedProjectSubroute(pathname: string): boolean {
 }
 
 export async function handleApiRequest(request: Request, url: URL, db: DB): Promise<Response> {
+  const command = await handleCommandRequest(request, url, db);
+  if (command) return command;
   const foundation = await handleFoundationRequest(request, url, db);
   if (foundation) return foundation;
 

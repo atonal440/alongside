@@ -63,6 +63,9 @@ export const tasks = sqliteTable('tasks', {
   occurrence_at: text('occurrence_at'),
 }, (t) => [
   uniqueIndex('tasks_duty_occurrence').on(t.duty_id, t.occurrence_at),
+  index('idx_tasks_status').on(t.status),
+  index('idx_tasks_due_date').on(t.due_date),
+  index('idx_tasks_project_id').on(t.project_id),
 ]);
 
 export const taskLinks = sqliteTable('task_links', {
@@ -127,4 +130,38 @@ export const planningWorkingHours = sqliteTable('planning_working_hours', {
   check('planning_hours_weekday', sql`typeof(${t.weekday}) = 'integer' AND ${t.weekday} BETWEEN 1 AND 7`),
   check('planning_hours_start', sql`${t.start_time} GLOB '[0-2][0-9]:[0-5][0-9]' AND ${t.start_time} < '24:00'`),
   check('planning_hours_end', sql`${t.end_time} GLOB '[0-2][0-9]:[0-5][0-9]' AND ${t.end_time} < '24:00' AND ${t.end_time} > ${t.start_time}`),
+]);
+
+// Receipts never expire automatically: offline replay must remain safe. The
+// initial change feed covers planning settings only, not full-workspace sync.
+export const commandReceipts = sqliteTable('command_receipts', {
+  command_id: text('command_id').primaryKey().notNull(),
+  payload_hash: text('payload_hash').notNull(),
+  result_json: text('result_json').notNull(),
+  created_at: text('created_at').notNull(),
+}, t => [
+  check('receipt_hash', sql`length(${t.payload_hash}) = 64 AND ${t.payload_hash} NOT GLOB '*[^0-9a-f]*'`),
+  check('receipt_result', sql`json_valid(${t.result_json})`),
+]);
+export const commandAudit = sqliteTable('command_audit', {
+  command_id: text('command_id').primaryKey().notNull().references(() => commandReceipts.command_id),
+  actor: text('actor', { enum: ['user', 'llm', 'import', 'system'] }).notNull(),
+  reason: text('reason'), changes_json: text('changes_json').notNull(), created_at: text('created_at').notNull(),
+}, t => [
+  check('command_actor', sql`${t.actor} IN ('user','llm','import','system')`),
+  check('command_changes', sql`json_valid(${t.changes_json})`),
+]);
+export const changeFeed = sqliteTable('change_feed', {
+  seq: integer('seq').primaryKey({ autoIncrement: true }),
+  command_id: text('command_id').notNull().references(() => commandReceipts.command_id),
+  entity: text('entity', { enum: ['planning_settings'] }).notNull(),
+  entity_id: text('entity_id').notNull(), revision: integer('revision').notNull(),
+  operation: text('operation', { enum: ['upsert'] }).notNull(),
+  payload_json: text('payload_json').notNull(), created_at: text('created_at').notNull(),
+}, t => [
+  check('feed_entity', sql`${t.entity} = 'planning_settings' AND ${t.entity_id} = 'workspace'`),
+  check('feed_revision', sql`typeof(${t.revision}) = 'integer' AND ${t.revision} BETWEEN 0 AND 9007199254740991`),
+  check('feed_operation', sql`${t.operation} = 'upsert'`),
+  check('feed_payload', sql`json_valid(${t.payload_json})`),
+  index('change_feed_entity').on(t.entity, t.entity_id, t.seq),
 ]);
