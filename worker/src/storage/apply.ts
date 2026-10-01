@@ -359,6 +359,8 @@ function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
         guardedStatement(d1.prepare('UPDATE tasks SET project_id = NULL WHERE project_id = ?').bind(op.id)),
         guardedStatement(d1.prepare('DELETE FROM projects WHERE id = ?').bind(op.id), { entity: 'project', id: op.id }),
       ];
+    case 'graph.assert_acyclic':
+      return [bindBlocksAcyclicGuard(d1, op.from, op.to)];
     case 'link.insert':
       return [guardedStatement(d1.prepare('INSERT INTO task_links(from_task_id,to_task_id,link_type) VALUES(?,?,?)')
         .bind(op.row.from_task_id, op.row.to_task_id, op.row.link_type))];

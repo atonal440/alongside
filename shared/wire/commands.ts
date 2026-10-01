@@ -91,12 +91,16 @@ export const LinkAddCommandSchema = v.pipe(v.strictObject({ ...linkCommandEntrie
 }), v.check(value => value.from !== value.to, 'A task cannot link to itself.'),
 v.check(value => value.linkType !== 'related' || value.from < value.to, 'Related additions require ascending endpoint IDs.'));
 export const LinkRemoveCommandSchema = v.strictObject({ ...linkCommandEntries, kind: v.literal('link.remove'), expectedRevision: RevisionSchema });
-export const CommandEnvelopeSchema = v.strictObject({
+export const CommandEnvelopeSchema = v.pipe(v.strictObject({
   contractVersion: v.literal(2), commandId: CommandIdSchema,
   actor: v.picklist(['user', 'llm', 'import']),
   reason: v.optional(v.pipe(v.string(), v.maxLength(1_000))),
-  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.length(1, 'This release accepts exactly one command per batch.')),
-});
+  expectedStructuralRevision: v.optional(RevisionSchema),
+  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(20)),
+}), v.check(value => value.commands.length === 1 ? value.expectedStructuralRevision === undefined
+  : value.expectedStructuralRevision !== undefined && value.commands.every(command => !['planning.set','task.complete','task.delete','project.delete'].includes(command.kind)),
+'Mixed batches require an envelope structural revision; settings, completion and deletion remain standalone.'),
+v.check(value => { const refs=value.commands.flatMap(command => 'clientRef' in command && command.clientRef !== undefined ? [command.clientRef] : []); return new Set(refs).size === refs.length; }, 'Client references must be unique within a batch.'));
 export type CommandEnvelope = v.InferOutput<typeof CommandEnvelopeSchema>;
 export const parseCommandEnvelope = (input: unknown) => parseSchema(CommandEnvelopeSchema, input);
 export const PayloadHashSchema = v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/));
@@ -128,8 +132,9 @@ export const LinkChangeDiffSchema = v.strictObject({
   after: v.union([v.strictObject({ revision: RevisionSchema, row: TaskLinkRowSchema }), v.strictObject({ revision: RevisionSchema, deleted: v.literal(true) })]),
 });
 export const ChangeDiffSchema = v.variant('entity', [PlanningDiffSchema, ProjectChangeDiffSchema, TaskChangeDiffSchema, LinkChangeDiffSchema]);
-function validDiffIdentity(value: { serverNow: string; changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
+function validDiffIdentity(value: { serverNow: string; batch?: true | undefined; changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
   if (value.changes.length === 0) return false;
+  if (value.batch === true && (value.changes.length < 2 || value.changes.length > 20 || value.changes.some(change => change.entity === 'planning_settings' || (change.entity !== 'link' && 'deleted' in change.after)))) return false;
   const identities = new Set<string>();
   const createdIds = new Set<string>();
   for (const change of value.changes) {
@@ -155,7 +160,7 @@ function validDiffIdentity(value: { serverNow: string; changes: v.InferOutput<ty
       createdIds.add(change.id);
     }
   }
-  if (value.changes.length > 1) {
+  if (value.changes.length > 1 && value.batch !== true) {
     const [root, ...effects] = value.changes;
     if (root?.entity === 'task' && 'deleted' in root.after) {
       if (!effects.every(effect => effect.entity === 'link' && 'deleted' in effect.after && effect.before?.row !== null
@@ -173,7 +178,7 @@ function validDiffIdentity(value: { serverNow: string; changes: v.InferOutput<ty
         || !('row' in root.after) || root.after.row.status !== 'done' || successor.before !== null || !('row' in successor.after) || successor.after.row.status !== 'pending') return false;
     }
   }
-  return Object.keys(value.refs).length <= 1 && Object.values(value.refs).every(id => createdIds.has(id));
+  return Object.keys(value.refs).length <= (value.batch ? 20 : 1) && Object.values(value.refs).every(id => createdIds.has(id));
 }
 const RefsSchema = v.pipe(v.custom<Record<string, string>>(input => input !== null && typeof input === 'object' && !Array.isArray(input)
   && Object.entries(input).every(([key, value]) => /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(key)
@@ -181,7 +186,7 @@ const RefsSchema = v.pipe(v.custom<Record<string, string>>(input => input !== nu
 v.record(ClientRefSchema, v.union([TaskIdSchema, ProjectIdSchema])));
 const resultEntries = {
   contractVersion: v.literal(2), commandId: CommandIdSchema, payloadHash: PayloadHashSchema,
-  serverNow: EventInstantSchema, changes: v.pipe(v.array(ChangeDiffSchema), v.minLength(1), v.maxLength(100)),
+  serverNow: EventInstantSchema, batch: v.optional(v.literal(true)), changes: v.pipe(v.array(ChangeDiffSchema), v.minLength(1), v.maxLength(100)),
   warnings: v.pipe(v.array(v.string()), v.maxLength(0)),
   refs: RefsSchema,
 };

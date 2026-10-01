@@ -1,3 +1,5 @@
+import type { Revision } from '@shared/parse';
+import { planBatchCommand, type CommandReader } from './domain/batchCommands';
 import { readDeleteContext } from './storage/deletion';
 import { planDeleteCommand } from './domain/deleteCommands';
 import { readLinkContext } from './storage/link';
@@ -638,34 +640,47 @@ export class DB {
 
   async getLinkSnapshot(key: LinkKey): Promise<LinkSnapshot> { return (await readLinkContext(this.d1, key)).current; }
 
-  private async planCommand(input: CommandEnvelope, hash: string, clock: EventInstant): Promise<{ plan: Plan; result: ChangesResult }> {
+  private async planCommand(input: CommandEnvelope, hash: string, clock: EventInstant, reader:CommandReader={entity:key=>this.getEntitySnapshot(key),link:key=>readLinkContext(this.d1,key)}): Promise<{ plan: Plan; result: ChangesResult }> {
+    if(input.commands.length>1)return planBatchCommand(input,reader,(atom,virtual)=>this.planCommand(atom,hash,clock,virtual),(changes,expected)=>this.validateBatchGraph(changes,expected),hash,clock);
     const command = input.commands[0]!;
     if (command.kind === 'task.delete' || command.kind === 'project.delete') return planDeleteCommand(input, await readDeleteContext(this.d1, commandEntityKey(command)), hash, clock);
-    if (command.kind === 'link.add' || command.kind === 'link.remove') return planLinkCommand(input, await readLinkContext(this.d1, linkCommandKey(command)), hash, clock);
+    if (command.kind === 'link.add' || command.kind === 'link.remove') return planLinkCommand(input, await reader.link(linkCommandKey(command)), hash, clock);
     if (command.kind === 'planning.set') return planSettingsCommand(input, await this.getPlanningSettings(), hash, clock);
     if (command.kind === 'task.project.set') {
-      const current = await this.getEntitySnapshot({ entity: 'task', id: command.id });
-      const project = command.project === null ? null : await this.getEntitySnapshot({ entity: 'project', id: command.project.id });
+      const current = await reader.entity({ entity: 'task', id: command.id });
+      const project = command.project === null ? null : await reader.entity({ entity: 'project', id: command.project.id });
       return planTaskProjectCommand(input, current, project, hash, clock);
     }
     if (command.kind === 'task.complete') {
-      const current = await this.getEntitySnapshot({ entity: 'task', id: command.id });
-      const successor = command.successor === null ? null : await this.getEntitySnapshot({ entity: 'task', id: command.successor.id });
+      const current = await reader.entity({ entity: 'task', id: command.id });
+      const successor = command.successor === null ? null : await reader.entity({ entity: 'task', id: command.successor.id });
       return planCompleteCommand(input, current, successor, hash, clock);
     }
     if (command.kind !== 'task.create' && command.kind !== 'project.create') {
-      const snapshot = await this.getEntitySnapshot(commandEntityKey(command));
+      const snapshot = await reader.entity(commandEntityKey(command));
       return command.kind === 'task.content.set' || command.kind === 'project.content.set'
         ? planContentCommand(input, snapshot, hash, clock) : planStateCommand(input, snapshot, hash, clock);
     }
-    const current = await this.getEntitySnapshot(command.kind === 'task.create' ? { entity: 'task', id: command.id } : { entity: 'project', id: command.id });
+    const current = await reader.entity(command.kind === 'task.create' ? { entity: 'task', id: command.id } : { entity: 'project', id: command.id });
     const project = command.kind === 'task.create' && command.values.project !== null
-      ? await this.getEntitySnapshot({ entity: 'project', id: command.values.project.id }) : null;
+      ? await reader.entity({ entity: 'project', id: command.values.project.id }) : null;
     if (project !== null && project.structuralRevision !== current.structuralRevision) throw new CommandError({
       code: 'structural_conflict', path: ['commands', '0', 'expectedStructuralRevision'], message: 'Workspace changed between entity reads.', retryable: false,
       currentEntity: project, expectedStructuralRevision: command.expectedStructuralRevision, recoveryHint: 'Retain the proposed creation and preview again with a fresh command ID after rebasing.',
     });
     return planCreateCommand(input, current, project, hash, clock);
+  }
+
+  private async validateBatchGraph(changes:ChangesResult['changes'],expected:Revision):Promise<void> {
+    const row=await this.d1.prepare(`WITH RECURSIVE input AS (SELECT value FROM json_each(?)),
+      additions AS (SELECT json_extract(value,'$.after.row.from_task_id') AS from_id,json_extract(value,'$.after.row.to_task_id') AS to_id FROM input WHERE json_extract(value,'$.entity')='link' AND json_extract(value,'$.after.row.link_type')='blocks'),
+      edges AS (SELECT from_task_id AS from_id,to_task_id AS to_id FROM task_links WHERE link_type='blocks' AND NOT EXISTS(SELECT 1 FROM input WHERE json_extract(value,'$.entity')='link' AND json_extract(value,'$.after.deleted')=1 AND json_extract(value,'$.id')=json_array(from_task_id,to_task_id,link_type)) UNION SELECT from_id,to_id FROM additions),
+      reachable(origin,id) AS (SELECT from_id,to_id FROM additions UNION SELECT r.origin,e.to_id FROM reachable r JOIN edges e ON e.from_id=r.id)
+      SELECT structural_revision,EXISTS(SELECT 1 FROM reachable WHERE origin=id) AS has_cycle FROM workspace_versions WHERE id=1`).bind(JSON.stringify(changes)).first<{structural_revision:number;has_cycle:number}>();
+    if(!row)throw new Error('Workspace singleton is missing.');
+    if(row.structural_revision!==expected)throw new CommandError({code:'structural_conflict',path:['expectedStructuralRevision'],message:'Workspace changed while validating the final graph.',retryable:false,expectedStructuralRevision:expected,recoveryHint:'Retain the entire batch and explicitly rebase after inspecting current state.'});
+    if(row.has_cycle===1)throw new CommandError({code:'graph_cycle',path:['commands'],message:'The final blocks graph contains a new cycle.',retryable:false,recoveryHint:'Retain intent and revise the proposed dependency graph with a new command ID.'});
+    if(row.has_cycle!==0)throw new Error('Invalid final graph result.');
   }
 
   async getEntityVersion(key: EntityKey): Promise<EntityVersionResponse> {
@@ -709,7 +724,7 @@ export class DB {
     if (!clock.ok) throw new Error('Invalid server clock.');
     const planned = await this.planCommand(input, hash, clock.value);
     const capacity = checkPlanCapacity(this.d1, planned.plan);
-    if (!capacity.ok) throwAppError(capacity.error);
+    if (!capacity.ok) { if(capacity.error.kind==='capacity_exceeded')throw new CommandError({code:'capacity_exceeded',path:['commands'],message:`Atomic command requires ${capacity.error.requiredStatements} SQL statements; the limit is 100.`,retryable:false,requiredStatements:capacity.error.requiredStatements,limit:100,recoveryHint:'Retain the complete intent and explicitly reduce the scope; never split atomic changes silently.'},413);throwAppError(capacity.error); }
     const { applied: _applied, ...result } = planned.result;
     return { ...result, dryRun: true, requiredStatements: capacity.value.requiredStatements };
   }
@@ -736,6 +751,8 @@ export class DB {
       }
       throw error;
     }
+    const capacity=checkPlanCapacity(this.d1,planned.plan);
+    if(!capacity.ok && capacity.error.kind==='capacity_exceeded')throw new CommandError({code:'capacity_exceeded',path:['commands'],message:`Atomic command requires ${capacity.error.requiredStatements} SQL statements; the limit is 100.`,retryable:false,requiredStatements:capacity.error.requiredStatements,limit:100,recoveryHint:'Retain intent and explicitly reduce the complete atomic scope.'},413);
     const applied = await applyPlan(this.d1, planned.plan);
     if (applied.ok) return planned.result;
     // Concurrent identical execution can fail either the SQL revision guard or
@@ -747,7 +764,8 @@ export class DB {
       return concurrentReplay;
     }
     const command = input.commands[0]!;
-    if (command.kind === 'link.add' || command.kind === 'link.remove') {
+    if(input.commands.length>1){await this.planCommand(input,hash,clock.value);}
+    else if (command.kind === 'link.add' || command.kind === 'link.remove') {
       planLinkCommand(input, await readLinkContext(this.d1, linkCommandKey(command)), hash, clock.value);
     } else if (command.kind === 'planning.set') {
       const current = await this.getPlanningSettings();
