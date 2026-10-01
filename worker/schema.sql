@@ -160,10 +160,10 @@ CREATE TABLE IF NOT EXISTS change_feed (
   entity TEXT NOT NULL,
   entity_id TEXT NOT NULL,
   revision INTEGER NOT NULL CHECK (typeof(revision) = 'integer' AND revision BETWEEN 0 AND 9007199254740991),
-  operation TEXT NOT NULL CHECK (operation = 'upsert'),
+  operation TEXT NOT NULL CHECK (operation IN ('upsert','delete')),
   payload_json TEXT NOT NULL CHECK (json_valid(payload_json)),
   created_at TEXT NOT NULL,
-  CHECK ((entity = 'planning_settings' AND entity_id = 'workspace') OR (entity = 'task' AND entity_id GLOB 't_*') OR (entity = 'project' AND entity_id GLOB 'p_*'))
+  CHECK ((entity = 'planning_settings' AND entity_id = 'workspace') OR (entity = 'task' AND entity_id GLOB 't_*') OR (entity = 'project' AND entity_id GLOB 'p_*') OR (entity = 'link' AND CASE WHEN json_valid(entity_id) THEN json_type(entity_id) = 'array' AND json_array_length(entity_id) = 3 AND json_type(entity_id,'$[0]') = 'text' AND json_extract(entity_id,'$[0]') GLOB 't_*' AND json_type(entity_id,'$[1]') = 'text' AND json_extract(entity_id,'$[1]') GLOB 't_*' AND json_type(entity_id,'$[2]') = 'text' AND json_extract(entity_id,'$[2]') IN ('blocks','related') ELSE 0 END))
 );
 CREATE INDEX IF NOT EXISTS change_feed_entity ON change_feed(entity, entity_id, seq);
 

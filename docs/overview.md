@@ -25,7 +25,9 @@ and project archive/reopen while preserving legacy transition behavior.
 and identifies its legacy recurring successor for exact replay.
 [Guarded task field commands](shared/reliable-task-fields.md) add membership,
 task type and explicit legacy due-date/recurrence replacement.
-Deletion/link/batch commands and full delta sync remain gated.
+[Reliable link commands](shared/reliable-links.md) guard edge and graph revisions,
+reject cycles, and retain deletion identity for exact replay.
+Task/project deletion, mixed batches and full delta sync remain gated.
 
 ## Feature highlights
 

@@ -1,6 +1,6 @@
 import { parseSchema } from '@shared/parse';
 import { CommandEnvelopeSchema, PlanningSettingsExportSchema } from '@shared/wire/commands';
-import { parseEntityKey, parseEntityReadKey } from '@shared/wire/versions';
+import { parseEntityKey, parseEntityReadKey, parseLinkKey } from '@shared/wire/versions';
 import { CommandError } from './domain/commands';
 import { invalidInput } from './domain/temporalFoundation';
 import { readJson } from './parse/request';
@@ -91,10 +91,21 @@ const taskFieldSchemas = [
     recurrence: { type: ['string', 'null'], description: 'Legacy date-only RRULE; requires all-day/ambiguous dueDate. Clearing dueDate requires null.' },
   }, required: ['dueDate', 'dueAllDay', 'recurrence'] }),
 ];
+const linkSchemas = ['link.add', 'link.remove'].map(kind => ({
+  type: 'object', additionalProperties: false, properties: {
+    kind: { const: kind }, from: { type: 'string', pattern: '^t_[0-9A-Za-z_-]{5,}$' }, to: { type: 'string', pattern: '^t_[0-9A-Za-z_-]{5,}$' },
+    linkType: { enum: ['blocks', 'related'], description: 'Related additions require ascending endpoints; removal uses the exact stored orientation.' },
+    expectedRevision: { type: kind === 'link.add' ? ['integer', 'null'] : 'integer', minimum: 0, maximum: 9007199254740991 },
+    expectedStructuralRevision: { type: 'integer', minimum: 0, maximum: 9007199254740991 },
+  }, required: ['kind', 'from', 'to', 'linkType', 'expectedRevision', 'expectedStructuralRevision'],
+}));
 const commandEnvelope = { ...envelope, properties: { ...envelope.properties,
-  commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema, ...taskFieldSchemas] } },
+  commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema, ...taskFieldSchemas, ...linkSchemas] } },
 } };
 export const COMMAND_TOOLS = [
+  { name: 'get_link', description: 'Read an exact link orientation, its live/deleted revision and the structural revision together. Related additions require ascending IDs; legacy reversed links remain inspectable/removable. Use for reliable link planning.', inputSchema: {
+    type: 'object', additionalProperties: false, properties: { entity: { const: 'link' }, from: { type: 'string' }, to: { type: 'string' }, linkType: { enum: ['blocks', 'related'] } }, required: ['entity', 'from', 'to', 'linkType'],
+  } },
   { name: 'get_entity', description: 'Read a task/project row and its entity/structural versions together. Missing identities return null row/version; tombstones have null row and retained deleted version. Use for reliable command planning.', inputSchema: {
     type: 'object', oneOf: ['task', 'project'].map(entity => ({ type: 'object', additionalProperties: false, properties: { entity: { const: entity }, id: { type: 'string' } }, required: ['entity', 'id'] })),
   } },
@@ -106,10 +117,15 @@ export const COMMAND_TOOLS = [
   } },
   { name: 'get_planning_settings', description: 'Read complete workspace planning settings and their revision, or null before setup.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'export_planning_settings', description: 'Export only planning preferences, without revision or credentials. Restore non-null values through planning.set with a fresh command ID and current expectedRevision. This is not a full-workspace backup.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
-  { name: 'preview_changes', description: 'Preview a reliable command without writes. Exactly one supported settings/task/project command (creation, content, state, completion, project membership, type or legacy schedule); creation requires a stable ID, no prior identity history and the workspace structural revision. Use the current numeric revision for edits; initial settings and creation use null. A preview is not a lock.', inputSchema: commandEnvelope },
-  { name: 'apply_changes', description: 'Atomically apply one supported settings/task/project command, with a caller-minted command ID and expected revision. Same ID/payload returns the original result; a different payload conflicts. Includes receipt, audit and command feed. Creation supports scoped clientRef/ID mapping. Content commands change only title/notes/kickoff and task session log; Focus/deferral follow existing pending-task transitions; reopening clears both. Project state preserves members/links. Completion uses structural guards and requires a stable successor ID for legacy recurrence, or successor:null otherwise. Membership uses structural and selected-project guards. Legacy schedule changes replace only existing due-date classification/recurrence, not future explicit date roles. Deletion, links, mixed graph batches and offline overlays follow later.', inputSchema: commandEnvelope },
+  { name: 'preview_changes', description: 'Preview a reliable command without writes. Exactly one supported settings/task/project/link command; links require entity/structural revisions and existing endpoints, with atomic blocks-cycle validation; creation requires a stable ID, no prior identity history and the workspace structural revision. Use the current numeric revision for edits; initial settings and creation use null. A preview is not a lock.', inputSchema: commandEnvelope },
+  { name: 'apply_changes', description: 'Atomically apply one supported settings/task/project/link command, with a caller-minted command ID and expected revision. Same ID/payload returns the original result; a different payload conflicts. Includes receipt, audit and command feed. Creation supports scoped clientRef/ID mapping. Content commands change only title/notes/kickoff and task session log; Focus/deferral follow existing pending-task transitions; reopening clears both. Project state preserves members/links. Completion uses structural guards and requires a stable successor ID for legacy recurrence, or successor:null otherwise. Membership uses structural and selected-project guards. Legacy schedule changes replace only existing due-date classification/recurrence, not future explicit date roles. Link add/remove are guarded; related additions use ascending IDs and prevent reversed duplicates, blocks additions reject cycles. Deletion of tasks/projects, mixed graph batches and offline overlays follow later.', inputSchema: commandEnvelope },
 ];
 export async function callCommandTool(name: string, args: unknown, db: DB): Promise<unknown> {
+  if (name === 'get_link') {
+    const key = parseLinkKey(args);
+    if (!key.ok) throw new CommandError(invalidInput(key.error), 400);
+    return db.getLinkSnapshot(key.value);
+  }
   if (name === 'get_entity') {
     const key = parseEntityReadKey(args);
     if (!key.ok) throw new CommandError(invalidInput(key.error), 400);
@@ -140,6 +156,7 @@ export async function callCommandTool(name: string, args: unknown, db: DB): Prom
 }
 export async function handleCommandRequest(request: Request, url: URL, db: DB): Promise<Response | null> {
   const route = [
+    ['POST', '/api/v2/link', 'get_link'],
     ['POST', '/api/v2/entity', 'get_entity'],
     ['POST', '/api/v2/entity-version', 'get_entity_version'],
     ['GET', '/api/v2/planning-settings', 'get_planning_settings'],

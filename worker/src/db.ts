@@ -1,3 +1,6 @@
+import { readLinkContext } from './storage/link';
+import { linkCommandKey, planLinkCommand } from './domain/linkCommands';
+import type { LinkKey, LinkSnapshot } from '@shared/wire/versions';
 import { checkPlanCapacity, readEntityVersion } from './storage/apply';
 import type { EntityKey, EntityVersionResponse, EntityReadKey, EntitySnapshot } from '@shared/wire/versions';
 import { readEntitySnapshot } from './storage/entity';
@@ -631,8 +634,11 @@ export class DB {
     return readEntitySnapshot(this.d1, key);
   }
 
+  async getLinkSnapshot(key: LinkKey): Promise<LinkSnapshot> { return (await readLinkContext(this.d1, key)).current; }
+
   private async planCommand(input: CommandEnvelope, hash: string, clock: EventInstant): Promise<{ plan: Plan; result: ChangesResult }> {
     const command = input.commands[0]!;
+    if (command.kind === 'link.add' || command.kind === 'link.remove') return planLinkCommand(input, await readLinkContext(this.d1, linkCommandKey(command)), hash, clock);
     if (command.kind === 'planning.set') return planSettingsCommand(input, await this.getPlanningSettings(), hash, clock);
     if (command.kind === 'task.project.set') {
       const current = await this.getEntitySnapshot({ entity: 'task', id: command.id });
@@ -738,7 +744,9 @@ export class DB {
       return concurrentReplay;
     }
     const command = input.commands[0]!;
-    if (command.kind === 'planning.set') {
+    if (command.kind === 'link.add' || command.kind === 'link.remove') {
+      planLinkCommand(input, await readLinkContext(this.d1, linkCommandKey(command)), hash, clock.value);
+    } else if (command.kind === 'planning.set') {
       const current = await this.getPlanningSettings();
       if ((current?.revision ?? null) !== command.expectedRevision) throw revisionConflict(command.expectedRevision, current);
     } else if (command.kind === 'task.create' || command.kind === 'project.create') {

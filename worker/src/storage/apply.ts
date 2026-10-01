@@ -329,8 +329,8 @@ function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
       return [guardedStatement(d1.prepare('INSERT INTO command_audit(command_id,actor,reason,changes_json,created_at) VALUES(?,?,?,?,?)')
         .bind(op.commandId, op.actor, op.reason, JSON.stringify(op.result.changes), op.result.serverNow))];
     case 'command.feed':
-      return op.result.changes.map(change => guardedStatement(d1.prepare(`INSERT INTO change_feed(command_id,entity,entity_id,revision,operation,payload_json,created_at) VALUES(?,?,?,?,'upsert',?,?)`)
-        .bind(op.result.commandId, change.entity, change.id, change.after.revision, JSON.stringify(change.after), op.result.serverNow)));
+      return op.result.changes.map(change => guardedStatement(d1.prepare(`INSERT INTO change_feed(command_id,entity,entity_id,revision,operation,payload_json,created_at) VALUES(?,?,?,?,?,?,?)`)
+        .bind(op.result.commandId, change.entity, change.id, change.after.revision, change.entity === 'link' && 'deleted' in change.after ? 'delete' : 'upsert', JSON.stringify(change.after), op.result.serverNow)));
     case 'task.insert':
       return [guardedStatement(bindInsert(d1, 'tasks', TASK_INSERT_COLUMNS, op.row))];
     case 'task.update': {
@@ -356,6 +356,9 @@ function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
         guardedStatement(d1.prepare('UPDATE tasks SET project_id = NULL WHERE project_id = ?').bind(op.id)),
         guardedStatement(d1.prepare('DELETE FROM projects WHERE id = ?').bind(op.id), { entity: 'project', id: op.id }),
       ];
+    case 'link.insert':
+      return [guardedStatement(d1.prepare('INSERT INTO task_links(from_task_id,to_task_id,link_type) VALUES(?,?,?)')
+        .bind(op.row.from_task_id, op.row.to_task_id, op.row.link_type))];
     case 'link.upsert':
       return [
         guardedStatement(
