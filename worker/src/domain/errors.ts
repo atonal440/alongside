@@ -6,6 +6,7 @@ export type AppError =
   | { kind: 'conflict'; message: string }
   | { kind: 'invalid_transition'; message: string }
   | { kind: 'invariant_violation'; message: string }
+  | { kind: 'capacity_exceeded'; requiredStatements: number; limit: number }
   | { kind: 'storage'; message: string; cause?: unknown };
 
 export function validationErrorResult(errors: ValidationError[]): AppError {
@@ -22,6 +23,8 @@ export function appErrorStatus(error: AppError): number {
     case 'invalid_transition':
     case 'invariant_violation':
       return 409;
+    case 'capacity_exceeded':
+      return 413;
     case 'storage':
       return 500;
   }
@@ -33,6 +36,8 @@ export function appErrorMessage(error: AppError): string {
       return error.errors.map(issue => issue.message).join('; ');
     case 'not_found':
       return error.id ? `${error.entity} not found: ${error.id}` : `${error.entity} not found`;
+    case 'capacity_exceeded':
+      return `Atomic plan requires ${error.requiredStatements} SQL statements; the limit is ${error.limit}.`;
     case 'conflict':
     case 'invalid_transition':
     case 'invariant_violation':
