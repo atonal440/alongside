@@ -6,6 +6,11 @@ tags: [overview]
 
 Alongside is a lightweight, offline-first task manager built around conversational workflow with Claude. It consists of three main parts: a **Cloudflare Worker** backend (REST API + MCP endpoint + OAuth 2.1 server + iframe widget), a **React PWA** frontend (local-first with IndexedDB), and a **shared types/readiness** layer used by both.
 
+The [power-user plan](plans/README.md) owns future work. Its first runtime
+foundation adds read-only capabilities, structured time resolution, and legacy
+date previews; see [temporal contracts](shared/temporal-foundation.md). Rich task
+dates, hierarchy, reliable commands, blocks and delivery remain gated.
+
 ## Feature highlights
 
 - **Offline-first PWA** — all reads and writes go to IndexedDB first; changes sync to the server when online via [[sync|pwa/api/sync.ts]]
@@ -20,7 +25,7 @@ Alongside is a lightweight, offline-first task manager built around conversation
 - **User preferences** — key-value store for per-user settings: `sort_by`, `urgency_visibility`, `kickoff_nudge`, `session_log`, `interruption_style`, `planning_prompt`; applied at session start
 - **Recurrence (iCal RRULE)** — tasks can carry an infinite date-only `recurrence` field (e.g. `FREQ=WEEKLY;INTERVAL=1`, `FREQ=MONTHLY;BYDAY=3FR`, or `FREQ=YEARLY;BYMONTH=11;BYDAY=TH;BYSETPOS=4`); completing a recurring task auto-creates the next occurrence and carries the `session_log` forward as `kickoff_note`
 - **Import / export** — `GET /api/export` returns a full JSON snapshot; `POST /api/import` (with optional `?dry_run=true`) restores from a snapshot
-- **MCP integration** — 20 tools over JSON-RPC at `/mcp` for Claude and other MCP clients; see [[mcp-tools]] for the full reference
+- **MCP integration** — conversational tools over JSON-RPC at `/mcp` for Claude and other MCP clients; see [[mcp-tools]] for the full reference
 
 ## How data flows
 

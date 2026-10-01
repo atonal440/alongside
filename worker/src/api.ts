@@ -1,3 +1,4 @@
+import { handleFoundationRequest } from './foundation';
 import { DB, DomainOperationError } from './db';
 import type { InferOutput } from 'valibot';
 import type { ValidationError } from '@shared/parse';
@@ -48,6 +49,9 @@ function hasReservedProjectSubroute(pathname: string): boolean {
 }
 
 export async function handleApiRequest(request: Request, url: URL, db: DB): Promise<Response> {
+  const foundation = await handleFoundationRequest(request, url, db);
+  if (foundation) return foundation;
+
   // GET /api/tasks — list all non-done tasks
   const listTasksRoute = parseRoute(RestRouteSpecs.listTasks, request, url);
   if (!listTasksRoute.ok) return validationJson(listTasksRoute.error);

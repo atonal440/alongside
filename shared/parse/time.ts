@@ -15,13 +15,17 @@ import {
 export { parseIsoDate, parseIsoDateTime, parseIanaTimezone };
 export type { IanaTimezone, IsoDate, IsoDateTime };
 
-/** A duty-local IANA zone used to expand its recurrence rule. */
+/** A validated IANA zone shared by recurrence and planning intent. */
 export type Timezone = Brand<string, 'Timezone'>;
 
 let supportedTimezones: ReadonlySet<string> | undefined;
 
 function isSupportedTimezone(value: string): boolean {
   if (value === 'UTC') return true;
+  // Intl's enumeration omits IANA fixed-offset identifiers (including UTC−12).
+  if (/^Etc\/GMT[+-](?:[0-9]|1[0-4])$/.test(value)) {
+    try { new Intl.DateTimeFormat('en-US', { timeZone: value }).format(); return true; } catch { return false; }
+  }
   if (!supportedTimezones) {
     const intl = Intl as typeof Intl & {
       supportedValuesOf?: (key: 'timeZone') => string[];

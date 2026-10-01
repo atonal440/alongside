@@ -365,3 +365,21 @@ Update the kickoff note on a task or project. A kickoff note is a forward-lookin
   updated_at:    string
 }
 ```
+
+## Temporal foundation (v2)
+
+`get_capabilities`, `resolve_time`, and `preview_legacy_dates` are read-only
+structured tools. Their inputs/results match the [v2 REST foundation](api.md#v2-temporal-foundation).
+Resolve before creating time intent; inspect capability gates before assuming
+hierarchy, reminders, command replay or new sync is available. An omitted zone
+uses workspace settings or a reported UTC fallback, never the host zone.
+
+A fold returns `ambiguous_local_time` unless earlier/later is explicit. A gap
+returns valid offset interpretations to choose from. Date deadlines resolve to
+an exclusive next-date boundary; elapsed and calendar offsets have distinct
+variants. Invalid input and temporal errors return `isError: true` plus
+`structuredContent.error` with code/path/recovery details.
+
+Legacy preview reports targets and ambiguity without writing. Follow
+`nextCursor` via `after`; pages explicitly do not promise snapshot consistency.
+See [temporal contracts](shared/temporal-foundation.md) for examples and limits.

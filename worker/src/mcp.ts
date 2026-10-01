@@ -1,3 +1,4 @@
+import { callFoundationTool, FOUNDATION_TOOLS, FoundationInputError } from './foundation';
 import { DB } from './db';
 import type { Task, Project } from '@shared/types';
 import type { Env } from './index';
@@ -80,6 +81,7 @@ PREFERENCES: When the user states a preference, call update_preference immediate
 `.trim();
 
 export const TOOLS = [
+  ...FOUNDATION_TOOLS,
   {
     name: 'start_session',
     description: 'Call at the start of every session. Returns ready tasks, preferences, and session instructions.',
@@ -364,6 +366,7 @@ const UI_RESOURCES = [
 ];
 
 async function handleToolCall(name: string, args: Record<string, unknown>, db: DB) {
+  if (FOUNDATION_TOOLS.some(tool => tool.name === name)) return callFoundationTool(name, args, db);
   switch (name) {
     case 'show_tasks': {
       const taskIds = args.task_ids as string[];
@@ -671,6 +674,9 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env): Prom
           ...meta,
         });
       } catch (e) {
+        if (e instanceof FoundationInputError) {
+          return mcpResponse(body.id, { isError: true, content: [{ type: 'text', text: e.message }], structuredContent: { contractVersion: 2, error: e.detail } });
+        }
         const msg = e instanceof Error ? e.message : 'Unknown error';
         return mcpError(body.id, -32000, msg);
       }

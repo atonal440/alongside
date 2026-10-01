@@ -1,9 +1,13 @@
+import { parseFoundationErrorEnvelope, parseCapabilities, parseTimeResolution, parseLegacyDatesPreview, type Capabilities, type TimeResolution, type LegacyDatesPreview, type ResolveTimeInput, type LegacyDatesPreviewInput } from '@shared/wire/planning';
+import type { Timezone } from '@shared/parse';
 import * as v from 'valibot';
 import type { Task, Project, TaskLink } from '../types';
 import { TaskRowSchema, ProjectRowSchema, TaskLinkRowSchema, parseTaskRow } from '@shared/wire/rows';
 import { parseSchema } from '@shared/parse';
 import { apiRequest, type ApiConfig } from './client';
-import type { ApiResult } from './result';
+import type { ApiErrorBody, ApiResult } from './result';
+import type { Result } from '@shared/result';
+import type { ValidationError } from '@shared/parse';
 
 // PWA-local wire request body types (field names match the REST contract).
 // Intentionally separate from shared/types aliases — stage 6 finalises the migration.
@@ -59,7 +63,41 @@ function jsonBody(body: unknown): RequestInit {
   return { method: 'POST', body: JSON.stringify(body) };
 }
 
+const LegacyErrorSchema = v.object({
+  error: v.string(),
+  details: v.optional(v.array(v.object({ code: v.string(), path: v.array(v.string()), message: v.string() }))),
+});
+function parseFoundationError(raw: unknown): Result<ApiErrorBody, ValidationError[]> {
+  // Auth/gateway errors may predate v2. Only unversioned string envelopes use
+  // this validated fallback; declared v2 and all other JSON use the v2 parser.
+  if (raw !== null && typeof raw === 'object' && !('contractVersion' in raw)
+    && 'error' in raw && typeof raw.error === 'string') {
+    const legacy = parseSchema(LegacyErrorSchema, raw);
+    return legacy.ok ? { ok: true, value: { error: legacy.value.error, ...(legacy.value.details === undefined ? {} : { details: legacy.value.details }) } } : legacy;
+  }
+  const parsed = parseFoundationErrorEnvelope(raw);
+  if (!parsed.ok) return parsed;
+  return { ok: true, value: {
+    error: parsed.value.error.message,
+    contractError: parsed.value.error,
+    ...(parsed.value.error.details === undefined ? {} : { details: parsed.value.error.details }),
+  } };
+}
+
 export const api = {
+  capabilities(config: ApiConfig, timezone?: Timezone): Promise<ApiResult<Capabilities>> {
+    const query = timezone === undefined ? '' : `?timezone=${encodeURIComponent(timezone)}`;
+    return apiRequest(`/api/v2/capabilities${query}`, {}, config, parseCapabilities, parseFoundationError);
+  },
+
+  resolveTime(body: ResolveTimeInput, config: ApiConfig): Promise<ApiResult<TimeResolution>> {
+    return apiRequest('/api/v2/resolve-time', jsonBody(body), config, parseTimeResolution, parseFoundationError);
+  },
+
+  previewLegacyDates(body: LegacyDatesPreviewInput, config: ApiConfig): Promise<ApiResult<LegacyDatesPreview>> {
+    return apiRequest('/api/v2/legacy-dates/preview', jsonBody(body), config, parseLegacyDatesPreview, parseFoundationError);
+  },
+
   createTask(body: TaskCreateBody, config: ApiConfig): Promise<ApiResult<Task>> {
     return apiRequest('/api/tasks', jsonBody(body), config, parseTaskRow);
   },
