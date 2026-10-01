@@ -4,7 +4,7 @@ The v2 command endpoint now supports `task.focus.set`, `task.defer.set`,
 `task.reopen`, `project.archive` and `project.reopen`. These commands add
 receipt-backed concurrency protection to existing transitions; they do not
 change the legacy recurrence or readiness model. Read the entity with
-`get_entity`, retain that numeric revision, and send exactly one command in
+`get_entity`, retain that numeric revision, and send a standalone command in
 the existing v2 envelope.
 
 ```json
@@ -92,3 +92,6 @@ The PWA queue still uses legacy operations. Broad `reliableCommands` and
 `deltaSync` remain false pending deletion/graph batches, workspace
 sync/restore and retained offline intention. Future task statuses, terminal
 timestamps and soft deletion belong to their planned later slice.
+
+These transitions also compose in [bounded mixed batches](reliable-batches.md),
+where all written and derived identities must remain distinct.

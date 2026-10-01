@@ -411,8 +411,7 @@ current values and require an explicit rebase with a new ID. Tool errors expose
 
 Settings, single task/project creation/content, task focus/deferral/reopen and
 project archive/reopen, reliable completion and task membership/type/legacy-schedule
-and link add/remove/deletion commands use this protocol. Compound lifecycle batches,
-offline command overlays and full delta sync remain subsequent increments. Settings export is a
+and link add/remove/deletion commands use this protocol. Offline command overlays and full delta sync remain subsequent increments. Settings export is a
 preferences document, not a full backup; restore non-null values through
 `planning.set` using `actor: import` and the destination's expected revision.
 
@@ -440,7 +439,7 @@ content/version/structural snapshot. `link.add`/`link.remove` guard edge and
 aggregate revisions; related additions require ascending IDs and no reverse
 duplicate, while blocks additions reject cycles. Removal keeps a tombstone and
 uses the stored orientation. See [reliable links](shared/reliable-links.md).
-Mixed creation/edit/state/membership/link batches are available with the
+Mixed task/project/link batches, including lifecycle effects, use the
 envelope structural revision and distinct written identities; see
 [bounded batches](shared/reliable-batches.md).
 
@@ -492,9 +491,10 @@ with exact `requiredStatements` and `limit: 100`; no split writes occur. See
 
 
 Mixed `preview_changes`/`apply_changes` accept 2–20 supported non-lifecycle
-commands with an envelope `expectedStructuralRevision`. Graph commands share
+commands, including completion/deletion, with an envelope `expectedStructuralRevision`. Graph commands share
 that base revision; create referenced entities earlier and write each identity
 once. Results add `batch: true` and all scoped refs. Final dependency graphs
 are validated atomically, allowing edge replacement in either add/remove order.
-The complete generated SQL must fit 100 statements; settings/completion/deletion
-remain standalone. See [bounded mixed batches](shared/reliable-batches.md).
+The complete generated SQL must fit 100 statements; settings remain standalone.
+New mixed results include `changeGroups`, one image count per command, covering
+every successor/cascade/detachment image and enforcing each standalone contract. See [bounded mixed batches](shared/reliable-batches.md).

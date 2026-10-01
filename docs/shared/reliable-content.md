@@ -1,6 +1,6 @@
 # Guarded task and project content edits
 
-`task.content.set` and `project.content.set` extend the single-command v2
+`task.content.set` and `project.content.set` extend the v2
 protocol with a complete replacement of the entity's conversational text.
 They prevent a stale conversation from overwriting a newer user's edit,
 including edits through legacy REST/MCP/PWA adapters. A successful write
@@ -85,3 +85,6 @@ and `deltaSync` remain false until lifecycle/link/batch commands, consistent
 sync, restore epochs and retained offline intent land. This release does not
 enable undo: recorded before/after values are groundwork for later guarded
 compensating commands, not permission to overwrite intervening work.
+
+This family also composes in [bounded mixed batches](reliable-batches.md),
+with grouped compound effects and distinct written identities.

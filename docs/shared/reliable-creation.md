@@ -51,7 +51,8 @@ entity ID and command ID.
 }
 ```
 
-Each batch currently contains exactly one command. All value fields shown are
+Standalone envelopes contain one command; creation also composes in
+[bounded mixed batches](reliable-batches.md). All value fields shown are
 required; null explicitly represents no notes, kickoff note or project. A task
 creates in pending status with no dates, recurrence, deferral, focus or duty
 identity. Those fields are not arbitrary creation patches. Explicit date roles

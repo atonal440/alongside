@@ -1,6 +1,6 @@
 # Power-user todo implementation checklist
 
-Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion merged/deployed. Bounded mixed graph batches implemented with review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
+Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion merged/deployed. Bounded mixed graph batches merged/deployed. Compound lifecycle batches implemented with review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
 Updated: 2026-10-01.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
@@ -107,8 +107,8 @@ the review gate. Merge authorizes the existing production deployment workflow.
   semantic command planning, coherent content/version reads, receipts and
   atomic final-state/aggregate validation. Creation-only increment merged/deployed in PR #46. Guarded content edits merged/deployed in PR #47. Guarded state, completion and task fields merged/deployed in PRs #48–#50.
   Reliable links merged/deployed in PR #51. Task/project deletion merged/deployed in PR #52. Bounded mixed creation/edit/
-  state/membership/link batches implemented; review/merge pending. Compound
-  lifecycle batch effects remain a subsequent increment. Keep the legacy PWA usable.
+  state/membership/link batches merged/deployed in PR #53. Compound lifecycle
+  batch effects implemented; review/merge pending. Keep the legacy PWA usable.
 - **2e — workspace sync and restore:** consistent snapshot and fixed-watermark
   deltas covering all current user data, tombstones/retention/reset policy,
   import epoch and bounded versioned export/import retaining v1 input.
@@ -714,3 +714,32 @@ creation, refs, replay, final-edge replacement, cycle rejection and unchanged ga
 
 Next: compound lifecycle batches; workspace sync/restore and retained offline
 intention/capability gates follow.
+
+
+### 2026-10-01 — Slice 2d ninth increment: compound lifecycle batches
+
+PR #53 merged as `6a18000` after clean automated review of final head `ef796ad`,
+green checks and zero threads. Deploy run 36938040323 succeeded for Worker
+and PWA Pages.
+
+Branch: `codex/power-user-slice-2d-lifecycle-batches`; review/merge pending.
+Completion/deletion now compose with other task/project/link commands, with
+`changeGroups` preserving each standalone derived-effect contract. New/derived
+identities obey the same write-once rule; scoped refs cover stable successors.
+Legacy simple mixed receipts remain readable. No migration or broad gate change.
+See [compound lifecycle effects](../shared/reliable-batches.md#compound-lifecycle-effects).
+
+Acceptance: full `npm run verify` passes 586 Worker / 554 PWA tests, both
+typechecks/builds and Worker dry-run (854.97 KiB / gzip 149.78 KiB). Four additional
+focused lifecycle cases pass (590 Worker tests total; all 15 lifecycle tests):
+combined 98/101-statement capacity, linking a stable successor and explicit
+member movement before project deletion. Fresh/upgrade tests cover grouped
+completion/cascade/detachment, loss/concurrency/rollback, overlap rejection and
+exact replay. PWA parsers reject malformed groups and altered member fields,
+retain old simple receipts and reject duplicate creation/successor refs. Isolated
+REST/MCP smoke passes grouped preview without writes, completion/successor/link,
+cascade plus survivor edit, project detach with terminal preservation, replay
+and unchanged gates.
+
+Next: all-writer workspace snapshot/feed foundation, fixed-watermark delta sync,
+versioned restore/import epoch, then retained offline commands and capability gates.
