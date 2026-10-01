@@ -5,7 +5,7 @@ import { parsePlanningSettings, type PlanningSettings } from '@shared/wire/plann
 import type { LegacyDueRow } from './domain/temporalFoundation';
 import { ChangesResultSchema, StoredReceiptSchema, type CommandEnvelope, type ChangesResult, type ChangesPreview } from '@shared/wire/commands';
 import { parseSchema, parseEventInstant, type EventInstant, type CommandId } from '@shared/parse';
-import { CommandError, commandHash, payloadConflict, planSettingsCommand, planCreateCommand, creationConflict, planContentCommand, entityCommandConflict, planStateCommand, commandEntityKey, revisionConflict } from './domain/commands';
+import { CommandError, commandHash, payloadConflict, planSettingsCommand, planCreateCommand, creationConflict, planContentCommand, entityCommandConflict, planStateCommand, commandEntityKey, planCompleteCommand, revisionConflict } from './domain/commands';
 import { nanoid } from 'nanoid';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, ne, inArray, lte, or, asc, desc, gt, and, sql } from 'drizzle-orm';
@@ -634,6 +634,11 @@ export class DB {
   private async planCommand(input: CommandEnvelope, hash: string, clock: EventInstant): Promise<{ plan: Plan; result: ChangesResult }> {
     const command = input.commands[0]!;
     if (command.kind === 'planning.set') return planSettingsCommand(input, await this.getPlanningSettings(), hash, clock);
+    if (command.kind === 'task.complete') {
+      const current = await this.getEntitySnapshot({ entity: 'task', id: command.id });
+      const successor = command.successor === null ? null : await this.getEntitySnapshot({ entity: 'task', id: command.successor.id });
+      return planCompleteCommand(input, current, successor, hash, clock);
+    }
     if (command.kind !== 'task.create' && command.kind !== 'project.create') {
       const snapshot = await this.getEntitySnapshot(commandEntityKey(command));
       return command.kind === 'task.content.set' || command.kind === 'project.content.set'
@@ -742,6 +747,7 @@ export class DB {
       // Classify exhaustion reached by an unrelated writer after planning as
       // durable; repeatedly retrying a permanently full counter cannot help.
       if (command.kind === 'task.content.set' || command.kind === 'project.content.set') planContentCommand(input, current, hash, clock.value);
+      else if (command.kind === 'task.complete') await this.planCommand(input, hash, clock.value);
       else planStateCommand(input, current, hash, clock.value);
     }
     if (applied.error.kind === 'capacity_exceeded') throwAppError(applied.error);

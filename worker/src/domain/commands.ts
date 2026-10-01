@@ -5,6 +5,8 @@ import type { Plan, TaskRowPatch, ProjectRowPatch } from './Op';
 import type { EntitySnapshot, EntityReadKey } from '@shared/wire/versions';
 import { taskFromRow } from './task';
 import { projectFromRow } from './project';
+import { completeTaskPlan } from './ops/task';
+import { parseIsoDateTime } from '@shared/parse';
 import { invalidInput } from './temporalFoundation';
 
 export class CommandError extends Error {
@@ -124,7 +126,7 @@ export function planCreateCommand(input: CommandEnvelope, current: EntitySnapsho
 
 export function commandEntityKey(command: Exclude<CommandEnvelope['commands'][number], { kind: 'planning.set' }>): EntityReadKey {
   switch (command.kind) {
-    case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': return { entity: 'task', id: command.id };
+    case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': case 'task.complete': return { entity: 'task', id: command.id };
     case 'project.create': case 'project.content.set': case 'project.archive': case 'project.reopen': return { entity: 'project', id: command.id };
   }
 }
@@ -233,4 +235,71 @@ export function planStateCommand(input: CommandEnvelope, current: EntitySnapshot
     }
     return planEntityUpdate(input, current, { entity: 'project', patch }, hash, now);
   }
+}
+
+export function planCompleteCommand(input: CommandEnvelope, current: EntitySnapshot, successor: EntitySnapshot | null, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
+  const command = input.commands[0]!;
+  if (command.kind !== 'task.complete' || current.entity !== 'task' || current.id !== command.id) throw new Error('Expected matching task completion.');
+  const conflict = entityCommandConflict(input, current);
+  if (conflict) throw conflict;
+  if (current.structuralRevision !== command.expectedStructuralRevision) throw new CommandError({ code: 'structural_conflict',
+    path: ['commands', '0', 'expectedStructuralRevision'], message: 'Workspace changed since planning completion.', retryable: false,
+    currentEntity: current, expectedStructuralRevision: command.expectedStructuralRevision,
+    recoveryHint: 'Retain completion intent, inspect current state and submit a fresh command ID after explicitly rebasing.',
+  });
+  const task = taskFromRow(current.row!);
+  if (!task.ok) throw new CommandError(invalidInput(task.error), 400);
+  if (task.value.lifecycle !== 'pending') throw new CommandError({ code: 'invalid_transition', path: ['commands', '0'], message: 'Only pending tasks can be completed.',
+    retryable: false, currentEntity: current, recoveryHint: 'Inspect currentEntity; replay the original command if this is a retry.',
+  });
+  const recurring = task.value.recurrence.kind === 'recurring';
+  if (recurring !== (command.successor !== null)) throw new CommandError({ code: 'invalid_input', path: ['commands', '0', 'successor'],
+    message: recurring ? 'A legacy recurring completion requires a stable successor ID.' : 'A nonrecurring completion requires successor:null.',
+    retryable: false, recoveryHint: 'Inspect the current recurrence and submit a complete intention with a fresh command ID.',
+  }, 400);
+  const next = parseRevision(current.version!.revision + 1);
+  const structuralNext = parseRevision(current.structuralRevision + (recurring ? 2 : 1));
+  if (!next.ok || !structuralNext.ok) throw new CommandError({ code: 'revision_exhausted', path: ['commands', '0', 'expectedRevision'],
+    message: 'Entity or workspace revision reached its supported limit.', retryable: false, recoveryHint: 'Contact the administrator; do not reset a revision.',
+  });
+  const assertions: Plan['assertions'] = [
+    { kind: 'entity.revision', key: { entity: 'task', id: command.id }, expected: command.expectedRevision },
+    { kind: 'workspace.structural_revision', expected: command.expectedStructuralRevision },
+  ];
+  if (command.successor !== null) {
+    if (successor?.entity !== 'task' || successor.id !== command.successor.id) throw new Error('Successor snapshot identity mismatch.');
+    if (successor.row !== null || successor.version !== null) throw new CommandError({ code: 'revision_conflict', path: ['commands', '0', 'successor', 'id'],
+      message: 'The successor identity already has live or deleted history.', retryable: false, currentEntity: successor, expectedRevision: null,
+      recoveryHint: 'Retain completion intent and choose an unused stable successor ID with a new command ID.',
+    });
+    if (successor.structuralRevision !== current.structuralRevision) throw new CommandError({ code: 'structural_conflict', path: ['commands', '0', 'expectedStructuralRevision'],
+      message: 'Workspace changed between completion reads.', retryable: false, currentEntity: successor, expectedStructuralRevision: command.expectedStructuralRevision,
+      recoveryHint: 'Retain completion intent and inspect current state before explicitly rebasing with a new command ID.',
+    });
+    assertions.push({ kind: 'entity.revision', key: { entity: 'task', id: command.successor.id }, expected: null });
+  }
+  const clock = parseIsoDateTime(now);
+  if (!clock.ok) throw new Error('Invalid completion event instant.');
+  const planned = completeTaskPlan(task.value, { completedAt: clock.value, nextTaskId: command.successor?.id });
+  if (!planned.ok) throw new Error('Completion planning failed after validating successor input.');
+  const changes: ChangesResult['changes'] = [];
+  for (const op of planned.value.ops) {
+    if (op.kind === 'task.update') {
+      const row = { ...current.row!, ...op.patch };
+      const parsed = taskFromRow(row);
+      if (!parsed.ok) throw new CommandError(invalidInput(parsed.error), 400);
+      changes.push({ entity: 'task', id: command.id, before: { row: current.row!, revision: current.version!.revision }, after: { row, revision: next.value } });
+    } else if (op.kind === 'task.insert' && command.successor !== null) {
+      const parsed = taskFromRow(op.row);
+      if (!parsed.ok) throw new CommandError(invalidInput(parsed.error), 400);
+      const revision = parseRevision(1); if (!revision.ok) throw new Error('Invalid initial revision.');
+      changes.push({ entity: 'task', id: command.successor.id, before: null, after: { row: op.row, revision: revision.value } });
+    } else throw new Error('Unexpected completion operation.');
+  }
+  const result: ChangesResult = { contractVersion: 2, commandId: input.commandId, payloadHash: hash, serverNow: now, applied: true, changes, warnings: [],
+    refs: command.successor?.clientRef === undefined ? {} : Object.fromEntries([[command.successor.clientRef, command.successor.id]]),
+  };
+  return { result, plan: { assertions, ops: [{ kind: 'receipt.insert', result }, ...planned.value.ops,
+    { kind: 'command.audit', commandId: input.commandId, actor: input.actor, reason: input.reason ?? null, result }, { kind: 'command.feed', result }],
+  } };
 }
