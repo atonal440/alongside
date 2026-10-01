@@ -677,3 +677,9 @@ conflicts, exact capacity rejection and unchanged capability gates.
 
 Next: bounded mixed graph batches; workspace sync/restore and retained offline
 intention/capability gates follow.
+
+Deletion review follow-up: response parsing now compares every detached member
+field against its before image, allowing only a null project and the command's
+server timestamp. Regressions reject altered titles, terminal status, dates or
+timestamps. Full verification passes 554 Worker / 530 PWA tests, both
+builds/typechecks and Worker dry-run (838.78 KiB / gzip 146.52 KiB).

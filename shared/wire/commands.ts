@@ -128,7 +128,7 @@ export const LinkChangeDiffSchema = v.strictObject({
   after: v.union([v.strictObject({ revision: RevisionSchema, row: TaskLinkRowSchema }), v.strictObject({ revision: RevisionSchema, deleted: v.literal(true) })]),
 });
 export const ChangeDiffSchema = v.variant('entity', [PlanningDiffSchema, ProjectChangeDiffSchema, TaskChangeDiffSchema, LinkChangeDiffSchema]);
-function validDiffIdentity(value: { changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
+function validDiffIdentity(value: { serverNow: string; changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
   if (value.changes.length === 0) return false;
   const identities = new Set<string>();
   const createdIds = new Set<string>();
@@ -161,7 +161,12 @@ function validDiffIdentity(value: { changes: v.InferOutput<typeof ChangeDiffSche
       if (!effects.every(effect => effect.entity === 'link' && 'deleted' in effect.after && effect.before?.row !== null
         && effect.before !== null && (effect.before.row.from_task_id === root.id || effect.before.row.to_task_id === root.id))) return false;
     } else if (root?.entity === 'project' && 'deleted' in root.after) {
-      if (!effects.every(effect => effect.entity === 'task' && 'row' in effect.after && effect.before?.row.project_id === root.id && effect.after.row.project_id === null)) return false;
+      if (!effects.every(effect => {
+        if (effect.entity !== 'task' || !('row' in effect.after) || effect.before?.row.project_id !== root.id) return false;
+        const expected = { ...effect.before.row, project_id: null, updated_at: value.serverNow };
+        const after = effect.after.row;
+        return Object.entries(expected).every(([field, stored]) => after[field as keyof typeof after] === stored);
+      })) return false;
     } else {
       const successor = effects[0];
       if (effects.length !== 1 || root?.entity !== 'task' || successor?.entity !== 'task' || root.before?.row.status !== 'pending'

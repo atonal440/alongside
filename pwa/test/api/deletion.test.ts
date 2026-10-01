@@ -26,6 +26,7 @@ it.each([
  [projectChange,{...memberChange,after:{...memberChange.after,row:task}}],
  [projectChange,{...memberChange,before:{...memberChange.before,row:{...task,project_id:null}}}],
  [taskChange,memberChange], [projectChange,linkChange],
+ ...[{title:'Changed'},{status:'done'},{due_date:'2026-10-02T12:00:00Z'},{updated_at:'2026-10-02T10:00:00.123Z'}].map(patch=>[projectChange,{...memberChange,after:{...memberChange.after,row:{...memberChange.after.row,...patch}}}]),
 ].map(changes=>({changes})))('rejects invalid deletion identities, revision steps and cascade membership',({changes})=>{expect(parseChangesResult({...base,changes}).ok).toBe(false);});
 it.each([{expectedRevision:null},{expectedStructuralRevision:undefined},{values:{}}])('rejects missing guards and arbitrary deletion fields',patch=>{expect(parseCommandEnvelope({contractVersion:2,commandId:base.commandId,actor:'user',commands:[{kind:'task.delete',id:task.id,expectedRevision:1,expectedStructuralRevision:4,...patch}]}).ok).toBe(false);});
 it('retains a parsed exact capacity diagnostic through the PWA boundary',async()=>{
