@@ -1,5 +1,5 @@
 import * as v from 'valibot';
-import { CommandIdSchema, EventInstantSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema } from '../parse';
+import { CommandIdSchema, EventInstantSchema, MinuteInstantSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema } from '../parse';
 import { PlanningSettingsSchema } from './planning';
 import { ProjectRowSchema, TaskRowSchema } from './rows';
 
@@ -41,11 +41,26 @@ export const TaskContentCommandSchema = v.strictObject({
   kind: v.literal('task.content.set'), id: TaskIdSchema, expectedRevision: RevisionSchema,
   values: v.strictObject({ ...ProjectCreateValuesSchema.entries, sessionLog: v.nullable(boundedStringSchema(10_000)) }),
 });
+export const DeferValuesSchema = v.variant('kind', [
+  v.strictObject({ kind: v.literal('none') }),
+  v.strictObject({ kind: v.literal('someday') }),
+  v.strictObject({ kind: v.literal('until'), until: MinuteInstantSchema }),
+]);
+export const TaskFocusCommandSchema = v.strictObject({
+  kind: v.literal('task.focus.set'), id: TaskIdSchema, expectedRevision: RevisionSchema,
+  focusedUntil: v.nullable(MinuteInstantSchema),
+});
+export const TaskDeferCommandSchema = v.strictObject({
+  kind: v.literal('task.defer.set'), id: TaskIdSchema, expectedRevision: RevisionSchema, defer: DeferValuesSchema,
+});
+export const TaskReopenCommandSchema = v.strictObject({ kind: v.literal('task.reopen'), id: TaskIdSchema, expectedRevision: RevisionSchema });
+export const ProjectArchiveCommandSchema = v.strictObject({ kind: v.literal('project.archive'), id: ProjectIdSchema, expectedRevision: RevisionSchema });
+export const ProjectReopenCommandSchema = v.strictObject({ kind: v.literal('project.reopen'), id: ProjectIdSchema, expectedRevision: RevisionSchema });
 export const CommandEnvelopeSchema = v.strictObject({
   contractVersion: v.literal(2), commandId: CommandIdSchema,
   actor: v.picklist(['user', 'llm', 'import']),
   reason: v.optional(v.pipe(v.string(), v.maxLength(1_000))),
-  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema])), v.length(1, 'This release accepts exactly one command per batch.')),
+  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema])), v.length(1, 'This release accepts exactly one command per batch.')),
 });
 export type CommandEnvelope = v.InferOutput<typeof CommandEnvelopeSchema>;
 export const parseCommandEnvelope = (input: unknown) => parseSchema(CommandEnvelopeSchema, input);

@@ -55,8 +55,22 @@ const contentCommandSchema = (entity: 'task' | 'project') => ({
     },
   }, required: ['kind', 'id', 'expectedRevision', 'values'],
 });
+const stateCommandSchema = (kind: string, field?: string, schema?: object) => ({
+  type: 'object', additionalProperties: false, properties: {
+    kind: { const: kind }, id: { type: 'string', pattern: kind.startsWith('task.') ? '^t_[0-9A-Za-z_-]{5,}$' : '^p_[0-9A-Za-z_-]{5,}$' },
+    expectedRevision: { type: 'integer', minimum: 0, maximum: 9007199254740991 }, ...(field ? { [field]: schema } : {}),
+  }, required: ['kind', 'id', 'expectedRevision', ...(field ? [field] : [])],
+});
+const stateSchemas = [
+  stateCommandSchema('task.focus.set', 'focusedUntil', { type: ['string', 'null'], format: 'date-time', description: 'Explicit instant with offset; normalized to minute UTC. Non-null focus clears deferral. Null only clears focus.' }),
+  stateCommandSchema('task.defer.set', 'defer', { oneOf: [
+    ...['none', 'someday'].map(kind => ({ type: 'object', additionalProperties: false, properties: { kind: { const: kind } }, required: ['kind'] })),
+    { type: 'object', additionalProperties: false, properties: { kind: { const: 'until' }, until: { type: 'string', format: 'date-time' } }, required: ['kind', 'until'] },
+  ] }),
+  stateCommandSchema('task.reopen'), stateCommandSchema('project.archive'), stateCommandSchema('project.reopen'),
+];
 const commandEnvelope = { ...envelope, properties: { ...envelope.properties,
-  commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project')] } },
+  commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas] } },
 } };
 export const COMMAND_TOOLS = [
   { name: 'get_entity', description: 'Read a task/project row and its entity/structural versions together. Missing identities return null row/version; tombstones have null row and retained deleted version. Use for reliable command planning.', inputSchema: {
@@ -70,8 +84,8 @@ export const COMMAND_TOOLS = [
   } },
   { name: 'get_planning_settings', description: 'Read complete workspace planning settings and their revision, or null before setup.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'export_planning_settings', description: 'Export only planning preferences, without revision or credentials. Restore non-null values through planning.set with a fresh command ID and current expectedRevision. This is not a full-workspace backup.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
-  { name: 'preview_changes', description: 'Preview a reliable command without writes. Exactly one planning.set, task/project.create or task/project.content.set; creation requires a stable ID, no prior identity history and the workspace structural revision. expectedRevision=null requires no settings; otherwise use the current revision. A preview is not a lock.', inputSchema: commandEnvelope },
-  { name: 'apply_changes', description: 'Atomically apply one settings, task/project creation or task/project content command, with a caller-minted command ID and expected revision. Same ID/payload returns the original result; a different payload conflicts. Includes receipt, audit and command feed. Creation supports scoped clientRef/ID mapping. Content commands change only title/notes/kickoff and task session log; managed fields, graph batches and offline overlays are not implemented yet.', inputSchema: commandEnvelope },
+  { name: 'preview_changes', description: 'Preview a reliable command without writes. Exactly one settings, creation, content, task focus/deferral/reopen or project archive/reopen command; creation requires a stable ID, no prior identity history and the workspace structural revision. expectedRevision=null requires no settings; otherwise use the current revision. A preview is not a lock.', inputSchema: commandEnvelope },
+  { name: 'apply_changes', description: 'Atomically apply one settings, creation, content, task focus/deferral/reopen or project archive/reopen command, with a caller-minted command ID and expected revision. Same ID/payload returns the original result; a different payload conflicts. Includes receipt, audit and command feed. Creation supports scoped clientRef/ID mapping. Content commands change only title/notes/kickoff and task session log; Focus/deferral follow existing pending-task transitions; reopening clears both. Project state preserves members/links. Completion, deletion, graph batches and offline overlays follow later.', inputSchema: commandEnvelope },
 ];
 export async function callCommandTool(name: string, args: unknown, db: DB): Promise<unknown> {
   if (name === 'get_entity') {
