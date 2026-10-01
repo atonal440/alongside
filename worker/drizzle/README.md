@@ -32,3 +32,14 @@ Commit that, and subsequent `db:generate` runs will produce proper diffs again.
 ## Why the separate directory?
 
 `drizzle.config.ts` writes to `./drizzle` and not `./migrations` because wrangler scans `migrations/` and applies every `*.sql` it finds in alphabetical order. If Drizzle wrote into the same dir, its baseline `0000_*.sql` would collide with the hand-written sequence, and you'd get a duplicate `CREATE TABLE` failure on deploy.
+
+`0001_schema_catchup.sql` records the shared schema through hand-written
+migrations 007–010, including duties, due markers, planning settings and command
+receipts. Those changes were absent from the old diff-helper snapshot. Do not
+apply this catch-up SQL to a deployed database: Wrangler continues to use only
+`migrations/`. A subsequent `db:generate` against unchanged source must report
+no schema changes. The snapshot regression checks its tables, columns and
+indexes against fresh and upgraded SQL schemas. The upgraded database may
+retain the unused historical `tasks.session_id` column retired by migration
+002; that single compatibility residue is excluded from the model comparison.
+The shared schema also declares the task indexes already installed by 001.

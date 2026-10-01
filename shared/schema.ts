@@ -63,6 +63,9 @@ export const tasks = sqliteTable('tasks', {
   occurrence_at: text('occurrence_at'),
 }, (t) => [
   uniqueIndex('tasks_duty_occurrence').on(t.duty_id, t.occurrence_at),
+  index('idx_tasks_status').on(t.status),
+  index('idx_tasks_due_date').on(t.due_date),
+  index('idx_tasks_project_id').on(t.project_id),
 ]);
 
 export const taskLinks = sqliteTable('task_links', {

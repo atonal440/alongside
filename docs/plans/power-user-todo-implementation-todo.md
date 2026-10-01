@@ -395,3 +395,18 @@ REST preview-without-writes, first apply, exact replay after later edits,
 ID/hash and revision conflicts, export, workspace capability setup and MCP
 replay/settings reads. The test used `/tmp/alongside-slice2b-smoke` and did not
 modify the normal development database. No production settings were configured.
+
+Slice 2b review follow-up: regenerated and committed the Drizzle diff-helper
+journal, catch-up SQL and latest snapshot through hand-written migrations
+007–010. These artifacts stay outside Wrangler's deploy migration directory.
+A second `db:generate` reports no schema changes; a regression checks snapshot
+tables/columns/indexes against fresh and upgraded schemas, allowing only the
+known retired upgrade-only `tasks.session_id` column. Shared declarations now
+include the three task indexes already installed by migration 001. The optional deploy
+bookmark workflow change was omitted because the GitHub token lacks workflow
+scope; the existing deployment jobs remain unchanged.
+
+Slice 2b final review verification: full `npm run verify` passes with 330 Worker /
+432 PWA tests, both typechecks, Worker dry-run (763.73 KiB / gzip 133.47 KiB) and
+PWA build. Fresh/upgrade snapshot parity and an unchanged `db:generate` verify
+the review fix. Bot re-review is required on the pushed fix before merge.
