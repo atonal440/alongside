@@ -1,3 +1,4 @@
+import { checkPlanCapacity } from './storage/apply';
 import { parsePlanningSettings, type PlanningSettings } from '@shared/wire/planning';
 import type { LegacyDueRow } from './domain/temporalFoundation';
 import { nanoid } from 'nanoid';
@@ -740,6 +741,9 @@ export class DB {
 
     const importPlan = planImport(parsedPayload.value);
     if (!importPlan.ok) throwAppError(importPlan.error);
+
+    const capacity = checkPlanCapacity(this.d1, importPlan.value);
+    if (!capacity.ok) throwAppError(capacity.error);
 
     if (dryRun) {
       const [taskCount, projectCount] = await Promise.all([

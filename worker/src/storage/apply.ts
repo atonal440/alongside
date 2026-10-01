@@ -98,7 +98,7 @@ WHERE ? = ? OR EXISTS (
   )
   SELECT 1 FROM downstream WHERE id = ? LIMIT 1
 )`;
-const MAX_BATCH_STATEMENTS = 100;
+export const MAX_ATOMIC_STATEMENTS = 100;
 
 function storageError(message: string, cause: unknown): AppError {
   return { kind: 'storage', message, cause };
@@ -345,42 +345,46 @@ async function findFailedPreCheck(d1: D1Database, checks: PreCheck[]): Promise<A
   return null;
 }
 
-async function runPlannedStatements(
-  d1: D1Database,
-  statements: D1PreparedStatement[],
-  canChunk: boolean,
-): Promise<void> {
-  if (statements.length <= MAX_BATCH_STATEMENTS || !canChunk) {
-    await d1.batch(statements);
-    return;
-  }
-
-  // D1 has no transaction primitive across batches. Chunk only plans with no
-  // row-existence guards so guard+mutation pairs stay atomic for normal flows.
-  for (let index = 0; index < statements.length; index += MAX_BATCH_STATEMENTS) {
-    await d1.batch(statements.slice(index, index + MAX_BATCH_STATEMENTS));
+// Build the actual SQL before accepting a plan. Preparing/binding performs no
+// I/O; guards, wipe side effects, logs and future receipt/feed ops count exactly
+// as they will execute. No parallel hand-maintained count can drift from SQL.
+function prepareAtomicPlan(d1: D1Database, plan: Plan): Result<PlannedStatement[], AppError> {
+  try {
+    const statements = [
+      ...plan.assertions.flatMap(assertion => bindPreCheckGuard(d1, assertion)),
+      ...plan.ops.flatMap(op => opStatements(d1, op)),
+    ];
+    if (statements.length > MAX_ATOMIC_STATEMENTS) {
+      return err({ kind: 'capacity_exceeded', requiredStatements: statements.length, limit: MAX_ATOMIC_STATEMENTS });
+    }
+    return ok(statements);
+  } catch (cause) {
+    return err(storageError('Failed to prepare mutation plan.', cause));
   }
 }
 
+/** Side-effect-free acceptance check, shared by import preview and apply. */
+export function checkPlanCapacity(d1: D1Database, plan: Plan): Result<{ requiredStatements: number; limit: number }, AppError> {
+  const prepared = prepareAtomicPlan(d1, plan);
+  return prepared.ok ? ok({ requiredStatements: prepared.value.length, limit: MAX_ATOMIC_STATEMENTS }) : prepared;
+}
+
 export async function applyPlan(d1: D1Database, plan: Plan): Promise<ApplyResult> {
+  const prepared = prepareAtomicPlan(d1, plan);
+  if (!prepared.ok) return prepared;
+
   for (const assertion of plan.assertions) {
     const checked = await runPreCheck(d1, assertion);
     if (!checked.ok) return checked;
   }
-
   if (plan.ops.length === 0) return ok({ appliedOps: 0 });
 
-  let guards: ExistingRowGuard[] = [];
+  const guards = prepared.value.flatMap(item => item.guard ? [item.guard] : []);
   try {
-    const assertionGuards = plan.assertions.flatMap(assertion => bindPreCheckGuard(d1, assertion));
-    const plannedStatements = [
-      ...assertionGuards,
-      ...plan.ops.flatMap(op => opStatements(d1, op)),
-    ];
-    const statements = plannedStatements.map(item => item.statement);
-    guards = plannedStatements.flatMap(item => item.guard ? [item.guard] : []);
-
-    if (statements.length > 0) await runPlannedStatements(d1, statements, guards.length === 0);
+    const statements = prepared.value.map(item => item.statement);
+    // A logical plan is always one transactional D1 batch. Oversized work needs
+    // a separately designed staging protocol, never wipe-then-chunk.
+    if (statements.length > 0) await d1.batch(statements);
     return ok({ appliedOps: plan.ops.length });
   } catch (cause) {
     const missing = await findMissingGuard(d1, guards);

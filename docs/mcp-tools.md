@@ -383,3 +383,11 @@ variants. Invalid input and temporal errors return `isError: true` plus
 Legacy preview reports targets and ambiguity without writing. Follow
 `nextCursor` via `after`; pages explicitly do not promise snapshot consistency.
 See [temporal contracts](shared/temporal-foundation.md) for examples and limits.
+
+## Atomic plan capacity
+
+The shared executor accepts at most 100 generated SQL statements per logical
+plan, counting guards/logs/side effects. Oversized work returns structured
+`capacity_exceeded` diagnostics (`requiredStatements`, `limit`, `retryable:
+false`) without applying any part of the plan. Replacement imports cannot be
+split into independent wipes; larger restore support requires staging.

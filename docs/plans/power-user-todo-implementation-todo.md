@@ -1,6 +1,6 @@
 # Power-user todo implementation checklist
 
-Status: Slice 1 implemented and locally verified; PR review/merge pending. Slices 2–7 remain unimplemented.
+Status: Slice 1 and Slice 2a implemented and locally verified; PR reviews/merges pending. The remainder of Slice 2 and Slices 3–7 remain unimplemented.
 Updated: 2026-09-30.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
@@ -74,7 +74,7 @@ Depends on slice 1. Goal: make compound work safe before storing rich graphs.
   revisions, command IDs, payload hashes, and replay receipts.
 - [ ] Extend pure `Plan`/SQL apply with in-batch version/aggregate guards,
   receipts, change feed, tombstones, and audit. Every writer advances revisions.
-- [ ] Count generated SQL including guards/logs/receipts/side effects before
+- [x] Count generated SQL including guards/logs/receipts/side effects before
   apply. Reject oversized atomic plans; eliminate unsafe multi-batch chunking
   for operations that promise logical atomicity.
 - [ ] Add `preview_changes`/`apply_changes`: diff, IDs/ref map, warnings,
@@ -324,3 +324,31 @@ Historical boundaries requiring seconds are rejected explicitly. New regressions
 cover malformed versioned/nested JSON, overflow paths, availability at year 9999,
 calendar re-entry from years zero/10000 and historical boundary precision.
 Full `npm run verify` passes: 296 Worker / 424 PWA tests, both typechecks/builds.
+
+### 2026-09-30 — Slice 2a: atomic-plan capacity
+
+Branch: `codex/power-user-slice-2a`, based on Slice 1; PR review/merge pending.
+Deployable sub-slice of Slice 2, with no new schema or protocol gate. Every
+existing pure Plan now renders/counts all actual SQL before acceptance and
+executes in a single D1 batch. Oversize returns `capacity_exceeded` with an exact
+statement count/limit. Import dry-run uses the same capacity check; large v1
+replacement imports are rejected before even querying live counts or wiping.
+REST returns 413 diagnostics and MCP retains structured capacity errors.
+
+Acceptance: targeted 29 tests pass, including real SQLite 100-statement apply,
+101-statement rejection before reads/writes, guard/log/wipe counting, empty
+patches and rollback of wipe/prior inserts on late failure. Full `npm run verify` after prerequisite review fixes passes (283 Worker / 417
+PWA tests, both typechecks, Worker dry-run 748.66 KiB / gzip 127.98 KiB and PWA
+build).
+
+Transition: legacy adapters remain usable for bounded commands/imports. A large
+replacement cannot safely be split into independent wipes; staged restore is
+explicitly deferred. No reliable-command/sync/hierarchy capability is enabled.
+Next: Slice 2 receipts, stable IDs, revision/aggregate guards and feed scaffolding;
+then client intent retention/reconciliation and versioned snapshot/import gates.
+
+Slice 2a inherited verification: merged the temporal foundation's complete
+review fixes without rewriting branch history. Full `npm run verify` passes:
+303 Worker / 424 PWA tests, both typechecks, Worker dry-run (752.67 KiB / gzip
+128.81 KiB) and PWA build. Atomic-capacity functionality remains the only Slice 2
+contract enabled here; receipts/revisions/client reconciliation follow separately.

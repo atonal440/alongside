@@ -16,6 +16,9 @@ function json(data: unknown, status = 200): Response {
 }
 
 function domainErrorJson(error: DomainOperationError): Response {
+  if (error.appError.kind === 'capacity_exceeded') {
+    return json({ error: appErrorMessage(error.appError), code: 'capacity_exceeded', requiredStatements: error.appError.requiredStatements, limit: error.appError.limit, retryable: false, recoveryHint: 'Reduce the atomic scope. Replacement imports cannot be split into independent wipes.' }, appErrorStatus(error.appError));
+  }
   const body = error.appError.kind === 'validation'
     ? { error: appErrorMessage(error.appError), details: error.appError.errors }
     : { error: appErrorMessage(error.appError) };

@@ -16,7 +16,19 @@ Typed mutation plan executor for D1.
 
 The executor also emits in-batch existence guards for task/project prechecks and task/project update/delete targets, so a row that disappears between precheck and mutation aborts the batch and is reported as `not_found` instead of becoming a silent zero-row write.
 
-Plans with no row-existence guards are chunked into 100-statement batches when needed, which keeps large import restores under D1 batch limits. Guarded plans stay in one batch so guard+mutation pairs remain atomic.
+Every logical plan is one transactional D1 batch, capped at
+`MAX_ATOMIC_STATEMENTS = 100`. The executor first prepares the actual SQL and
+counts every statement, including assertions, implicit existence guards, wipe
+side effects and action logs. Preparation/binding performs no database I/O.
+Oversized plans return `capacity_exceeded` with `requiredStatements` and `limit`
+before prechecks or mutations run. There is no multi-batch chunking path.
+
+`checkPlanCapacity(d1, plan)` uses the same SQL renderer as apply, allowing an
+import dry-run to validate exactly the plan that would execute. Empty update
+patches produce no SQL. Future receipt/feed/side-effect ops count automatically
+when added to that renderer. Oversized replacement imports require a separately
+designed staging protocol; splitting a replacement into several wipes loses
+data and is not a supported workaround.
 
 Task and project update SQL is built from fixed allowlists, so unexpected patch keys are ignored instead of becoming column names.
 

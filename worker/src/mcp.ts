@@ -1,5 +1,5 @@
 import { callFoundationTool, FOUNDATION_TOOLS, FoundationInputError } from './foundation';
-import { DB } from './db';
+import { DB, DomainOperationError } from './db';
 import type { Task, Project } from '@shared/types';
 import type { Env } from './index';
 import { getAppHtml, getActionLogHtml } from './app-ui';
@@ -674,6 +674,9 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env): Prom
           ...meta,
         });
       } catch (e) {
+        if (e instanceof DomainOperationError && e.appError.kind === 'capacity_exceeded') {
+          return mcpResponse(body.id, { isError: true, content: [{ type: 'text', text: e.message }], structuredContent: { error: { code: 'capacity_exceeded', requiredStatements: e.appError.requiredStatements, limit: e.appError.limit, retryable: false, recoveryHint: 'Reduce the atomic scope; replacement imports cannot be split into independent wipes.' } } });
+        }
         if (e instanceof FoundationInputError) {
           return mcpResponse(body.id, { isError: true, content: [{ type: 'text', text: e.message }], structuredContent: { contractVersion: 2, error: e.detail } });
         }
