@@ -1,7 +1,7 @@
 import { parseEntitySnapshot, type EntityReadKey, type EntitySnapshot } from '@shared/wire/versions';
 
-const PROJECT_COLUMNS = ['id', 'title', 'notes', 'kickoff_note', 'status', 'created_at', 'updated_at'];
-const TASK_COLUMNS = ['id', 'title', 'notes', 'status', 'due_date', 'due_all_day', 'recurrence', 'created_at', 'updated_at',
+export const PROJECT_COLUMNS = ['id', 'title', 'notes', 'kickoff_note', 'status', 'created_at', 'updated_at'];
+export const TASK_COLUMNS = ['id', 'title', 'notes', 'status', 'due_date', 'due_all_day', 'recurrence', 'created_at', 'updated_at',
   'defer_until', 'defer_kind', 'task_type', 'project_id', 'kickoff_note', 'session_log', 'focused_until', 'duty_id', 'occurrence_at'];
 
 /** One SQLite snapshot covers content, its ledger revision and the aggregate. */

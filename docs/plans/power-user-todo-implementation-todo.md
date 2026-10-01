@@ -1,6 +1,6 @@
 # Power-user todo implementation checklist
 
-Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links implemented with review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
+Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion implemented with review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
 Updated: 2026-10-01.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
@@ -106,8 +106,8 @@ the review gate. Merge authorizes the existing production deployment workflow.
 - **2d — reliable existing task/project/link commands:** stable IDs/client refs,
   semantic command planning, coherent content/version reads, receipts and
   atomic final-state/aggregate validation. Creation-only increment merged/deployed in PR #46. Guarded content edits merged/deployed in PR #47. Guarded state, completion and task fields merged/deployed in PRs #48–#50.
-  Reliable links implemented; review/merge pending. Task/project deletion and
-  bounded mixed batches remain subsequent reviewable PRs. Keep the legacy PWA usable.
+  Reliable links merged/deployed in PR #51. Task/project deletion implemented;
+  review/merge pending. Bounded mixed batches remain a subsequent reviewable PR. Keep the legacy PWA usable.
 - **2e — workspace sync and restore:** consistent snapshot and fixed-watermark
   deltas covering all current user data, tombstones/retention/reset policy,
   import epoch and bounded versioned export/import retaining v1 input.
@@ -650,3 +650,36 @@ capability gates. Drizzle regeneration reports no further changes.
 
 Next: task/project deletion and bounded mixed graph batches; workspace
 sync/restore and retained offline intention/capability gates follow.
+
+
+### 2026-10-01 — Slice 2d seventh increment: reliable deletion
+
+PR #51 merged as `8f4ac3f` after clean automated review of final head `1ae5c36`,
+green checks and the resolved API reference finding. Deploy run 36935324269
+succeeded for Worker (including migration 013) and PWA Pages.
+
+Branch: `codex/power-user-slice-2d-delete`; automated review/merge pending.
+Adds guarded task/project deletion with coherent, complete cascade/detachment
+images and exact replay. Bounds count all generated SQL before writes; one
+task with 93 incident edges or project with 31 members fits 100 statements.
+Projects owning duties return a durable rejection until reliable duty ownership
+commands exist. No migration; broad gates remain off. See
+[reliable deletion](../shared/reliable-deletion.md).
+
+Acceptance: `npm run verify` passes (554 Worker / 526 PWA tests, both
+typechecks/builds, Worker dry-run 838.55 KiB / gzip 146.46 KiB). Fresh/upgrade
+SQLite tests cover complete effects, exact capacity boundaries, phantom races,
+identical/lost-response replay, rollback, revision exhaustion and duty ownership.
+PWA parsers reject malformed deletion/cascade data and retain exact capacity
+diagnostics. Isolated REST/MCP smoke passes preview without writes, member
+detachment/preserved context, task/link tombstones, replay, stale deletion
+conflicts, exact capacity rejection and unchanged capability gates.
+
+Next: bounded mixed graph batches; workspace sync/restore and retained offline
+intention/capability gates follow.
+
+Deletion review follow-up: response parsing now compares every detached member
+field against its before image, allowing only a null project and the command's
+server timestamp. Regressions reject altered titles, terminal status, dates or
+timestamps. Full verification passes 554 Worker / 530 PWA tests, both
+builds/typechecks and Worker dry-run (838.78 KiB / gzip 146.52 KiB).

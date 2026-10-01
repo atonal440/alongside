@@ -343,6 +343,12 @@ v2 command envelopes; this release accepts exactly one of the following command 
   `POST /api/v2/link` accepts an exact link key and returns its coherent
   row/version/structural snapshot. It rejects query parameters.
 
+- `task.delete`/`project.delete` with entity and structural revisions; see
+  [reliable deletion](shared/reliable-deletion.md). Task effects include incident
+  link tombstones; project effects include preserved, detached member tasks.
+  Oversized effects return versioned HTTP 413 `capacity_exceeded` with exact
+  `requiredStatements` and `limit`. Duty ownership blocks project deletion.
+
 For settings, `expectedRevision: null`
 requires absent settings; a number must equal the existing revision. Managed
 revisions are excluded from values. Working-hour overlaps are rejected before
@@ -350,7 +356,7 @@ writes. See [the command contract](shared/reliable-settings-commands.md) for a
 complete input and replay/rebase instructions.
 
 Applied/preview results contain `contractVersion`, `commandId`, `payloadHash`,
-`serverNow`, `changes` (one settings/entity/link diff, or completion plus successor),
+`serverNow`, `changes` (settings/entity/link changes, completion plus successor, or all deletion effects),
 `warnings` and `refs`. Recurring completion orders the completed task first and
 the successor creation second; its optional ref maps to the successor ID.
 Preview adds `dryRun: true` and `requiredStatements`; apply adds `applied: true`.

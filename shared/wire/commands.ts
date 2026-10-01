@@ -83,6 +83,8 @@ v.check(value => value.recurrence === null || value.dueAllDay !== false, 'Legacy
 export const TaskLegacyScheduleCommandSchema = v.strictObject({
   kind: v.literal('task.legacy-schedule.set'), id: TaskIdSchema, expectedRevision: RevisionSchema, values: LegacyScheduleValuesSchema,
 });
+export const TaskDeleteCommandSchema = v.strictObject({ kind: v.literal('task.delete'), id: TaskIdSchema, expectedRevision: RevisionSchema, expectedStructuralRevision: RevisionSchema });
+export const ProjectDeleteCommandSchema = v.strictObject({ kind: v.literal('project.delete'), id: ProjectIdSchema, expectedRevision: RevisionSchema, expectedStructuralRevision: RevisionSchema });
 const linkCommandEntries = { from: TaskIdSchema, to: TaskIdSchema, linkType: LinkTypeSchema, expectedStructuralRevision: RevisionSchema };
 export const LinkAddCommandSchema = v.pipe(v.strictObject({ ...linkCommandEntries,
   kind: v.literal('link.add'), expectedRevision: v.nullable(RevisionSchema),
@@ -93,7 +95,7 @@ export const CommandEnvelopeSchema = v.strictObject({
   contractVersion: v.literal(2), commandId: CommandIdSchema,
   actor: v.picklist(['user', 'llm', 'import']),
   reason: v.optional(v.pipe(v.string(), v.maxLength(1_000))),
-  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema])), v.length(1, 'This release accepts exactly one command per batch.')),
+  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.length(1, 'This release accepts exactly one command per batch.')),
 });
 export type CommandEnvelope = v.InferOutput<typeof CommandEnvelopeSchema>;
 export const parseCommandEnvelope = (input: unknown) => parseSchema(CommandEnvelopeSchema, input);
@@ -113,12 +115,12 @@ export const TaskCreateDiffSchema = v.strictObject({
 export const ProjectChangeDiffSchema = v.strictObject({
   entity: v.literal('project'), id: ProjectIdSchema,
   before: v.nullable(v.strictObject({ revision: RevisionSchema, row: ProjectRowSchema })),
-  after: v.strictObject({ revision: RevisionSchema, row: ProjectRowSchema }),
+  after: v.union([v.strictObject({ revision: RevisionSchema, row: ProjectRowSchema }), v.strictObject({ revision: RevisionSchema, deleted: v.literal(true) })]),
 });
 export const TaskChangeDiffSchema = v.strictObject({
   entity: v.literal('task'), id: TaskIdSchema,
   before: v.nullable(v.strictObject({ revision: RevisionSchema, row: TaskRowSchema })),
-  after: v.strictObject({ revision: RevisionSchema, row: TaskRowSchema }),
+  after: v.union([v.strictObject({ revision: RevisionSchema, row: TaskRowSchema }), v.strictObject({ revision: RevisionSchema, deleted: v.literal(true) })]),
 });
 export const LinkChangeDiffSchema = v.strictObject({
   entity: v.literal('link'), id: v.string(),
@@ -126,7 +128,7 @@ export const LinkChangeDiffSchema = v.strictObject({
   after: v.union([v.strictObject({ revision: RevisionSchema, row: TaskLinkRowSchema }), v.strictObject({ revision: RevisionSchema, deleted: v.literal(true) })]),
 });
 export const ChangeDiffSchema = v.variant('entity', [PlanningDiffSchema, ProjectChangeDiffSchema, TaskChangeDiffSchema, LinkChangeDiffSchema]);
-function validDiffIdentity(value: { changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
+function validDiffIdentity(value: { serverNow: string; changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
   if (value.changes.length === 0) return false;
   const identities = new Set<string>();
   const createdIds = new Set<string>();
@@ -145,18 +147,31 @@ function validDiffIdentity(value: { changes: v.InferOutput<typeof ChangeDiffSche
       }
       continue;
     }
-    if (change.id !== change.after.row.id) return false;
+    if ('row' in change.after && change.id !== change.after.row.id) return false;
     if (change.before !== null) {
       if (change.id !== change.before.row.id || change.after.revision !== change.before.revision + 1) return false;
     } else {
-      if (change.after.revision !== 1) return false;
+      if (change.after.revision !== 1 || !('row' in change.after)) return false;
       createdIds.add(change.id);
     }
   }
-  if (value.changes.length === 2) {
-    const [completed, successor] = value.changes;
-    if (completed?.entity !== 'task' || successor?.entity !== 'task' || completed.before?.row.status !== 'pending'
-      || completed.after.row.status !== 'done' || successor.before !== null || successor.after.row.status !== 'pending') return false;
+  if (value.changes.length > 1) {
+    const [root, ...effects] = value.changes;
+    if (root?.entity === 'task' && 'deleted' in root.after) {
+      if (!effects.every(effect => effect.entity === 'link' && 'deleted' in effect.after && effect.before?.row !== null
+        && effect.before !== null && (effect.before.row.from_task_id === root.id || effect.before.row.to_task_id === root.id))) return false;
+    } else if (root?.entity === 'project' && 'deleted' in root.after) {
+      if (!effects.every(effect => {
+        if (effect.entity !== 'task' || !('row' in effect.after) || effect.before?.row.project_id !== root.id) return false;
+        const expected = { ...effect.before.row, project_id: null, updated_at: value.serverNow };
+        const after = effect.after.row;
+        return Object.entries(expected).every(([field, stored]) => after[field as keyof typeof after] === stored);
+      })) return false;
+    } else {
+      const successor = effects[0];
+      if (effects.length !== 1 || root?.entity !== 'task' || successor?.entity !== 'task' || root.before?.row.status !== 'pending'
+        || !('row' in root.after) || root.after.row.status !== 'done' || successor.before !== null || !('row' in successor.after) || successor.after.row.status !== 'pending') return false;
+    }
   }
   return Object.keys(value.refs).length <= 1 && Object.values(value.refs).every(id => createdIds.has(id));
 }
@@ -166,7 +181,7 @@ const RefsSchema = v.pipe(v.custom<Record<string, string>>(input => input !== nu
 v.record(ClientRefSchema, v.union([TaskIdSchema, ProjectIdSchema])));
 const resultEntries = {
   contractVersion: v.literal(2), commandId: CommandIdSchema, payloadHash: PayloadHashSchema,
-  serverNow: EventInstantSchema, changes: v.pipe(v.array(ChangeDiffSchema), v.minLength(1), v.maxLength(2)),
+  serverNow: EventInstantSchema, changes: v.pipe(v.array(ChangeDiffSchema), v.minLength(1), v.maxLength(100)),
   warnings: v.pipe(v.array(v.string()), v.maxLength(0)),
   refs: RefsSchema,
 };

@@ -411,7 +411,7 @@ current values and require an explicit rebase with a new ID. Tool errors expose
 
 Settings, single task/project creation/content, task focus/deferral/reopen and
 project archive/reopen, reliable completion and task membership/type/legacy-schedule
-and link add/remove commands use this protocol. Task/project deletion and mixed graph batches,
+and link add/remove/deletion commands use this protocol. Mixed graph batches,
 offline command overlays and full delta sync remain gated. Settings export is a
 preferences document, not a full backup; restore non-null values through
 `planning.set` using `actor: import` and the destination's expected revision.
@@ -479,3 +479,11 @@ contract, with explicit classification and no new hard-deadline meaning.
 These commands preserve other managed/context fields and support preview,
 atomic apply and exact replay. See
 [guarded task fields](shared/reliable-task-fields.md) for inputs and conflicts.
+
+
+`task.delete` / `project.delete` require numeric entity and structural revisions.
+Task deletion includes incident-link tombstones; project deletion includes every
+detached member task while preserving context/state/links. Duty ownership blocks
+project deletion. Oversized atomic effects return versioned `capacity_exceeded`
+with exact `requiredStatements` and `limit: 100`; no split writes occur. See
+[reliable deletion](shared/reliable-deletion.md) for capacity, replay and conflicts.
