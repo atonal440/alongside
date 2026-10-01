@@ -1,6 +1,6 @@
 # Power-user todo implementation checklist
 
-Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands implemented with review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
+Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields implemented with review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
 Updated: 2026-10-01.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
@@ -595,3 +595,32 @@ replay after successor deletion and structured conflicts. No production test wri
 
 Next: deletion/association/link commands and bounded compound graph batches;
 then workspace sync/restore and retained offline intention/capability gates.
+
+
+### 2026-10-01 — Slice 2d fifth increment: guarded task fields
+
+PR #48 merged as `a85f5ac` after clean automated review of final head `f6b41c8`,
+green checks and resolved findings. Deploy run 36931234429 succeeded for Worker
+and PWA Pages. Its final review fix verification passed 447 Worker / 472 PWA
+tests, both typechecks/builds and Worker dry-run.
+
+PR #49 merged as `522e93f` after clean automated review of final head `111d768`,
+green checks and zero threads. Deploy run 36931908836 succeeded for Worker
+and PWA Pages.
+
+Branch: `codex/power-user-slice-2d-task-fields`; automated review/merge pending.
+Adds task project/type/legacy-schedule commands with guarded membership,
+explicit date classification and preservation of other fields. Existing
+lifecycle/recurrence and broad gates remain unchanged. No migration. See
+[guarded task fields](../shared/reliable-task-fields.md).
+
+Acceptance: `npm run verify` passes (505 Worker / 493 PWA tests, both
+typechecks/builds, Worker dry-run 813.82 KiB / gzip 141.77 KiB). Fresh/upgrade
+SQLite tests cover membership guards, selected-project conflicts, legacy races,
+exact replay after changes/deletion, rollback, preserved terminal/content state,
+explicit classification and command-boundary rejection. Isolated REST/MCP
+smoke passed preview without writes, assignment, type/date changes, replay,
+selected-project diagnostics and unchanged capability gates.
+
+Next: reliable link/deletion commands and bounded mixed graph batches; then
+workspace sync/restore and retained offline intention/capability gates.
