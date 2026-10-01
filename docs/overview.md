@@ -27,7 +27,9 @@ and identifies its legacy recurring successor for exact replay.
 task type and explicit legacy due-date/recurrence replacement.
 [Reliable link commands](shared/reliable-links.md) guard edge and graph revisions,
 reject cycles, and retain deletion identity for exact replay.
-Task/project deletion, mixed batches and full delta sync remain gated.
+[Reliable deletion](shared/reliable-deletion.md) returns all cascaded link
+tombstones or detached member-task images within an atomic capacity bound.
+Mixed batches and full delta sync remain gated.
 
 ## Feature highlights
 
