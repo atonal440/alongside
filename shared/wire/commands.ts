@@ -1,5 +1,5 @@
 import * as v from 'valibot';
-import { CommandIdSchema, EventInstantSchema, MinuteInstantSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema } from '../parse';
+import { CommandIdSchema, EventInstantSchema, MinuteInstantSchema, DueDateTimeSchema, RruleSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema } from '../parse';
 import { PlanningSettingsSchema } from './planning';
 import { ProjectRowSchema, TaskRowSchema } from './rows';
 
@@ -66,11 +66,28 @@ export const TaskCompleteCommandSchema = v.strictObject({
   expectedStructuralRevision: RevisionSchema,
   successor: v.nullable(v.strictObject({ id: TaskIdSchema, clientRef: v.optional(ClientRefSchema) })),
 });
+export const TaskProjectCommandSchema = v.strictObject({
+  kind: v.literal('task.project.set'), id: TaskIdSchema, expectedRevision: RevisionSchema,
+  expectedStructuralRevision: RevisionSchema,
+  project: v.nullable(v.strictObject({ id: ProjectIdSchema, expectedRevision: RevisionSchema })),
+});
+export const TaskTypeCommandSchema = v.strictObject({
+  kind: v.literal('task.type.set'), id: TaskIdSchema, expectedRevision: RevisionSchema, taskType: TaskTypeSchema,
+});
+const LegacyDueInstantSchema = v.pipe(DueDateTimeSchema,
+  v.check(value => Number(value.slice(0, 4)) >= 100, 'Legacy task dates require normalized UTC years 0100–9999.'));
+export const LegacyScheduleValuesSchema = v.pipe(v.strictObject({
+  dueDate: v.nullable(LegacyDueInstantSchema), dueAllDay: v.nullable(v.boolean()), recurrence: v.nullable(RruleSchema),
+}), v.check(value => value.dueDate !== null || (value.dueAllDay === null && value.recurrence === null), 'Clearing dueDate requires dueAllDay and recurrence to be null.'),
+v.check(value => value.recurrence === null || value.dueAllDay !== false, 'Legacy recurrence requires an all-day or legacy-ambiguous due date.'));
+export const TaskLegacyScheduleCommandSchema = v.strictObject({
+  kind: v.literal('task.legacy-schedule.set'), id: TaskIdSchema, expectedRevision: RevisionSchema, values: LegacyScheduleValuesSchema,
+});
 export const CommandEnvelopeSchema = v.strictObject({
   contractVersion: v.literal(2), commandId: CommandIdSchema,
   actor: v.picklist(['user', 'llm', 'import']),
   reason: v.optional(v.pipe(v.string(), v.maxLength(1_000))),
-  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema])), v.length(1, 'This release accepts exactly one command per batch.')),
+  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema])), v.length(1, 'This release accepts exactly one command per batch.')),
 });
 export type CommandEnvelope = v.InferOutput<typeof CommandEnvelopeSchema>;
 export const parseCommandEnvelope = (input: unknown) => parseSchema(CommandEnvelopeSchema, input);

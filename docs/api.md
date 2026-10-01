@@ -330,6 +330,11 @@ this release accepts exactly one of the following command families:
 - `task.complete` with required structural revision and `successor` (null for
   one-off tasks, a stable ID for legacy recurrence); see
   [reliable completion](shared/reliable-completion.md).
+- `task.project.set`, `task.type.set` and `task.legacy-schedule.set` for
+  membership, task type and the existing due-date/recurrence contract; see
+  [guarded task fields](shared/reliable-task-fields.md). Membership requires
+  a structural revision and selected-project revision. Legacy schedule values
+  explicitly include due-date classification; they never create a hard deadline.
 
 For settings, `expectedRevision: null`
 requires absent settings; a number must equal the existing revision. Managed
@@ -354,7 +359,7 @@ the structured error includes `code`, `path`, `message`, `retryable` and a
   structuralRevision}`. A live entity has its current row and
   `version: {revision, deletedAt: null}`. A deleted entity has null row and a
   retained version with `deletedAt`; no recorded identity has null row/version.
-  Content/state/completion commands expect a numeric revision, while creation expects null
+  Existing task/project commands expect a numeric revision, while creation expects null
   identity history. A changed selected project is reported as that project's
   `currentEntity`, not the proposed task. A used completion successor identity
   reports that successor with `expectedRevision: null`.

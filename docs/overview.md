@@ -23,7 +23,9 @@ writes while preserving managed fields.
 and project archive/reopen while preserving legacy transition behavior.
 [Reliable completion](shared/reliable-completion.md) atomically closes a task
 and identifies its legacy recurring successor for exact replay.
-Deletion/graph commands and full delta sync remain gated.
+[Guarded task field commands](shared/reliable-task-fields.md) add membership,
+task type and explicit legacy due-date/recurrence replacement.
+Deletion/link/batch commands and full delta sync remain gated.
 
 ## Feature highlights
 

@@ -79,8 +79,20 @@ const completionSchema = {
     }, required: ['id'] }] },
   }, required: ['kind', 'id', 'expectedRevision', 'expectedStructuralRevision', 'successor'],
 };
+const taskFieldSchemas = [
+  { ...stateCommandSchema('task.project.set'), properties: { ...stateCommandSchema('task.project.set').properties,
+    expectedStructuralRevision: { type: 'integer', minimum: 0, maximum: 9007199254740991 },
+    project: { oneOf: [{ type: 'null' }, { type: 'object', additionalProperties: false, properties: { id: { type: 'string', pattern: '^p_[0-9A-Za-z_-]{5,}$' }, expectedRevision: { type: 'integer', minimum: 0, maximum: 9007199254740991 } }, required: ['id', 'expectedRevision'] }] },
+  }, required: ['kind', 'id', 'expectedRevision', 'expectedStructuralRevision', 'project'] },
+  stateCommandSchema('task.type.set', 'taskType', { enum: ['action', 'plan'] }),
+  stateCommandSchema('task.legacy-schedule.set', 'values', { type: 'object', additionalProperties: false, properties: {
+    dueDate: { type: ['string', 'null'], description: 'Legacy calendar date or offset instant, normalized to minute UTC in years 0100–9999; not a hard deadline.' },
+    dueAllDay: { type: ['boolean', 'null'], description: 'Explicit classification. Null preserves legacy ambiguity; clearing dueDate requires null.' },
+    recurrence: { type: ['string', 'null'], description: 'Legacy date-only RRULE; requires all-day/ambiguous dueDate. Clearing dueDate requires null.' },
+  }, required: ['dueDate', 'dueAllDay', 'recurrence'] }),
+];
 const commandEnvelope = { ...envelope, properties: { ...envelope.properties,
-  commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema] } },
+  commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema, ...taskFieldSchemas] } },
 } };
 export const COMMAND_TOOLS = [
   { name: 'get_entity', description: 'Read a task/project row and its entity/structural versions together. Missing identities return null row/version; tombstones have null row and retained deleted version. Use for reliable command planning.', inputSchema: {
@@ -94,8 +106,8 @@ export const COMMAND_TOOLS = [
   } },
   { name: 'get_planning_settings', description: 'Read complete workspace planning settings and their revision, or null before setup.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'export_planning_settings', description: 'Export only planning preferences, without revision or credentials. Restore non-null values through planning.set with a fresh command ID and current expectedRevision. This is not a full-workspace backup.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
-  { name: 'preview_changes', description: 'Preview a reliable command without writes. Exactly one settings, creation, content, task focus/deferral/reopen/completion or project archive/reopen command; creation requires a stable ID, no prior identity history and the workspace structural revision. expectedRevision=null requires no settings; otherwise use the current revision. A preview is not a lock.', inputSchema: commandEnvelope },
-  { name: 'apply_changes', description: 'Atomically apply one settings, creation, content, task focus/deferral/reopen/completion or project archive/reopen command, with a caller-minted command ID and expected revision. Same ID/payload returns the original result; a different payload conflicts. Includes receipt, audit and command feed. Creation supports scoped clientRef/ID mapping. Content commands change only title/notes/kickoff and task session log; Focus/deferral follow existing pending-task transitions; reopening clears both. Project state preserves members/links. Completion uses structural guards and requires a stable successor ID for legacy recurrence, or successor:null otherwise. Deletion, graph batches and offline overlays follow later.', inputSchema: commandEnvelope },
+  { name: 'preview_changes', description: 'Preview a reliable command without writes. Exactly one supported settings/task/project command (creation, content, state, completion, project membership, type or legacy schedule); creation requires a stable ID, no prior identity history and the workspace structural revision. Use the current numeric revision for edits; initial settings and creation use null. A preview is not a lock.', inputSchema: commandEnvelope },
+  { name: 'apply_changes', description: 'Atomically apply one supported settings/task/project command, with a caller-minted command ID and expected revision. Same ID/payload returns the original result; a different payload conflicts. Includes receipt, audit and command feed. Creation supports scoped clientRef/ID mapping. Content commands change only title/notes/kickoff and task session log; Focus/deferral follow existing pending-task transitions; reopening clears both. Project state preserves members/links. Completion uses structural guards and requires a stable successor ID for legacy recurrence, or successor:null otherwise. Membership uses structural and selected-project guards. Legacy schedule changes replace only existing due-date classification/recurrence, not future explicit date roles. Deletion, links, mixed graph batches and offline overlays follow later.', inputSchema: commandEnvelope },
 ];
 export async function callCommandTool(name: string, args: unknown, db: DB): Promise<unknown> {
   if (name === 'get_entity') {

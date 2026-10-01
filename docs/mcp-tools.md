@@ -398,7 +398,7 @@ split into independent wipes; larger restore support requires staging.
 | --- | --- |
 | `get_planning_settings` | Read complete settings and revision, or null before setup |
 | `export_planning_settings` | Export portable preference values without revision or credentials |
-| `preview_changes` | Preview one settings, creation, content, task focus/deferral/reopen/completion or project archive/reopen command without writes |
+| `preview_changes` | Preview one supported settings/task/project command without writes |
 | `apply_changes` | Commit one supported command with revision guards, receipt, audit and feed |
 
 Read/export take `{}`. Preview/apply use the strict envelope shown in
@@ -410,7 +410,8 @@ current values and require an explicit rebase with a new ID. Tool errors expose
 `isError: true` and versioned `structuredContent.error`.
 
 Settings, single task/project creation/content, task focus/deferral/reopen and
-project archive/reopen and reliable completion use this protocol. Deletion and graph batches,
+project archive/reopen, reliable completion and task membership/type/legacy-schedule
+commands use this protocol. Deletion and graph batches,
 offline command overlays and full delta sync remain gated. Settings export is a
 preferences document, not a full backup; restore non-null values through
 `planning.set` using `actor: import` and the destination's expected revision.
@@ -423,8 +424,9 @@ preferences document, not a full backup; restore non-null values through
 the key, workspace `structuralRevision` and `version` from one SQL statement.
 A null version has no ledger history; non-null versions have a numeric
 `revision` and `deletedAt` (null when live). Retained deletion records survive
-v1 restore and ID reuse. This lookup does not fetch row content or enable task
-commands/delta sync. See [the version contract](shared/entity-versions.md).
+v1 restore and ID reuse. This lookup does not fetch row content or provide delta sync; use
+`get_entity` to read task/project content and `preview_changes`/`apply_changes`
+for supported mutation commands. See [the version contract](shared/entity-versions.md).
 
 
 `get_entity` accepts `{entity: "task"|"project", id}` and returns row content,
@@ -463,3 +465,13 @@ when recurring, a successor creation image together. Receipt replay returns
 both original images and creates no additional successor. See
 [reliable completion](shared/reliable-completion.md) for full inputs, preservation
 and compatibility boundaries.
+
+
+`task.project.set` guards task, structural and selected-project revisions;
+required `project` is null to detach or `{id,expectedRevision}` to assign.
+`task.type.set` replaces action/plan. `task.legacy-schedule.set` replaces required
+`values: {dueDate,dueAllDay,recurrence}` under the existing date/recurrence
+contract, with explicit classification and no new hard-deadline meaning.
+These commands preserve other managed/context fields and support preview,
+atomic apply and exact replay. See
+[guarded task fields](shared/reliable-task-fields.md) for inputs and conflicts.
