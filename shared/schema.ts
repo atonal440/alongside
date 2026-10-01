@@ -133,7 +133,7 @@ export const planningWorkingHours = sqliteTable('planning_working_hours', {
 ]);
 
 // Receipts never expire automatically: offline replay must remain safe. The
-// initial change feed covers planning settings only, not full-workspace sync.
+// command feed covers settings and reliable creation; not legacy/delta sync.
 export const commandReceipts = sqliteTable('command_receipts', {
   command_id: text('command_id').primaryKey().notNull(),
   payload_hash: text('payload_hash').notNull(),
@@ -154,12 +154,12 @@ export const commandAudit = sqliteTable('command_audit', {
 export const changeFeed = sqliteTable('change_feed', {
   seq: integer('seq').primaryKey({ autoIncrement: true }),
   command_id: text('command_id').notNull().references(() => commandReceipts.command_id),
-  entity: text('entity', { enum: ['planning_settings'] }).notNull(),
+  entity: text('entity', { enum: ['planning_settings', 'task', 'project'] }).notNull(),
   entity_id: text('entity_id').notNull(), revision: integer('revision').notNull(),
   operation: text('operation', { enum: ['upsert'] }).notNull(),
   payload_json: text('payload_json').notNull(), created_at: text('created_at').notNull(),
 }, t => [
-  check('feed_entity', sql`${t.entity} = 'planning_settings' AND ${t.entity_id} = 'workspace'`),
+  check('feed_entity', sql`(${t.entity} = 'planning_settings' AND ${t.entity_id} = 'workspace') OR (${t.entity} = 'task' AND ${t.entity_id} GLOB 't_*') OR (${t.entity} = 'project' AND ${t.entity_id} GLOB 'p_*')`),
   check('feed_revision', sql`typeof(${t.revision}) = 'integer' AND ${t.revision} BETWEEN 0 AND 9007199254740991`),
   check('feed_operation', sql`${t.operation} = 'upsert'`),
   check('feed_payload', sql`json_valid(${t.payload_json})`),

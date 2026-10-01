@@ -11,7 +11,7 @@ export function sqliteD1(mode: 'fresh' | 'upgrade' = 'fresh') {
     const dir = fileURLToPath(new URL('../../migrations/', import.meta.url));
     for (const name of readdirSync(dir).filter(name => name.endsWith('.sql')).sort()) sql.exec(readFileSync(`${dir}/${name}`, 'utf8'));
   }
-  const hooks: { beforeBatch?: () => void; failAfter?: number } = {};
+  const hooks: { beforeBatch?: () => Promise<void> | void; failAfter?: number; loseResponse?: boolean } = {};
   const batches: number[] = [];
   let reads = 0;
   function prepare(query: string) {
@@ -32,7 +32,7 @@ export function sqliteD1(mode: 'fresh' | 'upgrade' = 'fresh') {
     };
   }
   const d1 = { prepare, async batch(statements: ReturnType<typeof prepare>[]) {
-    if (hooks.beforeBatch) { const hook = hooks.beforeBatch; delete hooks.beforeBatch; hook(); }
+    if (hooks.beforeBatch) { const hook = hooks.beforeBatch; delete hooks.beforeBatch; await hook(); }
     batches.push(statements.length);
     sql.exec('BEGIN');
     try {
@@ -41,8 +41,9 @@ export function sqliteD1(mode: 'fresh' | 'upgrade' = 'fresh') {
         return statement.execute();
       });
       sql.exec('COMMIT');
+      if (hooks.loseResponse) { delete hooks.loseResponse; throw new Error('Lost response after commit'); }
       return results;
-    } catch (error) { sql.exec('ROLLBACK'); throw error; }
+    } catch (error) { if (sql.isTransaction) sql.exec('ROLLBACK'); throw error; }
   } } as unknown as D1Database;
   return { sql, d1, hooks, batches, reads: () => reads };
 }

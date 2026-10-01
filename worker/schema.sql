@@ -157,12 +157,13 @@ CREATE TABLE IF NOT EXISTS command_audit (
 CREATE TABLE IF NOT EXISTS change_feed (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
   command_id TEXT NOT NULL REFERENCES command_receipts(command_id),
-  entity TEXT NOT NULL CHECK (entity = 'planning_settings'),
-  entity_id TEXT NOT NULL CHECK (entity_id = 'workspace'),
+  entity TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
   revision INTEGER NOT NULL CHECK (typeof(revision) = 'integer' AND revision BETWEEN 0 AND 9007199254740991),
   operation TEXT NOT NULL CHECK (operation = 'upsert'),
   payload_json TEXT NOT NULL CHECK (json_valid(payload_json)),
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  CHECK ((entity = 'planning_settings' AND entity_id = 'workspace') OR (entity = 'task' AND entity_id GLOB 't_*') OR (entity = 'project' AND entity_id GLOB 'p_*'))
 );
 CREATE INDEX IF NOT EXISTS change_feed_entity ON change_feed(entity, entity_id, seq);
 
