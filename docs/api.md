@@ -313,11 +313,13 @@ split a replacement into multiple imports: each import wipes existing data.
 | --- | --- |
 | `GET /api/v2/planning-settings` | `{contractVersion: 2, settings: PlanningSettings \| null}` |
 | `GET /api/v2/planning-settings/export` | Versioned preferences document without managed revisions |
+| `POST /api/v2/link` | Coherent link row, version and structural revision for an exact `LinkKey` |
 | `POST /api/v2/changes/preview` | Side-effect-free normalized diff and generated SQL count |
 | `POST /api/v2/changes` | Applied diff and replayable command result |
 
-All four reject query parameters. POST inputs are strict v2 command envelopes;
-this release accepts exactly one of the following command families:
+All five reject query parameters. Link reads accept an exact
+`{entity: "link", from, to, linkType}` key. Preview/apply POST inputs are strict
+v2 command envelopes; this release accepts exactly one of the following command families:
 
 - `planning.set` for workspace settings.
 - `task.create`/`project.create` with stable caller IDs and structural guards;
