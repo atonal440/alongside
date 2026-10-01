@@ -1,11 +1,13 @@
-import { parseCapabilities, parseTimeResolution, parseLegacyDatesPreview, type Capabilities, type TimeResolution, type LegacyDatesPreview, type ResolveTimeInput, type LegacyDatesPreviewInput } from '@shared/wire/planning';
+import { parseFoundationErrorEnvelope, parseCapabilities, parseTimeResolution, parseLegacyDatesPreview, type Capabilities, type TimeResolution, type LegacyDatesPreview, type ResolveTimeInput, type LegacyDatesPreviewInput } from '@shared/wire/planning';
 import type { Timezone } from '@shared/parse';
 import * as v from 'valibot';
 import type { Task, Project, TaskLink } from '../types';
 import { TaskRowSchema, ProjectRowSchema, TaskLinkRowSchema, parseTaskRow } from '@shared/wire/rows';
 import { parseSchema } from '@shared/parse';
 import { apiRequest, type ApiConfig } from './client';
-import type { ApiResult } from './result';
+import type { ApiErrorBody, ApiResult } from './result';
+import type { Result } from '@shared/result';
+import type { ValidationError } from '@shared/parse';
 
 // PWA-local wire request body types (field names match the REST contract).
 // Intentionally separate from shared/types aliases — stage 6 finalises the migration.
@@ -61,18 +63,28 @@ function jsonBody(body: unknown): RequestInit {
   return { method: 'POST', body: JSON.stringify(body) };
 }
 
+function parseFoundationError(raw: unknown): Result<ApiErrorBody, ValidationError[]> {
+  const parsed = parseFoundationErrorEnvelope(raw);
+  if (!parsed.ok) return parsed;
+  return { ok: true, value: {
+    error: parsed.value.error.message,
+    contractError: parsed.value.error,
+    ...(parsed.value.error.details === undefined ? {} : { details: parsed.value.error.details }),
+  } };
+}
+
 export const api = {
   capabilities(config: ApiConfig, timezone?: Timezone): Promise<ApiResult<Capabilities>> {
     const query = timezone === undefined ? '' : `?timezone=${encodeURIComponent(timezone)}`;
-    return apiRequest(`/api/v2/capabilities${query}`, {}, config, parseCapabilities);
+    return apiRequest(`/api/v2/capabilities${query}`, {}, config, parseCapabilities, parseFoundationError);
   },
 
   resolveTime(body: ResolveTimeInput, config: ApiConfig): Promise<ApiResult<TimeResolution>> {
-    return apiRequest('/api/v2/resolve-time', jsonBody(body), config, parseTimeResolution);
+    return apiRequest('/api/v2/resolve-time', jsonBody(body), config, parseTimeResolution, parseFoundationError);
   },
 
   previewLegacyDates(body: LegacyDatesPreviewInput, config: ApiConfig): Promise<ApiResult<LegacyDatesPreview>> {
-    return apiRequest('/api/v2/legacy-dates/preview', jsonBody(body), config, parseLegacyDatesPreview);
+    return apiRequest('/api/v2/legacy-dates/preview', jsonBody(body), config, parseLegacyDatesPreview, parseFoundationError);
   },
 
   createTask(body: TaskCreateBody, config: ApiConfig): Promise<ApiResult<Task>> {

@@ -132,3 +132,11 @@ it('009 upgrade preserves representative legacy task values byte for byte', () =
   expect(sql.prepare('SELECT * FROM tasks ORDER BY id').all()).toEqual(before);
   sql.close();
 });
+
+it('fresh-db migration bookkeeping includes every migration reflected in schema.sql', () => {
+  const dir = fileURLToPath(new URL('../migrations/', import.meta.url));
+  const migrations = readdirSync(dir).filter(name => name.endsWith('.sql')).sort();
+  const script = readFileSync(fileURLToPath(new URL('../scripts/seed-migrations.mjs', import.meta.url)), 'utf8');
+  const seeded = Array.from(script.matchAll(/'(\d{3}_[^']+\.sql)'/g), match => match[1]).sort();
+  expect(seeded).toEqual(migrations);
+});

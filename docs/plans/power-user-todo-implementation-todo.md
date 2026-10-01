@@ -267,7 +267,7 @@ foreground toast is not evidence of closed-app notification delivery.
 Branch: `codex/power-user-slice-1`; PR review/merge pending. Migration 009 adds
 empty planning settings/working hours and rewrites no legacy values. REST/MCP
 capabilities, time resolution, legacy classification and parsed PWA callers are
-implemented. `npm run verify` passes: Worker 275 tests, PWA 415 tests, both
+implemented. `npm run verify` passes: Worker 276 tests, PWA 417 tests, both
 typechecks, Worker dry-run (738.19 KiB / gzip 127.49 KiB) and PWA build. Targeted
 coverage includes UTC−12/UTC+14, midnight gaps/folds, skipped dates, 23/25-hour
 days, leap dates, explicit fold selection, offset distinctions, strict boundary
@@ -290,3 +290,10 @@ atomic-capacity and client conflict-retention guards are ready.
 As work lands, append date, commit/PR if applicable, new migrations, gates and
 deployment state, targeted check results, smoke evidence, compatibility limits,
 and the next work item. Update checkboxes only from verified implementation.
+
+
+Slice 1 review follow-up: addressed both Codex P2 findings. Fresh-db migration
+bookkeeping now includes 009 (with a complete migration-list regression check).
+The PWA parses v2 error envelopes and retains machine-readable codes, recovery
+hints and DST alternatives; legacy authentication errors remain compatible.
+Focused boundary tests pass; final full verification and bot re-review pending.

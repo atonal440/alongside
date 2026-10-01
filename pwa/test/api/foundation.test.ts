@@ -30,3 +30,32 @@ describe('PWA temporal response boundary', () => {
     } finally { stub.restore(); }
   });
 });
+
+describe('PWA v2 structured error boundary', () => {
+  it('preserves fold alternatives, codes and recovery hints', async () => {
+    const stub = installFetchStub();
+    const input = parseSchema(ResolveTimeInputSchema, { kind: 'wall_time', date: '2026-11-01', time: '01:30', timezone: 'America/Los_Angeles' });
+    if (!input.ok) throw new Error();
+    const detail = {
+      code: 'ambiguous_local_time', path: ['time'], message: 'This local time occurs twice.', retryable: false, recoveryHint: 'Specify earlier or later.',
+      alternatives: [{ at: '2026-11-01T08:30:00Z', date: '2026-11-01', time: '01:30' }, { at: '2026-11-01T09:30:00Z', date: '2026-11-01', time: '01:30' }],
+    };
+    stub.respondWith({ method: 'POST', path: '/api/v2/resolve-time' }, { type: 'json', status: 400, body: { contractVersion: 2, error: detail } });
+    try {
+      const result = await api.resolveTime(input.value, config);
+      expect(result).toEqual({ kind: 'http', status: 400, body: { error: detail.message, contractError: detail } });
+    } finally { stub.restore(); }
+  });
+  it('validates structured errors while preserving legacy authentication failures', async () => {
+    const stub = installFetchStub();
+    stub.respondWith({ method: 'GET', path: '/api/v2/capabilities' }, { type: 'json', status: 400, body: { contractVersion: 2, error: { code: 5, message: 'Invalid' } } });
+    try {
+      expect((await api.capabilities(config)).kind).toBe('contract');
+    } finally { stub.restore(); }
+    const auth = installFetchStub();
+    auth.respondWith({ method: 'GET', path: '/api/v2/capabilities' }, { type: 'json', status: 401, body: { error: 'Unauthorized' } });
+    try {
+      expect(await api.capabilities(config)).toEqual({ kind: 'http', status: 401, body: { error: 'Unauthorized' } });
+    } finally { auth.restore(); }
+  });
+});

@@ -53,7 +53,7 @@ export type TimeResolution = v.InferOutput<typeof TimeResolutionSchema>;
 export const parseTimeResolution = (input: unknown) => parseSchema(TimeResolutionSchema, input);
 
 const LegacyOriginalSchema = v.strictObject({ due_date: v.string(), due_all_day: v.nullable(v.boolean()) });
-const FoundationErrorSchema = v.strictObject({
+export const FoundationErrorSchema = v.strictObject({
   ...ContractErrorSchema.entries,
   retryable: v.literal(false),
   details: v.optional(v.array(v.strictObject({ code: v.string(), path: v.array(v.string()), message: v.string() }))),
@@ -67,3 +67,7 @@ export const LegacyDatesPreviewSchema = v.strictObject({
 });
 export type LegacyDatesPreview = v.InferOutput<typeof LegacyDatesPreviewSchema>;
 export const parseLegacyDatesPreview = (input: unknown) => parseSchema(LegacyDatesPreviewSchema, input);
+
+export const FoundationErrorEnvelopeSchema = v.strictObject({ contractVersion: v.literal(2), error: FoundationErrorSchema });
+export type FoundationErrorDetail = v.InferOutput<typeof FoundationErrorSchema>;
+export const parseFoundationErrorEnvelope = (input: unknown) => parseSchema(FoundationErrorEnvelopeSchema, input);

@@ -99,3 +99,8 @@ API layer exposes parsed capability/resolution/preview calls without UI changes
 or offline writes. REST and MCP dispatch to the same domain functions. New
 validation/DST errors carry code, path, message, retryability and recovery hint;
 MCP returns a tool error with structured content, preserving machine readability.
+The PWA keeps v2 details in `ApiErrorBody.contractError` while exposing the
+human message through `error`; codes, recovery hints and DST alternatives remain
+available. Malformed structured errors fail boundary parsing. Legacy auth errors
+still use the existing string shape. Fresh `db:init` also records migration 009
+in its migration bookkeeping so subsequent upgrades do not replay its DDL.

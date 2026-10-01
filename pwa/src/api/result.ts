@@ -1,6 +1,7 @@
+import type { FoundationErrorDetail } from '@shared/wire/planning';
 import type { ValidationError } from '@shared/parse';
 
-export type ApiErrorBody = { error: string; details?: ValidationError[] };
+export type ApiErrorBody = { error: string; details?: ValidationError[]; contractError?: FoundationErrorDetail };
 
 export type ApiResult<T> =
   | { kind: 'ok'; value: T }
