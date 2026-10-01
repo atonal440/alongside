@@ -34,6 +34,7 @@ const applied = [
   '011_entity_versions.sql',
   '012_creation_commands.sql',
   '013_link_commands.sql',
+  '014_workspace_sync.sql',
 ];
 
 const inserts = applied
