@@ -1,6 +1,6 @@
 # Power-user todo implementation checklist
 
-Status: Slices 1, 2a and 2b merged/deployed. Slice 2c revision foundation implemented; automated review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
+Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation commands implemented; automated review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
 Updated: 2026-10-01.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
@@ -101,12 +101,12 @@ the review gate. Merge authorizes the existing production deployment workflow.
 
 - **2c — legacy writer revision foundation:** entity/structural revision ledger,
   deletion records, storage triggers covering direct/Plan/import/cascade writes,
-  atomic guards and parsed REST/MCP/PWA version lookup. No task command or sync
-  capability enabled. Implemented; review/merge pending.
+  atomic guards and parsed REST/MCP/PWA version lookup. No broad task reliability or sync
+  capability enabled. Merged/deployed in PR #45.
 - **2d — reliable existing task/project/link commands:** stable IDs/client refs,
   semantic command planning, coherent content/version reads, receipts and
-  atomic final-state/aggregate validation. Split command families further if
-  needed to keep each PR reviewable. Keep the legacy PWA usable.
+  atomic final-state/aggregate validation. First creation-only increment implemented; review/merge pending. Edits,
+  lifecycle and graph commands remain subsequent reviewable PRs. Keep the legacy PWA usable.
 - **2e — workspace sync and restore:** consistent snapshot and fixed-watermark
   deltas covering all current user data, tombstones/retention/reset policy,
   import epoch and bounded versioned export/import retaining v1 input.
@@ -466,3 +466,39 @@ Automated review and merge remain pending.
 Next: reliable existing task/project/link command families with coherent
 content/version reads, stable IDs/ref maps and receipts; then workspace sync,
 restore epochs and retained offline intention. Broad capability gates stay off.
+
+
+### 2026-10-01 — Slice 2d first increment: stable creation
+
+PR #45 merged as `055c6c0` after clean Codex review of final head `cf2d655`,
+green checks and no outstanding threads. Deploy run 36921944334 succeeded for
+both Worker migration 011 and PWA Pages.
+
+Branch: `codex/power-user-slice-2d-create`; automated review/merge pending.
+Adds single `task.create`/`project.create` commands with stable caller IDs,
+scoped ref mapping, guarded project references, aggregate/identity checks,
+receipt/audit/feed, and original-result replay. Coherent `get_entity` reads
+content plus entity/aggregate versions; parsers enforce identity and tombstone
+pairing. Migration 012 broadens the command feed without resetting old sequence
+allocation. Settings commands/receipts and legacy PWA operations remain usable.
+
+Transition: no task edits/lifecycle/link or mixed graph batch commands yet.
+Creation is deliberately undated/nonrecurring until explicit date commands;
+legacy date/recurrence creation remains available. No delta sync, restore epoch,
+full v2 backup, IDB overlay or old-client write gate is claimed. Broad capability
+gates remain false. See [reliable creation](../shared/reliable-creation.md).
+
+Acceptance: `npm run verify` passes with 384 Worker / 457 PWA tests, both
+typechecks/builds and Worker dry-run 786.70 KiB / gzip 137.71 KiB. Fresh/upgraded
+snapshot parity and an unchanged second Drizzle generation pass. Real SQLite
+tests cover original-result replay after edits/deletion, lost responses,
+concurrent identity/phantom races, guarded project references, late rollback,
+ref/row identity parsing, aggregate exhaustion and feed retention/watermark
+migration. Isolated local D1 migrations 001–012 and REST/MCP smoke passed
+preview, stable creation, project assignment, exact replay and structured
+conflicts with capability gates still off. No production test writes occurred.
+
+Next: guarded edit/lifecycle/project/link families and bounded graph batches,
+then workspace snapshot/delta sync and restore epochs, then retained offline
+command overlays and compatibility gating. Each PR requires clean automated
+review on its final commit and green checks before merge.
