@@ -398,7 +398,7 @@ split into independent wipes; larger restore support requires staging.
 | --- | --- |
 | `get_planning_settings` | Read complete settings and revision, or null before setup |
 | `export_planning_settings` | Export portable preference values without revision or credentials |
-| `preview_changes` | Preview one settings or task/project creation command without writes |
+| `preview_changes` | Preview one settings, creation or content command without writes |
 | `apply_changes` | Commit one supported command with revision guards, receipt, audit and feed |
 
 Read/export take `{}`. Preview/apply use the strict envelope shown in
@@ -409,7 +409,8 @@ different payload conflicts. A preview is not a lock. Revision conflicts carry
 current values and require an explicit rebase with a new ID. Tool errors expose
 `isError: true` and versioned `structuredContent.error`.
 
-Settings and single task/project creation use this protocol. Task edits, graph batches,
+Settings, single task/project creation and content edits use this protocol.
+Lifecycle commands, graph batches,
 offline command overlays and full delta sync remain gated. Settings export is a
 preferences document, not a full backup; restore non-null values through
 `planning.set` using `actor: import` and the destination's expected revision.
@@ -434,3 +435,11 @@ a task's selected project carries its own expected revision. See
 [the creation contract](shared/reliable-creation.md) for complete inputs and
 replay/retained-intent instructions. Link reads remain `get_entity_version`;
 link mutation commands and mixed batches are not implemented yet.
+
+
+`task.content.set` and `project.content.set` replace title/notes/kickoff text
+(and task session log) using the current expected entity revision. Managed
+fields are rejected. Preview/apply return versioned before/after rows;
+conflicts retain parsed current content for explicit rebase. See
+[guarded content](shared/reliable-content.md) for inputs, preservation and
+replay semantics.

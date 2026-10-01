@@ -17,7 +17,9 @@ task queue continues to use its legacy sync protocol during this rollout.
 task/project/link/duty writers, with retained deletion records and a coherent
 REST/MCP version lookup. [Stable task/project creation](shared/reliable-creation.md)
 adds caller IDs, guarded project references and exact replay, plus coherent
-content/version reads. Broader task commands and full delta sync remain gated.
+content/version reads. [Guarded content edits](shared/reliable-content.md) protect text from stale
+writes while preserving managed fields. Lifecycle/graph commands and full
+delta sync remain gated.
 
 ## Feature highlights
 
@@ -26,7 +28,7 @@ content/version reads. Broader task commands and full delta sync remain gated.
 - **Focus with auto-decay** — any task can be set focused for a time window (`focused_until` timestamp); expired-focus tasks surface in the [[ReviewView]] Carry Forward panel
 - **Readiness scoring** — [[readiness|shared/readiness.ts]] determines whether a task is actionable (pending, not deferred, no active blocker); the worker's [[db|worker/db.ts]] extends this with a numeric score (+3 base, +3 kickoff note, +2 session log, +1 due within 7 days, +1 recently active)
 - **Task dependencies / blocking** — `blocks` links hide the downstream task from ready lists until the upstream task completes; `related` links are informational
-- **Action log** — every mutation (create, update, complete, delete, defer, link) appends a row to the `action_log` table; readable via `GET /api/action-log` or `get_action_log` MCP tool
+- **Action log** — legacy mutation adapters append to `action_log`; reliable v2 commands record their before/after provenance in `command_audit`. The legacy log is readable via `GET /api/action-log` or `get_action_log` MCP tool
 - **Search / command palette** — the [[SearchBar]] component (activated by `/` or `Cmd K`) lets users search tasks and projects, run inline actions (focus, complete, defer, edit), or create a new task from any view
 - **Review view** — the [[ReviewView]] is an end-of-day close-out surface with four panels: Current Focus, Done Today, Carry Forward, and Next Suggestion
 - **OAuth 2.1 / PKCE** — the [[oauth|worker/oauth.ts]] module implements dynamic client registration and the full PKCE authorization code flow so Claude.ai and other external MCP clients can authenticate without sharing the static `AUTH_TOKEN`

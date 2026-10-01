@@ -1,6 +1,6 @@
 # Power-user todo implementation checklist
 
-Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation commands implemented; automated review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
+Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits implemented with automated review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
 Updated: 2026-10-01.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
@@ -105,7 +105,8 @@ the review gate. Merge authorizes the existing production deployment workflow.
   capability enabled. Merged/deployed in PR #45.
 - **2d — reliable existing task/project/link commands:** stable IDs/client refs,
   semantic command planning, coherent content/version reads, receipts and
-  atomic final-state/aggregate validation. First creation-only increment implemented; review/merge pending. Edits,
+  atomic final-state/aggregate validation. Creation-only increment merged/deployed in PR #46. Guarded content edits
+  implemented; review/merge pending. Remaining edits,
   lifecycle and graph commands remain subsequent reviewable PRs. Keep the legacy PWA usable.
 - **2e — workspace sync and restore:** consistent snapshot and fixed-watermark
   deltas covering all current user data, tombstones/retention/reset policy,
@@ -502,3 +503,28 @@ Next: guarded edit/lifecycle/project/link families and bounded graph batches,
 then workspace snapshot/delta sync and restore epochs, then retained offline
 command overlays and compatibility gating. Each PR requires clean automated
 review on its final commit and green checks before merge.
+
+
+### 2026-10-01 — Slice 2d second increment: guarded content
+
+PR #46 merged as `aec027e` after clean automated review of final head
+`37348c4`, green checks and no outstanding threads. Deploy run 36924869993
+succeeded for both Worker migration 012 and PWA Pages.
+
+Branch: `codex/power-user-slice-2d-edits`; automated review/merge pending.
+Adds `task.content.set`/`project.content.set` using coherent content/version
+reads, in-batch entity revision assertions and replay receipts. The complete
+text replacement preserves all managed fields, including done/archived state;
+unrelated edits may commit concurrently. Before/after images retain revisions
+for later history/undo. No migration or broad capability gate change.
+
+Acceptance: full `npm run verify` passes (409 Worker / 463 PWA tests, both
+typechecks/builds, Worker dry-run 793.13 KiB / gzip 138.61 KiB). Tests cover
+legacy edit/deletion races, identical replay after lost response and later
+writes, managed-field preservation, terminal state, late rollback, unrelated
+concurrent edits and durable exhaustion. Isolated REST/MCP smoke passed
+preview, edit, preserved dates/recurrence, exact replay and parsed conflicts.
+See [guarded content](../shared/reliable-content.md).
+
+Next: lifecycle, association/link commands and bounded compound batches; then
+full sync/restore protocol and offline retained intention/compatibility gate.

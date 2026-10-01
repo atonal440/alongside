@@ -318,7 +318,9 @@ split a replacement into multiple imports: each import wipes existing data.
 
 All four reject query parameters. POST inputs are strict v2 command envelopes;
 this release accepts exactly one `planning.set`, `task.create` or
-`project.create`. Creation uses a stable caller ID and structural revision;
+`project.create`, `task.content.set` or `project.content.set`. Content uses
+a numeric entity revision and replaces only conversational text; see
+[guarded content](shared/reliable-content.md). Creation uses a stable caller ID and structural revision;
 see [reliable creation](shared/reliable-creation.md). For settings, `expectedRevision: null`
 requires absent settings; a number must equal the existing revision. Managed
 revisions are excluded from values. Working-hour overlaps are rejected before
@@ -326,7 +328,7 @@ writes. See [the command contract](shared/reliable-settings-commands.md) for a
 complete input and replay/rebase instructions.
 
 Applied/preview results contain `contractVersion`, `commandId`, `payloadHash`,
-`serverNow`, `changes` (one settings diff or creation row/revision diff), `warnings` and `refs`.
+`serverNow`, `changes` (one settings or versioned entity diff), `warnings` and `refs`.
 Preview adds `dryRun: true` and `requiredStatements`; apply adds `applied: true`.
 Same ID/payload returns the original result. Same ID/different payload or stale
 revision returns HTTP 409; revision errors include `currentSettings` and
