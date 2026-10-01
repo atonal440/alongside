@@ -1,5 +1,10 @@
 # Duties Implementation Todo
 
+> Planning update, 2026-09-30: use the
+> [power-user checklist](power-user-todo-implementation-todo.md) for expanded
+> work. Stages 1–2 remain the landed baseline; later stages require reconciliation
+> with [the new contracts](power-user-todo.md), not implementation unchanged.
+
 Handoff checklist for `docs/plans/duties.md`. Keep this current as stages land so
 another agent can resume without re-deriving the plan. Each stage has a
 cold-start work order in `docs/plans/duties/`. When a design decision changes,

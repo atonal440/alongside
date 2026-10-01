@@ -1,5 +1,11 @@
 # Foundation 04 — Canonical Invariants, Contracts, and Op Catalog
 
+> Planning update, 2026-09-30: this file remains canonical **within the historical
+> duties plan**. For the expanded product, [power-user-todo.md](../power-user-todo.md)
+> takes precedence for unimplemented work, including occurrence history,
+> date types, catch-up, lookahead, and archival. Reconcile affected contracts
+> before reusing the older work orders; landed migrations remain the baseline.
+
 Part of `docs/plans/duties.md`. This is the **single source of truth** for the
 facts that would otherwise be restated across many stage docs and drift out of
 sync: the schema of record, the domain invariants, the calendar-primitive

@@ -1,5 +1,11 @@
 # Duties Plan (Master)
 
+> Planning update, 2026-09-30: [Power-user todo](power-user-todo.md) now owns
+> product direction for unimplemented work. It retains landed schema/timed
+> recurrence foundations but revises instant-only dates, occurrence history,
+> catch-up orphaning, lookahead, and series deletion. Read it and its checklist
+> before continuing these historical work orders.
+
 ## Context
 
 Alongside has recurrence today, but it is not a first-class concept — it is a
