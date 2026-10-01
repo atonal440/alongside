@@ -2,6 +2,20 @@ import type { Result } from '@shared/result';
 import { err, ok } from '@shared/result';
 import type { AppError } from '../domain/errors';
 import type { Op, Plan, PreCheck, ProjectRowPatch, TaskRowPatch } from '../domain/Op';
+import { entityStorageKey, parseEntityVersionResponse, type EntityKey, type EntityVersionResponse } from '@shared/wire/versions';
+
+/** One statement returns a coherent entity/aggregate revision pair. */
+export async function readEntityVersion(d1: D1Database, key: EntityKey): Promise<EntityVersionResponse> {
+  const row = await d1.prepare(`SELECT w.structural_revision, e.revision, e.deleted_at
+    FROM workspace_versions w LEFT JOIN entity_versions e ON e.entity=? AND e.entity_key=? WHERE w.id=1`)
+    .bind(key.entity, entityStorageKey(key)).first<{ structural_revision: number; revision: number | null; deleted_at: string | null }>();
+  if (!row) throw new Error('Workspace version singleton is missing.');
+  const parsed = parseEntityVersionResponse({ contractVersion: 2, key, structuralRevision: row.structural_revision,
+    version: row.revision === null ? null : { revision: row.revision, deletedAt: row.deleted_at },
+  });
+  if (!parsed.ok) throw new Error('Stored entity versions failed validation.');
+  return parsed.value;
+}
 
 export interface ApplySummary {
   appliedOps: number;
@@ -172,6 +186,18 @@ async function runBlocksAcyclicCheck(d1: D1Database, from: string, to: string): 
 
 async function runPreCheck(d1: D1Database, check: PreCheck): Promise<Result<void, AppError>> {
   switch (check.kind) {
+    case 'entity.revision': {
+      try {
+        const current = await readEntityVersion(d1, check.key);
+        return (current.version?.revision ?? null) === check.expected ? ok(undefined) : err({ kind: 'conflict', message: 'Entity revision changed.' });
+      } catch (cause) { return err(storageError('Failed to read entity revision.', cause)); }
+    }
+    case 'workspace.structural_revision': {
+      try {
+        const row = await d1.prepare('SELECT structural_revision FROM workspace_versions WHERE id=1').first<{ structural_revision: number }>();
+        return row?.structural_revision === check.expected ? ok(undefined) : err({ kind: 'conflict', message: 'Workspace structure changed.' });
+      } catch (cause) { return err(storageError('Failed to read structural revision.', cause)); }
+    }
     case 'task.exists':
       return runExistingRowCheck(d1, { entity: 'task', id: check.id });
     case 'project.exists':
@@ -202,6 +228,18 @@ function bindBlocksAcyclicGuard(d1: D1Database, from: string, to: string): Plann
 
 function bindPreCheckGuard(d1: D1Database, check: PreCheck): PlannedStatement[] {
   switch (check.kind) {
+    case 'entity.revision': {
+      const condition = check.expected === null
+        ? 'EXISTS (SELECT 1 FROM entity_versions WHERE entity=? AND entity_key=?)'
+        : 'NOT EXISTS (SELECT 1 FROM entity_versions WHERE entity=? AND entity_key=? AND revision=?)';
+      // Deliberately violate NOT NULL to abort the entire transactional batch.
+      const statement = d1.prepare(`INSERT INTO entity_versions(entity,entity_key,revision) SELECT NULL,'',0 WHERE ${condition}`);
+      const args = [check.key.entity, entityStorageKey(check.key)];
+      return [guardedStatement(check.expected === null ? statement.bind(...args) : statement.bind(...args, check.expected))];
+    }
+    case 'workspace.structural_revision':
+      return [guardedStatement(d1.prepare(`INSERT INTO workspace_versions(id,structural_revision) SELECT 1,NULL
+        WHERE NOT EXISTS (SELECT 1 FROM workspace_versions WHERE id=1 AND structural_revision=?)`).bind(check.expected))];
     case 'task.exists':
       return [bindExistingRowGuard(d1, { entity: 'task', id: check.id })];
     case 'project.exists':

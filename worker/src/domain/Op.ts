@@ -4,6 +4,7 @@ import type { PreferenceEntry } from './preference';
 import type { CommandId, EventInstant, Revision } from '@shared/parse';
 import type { ChangesResult } from '@shared/wire/commands';
 import type { PlanningSettings } from '@shared/wire/planning';
+import type { EntityKey } from '@shared/wire/versions';
 
 export type TaskRow = Task;
 export type ProjectRow = Project;
@@ -17,6 +18,8 @@ export type PreCheck =
   | { kind: 'project.exists'; id: ProjectId }
   | { kind: 'link.blocks_acyclic'; from: TaskId; to: TaskId }
   | { kind: 'planning.revision'; expected: Revision | null }
+  | { kind: 'entity.revision'; key: EntityKey; expected: Revision | null }
+  | { kind: 'workspace.structural_revision'; expected: Revision }
   | { kind: 'custom'; description: string };
 
 export type Op =

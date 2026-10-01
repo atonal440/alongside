@@ -31,6 +31,7 @@ const applied = [
   '008_due_all_day.sql',
   '009_planning_foundation.sql',
   '010_command_receipts.sql',
+  '011_entity_versions.sql',
 ];
 
 const inserts = applied

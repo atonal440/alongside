@@ -1,4 +1,5 @@
-import { checkPlanCapacity } from './storage/apply';
+import { checkPlanCapacity, readEntityVersion } from './storage/apply';
+import type { EntityKey, EntityVersionResponse } from '@shared/wire/versions';
 import { parsePlanningSettings, type PlanningSettings } from '@shared/wire/planning';
 import type { LegacyDueRow } from './domain/temporalFoundation';
 import { ChangesResultSchema, StoredReceiptSchema, type CommandEnvelope, type ChangesResult, type ChangesPreview } from '@shared/wire/commands';
@@ -624,7 +625,11 @@ export class DB {
     return this.drizzle.select().from(taskLinksTable);
   }
 
-  // Read-only typed planning configuration. Writes land with command receipts.
+  // Typed version/configuration reads preserve the legacy task row contract.
+  async getEntityVersion(key: EntityKey): Promise<EntityVersionResponse> {
+    return readEntityVersion(this.d1, key);
+  }
+
   async getPlanningSettings(): Promise<PlanningSettings | null> {
     // One SQL statement reads a coherent settings/working-hours snapshot.
     const row = await this.d1.prepare(`SELECT timezone, buffer_minutes, revision,

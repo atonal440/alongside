@@ -165,3 +165,23 @@ export const changeFeed = sqliteTable('change_feed', {
   check('feed_payload', sql`json_valid(${t.payload_json})`),
   index('change_feed_entity').on(t.entity, t.entity_id, t.seq),
 ]);
+
+// Storage triggers advance these for every legacy/Plan/raw SQL row writer.
+// Keeping versions out of legacy rows preserves their wire and IDB contracts.
+export const workspaceVersions = sqliteTable('workspace_versions', {
+  id: integer('id').primaryKey(),
+  structural_revision: integer('structural_revision').notNull().default(0),
+}, t => [
+  check('workspace_versions_singleton', sql`${t.id} = 1`),
+  check('workspace_versions_revision', sql`typeof(${t.structural_revision}) = 'integer' AND ${t.structural_revision} BETWEEN 0 AND 9007199254740991`),
+]);
+export const entityVersions = sqliteTable('entity_versions', {
+  entity: text('entity', { enum: ['task', 'project', 'link', 'duty'] }).notNull(),
+  entity_key: text('entity_key').notNull(),
+  revision: integer('revision').notNull(),
+  deleted_at: text('deleted_at'),
+}, t => [
+  primaryKey({ columns: [t.entity, t.entity_key] }),
+  check('entity_versions_entity', sql`${t.entity} IN ('task','project','link','duty')`),
+  check('entity_versions_revision', sql`typeof(${t.revision}) = 'integer' AND ${t.revision} BETWEEN 0 AND 9007199254740991`),
+]);
