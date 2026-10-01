@@ -21,7 +21,9 @@ content/version reads. [Guarded content edits](shared/reliable-content.md) prote
 writes while preserving managed fields.
 [Guarded state commands](shared/reliable-state.md) protect task focus/deferral/reopen
 and project archive/reopen while preserving legacy transition behavior.
-Completion/deletion/graph commands and full delta sync remain gated.
+[Reliable completion](shared/reliable-completion.md) atomically closes a task
+and identifies its legacy recurring successor for exact replay.
+Deletion/graph commands and full delta sync remain gated.
 
 ## Feature highlights
 

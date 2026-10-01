@@ -327,6 +327,9 @@ this release accepts exactly one of the following command families:
 - `task.focus.set`, `task.defer.set`, `task.reopen`, `project.archive` or
   `project.reopen` for existing state transitions;
   see [guarded state](shared/reliable-state.md) for required fields and effects.
+- `task.complete` with required structural revision and `successor` (null for
+  one-off tasks, a stable ID for legacy recurrence); see
+  [reliable completion](shared/reliable-completion.md).
 
 For settings, `expectedRevision: null`
 requires absent settings; a number must equal the existing revision. Managed
@@ -335,7 +338,9 @@ writes. See [the command contract](shared/reliable-settings-commands.md) for a
 complete input and replay/rebase instructions.
 
 Applied/preview results contain `contractVersion`, `commandId`, `payloadHash`,
-`serverNow`, `changes` (one settings or versioned entity diff), `warnings` and `refs`.
+`serverNow`, `changes` (one settings/entity diff, or completion plus successor),
+`warnings` and `refs`. Recurring completion orders the completed task first and
+the successor creation second; its optional ref maps to the successor ID.
 Preview adds `dryRun: true` and `requiredStatements`; apply adds `applied: true`.
 Same ID/payload returns the original result. Same ID/different payload or stale
 revision returns HTTP 409. Conflict bodies are `{contractVersion: 2, error}`;
@@ -349,10 +354,11 @@ the structured error includes `code`, `path`, `message`, `retryable` and a
   structuralRevision}`. A live entity has its current row and
   `version: {revision, deletedAt: null}`. A deleted entity has null row and a
   retained version with `deletedAt`; no recorded identity has null row/version.
-  Content/state commands expect a numeric revision, while creation expects null
+  Content/state/completion commands expect a numeric revision, while creation expects null
   identity history. A changed selected project is reported as that project's
-  `currentEntity`, not the proposed task.
-- Creation `structural_conflict` includes `expectedStructuralRevision` and
+  `currentEntity`, not the proposed task. A used completion successor identity
+  reports that successor with `expectedRevision: null`.
+- Creation/completion `structural_conflict includes `expectedStructuralRevision` and
   `currentEntity` with the current structural revision.
 - `command_id_conflict` reports command-ID/payload reuse; it does not provide
   current row or settings values.
@@ -360,7 +366,9 @@ the structured error includes `code`, `path`, `message`, `retryable` and a
 Invalid state transitions return HTTP 409 `invalid_transition` with
 `currentEntity` and `retryable: false`; they commit no receipt. Focus/deferral
 require pending tasks. Reopen requires a done/deferred task or archived project;
-archive requires an active project. A stale revision is reported first.
+archive requires an active project. Completion requires a pending task. A stale
+revision is reported first. Completion recurrence/successor mismatch returns
+HTTP 400 `invalid_input`, with no receipt or partial write.
 
 Retain the intended change and explicitly rebase from the appropriate current
 values with a fresh command ID. A transient commit failure returns HTTP 503 with

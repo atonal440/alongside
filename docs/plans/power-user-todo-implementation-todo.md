@@ -573,3 +573,25 @@ temporal resolution still supports 0001–9999. Earlier years, including an
 offset crossing below 0100, fail at the command boundary before planning;
 boundary and real-storage regression checks cover both focus and deferral.
 Completion work remains separately preserved while this PR is re-reviewed.
+
+### 2026-10-01 — Slice 2d fourth increment: reliable completion
+
+Branch: `codex/power-user-slice-2d-complete`; automated review/merge pending.
+Adds `task.complete` with entity/structural guards and a caller-stable successor
+ID for legacy recurrence. One transaction commits completion, successor,
+receipt/audit/feed and ledgers; replay returns both original images. Preserves
+existing recurrence behavior and the single legacy spawner; no migration or
+broad capability gate change. See
+[reliable completion](../shared/reliable-completion.md).
+
+Acceptance: final `npm run verify` passes (474 Worker / 484 PWA tests,
+both typechecks/builds, Worker dry-run 807.59 KiB / gzip 140.88 KiB).
+Fresh/upgrade SQLite tests cover stable successor inheritance, preview,
+original-result replay after changes/deletion, concurrent identical execution,
+entity/structural/identity races, complete rollback and revision exhaustion.
+PWA boundaries reject malformed compound IDs/revisions/refs. Isolated local
+REST/MCP smoke passed recurring and one-off completion, preview without writes,
+replay after successor deletion and structured conflicts. No production test writes.
+
+Next: deletion/association/link commands and bounded compound graph batches;
+then workspace sync/restore and retained offline intention/capability gates.

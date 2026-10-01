@@ -61,11 +61,16 @@ export const TaskDeferCommandSchema = v.strictObject({
 export const TaskReopenCommandSchema = v.strictObject({ kind: v.literal('task.reopen'), id: TaskIdSchema, expectedRevision: RevisionSchema });
 export const ProjectArchiveCommandSchema = v.strictObject({ kind: v.literal('project.archive'), id: ProjectIdSchema, expectedRevision: RevisionSchema });
 export const ProjectReopenCommandSchema = v.strictObject({ kind: v.literal('project.reopen'), id: ProjectIdSchema, expectedRevision: RevisionSchema });
+export const TaskCompleteCommandSchema = v.strictObject({
+  kind: v.literal('task.complete'), id: TaskIdSchema, expectedRevision: RevisionSchema,
+  expectedStructuralRevision: RevisionSchema,
+  successor: v.nullable(v.strictObject({ id: TaskIdSchema, clientRef: v.optional(ClientRefSchema) })),
+});
 export const CommandEnvelopeSchema = v.strictObject({
   contractVersion: v.literal(2), commandId: CommandIdSchema,
   actor: v.picklist(['user', 'llm', 'import']),
   reason: v.optional(v.pipe(v.string(), v.maxLength(1_000))),
-  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema])), v.length(1, 'This release accepts exactly one command per batch.')),
+  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema])), v.length(1, 'This release accepts exactly one command per batch.')),
 });
 export type CommandEnvelope = v.InferOutput<typeof CommandEnvelopeSchema>;
 export const parseCommandEnvelope = (input: unknown) => parseSchema(CommandEnvelopeSchema, input);
@@ -94,12 +99,27 @@ export const TaskChangeDiffSchema = v.strictObject({
 });
 export const ChangeDiffSchema = v.variant('entity', [PlanningDiffSchema, ProjectChangeDiffSchema, TaskChangeDiffSchema]);
 function validDiffIdentity(value: { changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
-  const change = value.changes[0];
-  if (!change) return false;
-  if (change.entity === 'planning_settings') return Object.keys(value.refs).length === 0;
-  if (change.id !== change.after.row.id) return false;
-  if (change.before !== null) return change.id === change.before.row.id && change.after.revision === change.before.revision + 1 && Object.keys(value.refs).length === 0;
-  return change.after.revision === 1 && Object.keys(value.refs).length <= 1 && Object.values(value.refs).every(id => id === change.id);
+  if (value.changes.length === 0) return false;
+  const identities = new Set<string>();
+  const createdIds = new Set<string>();
+  for (const change of value.changes) {
+    if (identities.has(`${change.entity}:${change.id}`)) return false;
+    identities.add(`${change.entity}:${change.id}`);
+    if (change.entity === 'planning_settings') return value.changes.length === 1 && Object.keys(value.refs).length === 0;
+    if (change.id !== change.after.row.id) return false;
+    if (change.before !== null) {
+      if (change.id !== change.before.row.id || change.after.revision !== change.before.revision + 1) return false;
+    } else {
+      if (change.after.revision !== 1) return false;
+      createdIds.add(change.id);
+    }
+  }
+  if (value.changes.length === 2) {
+    const [completed, successor] = value.changes;
+    if (completed?.entity !== 'task' || successor?.entity !== 'task' || completed.before?.row.status !== 'pending'
+      || completed.after.row.status !== 'done' || successor.before !== null || successor.after.row.status !== 'pending') return false;
+  }
+  return Object.keys(value.refs).length <= 1 && Object.values(value.refs).every(id => createdIds.has(id));
 }
 const RefsSchema = v.pipe(v.custom<Record<string, string>>(input => input !== null && typeof input === 'object' && !Array.isArray(input)
   && Object.entries(input).every(([key, value]) => /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(key)
@@ -107,15 +127,15 @@ const RefsSchema = v.pipe(v.custom<Record<string, string>>(input => input !== nu
 v.record(ClientRefSchema, v.union([TaskIdSchema, ProjectIdSchema])));
 const resultEntries = {
   contractVersion: v.literal(2), commandId: CommandIdSchema, payloadHash: PayloadHashSchema,
-  serverNow: EventInstantSchema, changes: v.pipe(v.array(ChangeDiffSchema), v.length(1)),
+  serverNow: EventInstantSchema, changes: v.pipe(v.array(ChangeDiffSchema), v.minLength(1), v.maxLength(2)),
   warnings: v.pipe(v.array(v.string()), v.maxLength(0)),
   refs: RefsSchema,
 };
 export const ChangesPreviewSchema = v.pipe(v.strictObject({ ...resultEntries,
   dryRun: v.literal(true), requiredStatements: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100)),
-}), v.check(value => validDiffIdentity(value), 'Creation diff identity, revision and reference map must agree.'));
+}), v.check(value => validDiffIdentity(value), 'Diff identity, revision and reference map must agree.'));
 export const ChangesResultSchema = v.pipe(v.strictObject({ ...resultEntries, applied: v.literal(true) }),
-  v.check(value => validDiffIdentity(value), 'Creation diff identity, revision and reference map must agree.'));
+  v.check(value => validDiffIdentity(value), 'Diff identity, revision and reference map must agree.'));
 export type ChangesResult = v.InferOutput<typeof ChangesResultSchema>;
 export type ChangesPreview = v.InferOutput<typeof ChangesPreviewSchema>;
 export const parseChangesResult = (input: unknown) => parseSchema(ChangesResultSchema, input);

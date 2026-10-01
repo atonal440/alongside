@@ -398,7 +398,7 @@ split into independent wipes; larger restore support requires staging.
 | --- | --- |
 | `get_planning_settings` | Read complete settings and revision, or null before setup |
 | `export_planning_settings` | Export portable preference values without revision or credentials |
-| `preview_changes` | Preview one settings, creation, content, task focus/deferral/reopen or project archive/reopen command without writes |
+| `preview_changes` | Preview one settings, creation, content, task focus/deferral/reopen/completion or project archive/reopen command without writes |
 | `apply_changes` | Commit one supported command with revision guards, receipt, audit and feed |
 
 Read/export take `{}`. Preview/apply use the strict envelope shown in
@@ -410,7 +410,7 @@ current values and require an explicit rebase with a new ID. Tool errors expose
 `isError: true` and versioned `structuredContent.error`.
 
 Settings, single task/project creation/content, task focus/deferral/reopen and
-project archive/reopen use this protocol. Completion/deletion and graph batches,
+project archive/reopen and reliable completion use this protocol. Deletion and graph batches,
 offline command overlays and full delta sync remain gated. Settings export is a
 preferences document, not a full backup; restore non-null values through
 `planning.set` using `actor: import` and the destination's expected revision.
@@ -453,3 +453,13 @@ legacy transitions. Clear operations preserve the other value. Reopening clears
 focus/deferral; project state preserves member tasks/links. Invalid transitions
 return `invalid_transition` with `currentEntity`. See
 [guarded state](shared/reliable-state.md) for complete inputs and replay behavior.
+
+
+`task.complete` completes a pending task through the same protocol, with both
+entity and workspace structural revisions. Required `successor` is null for
+one-off tasks; legacy recurring tasks require an unused stable successor ID,
+optionally with a clientRef. Preview/apply return the completed image and,
+when recurring, a successor creation image together. Receipt replay returns
+both original images and creates no additional successor. See
+[reliable completion](shared/reliable-completion.md) for full inputs, preservation
+and compatibility boundaries.

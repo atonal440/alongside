@@ -1,6 +1,6 @@
 import type { Result } from '@shared/result';
 import { err, ok } from '@shared/result';
-import { nextOccurrence, type IsoDateTime, type MintedTaskId } from '../../parse';
+import { nextOccurrence, type IsoDateTime, type TaskId } from '../../parse';
 import { unsafeBrand } from '@shared/brand';
 import type { AppError } from '../errors';
 import type { Plan } from '../Op';
@@ -30,7 +30,7 @@ type TaskRowUpdatePatch = NonNullable<Extract<Plan['ops'][number], { kind: 'task
 
 export interface CompleteTaskPlanInput {
   completedAt: IsoDateTime;
-  nextTaskId?: MintedTaskId;
+  nextTaskId?: TaskId;
 }
 
 export function completeTaskPlan(task: PendingTaskDomain, input: CompleteTaskPlanInput): TaskPlanResult {
