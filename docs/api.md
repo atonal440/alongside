@@ -10,6 +10,43 @@ The Alongside worker exposes a REST API used by the PWA. All endpoints require a
 
 ---
 
+## v2 temporal foundation
+
+These authenticated, read-only endpoints return `contractVersion: 2`. They
+share strict schemas and domain behavior with MCP. See
+[temporal foundation](shared/temporal-foundation.md) for boundaries, errors,
+feature gates, and legacy compatibility.
+
+| Endpoint | Input | Result |
+| --- | --- | --- |
+| `GET /api/v2/capabilities` | Optional `timezone` query | Server time, interpreted zone/source, setup requirement, implemented features/limits and delivery configuration |
+| `POST /api/v2/resolve-time` | Tagged structured input below | UTC minute `at`, interpreted zone/source, server time, inclusive/exclusive comparison |
+| `POST /api/v2/legacy-dates/preview` | Optional `timezone`, `after` task ID, `limit` (1–500, default 100) | Dry-run target candidates preserving originals/provenance, unresolved rows and next cursor |
+
+Resolve examples:
+
+```json
+{"kind":"wall_time","date":"2026-11-01","time":"01:30","timezone":"America/Los_Angeles","disambiguation":"later"}
+```
+
+```json
+{"kind":"date_boundary","date":"2026-09-30","role":"deadline","timezone":"America/Los_Angeles"}
+```
+
+```json
+{"kind":"offset","point":{"kind":"date","date":"2026-09-30","timezone":"America/Los_Angeles"},"offset":{"kind":"elapsed_minutes","minutes":-15},"dateAnchorTime":"09:00"}
+```
+
+Calendar offsets use `{"kind":"calendar_days","days":1,"localTime":"09:00"}`.
+Unknown keys, duplicate queries, unsupported queries and explicit null return
+400. Omitted zone uses a configured workspace zone or explicitly reported UTC
+fallback. DST folds require a choice; gaps return alternatives. Errors use
+`{"contractVersion":2,"error":{"code":...,"path":...,"message":...,"retryable":false,"recoveryHint":...}}`.
+Legacy preview pagination is not a consistent concurrent snapshot; no date
+migration or background delivery occurs through these endpoints.
+
+---
+
 ## Task Endpoints
 
 ### `GET /api/tasks`

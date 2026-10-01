@@ -1,6 +1,6 @@
 # Power-user todo implementation checklist
 
-Status: planning only; no slice implemented by this planning session.
+Status: Slice 1 implemented and locally verified; PR review/merge pending. Slices 2–7 remain unimplemented.
 Updated: 2026-09-30.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
@@ -42,26 +42,26 @@ migrations/release evidence before deployment.
 
 Depends on baseline. Goal: distinguish dates, instants, and scheduling intent.
 
-- [ ] Add `LocalDate`, `LocalTime`, `MinuteInstant`, `EventInstant`, duration,
+- [x] Add `LocalDate`, `LocalTime`, `MinuteInstant`, `EventInstant`, duration,
   revision, sort-key, and entity-ID brands/parsers; reuse existing semantics
   instead of maintaining competing timezone types.
-- [ ] Implement temporal unions, zoned date boundaries, elapsed/calendar
+- [x] Implement temporal unions, zoned date boundaries, elapsed/calendar
   offsets, explicit one-off DST resolution, and typed planning settings.
-- [ ] Add `get_capabilities`/`resolve_time`: contract versions, server now,
+- [x] Add `get_capabilities`/`resolve_time`: contract versions, server now,
   timezone, feature gates, limits, and delivery configuration status. Require
   setup or a reported fallback zone; never use the host zone as user intent.
-- [ ] Define strict inputs/results/errors distinct from storage rows, including
+- [x] Define strict inputs/results/errors distinct from storage rows, including
   omission/null and unknown-key policies.
-- [ ] Prepare additive changes to `shared/schema.ts`, `worker/schema.sql`, and
+- [x] Prepare additive changes to `shared/schema.ts`, `worker/schema.sql`, and
   the next unused hand-written migration. Never edit applied 007/008 files.
-- [ ] Produce a dry-run legacy due-date classification: true all-day marker
+- [x] Produce a dry-run legacy due-date classification: true all-day marker
   becomes target date from stored UTC date; false becomes target instant; null
   uses the existing all-day fallback with `legacy_ambiguous` provenance.
   Preserve original values and attach a reported/user-selected zone. No legacy
   due date automatically becomes a hard deadline.
-- [ ] Test extreme zones, 23/25-hour dates, skipped dates, folds/gaps, leap days,
+- [x] Test extreme zones, 23/25-hour dates, skipped dates, folds/gaps, leap days,
   date/instant round-trip, and independent host `TZ` settings.
-- [ ] Update shared temporal and capability docs.
+- [x] Update shared temporal and capability docs.
 
 Acceptance: date meaning survives viewer-zone changes; ambiguity is visible;
 no new parser depends on host-local Date behavior. No background engine enabled.
@@ -262,9 +262,30 @@ foreground toast is not evidence of closed-app notification delivery.
 
 ## Progress and next-session handoff
 
-Planning deliverables: master contract and this checklist. All implementation
-slices remain unchecked. Next concrete implementation task: slice 1 temporal/
-wire foundation, with legacy migration classification prepared before writes.
+### 2026-09-30 — Slice 1 temporal/contract foundation
+
+Branch: `codex/power-user-slice-1`; PR review/merge pending. Migration 009 adds
+empty planning settings/working hours and rewrites no legacy values. REST/MCP
+capabilities, time resolution, legacy classification and parsed PWA callers are
+implemented. `npm run verify` passes: Worker 275 tests, PWA 415 tests, both
+typechecks, Worker dry-run (738.19 KiB / gzip 127.49 KiB) and PWA build. Targeted
+coverage includes UTC−12/UTC+14, midnight gaps/folds, skipped dates, 23/25-hour
+days, leap dates, explicit fold selection, offset distinctions, strict boundary
+errors, fresh/upgrade SQL constraints and preservation of legacy rows. A separate
+process with `TZ=Pacific/Auckland` also passes the temporal tests.
+
+Transition: no background engine enabled; legacy task writers/spawner remain
+unchanged. Settings are typed/readable but have no public writer until Slice 2
+receipts/concurrency. The default is explicitly reported UTC fallback, never
+host inference. Preview pages report that they are not a consistent snapshot;
+Slice 3 must revalidate classification before committing migration. Public
+settings export/import lands with its first writer in Slice 2. Historical wall
+times with sub-minute offsets return an explicit precision error. Deployment
+has not been verified; merging triggers the existing deploy workflow.
+
+Next task: Slice 2 reliable commands/reconciliation, in deployable sub-slices
+with one branch/PR each. Do not expose task-date writes before receipt, revision,
+atomic-capacity and client conflict-retention guards are ready.
 
 As work lands, append date, commit/PR if applicable, new migrations, gates and
 deployment state, targeted check results, smoke evidence, compatibility limits,
