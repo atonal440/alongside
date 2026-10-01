@@ -15,7 +15,9 @@ planning settings with revision checks and replay receipts. The existing PWA
 task queue continues to use its legacy sync protocol during this rollout.
 [Revision tracking](shared/entity-versions.md) now covers all legacy
 task/project/link/duty writers, with retained deletion records and a coherent
-REST/MCP version lookup; task commands and full delta sync remain gated.
+REST/MCP version lookup. [Stable task/project creation](shared/reliable-creation.md)
+adds caller IDs, guarded project references and exact replay, plus coherent
+content/version reads. Broader task commands and full delta sync remain gated.
 
 ## Feature highlights
 

@@ -317,14 +317,16 @@ split a replacement into multiple imports: each import wipes existing data.
 | `POST /api/v2/changes` | Applied diff and replayable command result |
 
 All four reject query parameters. POST inputs are strict v2 command envelopes;
-this release accepts exactly one `planning.set`. `expectedRevision: null`
+this release accepts exactly one `planning.set`, `task.create` or
+`project.create`. Creation uses a stable caller ID and structural revision;
+see [reliable creation](shared/reliable-creation.md). For settings, `expectedRevision: null`
 requires absent settings; a number must equal the existing revision. Managed
 revisions are excluded from values. Working-hour overlaps are rejected before
 writes. See [the command contract](shared/reliable-settings-commands.md) for a
 complete input and replay/rebase instructions.
 
 Applied/preview results contain `contractVersion`, `commandId`, `payloadHash`,
-`serverNow`, `changes` (one before/after settings diff), `warnings` and `refs`.
+`serverNow`, `changes` (one settings diff or creation row/revision diff), `warnings` and `refs`.
 Preview adds `dryRun: true` and `requiredStatements`; apply adds `applied: true`.
 Same ID/payload returns the original result. Same ID/different payload or stale
 revision returns HTTP 409; revision errors include `currentSettings` and
@@ -347,3 +349,14 @@ it contains `revision` and `deletedAt` (null when live, UTC event instant when
 deleted). This read does not include entity content or provide a sync cursor.
 See [revision tracking](shared/entity-versions.md) for backfill, tombstones,
 legacy compatibility and the transition to guarded task commands.
+
+
+## V2 coherent entity read
+
+`POST /api/v2/entity` accepts a strict `{entity: "task"|"project", id}` key and
+rejects query parameters. Returns `{contractVersion: 2, entity, id, row,
+version, structuralRevision}` from one SQL statement. Missing/deleted rows are
+null; versions distinguish no history from tombstones. The row's ID and
+live/deleted state must agree with the version. Read this together before
+planning reliable commands. See [stable creation](shared/reliable-creation.md)
+for creation envelopes, project guards and conflict/replay behavior.

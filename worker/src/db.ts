@@ -1,10 +1,11 @@
 import { checkPlanCapacity, readEntityVersion } from './storage/apply';
-import type { EntityKey, EntityVersionResponse } from '@shared/wire/versions';
+import type { EntityKey, EntityVersionResponse, EntityReadKey, EntitySnapshot } from '@shared/wire/versions';
+import { readEntitySnapshot } from './storage/entity';
 import { parsePlanningSettings, type PlanningSettings } from '@shared/wire/planning';
 import type { LegacyDueRow } from './domain/temporalFoundation';
 import { ChangesResultSchema, StoredReceiptSchema, type CommandEnvelope, type ChangesResult, type ChangesPreview } from '@shared/wire/commands';
-import { parseSchema, parseEventInstant, type CommandId } from '@shared/parse';
-import { CommandError, commandHash, payloadConflict, planSettingsCommand, revisionConflict } from './domain/commands';
+import { parseSchema, parseEventInstant, type EventInstant, type CommandId } from '@shared/parse';
+import { CommandError, commandHash, payloadConflict, planSettingsCommand, planCreateCommand, creationConflict, revisionConflict } from './domain/commands';
 import { nanoid } from 'nanoid';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, ne, inArray, lte, or, asc, desc, gt, and, sql } from 'drizzle-orm';
@@ -626,6 +627,23 @@ export class DB {
   }
 
   // Typed version/configuration reads preserve the legacy task row contract.
+  async getEntitySnapshot(key: EntityReadKey): Promise<EntitySnapshot> {
+    return readEntitySnapshot(this.d1, key);
+  }
+
+  private async planCommand(input: CommandEnvelope, hash: string, clock: EventInstant): Promise<{ plan: Plan; result: ChangesResult }> {
+    const command = input.commands[0]!;
+    if (command.kind === 'planning.set') return planSettingsCommand(input, await this.getPlanningSettings(), hash, clock);
+    const current = await this.getEntitySnapshot(command.kind === 'task.create' ? { entity: 'task', id: command.id } : { entity: 'project', id: command.id });
+    const project = command.kind === 'task.create' && command.values.project !== null
+      ? await this.getEntitySnapshot({ entity: 'project', id: command.values.project.id }) : null;
+    if (project !== null && project.structuralRevision !== current.structuralRevision) throw new CommandError({
+      code: 'structural_conflict', path: ['commands', '0', 'expectedStructuralRevision'], message: 'Workspace changed between entity reads.', retryable: false,
+      currentEntity: project, expectedStructuralRevision: command.expectedStructuralRevision, recoveryHint: 'Retain the proposed creation and preview again with a fresh command ID after rebasing.',
+    });
+    return planCreateCommand(input, current, project, hash, clock);
+  }
+
   async getEntityVersion(key: EntityKey): Promise<EntityVersionResponse> {
     return readEntityVersion(this.d1, key);
   }
@@ -665,7 +683,7 @@ export class DB {
     }
     const clock = parseEventInstant(new Date().toISOString());
     if (!clock.ok) throw new Error('Invalid server clock.');
-    const planned = planSettingsCommand(input, await this.getPlanningSettings(), hash, clock.value);
+    const planned = await this.planCommand(input, hash, clock.value);
     const capacity = checkPlanCapacity(this.d1, planned.plan);
     if (!capacity.ok) throwAppError(capacity.error);
     const { applied: _applied, ...result } = planned.result;
@@ -683,9 +701,9 @@ export class DB {
     if (!clock.ok) throw new Error('Invalid server clock.');
     let planned: ReturnType<typeof planSettingsCommand>;
     try {
-      planned = planSettingsCommand(input, await this.getPlanningSettings(), hash, clock.value);
+      planned = await this.planCommand(input, hash, clock.value);
     } catch (error) {
-      if (error instanceof CommandError && error.detail.code === 'revision_conflict') {
+      if (error instanceof CommandError && ['revision_conflict', 'structural_conflict'].includes(error.detail.code)) {
         const raced = await this.getCommandReceipt(input.commandId);
         if (raced) {
           if (raced.payloadHash !== hash) throw payloadConflict();
@@ -704,8 +722,15 @@ export class DB {
       if (concurrentReplay.payloadHash !== hash) throw payloadConflict();
       return concurrentReplay;
     }
-    const current = await this.getPlanningSettings();
-    if ((current?.revision ?? null) !== input.commands[0]!.expectedRevision) throw revisionConflict(input.commands[0]!.expectedRevision, current);
+    const command = input.commands[0]!;
+    if (command.kind === 'planning.set') {
+      const current = await this.getPlanningSettings();
+      if ((current?.revision ?? null) !== command.expectedRevision) throw revisionConflict(command.expectedRevision, current);
+    } else {
+      const current = await this.getEntitySnapshot(command.kind === 'task.create' ? { entity: 'task', id: command.id } : { entity: 'project', id: command.id });
+      const conflict = creationConflict(input, current);
+      if (conflict) throw conflict;
+    }
     if (applied.error.kind === 'capacity_exceeded') throwAppError(applied.error);
     throw new CommandError({ code: 'storage_unavailable', path: [], message: 'The command could not be committed.', retryable: true,
       recoveryHint: 'Keep this command ID and payload; retry after the service recovers. No partial command was committed.' }, 503);

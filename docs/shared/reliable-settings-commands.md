@@ -2,8 +2,9 @@
 
 Slice 2b gives the temporal foundation its first explicit configuration writer.
 It accepts one `planning.set` command: a complete replacement of timezone,
-buffer and weekday working hours. No task/date/graph writer uses this protocol
-yet. `get_capabilities.features.reliableCommands` and `deltaSync` therefore
+buffer and weekday working hours. Single task/project creation now extends the protocol; see
+[reliable creation](reliable-creation.md). Date and graph writers remain later
+increments. `get_capabilities.features.reliableCommands` and `deltaSync` therefore
 remain false for the broader task workflow.
 
 ## Preview and apply
@@ -73,7 +74,7 @@ Safe-integer revision exhaustion returns an explicit error instead of wraparound
 ## Atomic storage and read consistency
 
 Migration 010 adds permanent `command_receipts`, `command_audit` and an initial
-settings-only `change_feed`. The shared Plan executor counts the revision guard,
+settings-only `change_feed` (expanded for reliable creation in migration 012). The shared Plan executor counts the revision guard,
 receipt, settings row, working-hour replacement, audit and feed before I/O.
 Everything commits in one D1 batch. A guard failure or late SQL failure rolls
 back all of it. Concurrent identical execution rereads the committed receipt
@@ -83,7 +84,7 @@ also resolves from that receipt.
 Settings reads use one SQL statement for both the singleton and working hours,
 so readers cannot combine the old revision with a new interval set. Stored
 settings and receipt JSON pass shared parsers before becoming domain values.
-The feed is internal groundwork: there is no full-workspace delta endpoint or
+The feed, including creation entries, remains internal groundwork: there is no full-workspace delta endpoint or
 receipt expiry in this release. Aggregate graph/calendar revisions and deletion
 tombstones land with their command families.
 

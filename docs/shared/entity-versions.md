@@ -87,8 +87,9 @@ Trigger programs execute within those statements; they add row work and must
 be considered when budgeting large data operations, but do not add prepared
 statements to the Worker batch.
 
-This release exposes version reads and internal Plan guards only. `planning.set`
-remains the sole public reliable command. The full task command protocol,
+Slice 2c introduced version reads and internal Plan guards.
+[Stable creation](reliable-creation.md) now adds single task/project creation
+and coherent content/version reads alongside `planning.set`. The full task command protocol,
 canonical snapshot/delta feed, import epoch, optimistic IDB overlay, retained
 conflict intent and old-client write negotiation remain subsequent Slice 2
 increments. `reliableCommands` and `deltaSync` capability gates remain false.
