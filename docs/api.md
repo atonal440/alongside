@@ -260,7 +260,9 @@ Full field reference for the task object returned by all endpoints:
 
 ## Error Responses
 
-All errors return `{ error: string }` with an appropriate HTTP status code. Validation errors may also include `details`, an array of field/path issues.
+Legacy errors return `{ error: string }` with an appropriate HTTP status code.
+V2 errors use `{contractVersion: 2, error: {code, path, message, retryable,
+recoveryHint, ...}}`. Validation errors may also include `details`, an array of field/path issues.
 
 | Status | Meaning |
 |---|---|
@@ -304,3 +306,31 @@ An oversized plan returns HTTP 413 before any write:
 Accepted plans execute in one transactional batch. This temporarily limits
 replacement imports to small snapshots until staged import is designed. Do not
 split a replacement into multiple imports: each import wipes existing data.
+
+## V2 planning settings and reliable commands
+
+| Method / path | Result |
+| --- | --- |
+| `GET /api/v2/planning-settings` | `{contractVersion: 2, settings: PlanningSettings \| null}` |
+| `GET /api/v2/planning-settings/export` | Versioned preferences document without managed revisions |
+| `POST /api/v2/changes/preview` | Side-effect-free normalized diff and generated SQL count |
+| `POST /api/v2/changes` | Applied diff and replayable command result |
+
+All four reject query parameters. POST inputs are strict v2 command envelopes;
+this release accepts exactly one `planning.set`. `expectedRevision: null`
+requires absent settings; a number must equal the existing revision. Managed
+revisions are excluded from values. Working-hour overlaps are rejected before
+writes. See [the command contract](shared/reliable-settings-commands.md) for a
+complete input and replay/rebase instructions.
+
+Applied/preview results contain `contractVersion`, `commandId`, `payloadHash`,
+`serverNow`, `changes` (one before/after settings diff), `warnings` and `refs`.
+Preview adds `dryRun: true` and `requiredStatements`; apply adds `applied: true`.
+Same ID/payload returns the original result. Same ID/different payload or stale
+revision returns HTTP 409; revision errors include `currentSettings` and
+`expectedRevision`. A transient commit failure returns HTTP 503 with
+`retryable: true`; retain the command ID/payload for retry.
+
+Portable preference values restore through this same command endpoint with
+`actor: import`, a fresh ID and the destination's expected revision. V1 backup
+scope is unchanged; it excludes and preserves planning settings/receipts.

@@ -9,7 +9,10 @@ Alongside is a lightweight, offline-first task manager built around conversation
 The [power-user plan](plans/README.md) owns future work. Its first runtime
 foundation adds read-only capabilities, structured time resolution, and legacy
 date previews; see [temporal contracts](shared/temporal-foundation.md). Rich task
-dates, hierarchy, reliable commands, blocks and delivery remain gated.
+dates, hierarchy, task commands, blocks and delivery remain gated. A first
+[reliable command family](shared/reliable-settings-commands.md) supports explicit
+planning settings with revision checks and replay receipts. The existing PWA
+task queue continues to use its legacy sync protocol during this rollout.
 
 ## Feature highlights
 

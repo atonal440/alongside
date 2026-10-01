@@ -67,11 +67,12 @@ Intervals are half-open `[start,end)` with end strictly after start.
 Migration `009_planning_foundation.sql` adds an empty singleton
 `planning_settings` plus constrained weekday working hours. Parsed settings
 carry timezone, minute buffer, working hours, and revision. Overnight rules
-must be split at midnight. This step exposes reads only; explicit configuration
-writes land with reliable commands, avoiding an unguarded mutation path.
+must use same-day minute boundaries. Explicit configuration now uses
+[reliable settings commands](reliable-settings-commands.md), avoiding an
+unguarded mutation path.
 No existing task, preference, recurrence anchor, or due marker is rewritten.
-Portable settings export/import also lands with that command layer; there are
-no public settings writers in this step.
+Portable settings values can be exported and restored through that command
+layer with a fresh command ID and the current expected revision.
 
 `get_capabilities` reports server event time, contract version 2, interpreted
 zone, `timezoneSource`, setup requirement, limits, features, and delivery state.

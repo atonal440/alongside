@@ -1,6 +1,6 @@
 # Power-user todo implementation checklist
 
-Status: Slice 1 and Slice 2a implemented and locally verified; PR reviews/merges pending. The remainder of Slice 2 and Slices 3–7 remain unimplemented.
+Status: Slice 1 and Slice 2a merged/deployed. Slice 2b settings commands implemented and locally verified; PR review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
 Updated: 2026-09-30.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
@@ -352,3 +352,46 @@ review fixes without rewriting branch history. Full `npm run verify` passes:
 303 Worker / 424 PWA tests, both typechecks, Worker dry-run (752.67 KiB / gzip
 128.81 KiB) and PWA build. Atomic-capacity functionality remains the only Slice 2
 contract enabled here; receipts/revisions/client reconciliation follow separately.
+
+### 2026-09-30 — Verified merges and deployments
+
+Slice 1 PR #42 merged as `b5374e2`; Slice 2a PR #43 merged as `43730cf`.
+Each had a clean Codex review covering its final head, green GitHub checks, and
+no unresolved review threads. Both Worker migration/deployment and PWA Pages
+jobs succeeded (Deploy runs 36799285769 and 36799581012). Earlier pending-status
+paragraphs above record intermediate history rather than current release state.
+
+### 2026-09-30 — Slice 2b: reliable planning-settings commands
+
+Branch: `codex/power-user-slice-2b`; PR review/merge pending. This deployable
+sub-slice adds the first complete command family: a single `planning.set`
+replacement with strict v2 envelope, caller command ID, expected revision,
+canonical payload hash, preview and apply. Migration 010 adds permanent replay
+receipts, command audit and an internal settings-only change feed. The shared
+Plan compiler counts all revision guards/receipts/settings rows/audit/feed; one
+transaction commits them together. Settings reads use one coherent SQL snapshot.
+
+Acceptance: `npm run verify` passes with 328 Worker / 432 PWA tests, both
+typechecks, Worker dry-run (763.59 KiB / gzip 133.43 KiB) and PWA build. New tests
+cover lost-response replay, ID/hash mismatch, a replay after later edits,
+pre-read and in-batch concurrency races, late audit/feed failure rollback,
+strict REST/MCP/PWA parsers and portable settings-value round-trip.
+
+Transition: task/project/link writers and the existing PWA task queue still
+use legacy sync. Broader `reliableCommands` and `deltaSync` gates remain false.
+The preferences export is scoped; restore non-null values with a fresh
+`planning.set` identity and the destination revision. Legacy v1 export/import
+preserves but excludes settings and receipts. No offline settings form/store,
+aggregate graph/calendar revision, public feed or full workspace restore is
+claimed by this sub-slice. See the reliable-settings narrative for usage.
+
+Next: extend reliability to existing task/project/link writers with stable
+client IDs, entity/aggregate revisions, tombstones, coherent snapshot/delta
+sync and retained offline intent. Full v2 export/import and import epoch must
+land with that workspace protocol before richer graph/date writes are enabled.
+
+Slice 2b runtime acceptance: isolated local D1/Worker smoke on port 8789 passes
+REST preview-without-writes, first apply, exact replay after later edits,
+ID/hash and revision conflicts, export, workspace capability setup and MCP
+replay/settings reads. The test used `/tmp/alongside-slice2b-smoke` and did not
+modify the normal development database. No production settings were configured.
