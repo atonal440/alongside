@@ -27,7 +27,7 @@ export const RelativeOffsetSchema = v.variant('kind', [
 export type RelativeOffset = v.InferOutput<typeof RelativeOffsetSchema>;
 export type Disambiguation = 'earlier' | 'later' | 'reject';
 export interface TimeError {
-  code: 'ambiguous_local_time' | 'nonexistent_local_time' | 'skipped_local_date' | 'missing_anchor' | 'time_out_of_range' | 'unsupported_precision';
+  code: 'ambiguous_local_time' | 'nonexistent_local_time' | 'skipped_local_date' | 'missing_anchor' | 'time_out_of_range' | 'unsupported_precision' | 'unexpected_anchor';
   path: string[];
   message: string;
   retryable: false;
@@ -70,7 +70,7 @@ function instant(at: number): MinuteInstant | null {
   return result.ok ? result.value : null;
 }
 function timeError(code: TimeError['code'], message: string, recoveryHint: string, alternatives: TimeError['alternatives'] = []): Result<never, TimeError> {
-  const field = code === 'missing_anchor' ? 'dateAnchorTime' : code === 'ambiguous_local_time' || code === 'nonexistent_local_time' ? 'time' : 'date';
+  const field = code === 'missing_anchor' || code === 'unexpected_anchor' ? 'dateAnchorTime' : code === 'ambiguous_local_time' || code === 'nonexistent_local_time' ? 'time' : 'date';
   return err({ code, path: [field], message, retryable: false, recoveryHint, alternatives });
 }
 
@@ -142,16 +142,25 @@ export function addCalendarDays(date: LocalDate, days: number): Result<LocalDate
   return parsed.ok ? ok(parsed.value) : timeError('time_out_of_range', 'Offset date is out of range.', 'Reduce the offset.');
 }
 export function resolveOffset(point: TemporalPoint, offset: RelativeOffset, dateAnchorTime: LocalTime | undefined, disambiguation: Disambiguation = 'reject'): Result<MinuteInstant, TimeError> {
+  const needsAnchor = offset.kind === 'elapsed_minutes' && point.kind === 'date';
+  if (!needsAnchor && dateAnchorTime !== undefined) return timeError('unexpected_anchor', 'dateAnchorTime does not apply to this offset.', 'Remove dateAnchorTime; calendar offsets use offset.localTime and elapsed instant offsets use point.at.');
+  function contextual(result: Result<MinuteInstant, TimeError>): Result<MinuteInstant, TimeError> {
+    if (result.ok) return result;
+    const path = result.error.path[0] === 'time'
+      ? offset.kind === 'calendar_days' ? ['offset', 'localTime'] : ['dateAnchorTime']
+      : ['point', ...result.error.path];
+    return err({ ...result.error, path });
+  }
   if (offset.kind === 'calendar_days') {
     const baseDate = point.kind === 'date' ? point.date : localParts(Date.parse(point.at), point.timezone).date;
     const parsed = parseLocalDate(baseDate);
     if (!parsed.ok) return timeError('time_out_of_range', 'Local date is out of range.', 'Choose an interior date.');
     const date = addCalendarDays(parsed.value, offset.days);
-    return date.ok ? resolveWallTime(date.value, offset.localTime, point.timezone, disambiguation) : date;
+    return date.ok ? contextual(resolveWallTime(date.value, offset.localTime, point.timezone, disambiguation)) : date;
   }
   if (point.kind === 'date' && dateAnchorTime === undefined) return timeError('missing_anchor', 'An elapsed offset from a date requires a local anchor time.', 'Supply dateAnchorTime.');
   const base = point.kind === 'instant' ? ok(point.at) : resolveWallTime(point.date, dateAnchorTime!, point.timezone, disambiguation);
-  if (!base.ok) return base;
+  if (!base.ok) return contextual(base);
   const at = instant(Date.parse(base.value) + offset.minutes * MINUTE_MS);
   return at ? ok(at) : timeError('time_out_of_range', 'Offset instant is out of range.', 'Reduce the offset.');
 }

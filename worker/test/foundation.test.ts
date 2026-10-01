@@ -140,3 +140,21 @@ it('fresh-db migration bookkeeping includes every migration reflected in schema.
   const seeded = Array.from(script.matchAll(/'(\d{3}_[^']+\.sql)'/g), match => match[1]).sort();
   expect(seeded).toEqual(migrations);
 });
+
+it('reference initialization is repeatable without dropping existing planning data', () => {
+  const { sql } = sqliteDb();
+  sql.exec(`INSERT INTO planning_settings VALUES(1,'UTC',15,0,'${now}','${now}')`);
+  const before = sql.prepare('SELECT * FROM planning_settings').all();
+  sql.exec(readFileSync(fileURLToPath(new URL('../schema.sql', import.meta.url)), 'utf8'));
+  expect(sql.prepare('SELECT * FROM planning_settings').all()).toEqual(before);
+  sql.close();
+});
+
+it.each([
+  [{ kind: 'elapsed_minutes', minutes: 0 }, { kind: 'date', date: '2026-11-01', timezone: 'America/Los_Angeles' }, '01:30', ['dateAnchorTime']],
+  [{ kind: 'calendar_days', days: 1, localTime: '01:30' }, { kind: 'date', date: '2026-10-31', timezone: 'America/Los_Angeles' }, undefined, ['offset', 'localTime']],
+])('offset DST errors report the submitted field', async (offset, point, dateAnchorTime, path) => {
+  const { db } = sqliteDb();
+  const input = { kind: 'offset', offset, point, ...(dateAnchorTime === undefined ? {} : { dateAnchorTime }) };
+  await expect(callFoundationTool('resolve_time', input, db, now)).rejects.toMatchObject({ detail: { code: 'ambiguous_local_time', path } });
+});

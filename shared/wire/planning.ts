@@ -21,7 +21,12 @@ export const CapabilitiesInputSchema = v.strictObject({ timezone: v.optional(Tim
 export const ResolveTimeInputSchema = v.variant('kind', [
   v.strictObject({ kind: v.literal('wall_time'), date: LocalDateSchema, time: LocalTimeSchema, timezone: v.optional(TimezoneSchema), disambiguation: v.optional(DisambiguationSchema) }),
   v.strictObject({ kind: v.literal('date_boundary'), date: LocalDateSchema, role: TaskDateRoleSchema, timezone: v.optional(TimezoneSchema) }),
-  v.strictObject({ kind: v.literal('offset'), point: TemporalPointSchema, offset: RelativeOffsetSchema, dateAnchorTime: v.optional(LocalTimeSchema), disambiguation: v.optional(DisambiguationSchema) }),
+  v.pipe(
+    v.strictObject({ kind: v.literal('offset'), point: TemporalPointSchema, offset: RelativeOffsetSchema, dateAnchorTime: v.optional(LocalTimeSchema), disambiguation: v.optional(DisambiguationSchema) }),
+    v.forward(v.check(input => (input.offset.kind === 'elapsed_minutes' && input.point.kind === 'date')
+      ? input.dateAnchorTime !== undefined : input.dateAnchorTime === undefined,
+    'dateAnchorTime is required only for elapsed offsets from a date and is forbidden otherwise.'), ['dateAnchorTime']),
+  ),
 ]);
 export type ResolveTimeInput = v.InferOutput<typeof ResolveTimeInputSchema>;
 export const LegacyDatesPreviewInputSchema = v.strictObject({

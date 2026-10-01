@@ -99,3 +99,24 @@ describe('zoned temporal resolution', () => {
     }), { numRuns: 100 });
   });
 });
+
+describe('strict offset anchor combinations', () => {
+  it.each([
+    ['date', 'elapsed_minutes', undefined, false],
+    ['date', 'elapsed_minutes', '09:00', true],
+    ['instant', 'elapsed_minutes', undefined, true],
+    ['instant', 'elapsed_minutes', '09:00', false],
+    ['date', 'calendar_days', undefined, true],
+    ['date', 'calendar_days', '09:00', false],
+    ['instant', 'calendar_days', undefined, true],
+    ['instant', 'calendar_days', '09:00', false],
+  ])('accepts only applicable anchors for %s/%s', (pointKind, offsetKind, anchor, valid) => {
+    const point = pointKind === 'date'
+      ? { kind: 'date', date: '2026-09-30', timezone: 'UTC' }
+      : { kind: 'instant', at: '2026-09-30T09:00:00Z', timezone: 'UTC' };
+    const offset = offsetKind === 'elapsed_minutes' ? { kind: 'elapsed_minutes', minutes: 0 } : { kind: 'calendar_days', days: 1, localTime: '09:00' };
+    const parsed = parseSchema(ResolveTimeInputSchema, { kind: 'offset', point, offset, ...(anchor === undefined ? {} : { dateAnchorTime: anchor }) });
+    expect(parsed.ok).toBe(valid);
+    if (!parsed.ok) expect(parsed.error[0]?.path).toEqual(['dateAnchorTime']);
+  });
+});
