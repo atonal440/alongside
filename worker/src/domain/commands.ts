@@ -1,8 +1,8 @@
 import { parseRevision, type EventInstant } from '@shared/parse';
 import type { CommandEnvelope, ChangesResult } from '@shared/wire/commands';
 import type { FoundationErrorDetail, PlanningSettings } from '@shared/wire/planning';
-import type { Plan } from './Op';
-import type { EntitySnapshot } from '@shared/wire/versions';
+import type { Plan, TaskRowPatch, ProjectRowPatch } from './Op';
+import type { EntitySnapshot, EntityReadKey } from '@shared/wire/versions';
 import { taskFromRow } from './task';
 import { projectFromRow } from './project';
 import { invalidInput } from './temporalFoundation';
@@ -122,20 +122,40 @@ export function planCreateCommand(input: CommandEnvelope, current: EntitySnapsho
   } };
 }
 
-export function contentConflict(input: CommandEnvelope, current: EntitySnapshot): CommandError | null {
+export function commandEntityKey(command: Exclude<CommandEnvelope['commands'][number], { kind: 'planning.set' }>): EntityReadKey {
+  switch (command.kind) {
+    case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': return { entity: 'task', id: command.id };
+    case 'project.create': case 'project.content.set': case 'project.archive': case 'project.reopen': return { entity: 'project', id: command.id };
+  }
+}
+
+export function entityCommandConflict(input: CommandEnvelope, current: EntitySnapshot): CommandError | null {
   const command = input.commands[0]!;
-  if (command.kind !== 'task.content.set' && command.kind !== 'project.content.set') throw new Error('Expected a content command.');
+  if (command.kind === 'planning.set' || command.kind === 'task.create' || command.kind === 'project.create') throw new Error('Expected an existing-entity command.');
   return current.row !== null && current.version?.revision === command.expectedRevision ? null : new CommandError({
-    code: 'revision_conflict', path: ['commands', '0', 'expectedRevision'], message: 'Entity content changed or was deleted since planning.',
+    code: 'revision_conflict', path: ['commands', '0', 'expectedRevision'], message: 'Entity changed or was deleted since planning.',
     retryable: false, currentEntity: current, expectedRevision: command.expectedRevision,
-    recoveryHint: 'Retain the intended content, inspect currentEntity and submit a new command ID after explicitly rebasing.',
+    recoveryHint: 'Retain the intended change, inspect currentEntity and submit a new command ID after explicitly rebasing.',
   });
 }
 
 export function planContentCommand(input: CommandEnvelope, current: EntitySnapshot, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
   const command = input.commands[0]!;
   if (command.kind !== 'task.content.set' && command.kind !== 'project.content.set') throw new Error('Expected a content command.');
-  const conflict = contentConflict(input, current);
+  const conflict = entityCommandConflict(input, current);
+  if (conflict) throw conflict;
+  const common = { title: command.values.title, notes: command.values.notes, kickoff_note: command.values.kickoffNote, updated_at: now };
+  return planEntityUpdate(input, current, command.kind === 'task.content.set'
+    ? { entity: 'task', patch: { ...common, session_log: command.values.sessionLog } }
+    : { entity: 'project', patch: common }, hash, now);
+}
+
+type EntityUpdate = { entity: 'task'; patch: TaskRowPatch } | { entity: 'project'; patch: ProjectRowPatch };
+function planEntityUpdate(input: CommandEnvelope, current: EntitySnapshot, update: EntityUpdate, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
+  const command = input.commands[0]!;
+  if (command.kind === 'planning.set' || command.kind === 'task.create' || command.kind === 'project.create') throw new Error('Expected an existing-entity command.');
+  if (current.id !== command.id || current.entity !== (command.kind.startsWith('task.') ? 'task' : 'project')) throw new Error('Update snapshot identity mismatch.');
+  const conflict = entityCommandConflict(input, current);
   if (conflict) throw conflict;
   const next = parseRevision(current.version!.revision + 1);
   // A row write also advances the structural revision through its trigger.
@@ -143,32 +163,74 @@ export function planContentCommand(input: CommandEnvelope, current: EntitySnapsh
     code: 'revision_exhausted', path: ['commands', '0', 'expectedRevision'], message: 'Entity or workspace revision reached its supported limit.',
     retryable: false, recoveryHint: 'Contact the administrator; do not reset a revision.',
   });
-  const common = { title: command.values.title, notes: command.values.notes, kickoff_note: command.values.kickoffNote, updated_at: now };
   let op: Plan['ops'][number];
   let change: ChangesResult['changes'][number];
-  let identity: Extract<Plan['assertions'][number], { kind: 'entity.revision' }>;
-  if (command.kind === 'task.content.set') {
-    if (current.entity !== 'task' || current.id !== command.id || current.row === null) throw new Error('Task content snapshot identity mismatch.');
-    const patch = { ...common, session_log: command.values.sessionLog };
-    const row = { ...current.row, ...patch };
+  const identity: Extract<Plan['assertions'][number], { kind: 'entity.revision' }> = { kind: 'entity.revision', key: current.entity === 'task' ? { entity: 'task', id: current.id } : { entity: 'project', id: current.id }, expected: command.expectedRevision };
+  if (current.entity === 'task' && update.entity === 'task') {
+    const patch = update.patch;
+    const row = { ...current.row!, ...patch };
     const parsed = taskFromRow(row);
     if (!parsed.ok) throw new CommandError(invalidInput(parsed.error), 400);
-    identity = { kind: 'entity.revision', key: { entity: 'task', id: command.id }, expected: command.expectedRevision };
-    op = { kind: 'task.update', id: command.id, patch };
-    change = { entity: 'task', id: command.id, before: { row: current.row, revision: current.version!.revision }, after: { row, revision: next.value } };
-  } else {
-    if (current.entity !== 'project' || current.id !== command.id || current.row === null) throw new Error('Project content snapshot identity mismatch.');
-    const row = { ...current.row, ...common };
+    op = { kind: 'task.update', id: current.id, patch };
+    change = { entity: 'task', id: current.id, before: { row: current.row!, revision: current.version!.revision }, after: { row, revision: next.value } };
+  } else if (current.entity === 'project' && update.entity === 'project') {
+    const patch = update.patch;
+    const row = { ...current.row!, ...patch };
     const parsed = projectFromRow(row);
     if (!parsed.ok) throw new CommandError(invalidInput(parsed.error), 400);
-    identity = { kind: 'entity.revision', key: { entity: 'project', id: command.id }, expected: command.expectedRevision };
-    op = { kind: 'project.update', id: command.id, patch: common };
-    change = { entity: 'project', id: command.id, before: { row: current.row, revision: current.version!.revision }, after: { row, revision: next.value } };
-  }
+    op = { kind: 'project.update', id: current.id, patch };
+    change = { entity: 'project', id: current.id, before: { row: current.row!, revision: current.version!.revision }, after: { row, revision: next.value } };
+  } else throw new Error('Update patch entity mismatch.');
   const result: ChangesResult = { contractVersion: 2, commandId: input.commandId, payloadHash: hash, serverNow: now, applied: true,
     changes: [change], warnings: [], refs: {},
   };
   return { result, plan: { assertions: [identity], ops: [{ kind: 'receipt.insert', result }, op,
     { kind: 'command.audit', commandId: input.commandId, actor: input.actor, reason: input.reason ?? null, result }, { kind: 'command.feed', result }],
   } };
+}
+
+export function planStateCommand(input: CommandEnvelope, current: EntitySnapshot, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
+  const command = input.commands[0]!;
+  if (command.kind === 'planning.set' || command.kind === 'task.create' || command.kind === 'project.create') throw new Error('Expected a state command.');
+  const conflict = entityCommandConflict(input, current);
+  if (conflict) throw conflict;
+  const reject = (message: string): never => { throw new CommandError({ code: 'invalid_transition', path: ['commands', '0'], message,
+    retryable: false, currentEntity: current, recoveryHint: 'Keep the intended change and inspect currentEntity before choosing a valid transition with a new command ID.',
+  }); };
+  if (current.id !== command.id || current.entity !== commandEntityKey(command).entity) throw new Error('State snapshot identity mismatch.');
+  if (current.entity === 'task') {
+    let patch: TaskRowPatch = { updated_at: now };
+    switch (command.kind) {
+      case 'task.focus.set':
+        if (current.row!.status !== 'pending') reject('Only pending tasks can change focus.');
+        patch = { ...patch, focused_until: command.focusedUntil,
+          ...(command.focusedUntil === null ? {} : { defer_kind: 'none', defer_until: null }) };
+        break;
+      case 'task.defer.set':
+        if (current.row!.status !== 'pending') reject('Only pending tasks can change deferral.');
+        patch = { ...patch, defer_kind: command.defer.kind, defer_until: command.defer.kind === 'until' ? command.defer.until : null,
+          ...(command.defer.kind === 'none' ? {} : { focused_until: null }) };
+        break;
+      case 'task.reopen':
+        if (current.row!.status !== 'done' && current.row!.defer_kind === 'none') reject('Only done or deferred pending tasks can be reopened.');
+        patch = { ...patch, status: 'pending', defer_kind: 'none', defer_until: null, focused_until: null };
+        break;
+      default: throw new Error('Expected a task state command.');
+    }
+    return planEntityUpdate(input, current, { entity: 'task', patch }, hash, now);
+  } else {
+    let patch: ProjectRowPatch = { updated_at: now };
+    switch (command.kind) {
+      case 'project.archive':
+        if (current.row!.status !== 'active') reject('Only active projects can be archived.');
+        patch = { ...patch, status: 'archived' };
+        break;
+      case 'project.reopen':
+        if (current.row!.status !== 'archived') reject('Only archived projects can be reopened.');
+        patch = { ...patch, status: 'active' };
+        break;
+      default: throw new Error('Expected a project state command.');
+    }
+    return planEntityUpdate(input, current, { entity: 'project', patch }, hash, now);
+  }
 }

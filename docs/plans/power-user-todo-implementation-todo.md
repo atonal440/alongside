@@ -1,6 +1,6 @@
 # Power-user todo implementation checklist
 
-Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits implemented with automated review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
+Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands implemented with review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
 Updated: 2026-10-01.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
@@ -105,7 +105,7 @@ the review gate. Merge authorizes the existing production deployment workflow.
   capability enabled. Merged/deployed in PR #45.
 - **2d — reliable existing task/project/link commands:** stable IDs/client refs,
   semantic command planning, coherent content/version reads, receipts and
-  atomic final-state/aggregate validation. Creation-only increment merged/deployed in PR #46. Guarded content edits
+  atomic final-state/aggregate validation. Creation-only increment merged/deployed in PR #46. Guarded content edits merged/deployed in PR #47. Guarded state transitions
   implemented; review/merge pending. Remaining edits,
   lifecycle and graph commands remain subsequent reviewable PRs. Keep the legacy PWA usable.
 - **2e — workspace sync and restore:** consistent snapshot and fixed-watermark
@@ -534,3 +534,42 @@ on the updated head before merge.
 
 Next: lifecycle, association/link commands and bounded compound batches; then
 full sync/restore protocol and offline retained intention/compatibility gate.
+
+
+### 2026-10-01 — Slice 2d third increment: guarded state
+
+PR #47 merged as `fd19abe` after clean automated review of final head
+`bbcc52f`, green checks and no outstanding threads. Deploy run
+36928138980 succeeded for both Worker and PWA Pages.
+
+Branch: `codex/power-user-slice-2d-state`; automated review/merge pending.
+Adds task focus/deferral/reopen and project archive/reopen using coherent
+reads, entity guards, receipts and before/after diffs. Preserves legacy
+transitions and recurrence successor behavior; no migration, member/link
+mutation or capability gate change. See [guarded state](../shared/reliable-state.md).
+
+Acceptance: `npm run verify` passes (442 Worker / 469 PWA tests, both
+typechecks/builds, Worker dry-run 799.48 KiB / gzip 139.68 KiB). Real SQLite
+tests cover fresh/upgrade transitions, preserved managed fields/membership,
+minute-normalized replay, stale/deleted identities, legacy races, identical
+concurrent execution, invalid transitions, late rollback and exhaustion.
+Isolated local REST/MCP smoke passed preview, transitions, replay, parsed
+conflicts and unchanged capability gates. No production test writes occurred.
+
+Next: reliable completion with explicit successor identity, association/link
+commands and bounded compound batches; then sync/restore and offline retained
+intention/capability gates. Future richer lifecycle semantics remain in Slice 3.
+
+
+State review follow-up: updated the earlier MCP command matrix/summary to
+include all supported state transitions. The detailed reference was already
+present; the summary now agrees. Docs-only fix; final-head automated re-review
+required before merging.
+
+
+State second review follow-up: the command instant parser now matches the
+legacy task-row codec's normalized UTC year range (0100–9999). Foundation
+temporal resolution still supports 0001–9999. Earlier years, including an
+offset crossing below 0100, fail at the command boundary before planning;
+boundary and real-storage regression checks cover both focus and deferral.
+Completion work remains separately preserved while this PR is re-reviewed.

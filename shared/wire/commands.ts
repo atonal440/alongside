@@ -1,5 +1,5 @@
 import * as v from 'valibot';
-import { CommandIdSchema, EventInstantSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema } from '../parse';
+import { CommandIdSchema, EventInstantSchema, MinuteInstantSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema } from '../parse';
 import { PlanningSettingsSchema } from './planning';
 import { ProjectRowSchema, TaskRowSchema } from './rows';
 
@@ -41,11 +41,31 @@ export const TaskContentCommandSchema = v.strictObject({
   kind: v.literal('task.content.set'), id: TaskIdSchema, expectedRevision: RevisionSchema,
   values: v.strictObject({ ...ProjectCreateValuesSchema.entries, sessionLog: v.nullable(boundedStringSchema(10_000)) }),
 });
+// These transitions still store in the legacy task row codec, whose supported
+// UTC years start at 0100. Keep the accepted command range aligned until those
+// columns migrate to the complete temporal contract.
+export const TaskSchedulingInstantSchema = v.pipe(MinuteInstantSchema,
+  v.check(value => Number(value.slice(0, 4)) >= 100, 'Task scheduling instants require normalized UTC years 0100–9999.'));
+export const DeferValuesSchema = v.variant('kind', [
+  v.strictObject({ kind: v.literal('none') }),
+  v.strictObject({ kind: v.literal('someday') }),
+  v.strictObject({ kind: v.literal('until'), until: TaskSchedulingInstantSchema }),
+]);
+export const TaskFocusCommandSchema = v.strictObject({
+  kind: v.literal('task.focus.set'), id: TaskIdSchema, expectedRevision: RevisionSchema,
+  focusedUntil: v.nullable(TaskSchedulingInstantSchema),
+});
+export const TaskDeferCommandSchema = v.strictObject({
+  kind: v.literal('task.defer.set'), id: TaskIdSchema, expectedRevision: RevisionSchema, defer: DeferValuesSchema,
+});
+export const TaskReopenCommandSchema = v.strictObject({ kind: v.literal('task.reopen'), id: TaskIdSchema, expectedRevision: RevisionSchema });
+export const ProjectArchiveCommandSchema = v.strictObject({ kind: v.literal('project.archive'), id: ProjectIdSchema, expectedRevision: RevisionSchema });
+export const ProjectReopenCommandSchema = v.strictObject({ kind: v.literal('project.reopen'), id: ProjectIdSchema, expectedRevision: RevisionSchema });
 export const CommandEnvelopeSchema = v.strictObject({
   contractVersion: v.literal(2), commandId: CommandIdSchema,
   actor: v.picklist(['user', 'llm', 'import']),
   reason: v.optional(v.pipe(v.string(), v.maxLength(1_000))),
-  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema])), v.length(1, 'This release accepts exactly one command per batch.')),
+  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema])), v.length(1, 'This release accepts exactly one command per batch.')),
 });
 export type CommandEnvelope = v.InferOutput<typeof CommandEnvelopeSchema>;
 export const parseCommandEnvelope = (input: unknown) => parseSchema(CommandEnvelopeSchema, input);
