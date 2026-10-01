@@ -3,6 +3,9 @@ import type { CommandEnvelope, ChangesResult } from '@shared/wire/commands';
 import type { FoundationErrorDetail, PlanningSettings } from '@shared/wire/planning';
 import type { Plan } from './Op';
 import type { EntitySnapshot } from '@shared/wire/versions';
+import { taskFromRow } from './task';
+import { projectFromRow } from './project';
+import { invalidInput } from './temporalFoundation';
 
 export class CommandError extends Error {
   constructor(readonly detail: FoundationErrorDetail, readonly status: number = 409) { super(detail.message); }
@@ -59,7 +62,7 @@ export function planSettingsCommand(input: CommandEnvelope, before: PlanningSett
 
 export function creationConflict(input: CommandEnvelope, current: EntitySnapshot): CommandError | null {
   const command = input.commands[0]!;
-  if (command.kind === 'planning.set') throw new Error('Expected a creation command.');
+  if (command.kind !== 'task.create' && command.kind !== 'project.create') throw new Error('Expected a creation command.');
   if (current.version !== null || current.row !== null) return new CommandError({ code: 'revision_conflict', path: ['commands', '0', 'id'],
     message: 'This identity already has live or deleted history.', retryable: false, currentEntity: current, expectedRevision: null,
     recoveryHint: 'Replay the original command if this is a retry. For a different creation, keep intent and mint a new entity and command ID.',
@@ -73,7 +76,7 @@ export function creationConflict(input: CommandEnvelope, current: EntitySnapshot
 
 export function planCreateCommand(input: CommandEnvelope, current: EntitySnapshot, project: EntitySnapshot | null, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
   const command = input.commands[0]!;
-  if (command.kind === 'planning.set') throw new Error('Expected a creation command.');
+  if (command.kind !== 'task.create' && command.kind !== 'project.create') throw new Error('Expected a creation command.');
   if (current.entity !== (command.kind === 'task.create' ? 'task' : 'project') || current.id !== command.id) throw new Error('Creation snapshot identity mismatch.');
   const conflict = creationConflict(input, current);
   if (conflict) throw conflict;
@@ -115,6 +118,57 @@ export function planCreateCommand(input: CommandEnvelope, current: EntitySnapsho
     changes: [change], warnings: [], refs: command.clientRef === undefined ? {} : Object.fromEntries([[command.clientRef, command.id]]),
   };
   return { result, plan: { assertions, ops: [{ kind: 'receipt.insert', result }, mutation,
+    { kind: 'command.audit', commandId: input.commandId, actor: input.actor, reason: input.reason ?? null, result }, { kind: 'command.feed', result }],
+  } };
+}
+
+export function contentConflict(input: CommandEnvelope, current: EntitySnapshot): CommandError | null {
+  const command = input.commands[0]!;
+  if (command.kind !== 'task.content.set' && command.kind !== 'project.content.set') throw new Error('Expected a content command.');
+  return current.row !== null && current.version?.revision === command.expectedRevision ? null : new CommandError({
+    code: 'revision_conflict', path: ['commands', '0', 'expectedRevision'], message: 'Entity content changed or was deleted since planning.',
+    retryable: false, currentEntity: current, expectedRevision: command.expectedRevision,
+    recoveryHint: 'Retain the intended content, inspect currentEntity and submit a new command ID after explicitly rebasing.',
+  });
+}
+
+export function planContentCommand(input: CommandEnvelope, current: EntitySnapshot, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
+  const command = input.commands[0]!;
+  if (command.kind !== 'task.content.set' && command.kind !== 'project.content.set') throw new Error('Expected a content command.');
+  const conflict = contentConflict(input, current);
+  if (conflict) throw conflict;
+  const next = parseRevision(current.version!.revision + 1);
+  // A row write also advances the structural revision through its trigger.
+  if (!next.ok || !parseRevision(current.structuralRevision + 1).ok) throw new CommandError({
+    code: 'revision_exhausted', path: ['commands', '0', 'expectedRevision'], message: 'Entity or workspace revision reached its supported limit.',
+    retryable: false, recoveryHint: 'Contact the administrator; do not reset a revision.',
+  });
+  const common = { title: command.values.title, notes: command.values.notes, kickoff_note: command.values.kickoffNote, updated_at: now };
+  let op: Plan['ops'][number];
+  let change: ChangesResult['changes'][number];
+  let identity: Extract<Plan['assertions'][number], { kind: 'entity.revision' }>;
+  if (command.kind === 'task.content.set') {
+    if (current.entity !== 'task' || current.id !== command.id || current.row === null) throw new Error('Task content snapshot identity mismatch.');
+    const patch = { ...common, session_log: command.values.sessionLog };
+    const row = { ...current.row, ...patch };
+    const parsed = taskFromRow(row);
+    if (!parsed.ok) throw new CommandError(invalidInput(parsed.error), 400);
+    identity = { kind: 'entity.revision', key: { entity: 'task', id: command.id }, expected: command.expectedRevision };
+    op = { kind: 'task.update', id: command.id, patch };
+    change = { entity: 'task', id: command.id, before: { row: current.row, revision: current.version!.revision }, after: { row, revision: next.value } };
+  } else {
+    if (current.entity !== 'project' || current.id !== command.id || current.row === null) throw new Error('Project content snapshot identity mismatch.');
+    const row = { ...current.row, ...common };
+    const parsed = projectFromRow(row);
+    if (!parsed.ok) throw new CommandError(invalidInput(parsed.error), 400);
+    identity = { kind: 'entity.revision', key: { entity: 'project', id: command.id }, expected: command.expectedRevision };
+    op = { kind: 'project.update', id: command.id, patch: common };
+    change = { entity: 'project', id: command.id, before: { row: current.row, revision: current.version!.revision }, after: { row, revision: next.value } };
+  }
+  const result: ChangesResult = { contractVersion: 2, commandId: input.commandId, payloadHash: hash, serverNow: now, applied: true,
+    changes: [change], warnings: [], refs: {},
+  };
+  return { result, plan: { assertions: [identity], ops: [{ kind: 'receipt.insert', result }, op,
     { kind: 'command.audit', commandId: input.commandId, actor: input.actor, reason: input.reason ?? null, result }, { kind: 'command.feed', result }],
   } };
 }

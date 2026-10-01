@@ -7,8 +7,7 @@ ID later being replaced by the server. A caller command ID and permanent
 receipt distinguish replay from a new intention. `planning.set` continues to
 work with its original envelope/results.
 
-This is a narrow transition: creation is reliable, while task/project edits,
-lifecycle changes, link commands, mixed graph batches, workspace delta sync
+This is a narrow transition: creation is reliable, while lifecycle changes, link commands, mixed graph batches, workspace delta sync
 and the optimistic IDB command overlay remain later increments. Broader
 `reliableCommands` and `deltaSync` capability gates stay false, and the existing
 PWA task queue continues using legacy operations.
@@ -98,6 +97,8 @@ inspect current state and explicitly rebase with a fresh command ID; never
 silently replace versions. Exhaustion is durable; transient storage failures
 retain the original ID/payload for retry. The PWA API parses these errors,
 although offline retained-intent handling is still a later increment.
+[Guarded content edits](reliable-content.md) extend the protocol with
+revision-checked conversational text replacement; creation itself is unchanged.
 
 ## Feed compatibility and rollout
 
