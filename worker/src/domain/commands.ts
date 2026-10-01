@@ -126,7 +126,7 @@ export function planCreateCommand(input: CommandEnvelope, current: EntitySnapsho
 
 export function commandEntityKey(command: Exclude<CommandEnvelope['commands'][number], { kind: 'planning.set' }>): EntityReadKey {
   switch (command.kind) {
-    case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': case 'task.complete': return { entity: 'task', id: command.id };
+    case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': case 'task.complete': case 'task.project.set': case 'task.type.set': case 'task.legacy-schedule.set': return { entity: 'task', id: command.id };
     case 'project.create': case 'project.content.set': case 'project.archive': case 'project.reopen': return { entity: 'project', id: command.id };
   }
 }
@@ -203,6 +203,12 @@ export function planStateCommand(input: CommandEnvelope, current: EntitySnapshot
   if (current.entity === 'task') {
     let patch: TaskRowPatch = { updated_at: now };
     switch (command.kind) {
+      case 'task.type.set':
+        patch = { ...patch, task_type: command.taskType };
+        break;
+      case 'task.legacy-schedule.set':
+        patch = { ...patch, due_date: command.values.dueDate, due_all_day: command.values.dueAllDay, recurrence: command.values.recurrence };
+        break;
       case 'task.focus.set':
         if (current.row!.status !== 'pending') reject('Only pending tasks can change focus.');
         patch = { ...patch, focused_until: command.focusedUntil,
@@ -302,4 +308,30 @@ export function planCompleteCommand(input: CommandEnvelope, current: EntitySnaps
   return { result, plan: { assertions, ops: [{ kind: 'receipt.insert', result }, ...planned.value.ops,
     { kind: 'command.audit', commandId: input.commandId, actor: input.actor, reason: input.reason ?? null, result }, { kind: 'command.feed', result }],
   } };
+}
+
+export function planTaskProjectCommand(input: CommandEnvelope, current: EntitySnapshot, project: EntitySnapshot | null, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
+  const command = input.commands[0]!;
+  if (command.kind !== 'task.project.set' || current.entity !== 'task' || current.id !== command.id) throw new Error('Expected matching task project command.');
+  const conflict = entityCommandConflict(input, current);
+  if (conflict) throw conflict;
+  if (current.structuralRevision !== command.expectedStructuralRevision) throw new CommandError({ code: 'structural_conflict', path: ['commands', '0', 'expectedStructuralRevision'],
+    message: 'Workspace changed since planning membership.', retryable: false, currentEntity: current, expectedStructuralRevision: command.expectedStructuralRevision,
+    recoveryHint: 'Retain the intended membership, inspect current state and submit a new command ID after explicitly rebasing.',
+  });
+  const assertions: Plan['assertions'] = [{ kind: 'workspace.structural_revision', expected: command.expectedStructuralRevision }];
+  if (command.project !== null) {
+    if (project?.entity !== 'project' || project.id !== command.project.id) throw new Error('Selected project snapshot mismatch.');
+    if (project.row === null || project.version?.revision !== command.project.expectedRevision) throw new CommandError({ code: 'revision_conflict', path: ['commands', '0', 'project'],
+      message: 'Selected project is missing or changed.', retryable: false, currentEntity: project, expectedRevision: command.project.expectedRevision,
+      recoveryHint: 'Retain membership intent and inspect the selected project before explicitly rebasing with a new command ID.',
+    });
+    if (project.structuralRevision !== current.structuralRevision) throw new CommandError({ code: 'structural_conflict', path: ['commands', '0', 'expectedStructuralRevision'],
+      message: 'Workspace changed between membership reads.', retryable: false, currentEntity: project, expectedStructuralRevision: command.expectedStructuralRevision,
+      recoveryHint: 'Retain membership intent and preview again after explicitly rebasing with a new command ID.',
+    });
+    assertions.push({ kind: 'entity.revision', key: { entity: 'project', id: command.project.id }, expected: command.project.expectedRevision }, { kind: 'project.exists', id: command.project.id });
+  }
+  const planned = planEntityUpdate(input, current, { entity: 'task', patch: { project_id: command.project?.id ?? null, updated_at: now } }, hash, now);
+  return { result: planned.result, plan: { ...planned.plan, assertions: [...planned.plan.assertions, ...assertions] } };
 }
