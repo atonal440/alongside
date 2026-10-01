@@ -443,3 +443,13 @@ fields are rejected. Preview/apply return versioned before/after rows;
 conflicts retain parsed current content for explicit rebase. See
 [guarded content](shared/reliable-content.md) for inputs, preservation and
 replay semantics.
+
+
+`task.focus.set`, `task.defer.set`, `task.reopen`, `project.archive` and
+`project.reopen` use the current entity revision and the same preview/apply
+protocol. Focus and timed deferral require explicit instants normalized to
+minute UTC; focusing clears deferral and active deferral clears focus, matching
+legacy transitions. Clear operations preserve the other value. Reopening clears
+focus/deferral; project state preserves member tasks/links. Invalid transitions
+return `invalid_transition` with `currentEntity`. See
+[guarded state](shared/reliable-state.md) for complete inputs and replay behavior.

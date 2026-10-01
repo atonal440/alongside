@@ -317,11 +317,18 @@ split a replacement into multiple imports: each import wipes existing data.
 | `POST /api/v2/changes` | Applied diff and replayable command result |
 
 All four reject query parameters. POST inputs are strict v2 command envelopes;
-this release accepts exactly one `planning.set`, `task.create` or
-`project.create`, `task.content.set` or `project.content.set`. Content uses
-a numeric entity revision and replaces only conversational text; see
-[guarded content](shared/reliable-content.md). Creation uses a stable caller ID and structural revision;
-see [reliable creation](shared/reliable-creation.md). For settings, `expectedRevision: null`
+this release accepts exactly one of the following command families:
+
+- `planning.set` for workspace settings.
+- `task.create`/`project.create` with stable caller IDs and structural guards;
+  see [reliable creation](shared/reliable-creation.md).
+- `task.content.set`/`project.content.set` for conversational text;
+  see [guarded content](shared/reliable-content.md).
+- `task.focus.set`, `task.defer.set`, `task.reopen`, `project.archive` or
+  `project.reopen` for existing state transitions;
+  see [guarded state](shared/reliable-state.md) for required fields and effects.
+
+For settings, `expectedRevision: null`
 requires absent settings; a number must equal the existing revision. Managed
 revisions are excluded from values. Working-hour overlaps are rejected before
 writes. See [the command contract](shared/reliable-settings-commands.md) for a
@@ -342,13 +349,18 @@ the structured error includes `code`, `path`, `message`, `retryable` and a
   structuralRevision}`. A live entity has its current row and
   `version: {revision, deletedAt: null}`. A deleted entity has null row and a
   retained version with `deletedAt`; no recorded identity has null row/version.
-  Content commands expect a numeric revision, while creation expects null
+  Content/state commands expect a numeric revision, while creation expects null
   identity history. A changed selected project is reported as that project's
   `currentEntity`, not the proposed task.
 - Creation `structural_conflict` includes `expectedStructuralRevision` and
   `currentEntity` with the current structural revision.
 - `command_id_conflict` reports command-ID/payload reuse; it does not provide
   current row or settings values.
+
+Invalid state transitions return HTTP 409 `invalid_transition` with
+`currentEntity` and `retryable: false`; they commit no receipt. Focus/deferral
+require pending tasks. Reopen requires a done/deferred task or archived project;
+archive requires an active project. A stale revision is reported first.
 
 Retain the intended change and explicitly rebase from the appropriate current
 values with a fresh command ID. A transient commit failure returns HTTP 503 with
