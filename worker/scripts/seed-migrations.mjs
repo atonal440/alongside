@@ -33,6 +33,7 @@ const applied = [
   '010_command_receipts.sql',
   '011_entity_versions.sql',
   '012_creation_commands.sql',
+  '013_link_commands.sql',
 ];
 
 const inserts = applied

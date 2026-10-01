@@ -1,6 +1,6 @@
 import * as v from 'valibot';
 import { DutyIdSchema, EventInstantSchema, LinkTypeSchema, ProjectIdSchema, RevisionSchema, TaskIdSchema, parseSchema } from '../parse';
-import { ProjectRowSchema, TaskRowSchema } from './rows';
+import { ProjectRowSchema, TaskRowSchema, TaskLinkRowSchema } from './rows';
 
 export const EntityKeySchema = v.variant('entity', [
   v.strictObject({ entity: v.literal('task'), id: TaskIdSchema }),
@@ -39,3 +39,16 @@ export const EntitySnapshotSchema = v.pipe(v.variant('entity', [
 export type EntitySnapshot = v.InferOutput<typeof EntitySnapshotSchema>;
 export const parseEntityReadKey = (input: unknown) => parseSchema(EntityReadKeySchema, input);
 export const parseEntitySnapshot = (input: unknown) => parseSchema(EntitySnapshotSchema, input);
+
+export const LinkKeySchema = v.strictObject({ entity: v.literal('link'), from: TaskIdSchema, to: TaskIdSchema, linkType: LinkTypeSchema });
+export type LinkKey = v.InferOutput<typeof LinkKeySchema>;
+export const parseLinkKey = (input: unknown) => parseSchema(LinkKeySchema, input);
+export const LinkSnapshotSchema = v.pipe(v.strictObject({
+  contractVersion: v.literal(2), key: LinkKeySchema, row: v.nullable(TaskLinkRowSchema),
+  structuralRevision: RevisionSchema, version: v.nullable(EntityVersionSchema),
+}), v.check(value => value.row === null ? value.version === null || value.version.deletedAt !== null
+  : value.row.from_task_id === value.key.from && value.row.to_task_id === value.key.to && value.row.link_type === value.key.linkType
+    && value.version !== null && value.version.deletedAt === null,
+'Link content must agree with its key and live/deleted version.'));
+export type LinkSnapshot = v.InferOutput<typeof LinkSnapshotSchema>;
+export const parseLinkSnapshot = (input: unknown) => parseSchema(LinkSnapshotSchema, input);

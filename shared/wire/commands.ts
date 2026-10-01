@@ -1,7 +1,7 @@
 import * as v from 'valibot';
-import { CommandIdSchema, EventInstantSchema, MinuteInstantSchema, DueDateTimeSchema, RruleSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema } from '../parse';
+import { CommandIdSchema, EventInstantSchema, MinuteInstantSchema, DueDateTimeSchema, RruleSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, LinkTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema } from '../parse';
 import { PlanningSettingsSchema } from './planning';
-import { ProjectRowSchema, TaskRowSchema } from './rows';
+import { ProjectRowSchema, TaskRowSchema, TaskLinkRowSchema } from './rows';
 
 // Single-command families remain independently deployable until graph batches
 // and offline command storage join this protocol in subsequent Slice 2 steps.
@@ -83,11 +83,17 @@ v.check(value => value.recurrence === null || value.dueAllDay !== false, 'Legacy
 export const TaskLegacyScheduleCommandSchema = v.strictObject({
   kind: v.literal('task.legacy-schedule.set'), id: TaskIdSchema, expectedRevision: RevisionSchema, values: LegacyScheduleValuesSchema,
 });
+const linkCommandEntries = { from: TaskIdSchema, to: TaskIdSchema, linkType: LinkTypeSchema, expectedStructuralRevision: RevisionSchema };
+export const LinkAddCommandSchema = v.pipe(v.strictObject({ ...linkCommandEntries,
+  kind: v.literal('link.add'), expectedRevision: v.nullable(RevisionSchema),
+}), v.check(value => value.from !== value.to, 'A task cannot link to itself.'),
+v.check(value => value.linkType !== 'related' || value.from < value.to, 'Related additions require ascending endpoint IDs.'));
+export const LinkRemoveCommandSchema = v.strictObject({ ...linkCommandEntries, kind: v.literal('link.remove'), expectedRevision: RevisionSchema });
 export const CommandEnvelopeSchema = v.strictObject({
   contractVersion: v.literal(2), commandId: CommandIdSchema,
   actor: v.picklist(['user', 'llm', 'import']),
   reason: v.optional(v.pipe(v.string(), v.maxLength(1_000))),
-  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema])), v.length(1, 'This release accepts exactly one command per batch.')),
+  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema])), v.length(1, 'This release accepts exactly one command per batch.')),
 });
 export type CommandEnvelope = v.InferOutput<typeof CommandEnvelopeSchema>;
 export const parseCommandEnvelope = (input: unknown) => parseSchema(CommandEnvelopeSchema, input);
@@ -114,7 +120,12 @@ export const TaskChangeDiffSchema = v.strictObject({
   before: v.nullable(v.strictObject({ revision: RevisionSchema, row: TaskRowSchema })),
   after: v.strictObject({ revision: RevisionSchema, row: TaskRowSchema }),
 });
-export const ChangeDiffSchema = v.variant('entity', [PlanningDiffSchema, ProjectChangeDiffSchema, TaskChangeDiffSchema]);
+export const LinkChangeDiffSchema = v.strictObject({
+  entity: v.literal('link'), id: v.string(),
+  before: v.nullable(v.strictObject({ revision: RevisionSchema, row: v.nullable(TaskLinkRowSchema) })),
+  after: v.union([v.strictObject({ revision: RevisionSchema, row: TaskLinkRowSchema }), v.strictObject({ revision: RevisionSchema, deleted: v.literal(true) })]),
+});
+export const ChangeDiffSchema = v.variant('entity', [PlanningDiffSchema, ProjectChangeDiffSchema, TaskChangeDiffSchema, LinkChangeDiffSchema]);
 function validDiffIdentity(value: { changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
   if (value.changes.length === 0) return false;
   const identities = new Set<string>();
@@ -123,6 +134,17 @@ function validDiffIdentity(value: { changes: v.InferOutput<typeof ChangeDiffSche
     if (identities.has(`${change.entity}:${change.id}`)) return false;
     identities.add(`${change.entity}:${change.id}`);
     if (change.entity === 'planning_settings') return value.changes.length === 1 && Object.keys(value.refs).length === 0;
+    if (change.entity === 'link') {
+      const row = 'row' in change.after ? change.after.row : change.before?.row;
+      if (!row || change.id !== JSON.stringify([row.from_task_id, row.to_task_id, row.link_type])) return false;
+      if (change.before === null) { if (change.after.revision !== 1 || !('row' in change.after)) return false; }
+      else {
+        if (change.after.revision !== change.before.revision + 1) return false;
+        if (change.before.row !== null && change.id !== JSON.stringify([change.before.row.from_task_id, change.before.row.to_task_id, change.before.row.link_type])) return false;
+        if (!('row' in change.after) && change.before.row === null) return false;
+      }
+      continue;
+    }
     if (change.id !== change.after.row.id) return false;
     if (change.before !== null) {
       if (change.id !== change.before.row.id || change.after.revision !== change.before.revision + 1) return false;

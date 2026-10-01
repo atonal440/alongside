@@ -1,5 +1,5 @@
 import * as v from 'valibot';
-import { EntitySnapshotSchema } from './versions';
+import { EntitySnapshotSchema, LinkSnapshotSchema } from './versions';
 import { EventInstantSchema, LocalDateSchema, LocalTimeSchema, MinuteInstantSchema, PositiveMinutesSchema, RevisionSchema, TaskIdSchema, parseSchema } from '../parse';
 import { TimezoneSchema } from '../parse/time';
 import { RelativeOffsetSchema, TaskDateRoleSchema, TemporalPointSchema } from '../temporal';
@@ -67,6 +67,7 @@ export const FoundationErrorSchema = v.strictObject({
   currentSettings: v.optional(v.nullable(PlanningSettingsSchema)),
   expectedRevision: v.optional(v.nullable(RevisionSchema)),
   currentEntity: v.optional(EntitySnapshotSchema),
+  currentLink: v.optional(LinkSnapshotSchema),
   expectedStructuralRevision: v.optional(RevisionSchema),
 });
 export const LegacyDatesPreviewSchema = v.strictObject({
