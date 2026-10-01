@@ -1,6 +1,6 @@
 # Power-user todo implementation checklist
 
-Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields implemented with review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
+Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links implemented with review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
 Updated: 2026-10-01.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
@@ -105,9 +105,9 @@ the review gate. Merge authorizes the existing production deployment workflow.
   capability enabled. Merged/deployed in PR #45.
 - **2d — reliable existing task/project/link commands:** stable IDs/client refs,
   semantic command planning, coherent content/version reads, receipts and
-  atomic final-state/aggregate validation. Creation-only increment merged/deployed in PR #46. Guarded content edits merged/deployed in PR #47. Guarded state transitions
-  implemented; review/merge pending. Remaining edits,
-  lifecycle and graph commands remain subsequent reviewable PRs. Keep the legacy PWA usable.
+  atomic final-state/aggregate validation. Creation-only increment merged/deployed in PR #46. Guarded content edits merged/deployed in PR #47. Guarded state, completion and task fields merged/deployed in PRs #48–#50.
+  Reliable links implemented; review/merge pending. Task/project deletion and
+  bounded mixed batches remain subsequent reviewable PRs. Keep the legacy PWA usable.
 - **2e — workspace sync and restore:** consistent snapshot and fixed-watermark
   deltas covering all current user data, tombstones/retention/reset policy,
   import epoch and bounded versioned export/import retaining v1 input.
@@ -624,3 +624,29 @@ selected-project diagnostics and unchanged capability gates.
 
 Next: reliable link/deletion commands and bounded mixed graph batches; then
 workspace sync/restore and retained offline intention/capability gates.
+
+
+### 2026-10-01 — Slice 2d sixth increment: reliable links
+
+PR #50 merged as `95e6689` after clean automated review of final head `72745c5`,
+green checks and zero threads. Deploy run 36932770328 succeeded for Worker and
+PWA Pages.
+
+Branch: `codex/power-user-slice-2d-links`; automated review/merge pending.
+Adds coherent link reads and guarded add/remove with retained identities,
+canonical related additions, legacy reverse-edge cleanup, atomic blocks-cycle
+guards and exact replay. Migration 013 broadens feed identity/deletion images
+and preserves history/sequence. Broad gates remain off. See
+[reliable links](../shared/reliable-links.md).
+
+Acceptance: `npm run verify` passes (536 Worker / 512 PWA tests, both
+typechecks/builds, Worker dry-run 826.90 KiB / gzip 144.37 KiB). Fresh/upgrade
+SQLite tests cover revisions/tombstones, races, lost responses, rollback, cycle
+rejection, recursive triggers, feed constraints and migration allocator/history.
+PWA parsers reject malformed identities/versions/diffs and preserve current-link
+conflicts. Isolated migration and REST/MCP smoke passed preview without writes,
+add/remove/revive, replay, cycle rejection, reverse legacy collision and unchanged
+capability gates. Drizzle regeneration reports no further changes.
+
+Next: task/project deletion and bounded mixed graph batches; workspace
+sync/restore and retained offline intention/capability gates follow.

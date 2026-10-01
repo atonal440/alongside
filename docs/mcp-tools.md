@@ -398,7 +398,7 @@ split into independent wipes; larger restore support requires staging.
 | --- | --- |
 | `get_planning_settings` | Read complete settings and revision, or null before setup |
 | `export_planning_settings` | Export portable preference values without revision or credentials |
-| `preview_changes` | Preview one supported settings/task/project command without writes |
+| `preview_changes` | Preview one supported settings/task/project/link command without writes |
 | `apply_changes` | Commit one supported command with revision guards, receipt, audit and feed |
 
 Read/export take `{}`. Preview/apply use the strict envelope shown in
@@ -411,7 +411,7 @@ current values and require an explicit rebase with a new ID. Tool errors expose
 
 Settings, single task/project creation/content, task focus/deferral/reopen and
 project archive/reopen, reliable completion and task membership/type/legacy-schedule
-commands use this protocol. Deletion and graph batches,
+and link add/remove commands use this protocol. Task/project deletion and mixed graph batches,
 offline command overlays and full delta sync remain gated. Settings export is a
 preferences document, not a full backup; restore non-null values through
 `planning.set` using `actor: import` and the destination's expected revision.
@@ -435,8 +435,12 @@ uses `task.create`/`project.create` with stable caller IDs, expected null identi
 revision and expected structural revision. A scoped clientRef maps to the ID;
 a task's selected project carries its own expected revision. See
 [the creation contract](shared/reliable-creation.md) for complete inputs and
-replay/retained-intent instructions. Link reads remain `get_entity_version`;
-link mutation commands and mixed batches are not implemented yet.
+replay/retained-intent instructions. `get_link` reads an exact edge key and its
+content/version/structural snapshot. `link.add`/`link.remove` guard edge and
+aggregate revisions; related additions require ascending IDs and no reverse
+duplicate, while blocks additions reject cycles. Removal keeps a tombstone and
+uses the stored orientation. See [reliable links](shared/reliable-links.md).
+Mixed batches remain a subsequent increment.
 
 
 `task.content.set` and `project.content.set` replace title/notes/kickoff text

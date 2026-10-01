@@ -336,6 +336,11 @@ this release accepts exactly one of the following command families:
   a structural revision and selected-project revision. Legacy schedule values
   explicitly include due-date classification; they never create a hard deadline.
 
+- `link.add`/`link.remove` with edge and structural revisions, endpoint/cycle
+  guards and retained tombstones; see [reliable links](shared/reliable-links.md).
+  `POST /api/v2/link` accepts an exact link key and returns its coherent
+  row/version/structural snapshot. It rejects query parameters.
+
 For settings, `expectedRevision: null`
 requires absent settings; a number must equal the existing revision. Managed
 revisions are excluded from values. Working-hour overlaps are rejected before
@@ -343,7 +348,7 @@ writes. See [the command contract](shared/reliable-settings-commands.md) for a
 complete input and replay/rebase instructions.
 
 Applied/preview results contain `contractVersion`, `commandId`, `payloadHash`,
-`serverNow`, `changes` (one settings/entity diff, or completion plus successor),
+`serverNow`, `changes` (one settings/entity/link diff, or completion plus successor),
 `warnings` and `refs`. Recurring completion orders the completed task first and
 the successor creation second; its optional ref maps to the successor ID.
 Preview adds `dryRun: true` and `requiredStatements`; apply adds `applied: true`.
