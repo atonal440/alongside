@@ -1,7 +1,7 @@
 # Guarded task membership, type and legacy schedule
 
 `task.project.set`, `task.type.set` and `task.legacy-schedule.set` extend the
-single-command v2 protocol to the remaining editable fields used by the current
+v2 protocol to the remaining editable fields used by the current
 task UI. They replace specific semantic values, not arbitrary managed patches.
 Read the task with `get_entity` and retain its numeric revision before planning.
 All commands preserve conversational content, lifecycle, attention, creation time
@@ -107,3 +107,6 @@ conversion of the PWA queue. Deletion/link commands, bounded mixed graph batches
 full workspace sync/restore and retained offline overlays remain subsequent
 increments; broad reliability/delta capability gates remain false. Future explicit
 date-role writes stay in Slice 3 with their own constraints and provenance.
+
+This family also composes in [bounded mixed batches](reliable-batches.md),
+with grouped compound effects and distinct written identities.

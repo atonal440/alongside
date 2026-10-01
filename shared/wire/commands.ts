@@ -1,10 +1,10 @@
 import * as v from 'valibot';
-import { CommandIdSchema, EventInstantSchema, MinuteInstantSchema, DueDateTimeSchema, RruleSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, LinkTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema } from '../parse';
+import { CommandIdSchema, EventInstantSchema, MinuteInstantSchema, DueDateTimeSchema, RruleSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, LinkTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema, parseIsoDate, parseRrule, nextOccurrence } from '../parse';
 import { PlanningSettingsSchema } from './planning';
 import { ProjectRowSchema, TaskRowSchema, TaskLinkRowSchema } from './rows';
 
-// Single-command families remain independently deployable until graph batches
-// and offline command storage join this protocol in subsequent Slice 2 steps.
+// Standalone and bounded mixed families share replay receipts. Offline command
+// storage joins this protocol in subsequent Slice 2 steps.
 export const PlanningValuesSchema = v.pipe(v.strictObject({
   timezone: PlanningSettingsSchema.entries.timezone,
   workingHours: PlanningSettingsSchema.entries.workingHours,
@@ -98,9 +98,9 @@ export const CommandEnvelopeSchema = v.pipe(v.strictObject({
   expectedStructuralRevision: v.optional(RevisionSchema),
   commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(20)),
 }), v.check(value => value.commands.length === 1 ? value.expectedStructuralRevision === undefined
-  : value.expectedStructuralRevision !== undefined && value.commands.every(command => !['planning.set','task.complete','task.delete','project.delete'].includes(command.kind)),
-'Mixed batches require an envelope structural revision; settings, completion and deletion remain standalone.'),
-v.check(value => { const refs=value.commands.flatMap(command => 'clientRef' in command && command.clientRef !== undefined ? [command.clientRef] : []); return new Set(refs).size === refs.length; }, 'Client references must be unique within a batch.'));
+  : value.expectedStructuralRevision !== undefined && value.commands.every(command => command.kind !== 'planning.set'),
+'Mixed batches require an envelope structural revision; settings remain standalone.'),
+v.check(value => { const refs=value.commands.flatMap(command => 'clientRef' in command && command.clientRef !== undefined ? [command.clientRef] : command.kind === 'task.complete' && command.successor?.clientRef !== undefined ? [command.successor.clientRef] : []); return new Set(refs).size === refs.length; }, 'Client references must be unique within a batch.'));
 export type CommandEnvelope = v.InferOutput<typeof CommandEnvelopeSchema>;
 export const parseCommandEnvelope = (input: unknown) => parseSchema(CommandEnvelopeSchema, input);
 export const PayloadHashSchema = v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/));
@@ -132,9 +132,52 @@ export const LinkChangeDiffSchema = v.strictObject({
   after: v.union([v.strictObject({ revision: RevisionSchema, row: TaskLinkRowSchema }), v.strictObject({ revision: RevisionSchema, deleted: v.literal(true) })]),
 });
 export const ChangeDiffSchema = v.variant('entity', [PlanningDiffSchema, ProjectChangeDiffSchema, TaskChangeDiffSchema, LinkChangeDiffSchema]);
-function validDiffIdentity(value: { serverNow: string; batch?: true | undefined; changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
+type ChangeDiff = v.InferOutput<typeof ChangeDiffSchema>;
+
+// Group boundaries identify standalone completion effects. Check the entire
+// transition, including inherited successor fields, before accepting a receipt
+// as canonical state. The date-only recurrence helper is shared with the planner.
+function validCompletion(changes: ChangeDiff[], serverNow: string): boolean {
+  const [root, successor] = changes;
+  if (root?.entity !== 'task' || root.before?.row.status !== 'pending' || !('row' in root.after)) return false;
+  const before = root.before.row;
+  const completed = { ...before, status: 'done', defer_kind: 'none', defer_until: null, focused_until: null, updated_at: serverNow };
+  const completedRow = root.after.row;
+  if (!Object.entries(completed).every(([field, stored]) => completedRow[field as keyof typeof completed] === stored)) return false;
+  if (before.recurrence === null) return changes.length === 1;
+  if (changes.length !== 2 || successor?.entity !== 'task' || successor.before !== null || !('row' in successor.after)
+    || before.due_date === null || before.due_all_day === false) return false;
+  const rule = parseRrule(before.recurrence);
+  const anchor = parseIsoDate(before.due_date.slice(0, 10));
+  if (!rule.ok || !anchor.ok) return false;
+  try {
+    const expected = { ...before, id: successor.id, status: 'pending',
+      due_date: `${nextOccurrence(rule.value.parts, anchor.value)}T12:00:00Z`, due_all_day: true,
+      created_at: serverNow, updated_at: serverNow, defer_kind: 'none', defer_until: null, focused_until: null,
+      kickoff_note: before.session_log ?? before.kickoff_note, session_log: null, duty_id: null, occurrence_at: null };
+    const after = successor.after.row;
+    return Object.entries(expected).every(([field, stored]) => after[field as keyof typeof after] === stored);
+  } catch {
+    return false;
+  }
+}
+function validDiffIdentity(value: { serverNow: string; batch?: true | undefined; changeGroups?: number[] | undefined; changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
   if (value.changes.length === 0) return false;
-  if (value.batch === true && (value.changes.length < 2 || value.changes.length > 20 || value.changes.some(change => change.entity === 'planning_settings' || (change.entity !== 'link' && 'deleted' in change.after)))) return false;
+  if (value.batch !== true && value.changeGroups !== undefined) return false;
+  if (value.batch === true) {
+    if (value.changes.length < 2 || value.changes.some(change => change.entity === 'planning_settings')) return false;
+    if (value.changeGroups === undefined) {
+      // Receipts from the first mixed-batch release contain only simple images.
+      if (value.changes.length > 20 || value.changes.some(change => (change.entity !== 'link' && 'deleted' in change.after) || (change.entity === 'task' && change.before?.row.status === 'pending' && 'row' in change.after && change.after.row.status === 'done'))) return false;
+    } else {
+      if (value.changeGroups.length < 2 || value.changeGroups.length > 20 || value.changeGroups.reduce((a,b) => a+b,0) !== value.changes.length) return false;
+      let offset=0;
+      for (const count of value.changeGroups) {
+        if (!Number.isSafeInteger(count) || count < 1 || !validDiffIdentity({serverNow:value.serverNow,changes:value.changes.slice(offset,offset+count),refs:{}})) return false;
+        offset+=count;
+      }
+    }
+  }
   const identities = new Set<string>();
   const createdIds = new Set<string>();
   for (const change of value.changes) {
@@ -160,9 +203,13 @@ function validDiffIdentity(value: { serverNow: string; batch?: true | undefined;
       createdIds.add(change.id);
     }
   }
-  if (value.changes.length > 1 && value.batch !== true) {
+  if (value.batch !== true) {
     const [root, ...effects] = value.changes;
-    if (root?.entity === 'task' && 'deleted' in root.after) {
+    if (root?.entity === 'task' && root.before?.row.status === 'pending' && 'row' in root.after && root.after.row.status === 'done') {
+      if (!validCompletion(value.changes, value.serverNow)) return false;
+    } else if (value.changes.length === 1) {
+      // Simple non-completion commands have no derived effects.
+    } else if (root?.entity === 'task' && 'deleted' in root.after) {
       if (!effects.every(effect => effect.entity === 'link' && 'deleted' in effect.after && effect.before?.row !== null
         && effect.before !== null && (effect.before.row.from_task_id === root.id || effect.before.row.to_task_id === root.id))) return false;
     } else if (root?.entity === 'project' && 'deleted' in root.after) {
@@ -173,9 +220,7 @@ function validDiffIdentity(value: { serverNow: string; batch?: true | undefined;
         return Object.entries(expected).every(([field, stored]) => after[field as keyof typeof after] === stored);
       })) return false;
     } else {
-      const successor = effects[0];
-      if (effects.length !== 1 || root?.entity !== 'task' || successor?.entity !== 'task' || root.before?.row.status !== 'pending'
-        || !('row' in root.after) || root.after.row.status !== 'done' || successor.before !== null || !('row' in successor.after) || successor.after.row.status !== 'pending') return false;
+      return false;
     }
   }
   return Object.keys(value.refs).length <= (value.batch ? 20 : 1) && Object.values(value.refs).every(id => createdIds.has(id));
@@ -186,7 +231,7 @@ const RefsSchema = v.pipe(v.custom<Record<string, string>>(input => input !== nu
 v.record(ClientRefSchema, v.union([TaskIdSchema, ProjectIdSchema])));
 const resultEntries = {
   contractVersion: v.literal(2), commandId: CommandIdSchema, payloadHash: PayloadHashSchema,
-  serverNow: EventInstantSchema, batch: v.optional(v.literal(true)), changes: v.pipe(v.array(ChangeDiffSchema), v.minLength(1), v.maxLength(100)),
+  serverNow: EventInstantSchema, batch: v.optional(v.literal(true)), changeGroups: v.optional(v.pipe(v.array(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100))), v.minLength(2), v.maxLength(20))), changes: v.pipe(v.array(ChangeDiffSchema), v.minLength(1), v.maxLength(100)),
   warnings: v.pipe(v.array(v.string()), v.maxLength(0)),
   refs: RefsSchema,
 };

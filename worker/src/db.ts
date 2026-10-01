@@ -640,10 +640,10 @@ export class DB {
 
   async getLinkSnapshot(key: LinkKey): Promise<LinkSnapshot> { return (await readLinkContext(this.d1, key)).current; }
 
-  private async planCommand(input: CommandEnvelope, hash: string, clock: EventInstant, reader:CommandReader={entity:key=>this.getEntitySnapshot(key),link:key=>readLinkContext(this.d1,key)}): Promise<{ plan: Plan; result: ChangesResult }> {
+  private async planCommand(input: CommandEnvelope, hash: string, clock: EventInstant, reader:CommandReader={entity:key=>this.getEntitySnapshot(key),link:key=>readLinkContext(this.d1,key),deletion:key=>readDeleteContext(this.d1,key)}): Promise<{ plan: Plan; result: ChangesResult }> {
     if(input.commands.length>1)return planBatchCommand(input,reader,(atom,virtual)=>this.planCommand(atom,hash,clock,virtual),(changes,expected)=>this.validateBatchGraph(changes,expected),hash,clock);
     const command = input.commands[0]!;
-    if (command.kind === 'task.delete' || command.kind === 'project.delete') return planDeleteCommand(input, await readDeleteContext(this.d1, commandEntityKey(command)), hash, clock);
+    if (command.kind === 'task.delete' || command.kind === 'project.delete') return planDeleteCommand(input, await reader.deletion(commandEntityKey(command)), hash, clock);
     if (command.kind === 'link.add' || command.kind === 'link.remove') return planLinkCommand(input, await reader.link(linkCommandKey(command)), hash, clock);
     if (command.kind === 'planning.set') return planSettingsCommand(input, await this.getPlanningSettings(), hash, clock);
     if (command.kind === 'task.project.set') {

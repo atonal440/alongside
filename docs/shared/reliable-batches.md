@@ -4,8 +4,8 @@ V2 preview/apply now accept 2–20 creation, content, attention/state, membershi
 type, legacy-schedule and link commands in one envelope. A mixed envelope
 requires `expectedStructuralRevision`; every graph command inside it uses that
 same base structural revision. Standalone commands retain their existing shapes
-and forbid the envelope-level revision. Settings, completion and deletion remain
-standalone while their compound batch effects receive dedicated coverage.
+and forbid the envelope-level revision. Settings remain standalone; completion and deletion include their derived
+effects in grouped mixed results.
 
 ## Planning a batch
 
@@ -93,3 +93,38 @@ same ID and payload for replay. Preview writes nothing and is not a lock.
 No migration or capability gate changes accompany this increment. The legacy
 PWA queue remains usable; compound lifecycle batches, workspace sync/restore,
 retained offline overlays and capability negotiation follow.
+
+## Compound lifecycle effects
+
+Completion and task/project deletion now also compose in mixed batches.
+Settings remain standalone. Existing transition rules, stable recurrence
+successor IDs, deletion identity and duty-ownership rejection still apply.
+Derived identities participate in the write-once rule: completing a task and
+then editing it, or editing a project member and then detaching it through
+project deletion, is rejected before writing.
+
+New mixed results include `changeGroups`, one positive image count per command
+in declared order. Counts cover the flat `changes` array exactly. For example,
+`[2,1]` can describe completion plus successor followed by an unrelated edit,
+or task deletion plus link tombstone followed by an unrelated edit. Each group
+must independently satisfy the standalone result contract, including complete
+field preservation for project-detached members and completed tasks. Completion
+also checks successor inheritance, the next legacy recurrence date, cleared
+session state and server timestamps. Groups retain boundaries even
+when the whole result has more images than input commands.
+
+Receipts from the first mixed-batch release, which lack `changeGroups`, remain
+readable for simple non-lifecycle images. New lifecycle results require grouped
+provenance. Scoped reference uniqueness covers both creation and recurring
+successor refs. A recurring successor may be linked by a later command using
+its stable ID without a second creation.
+
+Lifecycle planning overlays prefix effects on coherent bounded source reads.
+An explicitly removed incident edge is omitted from a later task cascade;
+an explicitly moved member is omitted from a later project detachment. Shared
+cascade edges are deleted once when their endpoints are both deleted. Every
+result image advances its entity and the aggregate once. Each lifecycle scope
+must pass its existing bounded planner, then the complete combined plan must
+fit 100 generated statements including all derived feed images and final guards.
+A 29-member project deletion plus unrelated type change uses 98 statements;
+30 members use 101 and are rejected atomically.

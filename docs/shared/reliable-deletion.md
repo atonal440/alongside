@@ -75,6 +75,7 @@ Retain the deletion intent, inspect all affected rows, and explicitly rebase
 with a fresh command ID. No timestamp-based overwrite occurs.
 
 No schema migration is needed: migration 013 already supports deletion feed
-images and the existing ledger tracks cascades. Legacy PWA writes remain
-usable. Bounded mixed graph batches, workspace sync/restore and retained
-offline overlays follow; broad reliability/delta gates remain disabled.
+images and the existing ledger tracks cascades. Legacy PWA writes remain usable. Deletion composes in
+[bounded mixed batches](reliable-batches.md) with grouped derived effects;
+workspace sync/restore and retained offline overlays follow. Broad
+reliability/delta gates remain disabled.

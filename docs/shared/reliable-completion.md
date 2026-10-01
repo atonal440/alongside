@@ -1,6 +1,6 @@
 # Reliable completion and stable legacy successors
 
-`task.complete` extends the v2 single-command protocol. It closes a pending task
+`task.complete` extends the v2 protocol. It closes a pending task
 and, for legacy recurrence, creates exactly one caller-identified successor in
 the same transaction. A lost response cannot create another successor: the
 receipt returns the original compound result, even after the task is reopened
@@ -89,3 +89,6 @@ batches are still rejected. The old task completion adapters remain usable
 with their legacy behavior. The old PWA queue is not converted by this change.
 Broad reliability/delta gates remain false pending association/deletion/link
 commands, bounded graph batches, workspace sync/restore and offline retention.
+
+This family also composes in [bounded mixed batches](reliable-batches.md),
+with grouped compound effects and distinct written identities.
