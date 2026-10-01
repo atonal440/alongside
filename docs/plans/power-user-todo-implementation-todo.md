@@ -268,7 +268,7 @@ Branch: `codex/power-user-slice-1`; PR review/merge pending. Migration 009 adds
 empty planning settings/working hours and rewrites no legacy values. REST/MCP
 capabilities, time resolution, legacy classification and parsed PWA callers are
 implemented. `npm run verify` passes: Worker 276 tests, PWA 417 tests, both
-typechecks, Worker dry-run (738.19 KiB / gzip 127.49 KiB) and PWA build. Targeted
+typechecks, Worker dry-run (738.30 KiB / gzip 127.50 KiB) and PWA build. Targeted
 coverage includes UTC−12/UTC+14, midnight gaps/folds, skipped dates, 23/25-hour
 days, leap dates, explicit fold selection, offset distinctions, strict boundary
 errors, fresh/upgrade SQL constraints and preservation of legacy rows. A separate
@@ -296,4 +296,5 @@ Slice 1 review follow-up: addressed both Codex P2 findings. Fresh-db migration
 bookkeeping now includes 009 (with a complete migration-list regression check).
 The PWA parses v2 error envelopes and retains machine-readable codes, recovery
 hints and DST alternatives; legacy authentication errors remain compatible.
-Focused boundary tests pass; final full verification and bot re-review pending.
+Focused boundary tests and final `npm run verify` pass (276 Worker / 417 PWA
+tests, both typechecks and builds). Bot re-review pending.
