@@ -62,10 +62,10 @@ const stateCommandSchema = (kind: string, field?: string, schema?: object) => ({
   }, required: ['kind', 'id', 'expectedRevision', ...(field ? [field] : [])],
 });
 const stateSchemas = [
-  stateCommandSchema('task.focus.set', 'focusedUntil', { type: ['string', 'null'], format: 'date-time', description: 'Explicit instant with offset; normalized to minute UTC. Non-null focus clears deferral. Null only clears focus.' }),
+  stateCommandSchema('task.focus.set', 'focusedUntil', { type: ['string', 'null'], format: 'date-time', description: 'Explicit instant with offset; normalized to minute UTC in years 0100–9999. Non-null focus clears deferral. Null only clears focus.' }),
   stateCommandSchema('task.defer.set', 'defer', { oneOf: [
     ...['none', 'someday'].map(kind => ({ type: 'object', additionalProperties: false, properties: { kind: { const: kind } }, required: ['kind'] })),
-    { type: 'object', additionalProperties: false, properties: { kind: { const: 'until' }, until: { type: 'string', format: 'date-time' } }, required: ['kind', 'until'] },
+    { type: 'object', additionalProperties: false, properties: { kind: { const: 'until' }, until: { type: 'string', format: 'date-time', description: 'Explicit instant; normalized UTC year must be 0100–9999.' } }, required: ['kind', 'until'] },
   ] }),
   stateCommandSchema('task.reopen'), stateCommandSchema('project.archive'), stateCommandSchema('project.reopen'),
 ];

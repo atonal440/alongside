@@ -32,3 +32,8 @@ it('retains invalid-transition details and parsed current row/version for future
   try { expect(await api.applyChanges(parsed.value, config)).toMatchObject({ kind: 'http', status: 409, body: { contractError: error } }); }
   finally { stub.restore(); }
 });
+
+it.each(['0001-01-01T00:00:00Z', '0099-12-31T23:59:00Z', '0100-01-01T00:00:00+01:00'])('rejects unsupported normalized task scheduling years: %s', instant => {
+  expect(parseCommandEnvelope({ contractVersion: 2, commandId: 'c_state01', actor: 'user', commands: [{ kind: 'task.focus.set', id: task.id, expectedRevision: 1, focusedUntil: instant }] }).ok).toBe(false);
+  expect(parseCommandEnvelope({ contractVersion: 2, commandId: 'c_state01', actor: 'user', commands: [{ kind: 'task.defer.set', id: task.id, expectedRevision: 1, defer: { kind: 'until', until: instant } }] }).ok).toBe(false);
+});

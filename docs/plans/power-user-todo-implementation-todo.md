@@ -565,3 +565,11 @@ State review follow-up: updated the earlier MCP command matrix/summary to
 include all supported state transitions. The detailed reference was already
 present; the summary now agrees. Docs-only fix; final-head automated re-review
 required before merging.
+
+
+State second review follow-up: the command instant parser now matches the
+legacy task-row codec's normalized UTC year range (0100–9999). Foundation
+temporal resolution still supports 0001–9999. Earlier years, including an
+offset crossing below 0100, fail at the command boundary before planning;
+boundary and real-storage regression checks cover both focus and deferral.
+Completion work remains separately preserved while this PR is re-reviewed.

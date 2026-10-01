@@ -36,7 +36,8 @@ rejected. Additional input and behavior:
 | `project.reopen` | None | Archived project becomes active; its tasks and links stay intact. |
 
 Focus and timed deferral accept offset-bearing ISO instants, normalized to
-minute UTC before hashing/storage. Bare dates and unzoned wall times are
+minute UTC before hashing/storage. These legacy task columns support normalized
+UTC years 0100–9999; earlier years are rejected at the command boundary. Bare dates and unzoned wall times are
 rejected; use `resolve_time` to resolve local intent first. Past instants remain
 valid under the existing expiry/readiness semantics. No timer or notification
 is scheduled. The resulting row must also fit the existing task-row codec.

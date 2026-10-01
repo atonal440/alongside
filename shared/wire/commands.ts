@@ -41,14 +41,19 @@ export const TaskContentCommandSchema = v.strictObject({
   kind: v.literal('task.content.set'), id: TaskIdSchema, expectedRevision: RevisionSchema,
   values: v.strictObject({ ...ProjectCreateValuesSchema.entries, sessionLog: v.nullable(boundedStringSchema(10_000)) }),
 });
+// These transitions still store in the legacy task row codec, whose supported
+// UTC years start at 0100. Keep the accepted command range aligned until those
+// columns migrate to the complete temporal contract.
+export const TaskSchedulingInstantSchema = v.pipe(MinuteInstantSchema,
+  v.check(value => Number(value.slice(0, 4)) >= 100, 'Task scheduling instants require normalized UTC years 0100–9999.'));
 export const DeferValuesSchema = v.variant('kind', [
   v.strictObject({ kind: v.literal('none') }),
   v.strictObject({ kind: v.literal('someday') }),
-  v.strictObject({ kind: v.literal('until'), until: MinuteInstantSchema }),
+  v.strictObject({ kind: v.literal('until'), until: TaskSchedulingInstantSchema }),
 ]);
 export const TaskFocusCommandSchema = v.strictObject({
   kind: v.literal('task.focus.set'), id: TaskIdSchema, expectedRevision: RevisionSchema,
-  focusedUntil: v.nullable(MinuteInstantSchema),
+  focusedUntil: v.nullable(TaskSchedulingInstantSchema),
 });
 export const TaskDeferCommandSchema = v.strictObject({
   kind: v.literal('task.defer.set'), id: TaskIdSchema, expectedRevision: RevisionSchema, defer: DeferValuesSchema,

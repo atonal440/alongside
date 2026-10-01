@@ -180,3 +180,19 @@ it('canonicalizes equivalent focus offsets/seconds before replay hashing', async
     expect(await db.applyChanges(input('task.focus.set', task.id, 1, { focusedUntil: '2026-10-05T18:22:01Z' }))).toEqual(first);
   } finally { sql.close(); }
 });
+
+it.each(['0001-01-01T00:00:00Z', '0099-12-31T23:59:00Z', '0100-01-01T00:00:00+01:00'])('rejects scheduling outside legacy row range at boundary: %s', instant => {
+  for (const [kind, fields] of [['task.focus.set', { focusedUntil: instant }], ['task.defer.set', { defer: { kind: 'until', until: instant } }]] as const) {
+    expect(parseCommandEnvelope({ contractVersion: 2, commandId: 'c_state01', actor: 'user', commands: [{ kind, id: 't_first1', expectedRevision: 1, ...fields }] }).ok).toBe(false);
+  }
+});
+it.each(['0100-01-01T00:00:00Z', '9999-12-31T23:59:00Z'])('stores accepted scheduling boundary: %s', async instant => {
+  const { sql, db, task } = await setup();
+  try {
+    const focused = await db.applyChanges(input('task.focus.set', task.id, 1, { focusedUntil: instant }));
+    expect(parseChangesResult(focused).ok).toBe(true);
+    const deferred = await db.applyChanges(input('task.defer.set', task.id, 2, { defer: { kind: 'until', until: instant } }, 'c_range01'));
+    expect(parseChangesResult(deferred).ok).toBe(true);
+    expect((await db.getTask(task.id))?.defer_until).toBe(instant);
+  } finally { sql.close(); }
+});
