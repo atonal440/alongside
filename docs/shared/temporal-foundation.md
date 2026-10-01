@@ -52,7 +52,9 @@ Folds default to `ambiguous_local_time`; callers must choose `earlier` or
 `later`. Series recurrence keeps its existing skip-gap/earlier-fold policy.
 
 Elapsed offsets add exact minutes to an instant. Applied to a date they require
-an explicit `dateAnchorTime`. Calendar offsets move the canonical zoned date
+an explicit `dateAnchorTime`; that field is rejected for every other offset
+combination. Offset DST errors identify `dateAnchorTime` or `offset.localTime`,
+matching the submitted field. Calendar offsets move the canonical zoned date
 and resolve the requested `localTime`; they can produce a DST gap/fold error.
 Intervals are half-open `[start,end)` with end strictly after start.
 
@@ -104,3 +106,6 @@ human message through `error`; codes, recovery hints and DST alternatives remain
 available. Malformed structured errors fail boundary parsing. Legacy auth errors
 still use the existing string shape. Fresh `db:init` also records migration 009
 in its migration bookkeeping so subsequent upgrades do not replay its DDL.
+
+Reference schema initialization is repeatable (`IF NOT EXISTS`), preserving
+existing settings. The applied migration remains a strict one-time DDL change.

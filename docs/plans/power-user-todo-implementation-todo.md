@@ -300,6 +300,13 @@ Focused boundary tests and final `npm run verify` pass (276 Worker / 417 PWA
 tests, both typechecks and builds). Bot re-review pending.
 
 
+Slice 1 second review follow-up: reference schema creation is safely repeatable;
+one-time migration DDL stays strict. Offset input schemas/domain resolution
+reject inapplicable anchors and require elapsed-date anchors. DST errors name
+`offset.localTime` or `dateAnchorTime`. Added table-initialization preservation,
+8-case anchor-matrix and offset-error-path regressions. Final checks and bot
+re-review are recorded on the PR before merging.
+
 ### 2026-09-30 — Slice 2a: atomic-plan capacity
 
 Branch: `codex/power-user-slice-2a`, based on Slice 1; PR review/merge pending.

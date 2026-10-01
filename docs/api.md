@@ -38,6 +38,8 @@ Resolve examples:
 ```
 
 Calendar offsets use `{"kind":"calendar_days","days":1,"localTime":"09:00"}`.
+`dateAnchorTime` is required only for elapsed offsets from a date point and
+rejected otherwise. Offset DST errors identify the submitted anchor field.
 Unknown keys, duplicate queries, unsupported queries and explicit null return
 400. Omitted zone uses a configured workspace zone or explicitly reported UTC
 fallback. DST folds require a choice; gaps return alternatives. Errors use

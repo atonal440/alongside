@@ -22,7 +22,13 @@ export const FOUNDATION_TOOLS = [
       { properties: { kind: { const: 'offset' }, point, offset: { oneOf: [
         { type: 'object', properties: { kind: { const: 'elapsed_minutes' }, minutes: { type: 'integer', minimum: -525600, maximum: 525600 } }, required: ['kind', 'minutes'], additionalProperties: false },
         { type: 'object', properties: { kind: { const: 'calendar_days' }, days: { type: 'integer', minimum: -3660, maximum: 3660 }, localTime: time }, required: ['kind', 'days', 'localTime'], additionalProperties: false },
-      ] }, dateAnchorTime: time, disambiguation }, required: ['kind', 'point', 'offset'], additionalProperties: false },
+      ] }, dateAnchorTime: { ...time, description: 'Required only for elapsed offsets from a date point; forbidden otherwise.' }, disambiguation }, required: ['kind', 'point', 'offset'], additionalProperties: false,
+        allOf: [{ oneOf: [
+          { properties: { point: { properties: { kind: { const: 'date' } } }, offset: { properties: { kind: { const: 'elapsed_minutes' } } } }, required: ['dateAnchorTime'] },
+          { properties: { point: { properties: { kind: { const: 'instant' } } }, offset: { properties: { kind: { const: 'elapsed_minutes' } } } }, not: { required: ['dateAnchorTime'] } },
+          { properties: { offset: { properties: { kind: { const: 'calendar_days' } } } }, not: { required: ['dateAnchorTime'] } },
+        ] }],
+      },
     ],
   } },
   { name: 'preview_legacy_dates', description: 'Read-only paginated classification of legacy due values as targets. Preserves originals and reports ambiguous/unresolved rows; never infers hard deadlines.', inputSchema: { type: 'object', properties: { timezone, after: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 500 } }, additionalProperties: false } },
