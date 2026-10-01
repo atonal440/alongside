@@ -526,5 +526,11 @@ concurrent edits and durable exhaustion. Isolated REST/MCP smoke passed
 preview, edit, preserved dates/recurrence, exact replay and parsed conflicts.
 See [guarded content](../shared/reliable-content.md).
 
+Content review follow-up: corrected the API reference's inherited settings-only
+conflict description. It now distinguishes currentSettings/currentEntity,
+live/deleted/unknown identities, selected-project conflicts, structural conflicts
+and ID/payload reuse. The fix changes docs only; automated re-review is required
+on the updated head before merge.
+
 Next: lifecycle, association/link commands and bounded compound batches; then
 full sync/restore protocol and offline retained intention/compatibility gate.

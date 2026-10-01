@@ -331,8 +331,27 @@ Applied/preview results contain `contractVersion`, `commandId`, `payloadHash`,
 `serverNow`, `changes` (one settings or versioned entity diff), `warnings` and `refs`.
 Preview adds `dryRun: true` and `requiredStatements`; apply adds `applied: true`.
 Same ID/payload returns the original result. Same ID/different payload or stale
-revision returns HTTP 409; revision errors include `currentSettings` and
-`expectedRevision`. A transient commit failure returns HTTP 503 with
+revision returns HTTP 409. Conflict bodies are `{contractVersion: 2, error}`;
+the structured error includes `code`, `path`, `message`, `retryable` and a
+`recoveryHint`. Current values depend on the command family:
+
+- Settings `revision_conflict` includes `expectedRevision` and
+  `currentSettings` (the complete settings and their revision, or null).
+- Task/project `revision_conflict` includes `expectedRevision` and
+  `currentEntity`: `{contractVersion: 2, entity, id, row, version,
+  structuralRevision}`. A live entity has its current row and
+  `version: {revision, deletedAt: null}`. A deleted entity has null row and a
+  retained version with `deletedAt`; no recorded identity has null row/version.
+  Content commands expect a numeric revision, while creation expects null
+  identity history. A changed selected project is reported as that project's
+  `currentEntity`, not the proposed task.
+- Creation `structural_conflict` includes `expectedStructuralRevision` and
+  `currentEntity` with the current structural revision.
+- `command_id_conflict` reports command-ID/payload reuse; it does not provide
+  current row or settings values.
+
+Retain the intended change and explicitly rebase from the appropriate current
+values with a fresh command ID. A transient commit failure returns HTTP 503 with
 `retryable: true`; retain the command ID/payload for retry.
 
 Portable preference values restore through this same command endpoint with
