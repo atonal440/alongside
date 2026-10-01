@@ -29,7 +29,9 @@ task type and explicit legacy due-date/recurrence replacement.
 reject cycles, and retain deletion identity for exact replay.
 [Reliable deletion](shared/reliable-deletion.md) returns all cascaded link
 tombstones or detached member-task images within an atomic capacity bound.
-Mixed batches and full delta sync remain gated.
+[Bounded mixed batches](shared/reliable-batches.md) combine creation, edits,
+state/membership and links with final-graph validation and one replay receipt.
+Compound lifecycle batches and full delta sync remain subsequent increments.
 
 ## Feature highlights
 

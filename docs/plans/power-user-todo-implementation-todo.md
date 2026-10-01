@@ -1,6 +1,6 @@
 # Power-user todo implementation checklist
 
-Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion implemented with review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
+Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion merged/deployed. Bounded mixed graph batches implemented with review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
 Updated: 2026-10-01.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
@@ -106,8 +106,9 @@ the review gate. Merge authorizes the existing production deployment workflow.
 - **2d — reliable existing task/project/link commands:** stable IDs/client refs,
   semantic command planning, coherent content/version reads, receipts and
   atomic final-state/aggregate validation. Creation-only increment merged/deployed in PR #46. Guarded content edits merged/deployed in PR #47. Guarded state, completion and task fields merged/deployed in PRs #48–#50.
-  Reliable links merged/deployed in PR #51. Task/project deletion implemented;
-  review/merge pending. Bounded mixed batches remain a subsequent reviewable PR. Keep the legacy PWA usable.
+  Reliable links merged/deployed in PR #51. Task/project deletion merged/deployed in PR #52. Bounded mixed creation/edit/
+  state/membership/link batches implemented; review/merge pending. Compound
+  lifecycle batch effects remain a subsequent increment. Keep the legacy PWA usable.
 - **2e — workspace sync and restore:** consistent snapshot and fixed-watermark
   deltas covering all current user data, tombstones/retention/reset policy,
   import epoch and bounded versioned export/import retaining v1 input.
@@ -683,3 +684,33 @@ field against its before image, allowing only a null project and the command's
 server timestamp. Regressions reject altered titles, terminal status, dates or
 timestamps. Full verification passes 554 Worker / 530 PWA tests, both
 builds/typechecks and Worker dry-run (838.78 KiB / gzip 146.52 KiB).
+
+
+### 2026-10-01 — Slice 2d eighth increment: bounded mixed batches
+
+PR #52 merged as `566d00f` after clean automated review of final head `9b66d15`,
+green checks and the resolved detached-member parser finding. Deploy run
+36936717750 succeeded for Worker and PWA Pages.
+
+Branch: `codex/power-user-slice-2d-batches`; automated review/merge pending.
+Adds 2–20-command mixed creation/edit/state/membership/link envelopes with
+base structural guards, distinct written identities, scoped refs, virtual
+semantic planning, final dependency graph checks and one receipt/audit. SQL
+guards retain original revisions; edge removals precede adds and final guards
+run inside the same transaction. No migration or broad gate change. See
+[bounded mixed batches](../shared/reliable-batches.md).
+
+Acceptance: full `npm run verify` passes 573 Worker / 540 PWA tests, both
+typechecks/builds and Worker dry-run (852.15 KiB / gzip 149.14 KiB). Two additional
+focused acceptance cases pass: the final SQL graph guard rolls back staged
+cycles, and aggregate exhaustion rejects the whole batch before writes (575
+Worker tests total; all 21 focused batch tests pass). Fresh/upgrade cases cover
+creation/ref graphs, edge reversal/removal order, reverse legacy cleanup, new
+cycles, phantom/identical/lost-response races, rollback, original revision guards,
+stored conflict images, exact 100/103-statement boundaries and REST/MCP parity.
+PWA parsers reject malformed markers/identities/refs/guards and unsupported
+lifecycle deletion images. Isolated REST/MCP smoke passes mixed preview, atomic
+creation, refs, replay, final-edge replacement, cycle rejection and unchanged gates.
+
+Next: compound lifecycle batches; workspace sync/restore and retained offline
+intention/capability gates follow.

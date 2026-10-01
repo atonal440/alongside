@@ -398,8 +398,8 @@ split into independent wipes; larger restore support requires staging.
 | --- | --- |
 | `get_planning_settings` | Read complete settings and revision, or null before setup |
 | `export_planning_settings` | Export portable preference values without revision or credentials |
-| `preview_changes` | Preview one supported settings/task/project/link command without writes |
-| `apply_changes` | Commit one supported command with revision guards, receipt, audit and feed |
+| `preview_changes` | Preview a standalone command or bounded mixed batch without writes |
+| `apply_changes` | Commit a standalone command or bounded mixed batch with guards/receipt/audit/feed |
 
 Read/export take `{}`. Preview/apply use the strict envelope shown in
 [reliable settings commands](shared/reliable-settings-commands.md). Caller IDs
@@ -411,8 +411,8 @@ current values and require an explicit rebase with a new ID. Tool errors expose
 
 Settings, single task/project creation/content, task focus/deferral/reopen and
 project archive/reopen, reliable completion and task membership/type/legacy-schedule
-and link add/remove/deletion commands use this protocol. Mixed graph batches,
-offline command overlays and full delta sync remain gated. Settings export is a
+and link add/remove/deletion commands use this protocol. Compound lifecycle batches,
+offline command overlays and full delta sync remain subsequent increments. Settings export is a
 preferences document, not a full backup; restore non-null values through
 `planning.set` using `actor: import` and the destination's expected revision.
 
@@ -440,7 +440,9 @@ content/version/structural snapshot. `link.add`/`link.remove` guard edge and
 aggregate revisions; related additions require ascending IDs and no reverse
 duplicate, while blocks additions reject cycles. Removal keeps a tombstone and
 uses the stored orientation. See [reliable links](shared/reliable-links.md).
-Mixed batches remain a subsequent increment.
+Mixed creation/edit/state/membership/link batches are available with the
+envelope structural revision and distinct written identities; see
+[bounded batches](shared/reliable-batches.md).
 
 
 `task.content.set` and `project.content.set` replace title/notes/kickoff text
@@ -487,3 +489,12 @@ detached member task while preserving context/state/links. Duty ownership blocks
 project deletion. Oversized atomic effects return versioned `capacity_exceeded`
 with exact `requiredStatements` and `limit: 100`; no split writes occur. See
 [reliable deletion](shared/reliable-deletion.md) for capacity, replay and conflicts.
+
+
+Mixed `preview_changes`/`apply_changes` accept 2–20 supported non-lifecycle
+commands with an envelope `expectedStructuralRevision`. Graph commands share
+that base revision; create referenced entities earlier and write each identity
+once. Results add `batch: true` and all scoped refs. Final dependency graphs
+are validated atomically, allowing edge replacement in either add/remove order.
+The complete generated SQL must fit 100 statements; settings/completion/deletion
+remain standalone. See [bounded mixed batches](shared/reliable-batches.md).

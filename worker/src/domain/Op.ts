@@ -39,6 +39,7 @@ export type Op =
   | { kind: 'receipt.insert'; result: ChangesResult }
   | { kind: 'command.audit'; commandId: CommandId; actor: 'user' | 'llm' | 'import'; reason: string | null; result: ChangesResult }
   | { kind: 'command.feed'; result: ChangesResult }
+  | { kind: 'graph.assert_acyclic'; from: TaskId; to: TaskId }
   | { kind: 'wipe' };
 
 export interface Plan {
