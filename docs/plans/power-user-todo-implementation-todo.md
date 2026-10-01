@@ -779,3 +779,9 @@ two ledgers and selects row projections by entity, preserving one-read consisten
 
 Next: fixed-watermark delta pagination and explicit reset responses, then bounded
 versioned restore/import epochs and retained offline commands/capability gates.
+
+Bootstrap review follow-up: snapshot SQL returns one entity per query row with
+matching cursor metadata instead of aggregating the entire workspace into a D1
+value. Empty workspaces retain a metadata-only result. Regressions and the real
+local Worker verify a 250-task workspace larger than 2 MB. Full verification
+passes 615 Worker / 616 PWA tests and Worker dry-run (871.01 KiB / gzip 152.81 KiB).

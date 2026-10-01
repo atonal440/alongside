@@ -19,21 +19,31 @@ const rowCases = sources.map(([entity, table, key, columns]) => {
     FROM (SELECT weekday,start_time,end_time FROM planning_working_hours WHERE settings_id=1 ORDER BY weekday,start_time)))`);
   return `WHEN '${entity}' THEN (SELECT json_object(${fields.join(',')}) FROM ${table} WHERE ${key}=versions.entity_key)`;
 });
-const snapshotQuery = `SELECT json_object('contractVersion',2,
-  'cursor',json_object('epoch',epoch,'sequence',watermark),
-  'structuralRevision',(SELECT structural_revision FROM workspace_versions WHERE id=1),
-  'entities',json((SELECT COALESCE(json_group_array(json_object('entity',entity,'key',key,'revision',revision,'deletedAt',deleted_at,'row',json(row_json))),'[]')
-    FROM (SELECT entity,entity_key AS key,revision,deleted_at,
-      CASE WHEN deleted_at IS NOT NULL THEN 'null' ELSE CASE entity ${rowCases.join(' ')} END END AS row_json
-      FROM (SELECT * FROM entity_versions UNION ALL SELECT * FROM sync_aux_versions) AS versions
-      ORDER BY entity,entity_key)))) AS snapshot_json
-  FROM sync_metadata WHERE id=1`;
+// Separate result rows avoid D1's 2 MB single-row/value limit. Repeating cursor
+// metadata on each row keeps the same single-statement consistency guarantee.
+// The LEFT JOIN supplies one metadata-only row for an empty workspace.
+const snapshotQuery = `SELECT sync_metadata.epoch,sync_metadata.watermark,
+  (SELECT structural_revision FROM workspace_versions WHERE id=1) AS structural_revision,
+  versions.entity,versions.entity_key,versions.revision,versions.deleted_at,
+  CASE WHEN versions.deleted_at IS NOT NULL THEN 'null' ELSE CASE versions.entity ${rowCases.join(' ')} END END AS row_json
+  FROM sync_metadata LEFT JOIN (SELECT * FROM entity_versions UNION ALL SELECT * FROM sync_aux_versions) AS versions ON 1
+  WHERE sync_metadata.id=1 ORDER BY versions.entity,versions.entity_key`;
 
 /** One SQL statement captures all rows, ledgers and the cursor at one instant. */
 export async function readWorkspaceSnapshot(db: D1Database): Promise<WorkspaceSnapshot> {
-  const result = await db.prepare(snapshotQuery).first<{ snapshot_json: string }>();
-  if (!result) throw new Error('Workspace sync metadata is missing.');
-  const parsed = parseWorkspaceSnapshot(JSON.parse(result.snapshot_json));
+  const result = await db.prepare(snapshotQuery).all<{
+    epoch: number; watermark: number; structural_revision: number;
+    entity: string | null; entity_key: string | null; revision: number | null; deleted_at: string | null; row_json: string | null;
+  }>();
+  const metadata = result.results[0];
+  if (!metadata) throw new Error('Workspace sync metadata is missing.');
+  const entities = result.results.filter(row => row.entity !== null).map(row => ({
+    entity: row.entity, key: row.entity_key, revision: row.revision, deletedAt: row.deleted_at,
+    row: row.row_json === null ? null : JSON.parse(row.row_json),
+  }));
+  const parsed = parseWorkspaceSnapshot({ contractVersion: 2,
+    cursor: { epoch: metadata.epoch, sequence: metadata.watermark },
+    structuralRevision: metadata.structural_revision, entities });
   if (!parsed.ok) throw new Error(`Workspace snapshot failed validation: ${JSON.stringify(parsed.error)}`);
   return parsed.value;
 }

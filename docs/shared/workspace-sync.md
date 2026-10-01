@@ -22,7 +22,9 @@ have revision zero after migration. Settings have a separate sync revision for
 the complete settings/hours projection, alongside their reliable command revision.
 
 A single SQL statement reads all source rows, both retained version ledgers,
-structural revision and sync metadata together. It explicitly projects current
+structural revision and sync metadata together. It returns separate entity query
+rows with repeated cursor metadata, avoiding D1's single-row/value size limit.
+An empty workspace returns one metadata-only query row. It explicitly projects current
 columns so retired upgrade-only columns cannot leak. Both Worker and PWA parse
 all families, identity/deletion agreement, unique identities and live references.
 Historical logs may reference deleted tasks or duties. Credentials, OAuth codes,

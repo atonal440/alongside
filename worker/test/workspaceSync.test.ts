@@ -189,3 +189,30 @@ it('captures legacy Plan transitions and replacement imports without adding prev
   expect((await db.getWorkspaceSnapshot()).entities.find(row=>row.entity==='task')).toMatchObject({revision:last.revision,row:{id:'t_first1'}});
  }finally{sql.close();}
 });
+
+it('returns large workspaces as separate bounded D1 rows with matching cursor metadata',async()=>{
+ const {sql,d1,reads}=sqliteD1();
+ try {
+  const notes='n'.repeat(10_000);
+  const insert=sql.prepare('INSERT INTO tasks(id,title,notes,created_at,updated_at) VALUES(?,?,?,?,?)');
+  for(let i=0;i<250;i++)insert.run(`t_large_${String(i).padStart(5,'0')}`,'Large notes',notes,now,now);
+  let rowCount=0;
+  const bounded={prepare(query:string) {
+   const statement=d1.prepare(query);
+   return {async all() {
+    const result=await statement.all();rowCount=result.results.length;
+    for(const row of result.results)expect(Buffer.byteLength(JSON.stringify(row))).toBeLessThan(2_000_000);
+    return result;
+   },first(){throw new Error('Do not aggregate a workspace into one D1 value.');}};
+  }} as unknown as D1Database;
+  const before=reads();const snapshot=await new DB(bounded).getWorkspaceSnapshot();
+  expect(reads()-before).toBe(1);expect(rowCount).toBe(250);
+  expect(snapshot.cursor).toEqual({epoch:0,sequence:250});
+  expect(snapshot.entities).toHaveLength(250);expect(Buffer.byteLength(JSON.stringify(snapshot))).toBeGreaterThan(2_000_000);
+ }finally{sql.close();}
+});
+it('returns a parsed metadata-only bootstrap for an empty workspace',async()=>{
+ const {sql,d1}=sqliteD1();
+ try {expect(await new DB(d1).getWorkspaceSnapshot()).toEqual({contractVersion:2,cursor:{epoch:0,sequence:0},structuralRevision:0,entities:[]});}
+ finally{sql.close();}
+});
