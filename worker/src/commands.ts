@@ -1,5 +1,6 @@
 import { parseSchema } from '@shared/parse';
 import { CommandEnvelopeSchema, PlanningSettingsExportSchema } from '@shared/wire/commands';
+import { parseEntityKey } from '@shared/wire/versions';
 import { CommandError } from './domain/commands';
 import { invalidInput } from './domain/temporalFoundation';
 import { readJson } from './parse/request';
@@ -28,12 +29,23 @@ const envelope = {
   }, required: ['contractVersion', 'commandId', 'actor', 'commands'],
 };
 export const COMMAND_TOOLS = [
+  { name: 'get_entity_version', description: 'Read a task/project/duty/link revision and workspace structural revision in one snapshot. version=null means never recorded; deletedAt marks a retained tombstone. This is a version lookup, not a full data snapshot or delta sync.', inputSchema: {
+    type: 'object', oneOf: [
+      ...['task', 'project', 'duty'].map(entity => ({ type: 'object', additionalProperties: false, properties: { entity: { const: entity }, id: { type: 'string' } }, required: ['entity', 'id'] })),
+      { type: 'object', additionalProperties: false, properties: { entity: { const: 'link' }, from: { type: 'string' }, to: { type: 'string' }, linkType: { enum: ['blocks', 'related'] } }, required: ['entity', 'from', 'to', 'linkType'] },
+    ],
+  } },
   { name: 'get_planning_settings', description: 'Read complete workspace planning settings and their revision, or null before setup.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'export_planning_settings', description: 'Export only planning preferences, without revision or credentials. Restore non-null values through planning.set with a fresh command ID and current expectedRevision. This is not a full-workspace backup.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'preview_changes', description: 'Preview a reliable command without writes. Initial command family: exactly one planning.set. expectedRevision=null requires no settings; otherwise use the current revision. A preview is not a lock.', inputSchema: envelope },
   { name: 'apply_changes', description: 'Atomically apply exactly one planning.set command, with a caller-minted command ID and expected revision. Same ID/payload returns the original result; a different payload conflicts. Includes receipt, audit and settings change feed. Other command families are not implemented yet.', inputSchema: envelope },
 ];
 export async function callCommandTool(name: string, args: unknown, db: DB): Promise<unknown> {
+  if (name === 'get_entity_version') {
+    const key = parseEntityKey(args);
+    if (!key.ok) throw new CommandError(invalidInput(key.error), 400);
+    return db.getEntityVersion(key.value);
+  }
   if (name === 'get_planning_settings' || name === 'export_planning_settings') {
     if (args === null || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).length) {
       throw new CommandError(invalidInput([{ code: 'invalid_input', path: [], message: 'Expected an empty input object.' }]), 400);
@@ -54,6 +66,7 @@ export async function callCommandTool(name: string, args: unknown, db: DB): Prom
 }
 export async function handleCommandRequest(request: Request, url: URL, db: DB): Promise<Response | null> {
   const route = [
+    ['POST', '/api/v2/entity-version', 'get_entity_version'],
     ['GET', '/api/v2/planning-settings', 'get_planning_settings'],
     ['GET', '/api/v2/planning-settings/export', 'export_planning_settings'],
     ['POST', '/api/v2/changes/preview', 'preview_changes'],

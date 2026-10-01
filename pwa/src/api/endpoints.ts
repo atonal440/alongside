@@ -1,6 +1,7 @@
 import { parseFoundationErrorEnvelope, parseCapabilities, parseTimeResolution, parseLegacyDatesPreview, type Capabilities, type TimeResolution, type LegacyDatesPreview, type ResolveTimeInput, type LegacyDatesPreviewInput } from '@shared/wire/planning';
 import { parseChangesPreview, parseChangesResult, parsePlanningSettingsExport, parsePlanningSettingsResponse, type ChangesPreview, type ChangesResult, type CommandEnvelope, type PlanningSettingsExport, type PlanningSettingsResponse } from '@shared/wire/commands';
 import type { Timezone } from '@shared/parse';
+import { parseEntityVersionResponse, type EntityKey, type EntityVersionResponse } from '@shared/wire/versions';
 import * as v from 'valibot';
 import type { Task, Project, TaskLink } from '../types';
 import { TaskRowSchema, ProjectRowSchema, TaskLinkRowSchema, parseTaskRow } from '@shared/wire/rows';
@@ -86,6 +87,9 @@ function parseFoundationError(raw: unknown): Result<ApiErrorBody, ValidationErro
 }
 
 export const api = {
+  entityVersion(key: EntityKey, config: ApiConfig): Promise<ApiResult<EntityVersionResponse>> {
+    return apiRequest('/api/v2/entity-version', jsonBody(key), config, parseEntityVersionResponse, parseFoundationError);
+  },
   planningSettings(config: ApiConfig): Promise<ApiResult<PlanningSettingsResponse>> {
     return apiRequest('/api/v2/planning-settings', {}, config, parsePlanningSettingsResponse, parseFoundationError);
   },

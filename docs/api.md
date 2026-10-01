@@ -334,3 +334,16 @@ revision returns HTTP 409; revision errors include `currentSettings` and
 Portable preference values restore through this same command endpoint with
 `actor: import`, a fresh ID and the destination's expected revision. V1 backup
 scope is unchanged; it excludes and preserves planning settings/receipts.
+
+
+## V2 entity version lookup
+
+`POST /api/v2/entity-version` accepts `{entity: "task"|"project"|"duty", id}`
+or `{entity: "link", from, to, linkType: "blocks"|"related"}`. Inputs are
+strict, IDs use their corresponding prefixes, and query parameters are rejected.
+Returns `{contractVersion: 2, key, structuralRevision, version}` from one SQL
+snapshot. `version` is null for an identity with no ledger history; otherwise
+it contains `revision` and `deletedAt` (null when live, UTC event instant when
+deleted). This read does not include entity content or provide a sync cursor.
+See [revision tracking](shared/entity-versions.md) for backfill, tombstones,
+legacy compatibility and the transition to guarded task commands.

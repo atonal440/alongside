@@ -13,6 +13,9 @@ dates, hierarchy, task commands, blocks and delivery remain gated. A first
 [reliable command family](shared/reliable-settings-commands.md) supports explicit
 planning settings with revision checks and replay receipts. The existing PWA
 task queue continues to use its legacy sync protocol during this rollout.
+[Revision tracking](shared/entity-versions.md) now covers all legacy
+task/project/link/duty writers, with retained deletion records and a coherent
+REST/MCP version lookup; task commands and full delta sync remain gated.
 
 ## Feature highlights
 
