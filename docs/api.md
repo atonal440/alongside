@@ -319,7 +319,12 @@ split a replacement into multiple imports: each import wipes existing data.
 
 All five reject query parameters. Link reads accept an exact
 `{entity: "link", from, to, linkType}` key. Preview/apply POST inputs are strict
-v2 command envelopes; this release accepts exactly one of the following command families:
+v2 command envelopes. Standalone commands accept one of the families below;
+2–20 creation/edit/state/membership/link commands can also form a mixed batch.
+Mixed envelopes require `expectedStructuralRevision`, distinct written
+identities and unique scoped refs; settings/completion/deletion stay standalone.
+See [bounded mixed batches](shared/reliable-batches.md) for ordering, final-graph
+validation and atomic capacity. Supported families:
 
 - `planning.set` for workspace settings.
 - `task.create`/`project.create` with stable caller IDs and structural guards;
@@ -359,6 +364,7 @@ Applied/preview results contain `contractVersion`, `commandId`, `payloadHash`,
 `serverNow`, `changes` (settings/entity/link changes, completion plus successor, or all deletion effects),
 `warnings` and `refs`. Recurring completion orders the completed task first and
 the successor creation second; its optional ref maps to the successor ID.
+Mixed results additionally carry `batch: true` with every written identity/ref.
 Preview adds `dryRun: true` and `requiredStatements`; apply adds `applied: true`.
 Same ID/payload returns the original result. Same ID/different payload or stale
 revision returns HTTP 409. Conflict bodies are `{contractVersion: 2, error}`;
