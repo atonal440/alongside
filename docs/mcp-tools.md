@@ -498,3 +498,12 @@ are validated atomically, allowing edge replacement in either add/remove order.
 The complete generated SQL must fit 100 statements; settings remain standalone.
 New mixed results include `changeGroups`, one image count per command, covering
 every successor/cascade/detachment image and enforcing each standalone contract. See [bounded mixed batches](shared/reliable-batches.md).
+
+### `get_workspace_snapshot`
+
+Accepts only `{}` and returns every current user-data family, retained tombstones,
+structural revision and matching `{epoch,sequence}` cursor in one consistent read.
+Includes duties, preferences, planning settings and historical provenance as well
+as tasks/projects/links. Credentials and replay receipts are excluded. See
+[workspace sync bootstrap](shared/workspace-sync.md) for exact identity/deletion
+contracts and the remaining delta/offline rollout. This is not a restore input.

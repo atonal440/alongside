@@ -32,7 +32,10 @@ tombstones or detached member-task images within an atomic capacity bound.
 [Bounded mixed batches](shared/reliable-batches.md) combine creation, edits,
 state/membership and links with final-graph validation and one replay receipt.
 Completion/deletion also compose with grouped successor/cascade effects.
-Full workspace sync and retained offline overlays remain subsequent increments.
+[Workspace snapshot bootstrap](shared/workspace-sync.md) reads all current user-data
+families, retained tombstones and a matching cursor together. Storage triggers
+capture legacy and reliable writes for the subsequent delta reader. Delta pulls,
+restore epochs and retained offline overlays remain subsequent increments.
 
 ## Feature highlights
 

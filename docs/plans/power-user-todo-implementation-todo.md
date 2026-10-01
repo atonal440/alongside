@@ -750,3 +750,32 @@ content/kickoff, the shared recurrence calculation and server timestamps. Both
 apply and preview boundaries reject altered images and missing/extra successors.
 Full verification passes 590 Worker / 590 PWA tests, both typechecks/builds and
 Worker dry-run (856.56 KiB / gzip 150.16 KiB).
+
+### 2026-10-01 — Slice 2e first increment: all-writer feed and coherent bootstrap
+
+PR #54 merged as `34b931b` after clean automated review of final head `04d2506`,
+green checks and zero unresolved threads. Deploy run 36941594353 succeeded for
+Worker and PWA Pages.
+
+Branch: `codex/power-user-slice-2e-sync-foundation`; review/merge pending.
+Migration 014 captures all eight current user-data families, including legacy
+writers, raw SQL, FK cascades and provenance. Auxiliary revisions, monotonic
+sequence/epoch/floor metadata and atomic feed failure guards complement the
+existing entity ledger. A parsed REST/MCP/PWA workspace snapshot reads all rows,
+tombstones, revisions and its cursor with one SQL statement. Credentials and
+receipts are excluded. No broad capability gate change. See
+[workspace sync bootstrap](../shared/workspace-sync.md).
+
+Acceptance: full `npm run verify` passes 613 Worker / 616 PWA tests, both
+typechecks/builds and Worker dry-run (870.75 KiB / gzip 152.77 KiB). Fresh/upgrade tests cover all source families, exact row/
+feed agreement, no-op writers, cascade/delete/recreate, auxiliary replacements,
+hour projections, exhausted counters, late failure rollback, retained revisions,
+history purge, strict input, v1 import capture and REST/MCP parity. PWA rejects
+invalid identities, cursors, source fields, live references and credentials.
+Isolated Wrangler migration and REST/MCP smoke pass coherent bootstrap, legacy/
+reliable capture, no preview/replay events, tombstones and unchanged gates. The
+real D1 smoke caught its lower compound-SELECT limit; the query now unions only
+two ledgers and selects row projections by entity, preserving one-read consistency.
+
+Next: fixed-watermark delta pagination and explicit reset responses, then bounded
+versioned restore/import epochs and retained offline commands/capability gates.
