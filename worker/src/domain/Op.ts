@@ -1,6 +1,9 @@
 import type { ActionLog, Project, Task, TaskLink } from '@shared/types';
 import type { LinkType, ProjectId, TaskId } from '../parse';
 import type { PreferenceEntry } from './preference';
+import type { CommandId, EventInstant, Revision } from '@shared/parse';
+import type { ChangesResult } from '@shared/wire/commands';
+import type { PlanningSettings } from '@shared/wire/planning';
 
 export type TaskRow = Task;
 export type ProjectRow = Project;
@@ -13,6 +16,7 @@ export type PreCheck =
   | { kind: 'task.exists'; id: TaskId }
   | { kind: 'project.exists'; id: ProjectId }
   | { kind: 'link.blocks_acyclic'; from: TaskId; to: TaskId }
+  | { kind: 'planning.revision'; expected: Revision | null }
   | { kind: 'custom'; description: string };
 
 export type Op =
@@ -26,6 +30,10 @@ export type Op =
   | { kind: 'link.delete'; from: TaskId; to: TaskId; linkType: LinkType }
   | { kind: 'pref.upsert'; entry: PreferenceEntry }
   | { kind: 'log.insert'; entry: ActionLogRow }
+  | { kind: 'planning.replace'; settings: PlanningSettings; now: EventInstant }
+  | { kind: 'receipt.insert'; result: ChangesResult }
+  | { kind: 'command.audit'; commandId: CommandId; actor: 'user' | 'llm' | 'import'; reason: string | null; result: ChangesResult }
+  | { kind: 'command.feed'; result: ChangesResult }
   | { kind: 'wipe' };
 
 export interface Plan {

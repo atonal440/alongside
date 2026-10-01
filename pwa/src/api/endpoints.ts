@@ -1,4 +1,5 @@
 import { parseFoundationErrorEnvelope, parseCapabilities, parseTimeResolution, parseLegacyDatesPreview, type Capabilities, type TimeResolution, type LegacyDatesPreview, type ResolveTimeInput, type LegacyDatesPreviewInput } from '@shared/wire/planning';
+import { parseChangesPreview, parseChangesResult, parsePlanningSettingsExport, parsePlanningSettingsResponse, type ChangesPreview, type ChangesResult, type CommandEnvelope, type PlanningSettingsExport, type PlanningSettingsResponse } from '@shared/wire/commands';
 import type { Timezone } from '@shared/parse';
 import * as v from 'valibot';
 import type { Task, Project, TaskLink } from '../types';
@@ -85,6 +86,18 @@ function parseFoundationError(raw: unknown): Result<ApiErrorBody, ValidationErro
 }
 
 export const api = {
+  planningSettings(config: ApiConfig): Promise<ApiResult<PlanningSettingsResponse>> {
+    return apiRequest('/api/v2/planning-settings', {}, config, parsePlanningSettingsResponse, parseFoundationError);
+  },
+  exportPlanningSettings(config: ApiConfig): Promise<ApiResult<PlanningSettingsExport>> {
+    return apiRequest('/api/v2/planning-settings/export', {}, config, parsePlanningSettingsExport, parseFoundationError);
+  },
+  previewChanges(body: CommandEnvelope, config: ApiConfig): Promise<ApiResult<ChangesPreview>> {
+    return apiRequest('/api/v2/changes/preview', jsonBody(body), config, parseChangesPreview, parseFoundationError);
+  },
+  applyChanges(body: CommandEnvelope, config: ApiConfig): Promise<ApiResult<ChangesResult>> {
+    return apiRequest('/api/v2/changes', jsonBody(body), config, parseChangesResult, parseFoundationError);
+  },
   capabilities(config: ApiConfig, timezone?: Timezone): Promise<ApiResult<Capabilities>> {
     const query = timezone === undefined ? '' : `?timezone=${encodeURIComponent(timezone)}`;
     return apiRequest(`/api/v2/capabilities${query}`, {}, config, parseCapabilities, parseFoundationError);

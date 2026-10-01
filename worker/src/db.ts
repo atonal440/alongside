@@ -1,6 +1,9 @@
 import { checkPlanCapacity } from './storage/apply';
 import { parsePlanningSettings, type PlanningSettings } from '@shared/wire/planning';
 import type { LegacyDueRow } from './domain/temporalFoundation';
+import { ChangesResultSchema, StoredReceiptSchema, type CommandEnvelope, type ChangesResult, type ChangesPreview } from '@shared/wire/commands';
+import { parseSchema, parseEventInstant, type CommandId } from '@shared/parse';
+import { CommandError, commandHash, payloadConflict, planSettingsCommand, revisionConflict } from './domain/commands';
 import { nanoid } from 'nanoid';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, ne, inArray, lte, or, asc, desc, gt, and, sql } from 'drizzle-orm';
@@ -623,14 +626,84 @@ export class DB {
 
   // Read-only typed planning configuration. Writes land with command receipts.
   async getPlanningSettings(): Promise<PlanningSettings | null> {
-    const row = await this.d1.prepare('SELECT timezone, buffer_minutes, revision FROM planning_settings WHERE id = 1')
-      .first<{ timezone: string; buffer_minutes: number; revision: number }>();
+    // One SQL statement reads a coherent settings/working-hours snapshot.
+    const row = await this.d1.prepare(`SELECT timezone, buffer_minutes, revision,
+      (SELECT json_group_array(json_object('weekday',weekday,'start',start_time,'end',end_time)) FROM
+        (SELECT weekday,start_time,end_time FROM planning_working_hours WHERE settings_id = 1 ORDER BY weekday,start_time)) AS hours
+      FROM planning_settings WHERE id = 1`)
+      .first<{ timezone: string; buffer_minutes: number; revision: number; hours: string }>();
     if (!row) return null;
-    const hours = await this.d1.prepare('SELECT weekday, start_time AS start, end_time AS end FROM planning_working_hours WHERE settings_id = 1 ORDER BY weekday, start_time')
-      .all<{ weekday: number; start: string; end: string }>();
-    const parsed = parsePlanningSettings({ timezone: row.timezone, bufferMinutes: row.buffer_minutes, revision: row.revision, workingHours: hours.results });
+    const parsed = parsePlanningSettings({ timezone: row.timezone, bufferMinutes: row.buffer_minutes, revision: row.revision, workingHours: JSON.parse(row.hours) });
     if (!parsed.ok) throw new Error('Stored planning settings failed validation.');
     return parsed.value;
+  }
+
+  private async getCommandReceipt(id: CommandId): Promise<ChangesResult | null> {
+    const row: unknown = await this.d1.prepare('SELECT command_id,payload_hash,result_json,created_at FROM command_receipts WHERE command_id = ?').bind(id).first();
+    if (!row) return null;
+    const receipt = parseSchema(StoredReceiptSchema, row);
+    if (!receipt.ok) throw new Error('Stored command receipt failed validation.');
+    const result = parseSchema(ChangesResultSchema, JSON.parse(receipt.value.result_json));
+    if (!result.ok || result.value.commandId !== receipt.value.command_id || result.value.payloadHash !== receipt.value.payload_hash || result.value.serverNow !== receipt.value.created_at) {
+      throw new Error('Stored command result failed validation.');
+    }
+    return result.value;
+  }
+
+  async previewChanges(input: CommandEnvelope): Promise<ChangesPreview> {
+    const hash = await commandHash(input);
+    const receipt = await this.getCommandReceipt(input.commandId);
+    if (receipt) {
+      if (receipt.payloadHash !== hash) throw payloadConflict();
+      throw new CommandError({ code: 'already_applied', path: ['commandId'], message: 'This command has already committed.', retryable: false,
+        recoveryHint: 'Call apply_changes with the identical envelope to retrieve its original receipt; use a new command ID for another change.' });
+    }
+    const clock = parseEventInstant(new Date().toISOString());
+    if (!clock.ok) throw new Error('Invalid server clock.');
+    const planned = planSettingsCommand(input, await this.getPlanningSettings(), hash, clock.value);
+    const capacity = checkPlanCapacity(this.d1, planned.plan);
+    if (!capacity.ok) throwAppError(capacity.error);
+    const { applied: _applied, ...result } = planned.result;
+    return { ...result, dryRun: true, requiredStatements: capacity.value.requiredStatements };
+  }
+
+  async applyChanges(input: CommandEnvelope): Promise<ChangesResult> {
+    const hash = await commandHash(input);
+    const replay = await this.getCommandReceipt(input.commandId);
+    if (replay) {
+      if (replay.payloadHash !== hash) throw payloadConflict();
+      return replay;
+    }
+    const clock = parseEventInstant(new Date().toISOString());
+    if (!clock.ok) throw new Error('Invalid server clock.');
+    let planned: ReturnType<typeof planSettingsCommand>;
+    try {
+      planned = planSettingsCommand(input, await this.getPlanningSettings(), hash, clock.value);
+    } catch (error) {
+      if (error instanceof CommandError && error.detail.code === 'revision_conflict') {
+        const raced = await this.getCommandReceipt(input.commandId);
+        if (raced) {
+          if (raced.payloadHash !== hash) throw payloadConflict();
+          return raced;
+        }
+      }
+      throw error;
+    }
+    const applied = await applyPlan(this.d1, planned.plan);
+    if (applied.ok) return planned.result;
+    // Concurrent identical execution can fail either the SQL revision guard or
+    // receipt uniqueness. Re-read the committed receipt before reporting a
+    // conflict, so a lost response never causes another mutation.
+    const concurrentReplay = await this.getCommandReceipt(input.commandId);
+    if (concurrentReplay) {
+      if (concurrentReplay.payloadHash !== hash) throw payloadConflict();
+      return concurrentReplay;
+    }
+    const current = await this.getPlanningSettings();
+    if ((current?.revision ?? null) !== input.commands[0]!.expectedRevision) throw revisionConflict(input.commands[0]!.expectedRevision, current);
+    if (applied.error.kind === 'capacity_exceeded') throwAppError(applied.error);
+    throw new CommandError({ code: 'storage_unavailable', path: [], message: 'The command could not be committed.', retryable: true,
+      recoveryHint: 'Keep this command ID and payload; retry after the service recovers. No partial command was committed.' }, 503);
   }
 
   async listLegacyDueDates(after: string | undefined, limit: number): Promise<LegacyDueRow[]> {

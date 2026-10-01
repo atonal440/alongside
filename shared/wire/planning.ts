@@ -60,9 +60,11 @@ export const parseTimeResolution = (input: unknown) => parseSchema(TimeResolutio
 const LegacyOriginalSchema = v.strictObject({ due_date: v.string(), due_all_day: v.nullable(v.boolean()) });
 export const FoundationErrorSchema = v.strictObject({
   ...ContractErrorSchema.entries,
-  retryable: v.literal(false),
+  retryable: v.boolean(),
   details: v.optional(v.array(v.strictObject({ code: v.string(), path: v.array(v.string()), message: v.string() }))),
   alternatives: v.optional(v.array(v.strictObject({ at: MinuteInstantSchema, date: LocalDateSchema, time: LocalTimeSchema }))),
+  currentSettings: v.optional(v.nullable(PlanningSettingsSchema)),
+  expectedRevision: v.optional(v.nullable(RevisionSchema)),
 });
 export const LegacyDatesPreviewSchema = v.strictObject({
   contractVersion: v.literal(2), serverNow: EventInstantSchema, timezone: TimezoneSchema, timezoneSource: TimezoneSourceSchema,
