@@ -37,7 +37,7 @@ export async function apiRequest<T>(
     try {
       const raw = await res.json() as unknown;
       const obj = raw as Record<string, unknown>;
-      if (parseErrorBody && raw !== null && typeof raw === 'object' && typeof obj['error'] !== 'string') {
+      if (parseErrorBody) {
         const parsedError = parseErrorBody(raw);
         if (!parsedError.ok) return { kind: 'contract', status: res.status, issues: parsedError.error, raw };
         body = parsedError.value;

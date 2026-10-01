@@ -43,8 +43,9 @@ of the date. Targets/deadlines use the first minute **after** the date as an
 exclusive boundary. It never assumes a 24-hour day. A skipped following date
 does not invalidate the preceding date's interval; a wholly skipped requested
 date returns `skipped_local_date`. Midnight folds select the earliest minute.
-Date boundaries require their resulting instants to remain in years 0001–9999.
-Historical wall times requiring sub-minute zone offsets return
+Date boundaries require their requested resulting instant to remain in years
+0001–9999; availability resolves only the start, without requiring an end.
+Historical wall times or date boundaries requiring sub-minute precision return
 `unsupported_precision` rather than claiming an exact minute-aligned result.
 
 One-off wall times reject spring gaps, returning offset-derived alternatives.
@@ -56,6 +57,9 @@ an explicit `dateAnchorTime`; that field is rejected for every other offset
 combination. Offset DST errors identify `dateAnchorTime` or `offset.localTime`,
 matching the submitted field. Calendar offsets move the canonical zoned date
 and resolve the requested `localTime`; they can produce a DST gap/fold error.
+Instant projections can briefly fall in internal year zero/10000; calendar
+arithmetic happens before validating the final date so offsets can re-enter the
+supported AD range. Overflow errors name `offset.days` or `offset.minutes`.
 Intervals are half-open `[start,end)` with end strictly after start.
 
 ## Configuration and capabilities
@@ -103,7 +107,9 @@ validation/DST errors carry code, path, message, retryability and recovery hint;
 MCP returns a tool error with structured content, preserving machine readability.
 The PWA keeps v2 details in `ApiErrorBody.contractError` while exposing the
 human message through `error`; codes, recovery hints and DST alternatives remain
-available. Malformed structured errors fail boundary parsing. Legacy auth errors
+available. Every JSON error on a v2 caller passes a boundary parser, including nested
+alternative dates/times. Declared versioned string envelopes fail parsing;
+only validated unversioned string envelopes use the legacy fallback. Legacy auth errors
 still use the existing string shape. Fresh `db:init` also records migration 009
 in its migration bookkeeping so subsequent upgrades do not replay its DDL.
 

@@ -62,7 +62,7 @@ export const FoundationErrorSchema = v.strictObject({
   ...ContractErrorSchema.entries,
   retryable: v.literal(false),
   details: v.optional(v.array(v.strictObject({ code: v.string(), path: v.array(v.string()), message: v.string() }))),
-  alternatives: v.optional(v.array(v.object({ at: MinuteInstantSchema, date: v.string(), time: v.string() }))),
+  alternatives: v.optional(v.array(v.strictObject({ at: MinuteInstantSchema, date: LocalDateSchema, time: LocalTimeSchema }))),
 });
 export const LegacyDatesPreviewSchema = v.strictObject({
   contractVersion: v.literal(2), serverNow: EventInstantSchema, timezone: TimezoneSchema, timezoneSource: TimezoneSourceSchema,

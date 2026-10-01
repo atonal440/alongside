@@ -8,7 +8,7 @@ import { handleMcpRequest } from '../src/mcp';
 import { callFoundationTool } from '../src/foundation';
 import { classifyLegacyDue } from '../src/domain/temporalFoundation';
 import { parseTimezone, parseSchema } from '@shared/parse';
-import { CapabilitiesSchema, TimeResolutionSchema, parseLegacyDatesPreview } from '@shared/wire/planning';
+import { CapabilitiesSchema, TimeResolutionSchema, parseLegacyDatesPreview, parseFoundationErrorEnvelope } from '@shared/wire/planning';
 
 function sqliteDb(upgrade = false) {
   const sql = new DatabaseSync(':memory:');
@@ -52,7 +52,9 @@ describe('Slice 1 REST/MCP foundation', () => {
     const request = req('POST', '/api/v2/resolve-time', args);
     const rest = await handleApiRequest(request, new URL(request.url), db);
     expect(rest.status).toBe(400);
-    expect(await rest.json()).toMatchObject({ contractVersion: 2, error: { code: 'ambiguous_local_time', retryable: false } });
+    const errorBody = await rest.json();
+    expect(errorBody).toMatchObject({ contractVersion: 2, error: { code: 'ambiguous_local_time', retryable: false } });
+    expect(parseFoundationErrorEnvelope(errorBody).ok).toBe(true);
     const rpc = req('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'resolve_time', arguments: args } });
     const response = await handleMcpRequest(rpc, db, { DB: {} as D1Database, AUTH_TOKEN: 'test' });
     expect(await response.json()).toMatchObject({ result: { isError: true, structuredContent: { error: { code: 'ambiguous_local_time' } } } });
@@ -157,4 +159,29 @@ it.each([
   const { db } = sqliteDb();
   const input = { kind: 'offset', offset, point, ...(dateAnchorTime === undefined ? {} : { dateAnchorTime }) };
   await expect(callFoundationTool('resolve_time', input, db, now)).rejects.toMatchObject({ detail: { code: 'ambiguous_local_time', path } });
+});
+
+it.each([
+  [{ kind: 'date', date: '9999-12-31', timezone: 'UTC' }, { kind: 'calendar_days', days: 1, localTime: '09:00' }, ['offset', 'days']],
+  [{ kind: 'instant', at: '9999-12-31T23:59:00Z', timezone: 'UTC' }, { kind: 'elapsed_minutes', minutes: 1 }, ['offset', 'minutes']],
+  [{ kind: 'instant', at: '9999-12-31T23:59:00Z', timezone: 'Pacific/Kiritimati' }, { kind: 'calendar_days', days: 0, localTime: '09:00' }, ['offset', 'days']],
+])('offset range errors name submitted fields', async (point, offset, path) => {
+  const { db } = sqliteDb();
+  await expect(callFoundationTool('resolve_time', { kind: 'offset', point, offset }, db, now)).rejects.toMatchObject({ detail: { code: 'time_out_of_range', path } });
+});
+
+it.each([
+  ['UTC', '9999-12-31T00:00:00Z'],
+  ['Pacific/Kiritimati', '9999-12-30T10:00:00Z'],
+])('resolves a valid availability start without requiring the unsupported end (%s)', async (timezone, at) => {
+  const { db } = sqliteDb();
+  expect(await callFoundationTool('resolve_time', { kind: 'date_boundary', date: '9999-12-31', role: 'available_from', timezone }, db, now)).toMatchObject({ at, comparison: 'inclusive' });
+});
+
+it.each([
+  ['0001-01-01T00:00:00Z', 'Etc/GMT+12', 1, '0001-01-01T21:00:00Z'],
+  ['9999-12-31T23:59:00Z', 'Pacific/Kiritimati', -1, '9999-12-30T19:00:00Z'],
+])('allows calendar offsets to re-enter the supported AD range (%s)', async (at, timezone, days, expected) => {
+  const { db } = sqliteDb();
+  expect(await callFoundationTool('resolve_time', { kind: 'offset', point: { kind: 'instant', at, timezone }, offset: { kind: 'calendar_days', days, localTime: '09:00' } }, db, now)).toMatchObject({ at: expected });
 });

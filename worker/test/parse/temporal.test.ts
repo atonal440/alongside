@@ -126,3 +126,7 @@ it('handles offset probes crossing the AD input range without throwing', () => {
   expect(value(resolveWallTime(d('9999-12-31'), t('09:00'), z('UTC')))).toBe('9999-12-31T09:00:00Z');
   expect(zonedDateInterval(d('9999-12-31'), z('UTC'))).toMatchObject({ ok: false, error: { code: 'time_out_of_range' } });
 });
+
+it('rejects historical boundaries that cannot preserve their exact meaning at minute precision', () => {
+  expect(zonedDateInterval(d('1880-01-01'), z('America/New_York'))).toMatchObject({ ok: false, error: { code: 'unsupported_precision' } });
+});

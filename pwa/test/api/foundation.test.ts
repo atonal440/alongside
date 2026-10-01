@@ -59,3 +59,18 @@ describe('PWA v2 structured error boundary', () => {
     } finally { auth.restore(); }
   });
 });
+
+it.each([
+  { contractVersion: 2, error: 'bad' },
+  null,
+  'bad',
+  { error: 'Unversioned', details: [{ code: 3, path: 'bad', message: 'Bad' }] },
+  { contractVersion: 2, error: { code: 'ambiguous_local_time', path: ['time'], message: 'Ambiguous', retryable: false, recoveryHint: 'Choose.', alternatives: [{ at: '2026-11-01T08:30:00Z', date: 'not-a-date', time: '01:30' }] } },
+  { contractVersion: 2, error: { code: 'ambiguous_local_time', path: ['time'], message: 'Ambiguous', retryable: false, recoveryHint: 'Choose.', alternatives: [{ at: '2026-11-01T08:30:00Z', date: '2026-11-01', time: '25:00' }] } },
+  { contractVersion: 2, error: { code: 'ambiguous_local_time', path: ['time'], message: 'Ambiguous', retryable: false, recoveryHint: 'Choose.', alternatives: [{ at: '2026-11-01T08:30:00Z', date: '2026-11-01', time: '01:30', unexpected: true }] } },
+])('rejects malformed versioned/nested error data', async body => {
+  const stub = installFetchStub();
+  stub.respondWith({ method: 'GET', path: '/api/v2/capabilities' }, { type: 'json', status: 400, body });
+  try { expect((await api.capabilities(config)).kind).toBe('contract'); }
+  finally { stub.restore(); }
+});
