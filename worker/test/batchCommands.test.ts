@@ -78,7 +78,7 @@ it('returns stored conflict values rather than uncommitted virtual images',async
  }finally{sql.close();}
 });
 it.each([
- {expectedStructuralRevision:undefined}, {commands:[create('t_first1'),{kind:'task.delete',id:'t_second',expectedRevision:1,expectedStructuralRevision:0}]},
+ {expectedStructuralRevision:undefined}, {commands:[create('t_first1'),{kind:'planning.set',expectedRevision:null,values:{timezone:'UTC',workingHours:[],bufferMinutes:0}}]},
  {commands:[create('t_first1'),create('t_second',0,{clientRef:'same'}),create('t_third1',0,{clientRef:'same'})]},
  {commands:Array.from({length:21},(_,i)=>create(`t_child${i.toString().padStart(3,'0')}`))},
 ])('rejects missing aggregate guards, unsupported compound families and duplicate refs',patch=>{

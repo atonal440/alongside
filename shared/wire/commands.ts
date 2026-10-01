@@ -3,8 +3,8 @@ import { CommandIdSchema, EventInstantSchema, MinuteInstantSchema, DueDateTimeSc
 import { PlanningSettingsSchema } from './planning';
 import { ProjectRowSchema, TaskRowSchema, TaskLinkRowSchema } from './rows';
 
-// Single-command families remain independently deployable until graph batches
-// and offline command storage join this protocol in subsequent Slice 2 steps.
+// Standalone and bounded mixed families share replay receipts. Offline command
+// storage joins this protocol in subsequent Slice 2 steps.
 export const PlanningValuesSchema = v.pipe(v.strictObject({
   timezone: PlanningSettingsSchema.entries.timezone,
   workingHours: PlanningSettingsSchema.entries.workingHours,
@@ -98,9 +98,9 @@ export const CommandEnvelopeSchema = v.pipe(v.strictObject({
   expectedStructuralRevision: v.optional(RevisionSchema),
   commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(20)),
 }), v.check(value => value.commands.length === 1 ? value.expectedStructuralRevision === undefined
-  : value.expectedStructuralRevision !== undefined && value.commands.every(command => !['planning.set','task.complete','task.delete','project.delete'].includes(command.kind)),
-'Mixed batches require an envelope structural revision; settings, completion and deletion remain standalone.'),
-v.check(value => { const refs=value.commands.flatMap(command => 'clientRef' in command && command.clientRef !== undefined ? [command.clientRef] : []); return new Set(refs).size === refs.length; }, 'Client references must be unique within a batch.'));
+  : value.expectedStructuralRevision !== undefined && value.commands.every(command => command.kind !== 'planning.set'),
+'Mixed batches require an envelope structural revision; settings remain standalone.'),
+v.check(value => { const refs=value.commands.flatMap(command => 'clientRef' in command && command.clientRef !== undefined ? [command.clientRef] : command.kind === 'task.complete' && command.successor?.clientRef !== undefined ? [command.successor.clientRef] : []); return new Set(refs).size === refs.length; }, 'Client references must be unique within a batch.'));
 export type CommandEnvelope = v.InferOutput<typeof CommandEnvelopeSchema>;
 export const parseCommandEnvelope = (input: unknown) => parseSchema(CommandEnvelopeSchema, input);
 export const PayloadHashSchema = v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/));
@@ -132,9 +132,23 @@ export const LinkChangeDiffSchema = v.strictObject({
   after: v.union([v.strictObject({ revision: RevisionSchema, row: TaskLinkRowSchema }), v.strictObject({ revision: RevisionSchema, deleted: v.literal(true) })]),
 });
 export const ChangeDiffSchema = v.variant('entity', [PlanningDiffSchema, ProjectChangeDiffSchema, TaskChangeDiffSchema, LinkChangeDiffSchema]);
-function validDiffIdentity(value: { serverNow: string; batch?: true | undefined; changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
+function validDiffIdentity(value: { serverNow: string; batch?: true | undefined; changeGroups?: number[] | undefined; changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
   if (value.changes.length === 0) return false;
-  if (value.batch === true && (value.changes.length < 2 || value.changes.length > 20 || value.changes.some(change => change.entity === 'planning_settings' || (change.entity !== 'link' && 'deleted' in change.after)))) return false;
+  if (value.batch !== true && value.changeGroups !== undefined) return false;
+  if (value.batch === true) {
+    if (value.changes.length < 2 || value.changes.some(change => change.entity === 'planning_settings')) return false;
+    if (value.changeGroups === undefined) {
+      // Receipts from the first mixed-batch release contain only simple images.
+      if (value.changes.length > 20 || value.changes.some(change => (change.entity !== 'link' && 'deleted' in change.after) || (change.entity === 'task' && change.before?.row.status === 'pending' && 'row' in change.after && change.after.row.status === 'done'))) return false;
+    } else {
+      if (value.changeGroups.length < 2 || value.changeGroups.length > 20 || value.changeGroups.reduce((a,b) => a+b,0) !== value.changes.length) return false;
+      let offset=0;
+      for (const count of value.changeGroups) {
+        if (!Number.isSafeInteger(count) || count < 1 || !validDiffIdentity({serverNow:value.serverNow,changes:value.changes.slice(offset,offset+count),refs:{}})) return false;
+        offset+=count;
+      }
+    }
+  }
   const identities = new Set<string>();
   const createdIds = new Set<string>();
   for (const change of value.changes) {
@@ -186,7 +200,7 @@ const RefsSchema = v.pipe(v.custom<Record<string, string>>(input => input !== nu
 v.record(ClientRefSchema, v.union([TaskIdSchema, ProjectIdSchema])));
 const resultEntries = {
   contractVersion: v.literal(2), commandId: CommandIdSchema, payloadHash: PayloadHashSchema,
-  serverNow: EventInstantSchema, batch: v.optional(v.literal(true)), changes: v.pipe(v.array(ChangeDiffSchema), v.minLength(1), v.maxLength(100)),
+  serverNow: EventInstantSchema, batch: v.optional(v.literal(true)), changeGroups: v.optional(v.pipe(v.array(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100))), v.minLength(2), v.maxLength(20))), changes: v.pipe(v.array(ChangeDiffSchema), v.minLength(1), v.maxLength(100)),
   warnings: v.pipe(v.array(v.string()), v.maxLength(0)),
   refs: RefsSchema,
 };

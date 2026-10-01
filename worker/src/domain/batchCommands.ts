@@ -2,11 +2,13 @@ import { parseRevision, type Revision, type EventInstant } from '@shared/parse';
 import type { CommandEnvelope, ChangesResult } from '@shared/wire/commands';
 import { entityStorageKey, parseEntitySnapshot, parseLinkKey, type EntityReadKey, type EntitySnapshot, type LinkSnapshot, type LinkKey } from '@shared/wire/versions';
 import type { Plan } from './Op';
+import type { DeleteContext } from '../storage/deletion';
 import type { LinkPlanningContext } from '../storage/link';
 import { CommandError } from './commands';
 export interface CommandReader {
   entity(key: EntityReadKey): Promise<EntitySnapshot>;
   link(key: LinkKey): Promise<LinkPlanningContext>;
+  deletion(key:EntityReadKey):Promise<DeleteContext>;
 }
 type Planned = {
   plan: Plan;
@@ -28,6 +30,7 @@ export async function planBatchCommand(input: CommandEnvelope, reader: CommandRe
   const storedEntities = new Map<string, EntitySnapshot>();
   const storedLinks = new Map<string, LinkSnapshot>();
   const touched = new Set<string>();
+  const groups:number[]=[];
   const identity = (entity: string, id: string) => `${entity}:${id}`;
   const removing = new Set(input.commands.flatMap(command => command.kind === 'link.remove' ? [entityStorageKey({ entity: 'link', from: command.from, to: command.to, linkType: command.linkType })] : []));
   const conflict = (message: string): never => { throw new CommandError({ code: 'structural_conflict', path: ['expectedStructuralRevision'], message, retryable: false, expectedStructuralRevision: expected, recoveryHint: 'Retain the entire batch intent, inspect the graph and explicitly rebase with a new command ID.' }); };
@@ -44,6 +47,23 @@ export async function planBatchCommand(input: CommandEnvelope, reader: CommandRe
         storedEntities.set(id, current);
       }
       return { ...current, structuralRevision: structural };
+    },
+    async deletion(key) {
+      const initial=await reader.deletion(key);
+      if(initial.current.structuralRevision!==expected)conflict('Workspace changed during lifecycle planning.');
+      const current=await virtual.entity(key);
+      if(initial.affectedCount>initial.links.length+initial.members.length)return {...initial,current};
+      for(const member of initial.members){
+        const id=identity(member.entity,member.id);
+        if(!entities.has(id)){entities.set(id,member);storedEntities.set(id,member);base.set(id,member.version?.revision??null);}
+      }
+      for(const link of initial.links){
+        const id=identity('link',entityStorageKey(link.key));
+        if(!links.has(id)){links.set(id,{current:link,reverse:null,fromExists:true,toExists:true,wouldCycle:false});storedLinks.set(id,link);base.set(id,link.version?.revision??null);}
+      }
+      const members=key.entity==='project'?[...entities.values()].filter(member=>member.entity==='task'&&member.row?.project_id===key.id).map(member=>({...member,structuralRevision:structural})):[];
+      const incident=key.entity==='task'?[...links.values()].map(context=>context.current).filter(link=>link.row!==null&&(link.key.from===key.id||link.key.to===key.id)).map(link=>({...link,structuralRevision:structural})):[];
+      return {...initial,current,members,links:incident,affectedCount:members.length+incident.length};
     },
     async link(key) {
       const id = identity('link', entityStorageKey(key));
@@ -92,6 +112,7 @@ export async function planBatchCommand(input: CommandEnvelope, reader: CommandRe
       }
       throw error;
     }
+    groups.push(planned.result.changes.length);
     for (const change of planned.result.changes) {
       if (change.entity === 'planning_settings')
         throw new Error('Settings cannot mix with graph commands.');
@@ -113,12 +134,10 @@ export async function planBatchCommand(input: CommandEnvelope, reader: CommandRe
         links.set(id, { ...prior, current: { ...prior.current, row: 'row' in change.after ? change.after.row : null, version: { revision: change.after.revision, deletedAt: 'deleted' in change.after ? now : null } } });
       }
       else {
-        if (!('row' in change.after))
-          throw new Error('Deletion remains standalone.');
         const prior = entities.get(id);
         if (!prior)
           throw new Error('Missing initial entity context.');
-        const current = parseEntitySnapshot({ ...prior, entity: change.entity, id: change.id, row: change.after.row, version: { revision: change.after.revision, deletedAt: null } });
+        const current = parseEntitySnapshot({ ...prior, entity: change.entity, id: change.id, row: 'row' in change.after ? change.after.row : null, version: { revision: change.after.revision, deletedAt: 'deleted' in change.after ? now : null } });
         if (!current.ok)
           throw new Error('Invalid virtual entity snapshot.');
         entities.set(id, current.value);
@@ -155,7 +174,7 @@ export async function planBatchCommand(input: CommandEnvelope, reader: CommandRe
     else
       throw new Error('Unsupported mixed-batch assertion.');
   }
-  const result: ChangesResult = { contractVersion: 2, commandId: input.commandId, payloadHash: hash, serverNow: now, batch: true, applied: true, changes, refs, warnings: [] };
+  const result: ChangesResult = { contractVersion: 2, commandId: input.commandId, payloadHash: hash, serverNow: now, batch: true, changeGroups:groups, applied: true, changes, refs, warnings: [] };
   // Edge removals run before additions; endpoint/project creation keeps declared order.
   const ordered = [...mutations.filter(op => op.kind === 'link.delete'), ...mutations.filter(op => op.kind !== 'link.delete')];
   for (const change of changes)
