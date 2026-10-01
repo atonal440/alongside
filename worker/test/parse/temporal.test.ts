@@ -120,3 +120,9 @@ describe('strict offset anchor combinations', () => {
     if (!parsed.ok) expect(parsed.error[0]?.path).toEqual(['dateAnchorTime']);
   });
 });
+
+it('handles offset probes crossing the AD input range without throwing', () => {
+  expect(value(resolveWallTime(d('0001-01-01'), t('09:00'), z('UTC')))).toBe('0001-01-01T09:00:00Z');
+  expect(value(resolveWallTime(d('9999-12-31'), t('09:00'), z('UTC')))).toBe('9999-12-31T09:00:00Z');
+  expect(zonedDateInterval(d('9999-12-31'), z('UTC'))).toMatchObject({ ok: false, error: { code: 'time_out_of_range' } });
+});

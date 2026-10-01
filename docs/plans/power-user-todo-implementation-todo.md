@@ -307,6 +307,13 @@ reject inapplicable anchors and require elapsed-date anchors. DST errors name
 8-case anchor-matrix and offset-error-path regressions. Final checks and bot
 re-review are recorded on the PR before merging.
 
+
+Slice 1 final edge check: offset probes now handle internal year-zero/five-digit
+Intl years at the supported AD range boundaries; final results remain validated
+as 0001–9999 instants. Regression verifies year 0001/9999 wall times and a
+structured out-of-range error for the last date's exclusive end. Full verification
+passes: 288 Worker / 417 PWA tests, both typechecks, Worker dry-run and PWA build.
+
 ### 2026-09-30 — Slice 2a: atomic-plan capacity
 
 Branch: `codex/power-user-slice-2a`, based on Slice 1; PR review/merge pending.

@@ -56,7 +56,12 @@ export function localParts(at: number, timezone: Timezone): { date: string; time
   return { date: `${year.padStart(4, '0')}-${parts['month']}-${parts['day']}`, time: `${parts['hour']}:${parts['minute']}`, second: Number(parts['second']) };
 }
 function wallMs(date: string, time: string, second = 0): number {
-  const result = calendarDateUtc(date);
+  // Offset probes can cross the supported AD input range. Intl then emits a
+  // five-digit year (or astronomical year zero); parse those internal parts
+  // without four-digit slicing before rejecting an out-of-range final result.
+  const [year = 0, month = 0, day = 0] = date.split('-').map(Number);
+  const result = new Date(0);
+  result.setUTCFullYear(year, month - 1, day);
   result.setUTCHours(Number(time.slice(0, 2)), Number(time.slice(3, 5)), second, 0);
   return result.getTime();
 }
