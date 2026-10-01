@@ -5,7 +5,7 @@ import { parsePlanningSettings, type PlanningSettings } from '@shared/wire/plann
 import type { LegacyDueRow } from './domain/temporalFoundation';
 import { ChangesResultSchema, StoredReceiptSchema, type CommandEnvelope, type ChangesResult, type ChangesPreview } from '@shared/wire/commands';
 import { parseSchema, parseEventInstant, type EventInstant, type CommandId } from '@shared/parse';
-import { CommandError, commandHash, payloadConflict, planSettingsCommand, planCreateCommand, creationConflict, revisionConflict } from './domain/commands';
+import { CommandError, commandHash, payloadConflict, planSettingsCommand, planCreateCommand, creationConflict, planContentCommand, contentConflict, revisionConflict } from './domain/commands';
 import { nanoid } from 'nanoid';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, ne, inArray, lte, or, asc, desc, gt, and, sql } from 'drizzle-orm';
@@ -634,6 +634,10 @@ export class DB {
   private async planCommand(input: CommandEnvelope, hash: string, clock: EventInstant): Promise<{ plan: Plan; result: ChangesResult }> {
     const command = input.commands[0]!;
     if (command.kind === 'planning.set') return planSettingsCommand(input, await this.getPlanningSettings(), hash, clock);
+    if (command.kind === 'task.content.set' || command.kind === 'project.content.set') {
+      const snapshot = await this.getEntitySnapshot(command.kind === 'task.content.set' ? { entity: 'task', id: command.id } : { entity: 'project', id: command.id });
+      return planContentCommand(input, snapshot, hash, clock);
+    }
     const current = await this.getEntitySnapshot(command.kind === 'task.create' ? { entity: 'task', id: command.id } : { entity: 'project', id: command.id });
     const project = command.kind === 'task.create' && command.values.project !== null
       ? await this.getEntitySnapshot({ entity: 'project', id: command.values.project.id }) : null;
@@ -726,10 +730,17 @@ export class DB {
     if (command.kind === 'planning.set') {
       const current = await this.getPlanningSettings();
       if ((current?.revision ?? null) !== command.expectedRevision) throw revisionConflict(command.expectedRevision, current);
-    } else {
+    } else if (command.kind === 'task.create' || command.kind === 'project.create') {
       const current = await this.getEntitySnapshot(command.kind === 'task.create' ? { entity: 'task', id: command.id } : { entity: 'project', id: command.id });
       const conflict = creationConflict(input, current);
       if (conflict) throw conflict;
+    } else {
+      const current = await this.getEntitySnapshot(command.kind === 'task.content.set' ? { entity: 'task', id: command.id } : { entity: 'project', id: command.id });
+      const conflict = contentConflict(input, current);
+      if (conflict) throw conflict;
+      // Classify exhaustion reached by an unrelated writer after planning as
+      // durable; repeatedly retrying a permanently full counter cannot help.
+      planContentCommand(input, current, hash, clock.value);
     }
     if (applied.error.kind === 'capacity_exceeded') throwAppError(applied.error);
     throw new CommandError({ code: 'storage_unavailable', path: [], message: 'The command could not be committed.', retryable: true,

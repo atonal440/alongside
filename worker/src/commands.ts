@@ -45,8 +45,18 @@ const creationCommandSchema = (entity: 'task' | 'project') => ({
     },
   }, required: ['kind', 'id', 'expectedRevision', 'expectedStructuralRevision', 'values'],
 });
+const contentCommandSchema = (entity: 'task' | 'project') => ({
+  type: 'object', additionalProperties: false, properties: {
+    kind: { const: `${entity}.content.set` }, id: { type: 'string', pattern: entity === 'task' ? '^t_[0-9A-Za-z_-]{5,}$' : '^p_[0-9A-Za-z_-]{5,}$' },
+    expectedRevision: { type: 'integer', minimum: 0, maximum: 9007199254740991 },
+    values: { type: 'object', additionalProperties: false,
+      properties: entity === 'project' ? creationProperties : { ...creationProperties, sessionLog: nullableText(10000) },
+      required: entity === 'project' ? ['title', 'notes', 'kickoffNote'] : ['title', 'notes', 'kickoffNote', 'sessionLog'],
+    },
+  }, required: ['kind', 'id', 'expectedRevision', 'values'],
+});
 const commandEnvelope = { ...envelope, properties: { ...envelope.properties,
-  commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project')] } },
+  commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project')] } },
 } };
 export const COMMAND_TOOLS = [
   { name: 'get_entity', description: 'Read a task/project row and its entity/structural versions together. Missing identities return null row/version; tombstones have null row and retained deleted version. Use for reliable command planning.', inputSchema: {
@@ -60,8 +70,8 @@ export const COMMAND_TOOLS = [
   } },
   { name: 'get_planning_settings', description: 'Read complete workspace planning settings and their revision, or null before setup.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'export_planning_settings', description: 'Export only planning preferences, without revision or credentials. Restore non-null values through planning.set with a fresh command ID and current expectedRevision. This is not a full-workspace backup.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
-  { name: 'preview_changes', description: 'Preview a reliable command without writes. Exactly one planning.set, task.create or project.create; creation requires a stable ID, no prior identity history and the workspace structural revision. expectedRevision=null requires no settings; otherwise use the current revision. A preview is not a lock.', inputSchema: commandEnvelope },
-  { name: 'apply_changes', description: 'Atomically apply one planning.set, task.create or project.create command, with a caller-minted command ID and expected revision. Same ID/payload returns the original result; a different payload conflicts. Includes receipt, audit and command feed. Creation supports scoped clientRef/ID mapping. Task edits, graph batches and offline overlays are not implemented yet.', inputSchema: commandEnvelope },
+  { name: 'preview_changes', description: 'Preview a reliable command without writes. Exactly one planning.set, task/project.create or task/project.content.set; creation requires a stable ID, no prior identity history and the workspace structural revision. expectedRevision=null requires no settings; otherwise use the current revision. A preview is not a lock.', inputSchema: commandEnvelope },
+  { name: 'apply_changes', description: 'Atomically apply one settings, task/project creation or task/project content command, with a caller-minted command ID and expected revision. Same ID/payload returns the original result; a different payload conflicts. Includes receipt, audit and command feed. Creation supports scoped clientRef/ID mapping. Content commands change only title/notes/kickoff and task session log; managed fields, graph batches and offline overlays are not implemented yet.', inputSchema: commandEnvelope },
 ];
 export async function callCommandTool(name: string, args: unknown, db: DB): Promise<unknown> {
   if (name === 'get_entity') {
