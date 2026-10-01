@@ -559,3 +559,9 @@ conflicts and unchanged capability gates. No production test writes occurred.
 Next: reliable completion with explicit successor identity, association/link
 commands and bounded compound batches; then sync/restore and offline retained
 intention/capability gates. Future richer lifecycle semantics remain in Slice 3.
+
+
+State review follow-up: updated the earlier MCP command matrix/summary to
+include all supported state transitions. The detailed reference was already
+present; the summary now agrees. Docs-only fix; final-head automated re-review
+required before merging.
