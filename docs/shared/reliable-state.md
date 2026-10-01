@@ -53,7 +53,7 @@ Task commands preserve title/context, project membership, task type, due date,
 recurrence, duty/occurrence identity and creation time. Reopening a completed
 legacy recurring task preserves its already-created successor. It neither
 retracts that successor nor changes the legacy policy if the task is completed
-again. Reliable completion and explicit successor identity follow separately;
+again. [Reliable completion](reliable-completion.md) now supports explicit successor identity;
 this increment does not introduce a new recurrence engine.
 
 ## Atomicity, conflicts and replay
@@ -89,6 +89,6 @@ No migration is required. Existing settings, creation and content commands and
 stored results continue parsing. REST and MCP share planners and wire schemas;
 the PWA API parses new command results and transition/conflict diagnostics.
 The PWA queue still uses legacy operations. Broad `reliableCommands` and
-`deltaSync` remain false pending completion/deletion/graph batches, workspace
+`deltaSync` remain false pending deletion/graph batches, workspace
 sync/restore and retained offline intention. Future task statuses, terminal
 timestamps and soft deletion belong to their planned later slice.
