@@ -2,7 +2,7 @@ import { parseSchema } from '../parse/primitives';
 import * as v from 'valibot';
 import { err, ok, type Result } from '../result';
 import {
-  calendarDateUtc, LocalDateSchema, LocalTimeSchema, MinuteInstantSchema,
+  LocalDateSchema, LocalTimeSchema, MinuteInstantSchema,
   SignedDaysSchema, SignedMinutesSchema, parseLocalDate, parseMinuteInstant,
   type LocalDate, type LocalTime, type MinuteInstant,
 } from '../parse/temporal';
@@ -32,7 +32,7 @@ export interface TimeError {
   message: string;
   retryable: false;
   recoveryHint: string;
-  alternatives: { at: MinuteInstant; date: string; time: string }[];
+  alternatives: { at: MinuteInstant; date: LocalDate; time: LocalTime }[];
 }
 
 const MINUTE_MS = 60_000;
@@ -74,9 +74,9 @@ function instant(at: number): MinuteInstant | null {
   const result = parseMinuteInstant(new Date(at).toISOString());
   return result.ok ? result.value : null;
 }
-function timeError(code: TimeError['code'], message: string, recoveryHint: string, alternatives: TimeError['alternatives'] = []): Result<never, TimeError> {
+function timeError(code: TimeError['code'], message: string, recoveryHint: string, alternatives: TimeError['alternatives'] = [], path?: string[]): Result<never, TimeError> {
   const field = code === 'missing_anchor' || code === 'unexpected_anchor' ? 'dateAnchorTime' : code === 'ambiguous_local_time' || code === 'nonexistent_local_time' ? 'time' : 'date';
-  return err({ code, path: [field], message, retryable: false, recoveryHint, alternatives });
+  return err({ code, path: path ?? [field], message, retryable: false, recoveryHint, alternatives });
 }
 
 /** Invert zoned wall time using explicit offsets and verify every candidate.
@@ -93,7 +93,11 @@ export function resolveWallTime(date: LocalDate, time: LocalTime, zone: Timezone
   });
   const alternatives = candidates.flatMap(at => {
     const value = instant(at);
-    return value ? [{ at: value, ...localParts(at, zone) }] : [];
+    if (!value) return [];
+    const parts = localParts(Date.parse(value), zone);
+    const parsedDate = parseLocalDate(parts.date);
+    const parsedTime = parseSchema(LocalTimeSchema, parts.time);
+    return parsedDate.ok && parsedTime.ok ? [{ at: value, date: parsedDate.value, time: parsedTime.value }] : [];
   });
   if (!matches.length) return timeError('nonexistent_local_time', 'This local time does not exist in the requested zone.', 'Choose a valid time; alternatives show the offset interpretations.', alternatives);
   if (matches.length > 1 && disambiguation === 'reject') return timeError('ambiguous_local_time', 'This local time occurs twice.', 'Specify earlier or later.', alternatives);
@@ -107,7 +111,7 @@ export function resolveWallTime(date: LocalDate, time: LocalTime, zone: Timezone
 /** Find the first minute belonging to the date, and the first minute after it.
  * Searching real instants handles midnight gaps/folds and wholly skipped dates.
  * The next date may itself be skipped; no assumed 24-hour interval is used. */
-export function zonedDateInterval(date: LocalDate, zone: Timezone): Result<TimeInterval, TimeError> {
+function dateBoundaries(date: LocalDate, zone: Timezone, includeEnd: boolean): Result<{ start: MinuteInstant; end: MinuteInstant | null }, TimeError> {
   const center = wallMs(date, '00:00');
   let start: number | undefined;
   let end: number | undefined;
@@ -119,12 +123,18 @@ export function zonedDateInterval(date: LocalDate, zone: Timezone): Result<TimeI
       for (let minute = previous; minute <= at; minute += MINUTE_MS) {
         if (localParts(minute, zone).date === date) { start = minute; break; }
       }
+      if (localParts(start - 1_000, zone).date === date) return timeError('unsupported_precision', 'Date start requires sub-minute precision.', 'Choose an explicit instant for this historical boundary.');
+    }
+    if (start !== undefined && !includeEnd) {
+      const atStart = instant(start);
+      return atStart ? ok({ start: atStart, end: null }) : timeError('time_out_of_range', 'Date start exceeds the supported instant range.', 'Choose an interior date in years 0001–9999.');
     }
     if (start !== undefined && localDate > date) {
       end = at;
       for (let minute = previous; minute <= at; minute += MINUTE_MS) {
         if (minute > start && localParts(minute, zone).date > date) { end = minute; break; }
       }
+      if (localParts(end - 1_000, zone).date > date) return timeError('unsupported_precision', 'Date end requires sub-minute precision.', 'Choose an explicit instant for this historical boundary.');
       break;
     }
     previous = at;
@@ -134,17 +144,32 @@ export function zonedDateInterval(date: LocalDate, zone: Timezone): Result<TimeI
   const endAt = end === undefined ? null : instant(end);
   return startAt && endAt ? ok({ start: startAt, end: endAt }) : timeError('time_out_of_range', 'Date boundaries exceed the supported instant range.', 'Choose an interior date in years 0001–9999.');
 }
+export function zonedDateStart(date: LocalDate, zone: Timezone): Result<MinuteInstant, TimeError> {
+  const result = dateBoundaries(date, zone, false);
+  return result.ok ? ok(result.value.start) : result;
+}
+export function zonedDateInterval(date: LocalDate, zone: Timezone): Result<TimeInterval, TimeError> {
+  const result = dateBoundaries(date, zone, true);
+  // includeEnd=true succeeds only after both boundaries validate.
+  return result.ok ? ok({ start: result.value.start, end: result.value.end! }) : result;
+}
 export function resolveDateBoundary(point: TemporalPoint, role: TaskDateRole): Result<{ at: MinuteInstant; comparison: 'inclusive' | 'exclusive' }, TimeError> {
   if (point.kind === 'instant') return ok({ at: point.at, comparison: 'inclusive' });
+  if (role === 'available_from') {
+    const start = zonedDateStart(point.date, point.timezone);
+    return start.ok ? ok({ at: start.value, comparison: 'inclusive' }) : start;
+  }
   const interval = zonedDateInterval(point.date, point.timezone);
-  if (!interval.ok) return interval;
-  return ok({ at: role === 'available_from' ? interval.value.start : interval.value.end, comparison: role === 'available_from' ? 'inclusive' : 'exclusive' });
+  return interval.ok ? ok({ at: interval.value.end, comparison: 'exclusive' }) : interval;
 }
-export function addCalendarDays(date: LocalDate, days: number): Result<LocalDate, TimeError> {
-  const result = calendarDateUtc(date);
+function shiftCalendarDate(date: string, days: number): Result<LocalDate, TimeError> {
+  const result = new Date(wallMs(date, '00:00'));
   result.setUTCDate(result.getUTCDate() + days);
   const parsed = parseLocalDate(result.toISOString().slice(0, 10));
   return parsed.ok ? ok(parsed.value) : timeError('time_out_of_range', 'Offset date is out of range.', 'Reduce the offset.');
+}
+export function addCalendarDays(date: LocalDate, days: number): Result<LocalDate, TimeError> {
+  return shiftCalendarDate(date, days);
 }
 export function resolveOffset(point: TemporalPoint, offset: RelativeOffset, dateAnchorTime: LocalTime | undefined, disambiguation: Disambiguation = 'reject'): Result<MinuteInstant, TimeError> {
   const needsAnchor = offset.kind === 'elapsed_minutes' && point.kind === 'date';
@@ -158,16 +183,17 @@ export function resolveOffset(point: TemporalPoint, offset: RelativeOffset, date
   }
   if (offset.kind === 'calendar_days') {
     const baseDate = point.kind === 'date' ? point.date : localParts(Date.parse(point.at), point.timezone).date;
-    const parsed = parseLocalDate(baseDate);
-    if (!parsed.ok) return timeError('time_out_of_range', 'Local date is out of range.', 'Choose an interior date.');
-    const date = addCalendarDays(parsed.value, offset.days);
-    return date.ok ? contextual(resolveWallTime(date.value, offset.localTime, point.timezone, disambiguation)) : date;
+    // A supported instant may project just outside AD years 0001–9999 in
+    // its zone. Apply the calendar shift to those internal parts first; only
+    // the final requested date/instant must satisfy the public range.
+    const date = shiftCalendarDate(baseDate, offset.days);
+    return date.ok ? contextual(resolveWallTime(date.value, offset.localTime, point.timezone, disambiguation)) : err({ ...date.error, path: ['offset', 'days'] });
   }
   if (point.kind === 'date' && dateAnchorTime === undefined) return timeError('missing_anchor', 'An elapsed offset from a date requires a local anchor time.', 'Supply dateAnchorTime.');
   const base = point.kind === 'instant' ? ok(point.at) : resolveWallTime(point.date, dateAnchorTime!, point.timezone, disambiguation);
   if (!base.ok) return contextual(base);
   const at = instant(Date.parse(base.value) + offset.minutes * MINUTE_MS);
-  return at ? ok(at) : timeError('time_out_of_range', 'Offset instant is out of range.', 'Reduce the offset.');
+  return at ? ok(at) : timeError('time_out_of_range', 'Offset instant is out of range.', 'Reduce the offset.', [], ['offset', 'minutes']);
 }
 
 export const parseTemporalPoint = (input: unknown) => parseSchema(TemporalPointSchema, input);

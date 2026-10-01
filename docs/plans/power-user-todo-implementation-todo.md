@@ -313,3 +313,14 @@ Intl years at the supported AD range boundaries; final results remain validated
 as 0001–9999 instants. Regression verifies year 0001/9999 wall times and a
 structured out-of-range error for the last date's exclusive end. Full verification
 passes: 288 Worker / 417 PWA tests, both typechecks, Worker dry-run and PWA build.
+
+
+Slice 1 additional review hardening: all v2 JSON error bodies are parsed,
+including branded strict DST alternatives; only validated unversioned string
+errors use the legacy fallback. Arithmetic overflow names submitted offset
+fields. Availability resolves only its requested start; calendar arithmetic
+can re-enter the supported AD range from an instant's internal zoned projection.
+Historical boundaries requiring seconds are rejected explicitly. New regressions
+cover malformed versioned/nested JSON, overflow paths, availability at year 9999,
+calendar re-entry from years zero/10000 and historical boundary precision.
+Full `npm run verify` passes: 296 Worker / 424 PWA tests, both typechecks/builds.

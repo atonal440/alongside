@@ -63,7 +63,18 @@ function jsonBody(body: unknown): RequestInit {
   return { method: 'POST', body: JSON.stringify(body) };
 }
 
+const LegacyErrorSchema = v.object({
+  error: v.string(),
+  details: v.optional(v.array(v.object({ code: v.string(), path: v.array(v.string()), message: v.string() }))),
+});
 function parseFoundationError(raw: unknown): Result<ApiErrorBody, ValidationError[]> {
+  // Auth/gateway errors may predate v2. Only unversioned string envelopes use
+  // this validated fallback; declared v2 and all other JSON use the v2 parser.
+  if (raw !== null && typeof raw === 'object' && !('contractVersion' in raw)
+    && 'error' in raw && typeof raw.error === 'string') {
+    const legacy = parseSchema(LegacyErrorSchema, raw);
+    return legacy.ok ? { ok: true, value: { error: legacy.value.error, ...(legacy.value.details === undefined ? {} : { details: legacy.value.details }) } } : legacy;
+  }
   const parsed = parseFoundationErrorEnvelope(raw);
   if (!parsed.ok) return parsed;
   return { ok: true, value: {
