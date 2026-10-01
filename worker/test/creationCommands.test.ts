@@ -185,7 +185,7 @@ describe('creation/read boundaries', () => {
       const stale = new Request('https://test/api/v2/changes', { method: 'POST', body: JSON.stringify(input('task', 1, 'c_other1')) });
       const conflict = await handleApiRequest(stale, new URL(stale.url), db);
       expect(conflict.status).toBe(409); expect(parseFoundationErrorEnvelope(await conflict.json()).ok).toBe(true);
-      expect(COMMAND_TOOLS.find(tool => tool.name === 'apply_changes')?.inputSchema.properties.commands.items.oneOf).toHaveLength(16);
+      expect(COMMAND_TOOLS.find(tool => tool.name === 'apply_changes')?.inputSchema.properties.commands.items.oneOf).toHaveLength(18);
     } finally { sql.close(); }
   });
   it.each([

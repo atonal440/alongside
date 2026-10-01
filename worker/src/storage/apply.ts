@@ -330,7 +330,7 @@ function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
         .bind(op.commandId, op.actor, op.reason, JSON.stringify(op.result.changes), op.result.serverNow))];
     case 'command.feed':
       return op.result.changes.map(change => guardedStatement(d1.prepare(`INSERT INTO change_feed(command_id,entity,entity_id,revision,operation,payload_json,created_at) VALUES(?,?,?,?,?,?,?)`)
-        .bind(op.result.commandId, change.entity, change.id, change.after.revision, change.entity === 'link' && 'deleted' in change.after ? 'delete' : 'upsert', JSON.stringify(change.after), op.result.serverNow)));
+        .bind(op.result.commandId, change.entity, change.id, change.after.revision, 'deleted' in change.after ? 'delete' : 'upsert', JSON.stringify(change.after), op.result.serverNow)));
     case 'task.insert':
       return [guardedStatement(bindInsert(d1, 'tasks', TASK_INSERT_COLUMNS, op.row))];
     case 'task.update': {
@@ -350,6 +350,9 @@ function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
       const statement = bindUpdate(d1, 'projects', 'id', op.id, PROJECT_UPDATE_COLUMNS, op.patch);
       return statement ? [bindExistingRowGuard(d1, guard), guardedStatement(statement, guard)] : [];
     }
+    case 'project.delete_empty':
+      return [bindExistingRowGuard(d1, { entity: 'project', id: op.id }),
+        guardedStatement(d1.prepare('DELETE FROM projects WHERE id = ?').bind(op.id), { entity: 'project', id: op.id })];
     case 'project.delete':
       return [
         bindExistingRowGuard(d1, { entity: 'project', id: op.id }),

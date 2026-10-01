@@ -69,6 +69,8 @@ export const FoundationErrorSchema = v.strictObject({
   currentEntity: v.optional(EntitySnapshotSchema),
   currentLink: v.optional(LinkSnapshotSchema),
   expectedStructuralRevision: v.optional(RevisionSchema),
+  requiredStatements: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(Number.MAX_SAFE_INTEGER))),
+  limit: v.optional(v.literal(100)),
 });
 export const LegacyDatesPreviewSchema = v.strictObject({
   contractVersion: v.literal(2), serverNow: EventInstantSchema, timezone: TimezoneSchema, timezoneSource: TimezoneSourceSchema,

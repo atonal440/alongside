@@ -1,3 +1,5 @@
+import { readDeleteContext } from './storage/deletion';
+import { planDeleteCommand } from './domain/deleteCommands';
 import { readLinkContext } from './storage/link';
 import { linkCommandKey, planLinkCommand } from './domain/linkCommands';
 import type { LinkKey, LinkSnapshot } from '@shared/wire/versions';
@@ -638,6 +640,7 @@ export class DB {
 
   private async planCommand(input: CommandEnvelope, hash: string, clock: EventInstant): Promise<{ plan: Plan; result: ChangesResult }> {
     const command = input.commands[0]!;
+    if (command.kind === 'task.delete' || command.kind === 'project.delete') return planDeleteCommand(input, await readDeleteContext(this.d1, commandEntityKey(command)), hash, clock);
     if (command.kind === 'link.add' || command.kind === 'link.remove') return planLinkCommand(input, await readLinkContext(this.d1, linkCommandKey(command)), hash, clock);
     if (command.kind === 'planning.set') return planSettingsCommand(input, await this.getPlanningSettings(), hash, clock);
     if (command.kind === 'task.project.set') {
@@ -760,7 +763,7 @@ export class DB {
       // Classify exhaustion reached by an unrelated writer after planning as
       // durable; repeatedly retrying a permanently full counter cannot help.
       if (command.kind === 'task.content.set' || command.kind === 'project.content.set') planContentCommand(input, current, hash, clock.value);
-      else if (command.kind === 'task.complete' || command.kind === 'task.project.set') await this.planCommand(input, hash, clock.value);
+      else if (command.kind === 'task.complete' || command.kind === 'task.project.set' || command.kind === 'task.delete' || command.kind === 'project.delete') await this.planCommand(input, hash, clock.value);
       else planStateCommand(input, current, hash, clock.value);
     }
     if (applied.error.kind === 'capacity_exceeded') throwAppError(applied.error);

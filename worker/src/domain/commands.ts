@@ -126,8 +126,8 @@ export function planCreateCommand(input: CommandEnvelope, current: EntitySnapsho
 
 export function commandEntityKey(command: Exclude<CommandEnvelope['commands'][number], { kind: 'planning.set' | 'link.add' | 'link.remove' }>): EntityReadKey {
   switch (command.kind) {
-    case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': case 'task.complete': case 'task.project.set': case 'task.type.set': case 'task.legacy-schedule.set': return { entity: 'task', id: command.id };
-    case 'project.create': case 'project.content.set': case 'project.archive': case 'project.reopen': return { entity: 'project', id: command.id };
+    case 'task.delete': case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': case 'task.complete': case 'task.project.set': case 'task.type.set': case 'task.legacy-schedule.set': return { entity: 'task', id: command.id };
+    case 'project.delete': case 'project.create': case 'project.content.set': case 'project.archive': case 'project.reopen': return { entity: 'project', id: command.id };
   }
 }
 

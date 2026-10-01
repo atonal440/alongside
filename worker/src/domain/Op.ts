@@ -29,6 +29,7 @@ export type Op =
   | { kind: 'project.insert'; row: ProjectRow }
   | { kind: 'project.update'; id: ProjectId; patch: ProjectRowPatch }
   | { kind: 'project.delete'; id: ProjectId }
+  | { kind: 'project.delete_empty'; id: ProjectId }
   | { kind: 'link.upsert'; row: TaskLinkRow }
   | { kind: 'link.insert'; row: TaskLinkRow }
   | { kind: 'link.delete'; from: TaskId; to: TaskId; linkType: LinkType }
