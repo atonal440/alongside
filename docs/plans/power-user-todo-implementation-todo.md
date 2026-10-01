@@ -743,3 +743,10 @@ and unchanged gates.
 
 Next: all-writer workspace snapshot/feed foundation, fixed-watermark delta sync,
 versioned restore/import epoch, then retained offline commands and capability gates.
+
+Lifecycle review follow-up: standalone and grouped completion receipts now verify
+all preserved source fields, the exact terminal-state patch, the derived successor
+content/kickoff, the shared recurrence calculation and server timestamps. Both
+apply and preview boundaries reject altered images and missing/extra successors.
+Full verification passes 590 Worker / 590 PWA tests, both typechecks/builds and
+Worker dry-run (856.56 KiB / gzip 150.16 KiB).

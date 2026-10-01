@@ -1,5 +1,5 @@
 import * as v from 'valibot';
-import { CommandIdSchema, EventInstantSchema, MinuteInstantSchema, DueDateTimeSchema, RruleSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, LinkTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema } from '../parse';
+import { CommandIdSchema, EventInstantSchema, MinuteInstantSchema, DueDateTimeSchema, RruleSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, LinkTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema, parseIsoDate, parseRrule, nextOccurrence } from '../parse';
 import { PlanningSettingsSchema } from './planning';
 import { ProjectRowSchema, TaskRowSchema, TaskLinkRowSchema } from './rows';
 
@@ -132,6 +132,35 @@ export const LinkChangeDiffSchema = v.strictObject({
   after: v.union([v.strictObject({ revision: RevisionSchema, row: TaskLinkRowSchema }), v.strictObject({ revision: RevisionSchema, deleted: v.literal(true) })]),
 });
 export const ChangeDiffSchema = v.variant('entity', [PlanningDiffSchema, ProjectChangeDiffSchema, TaskChangeDiffSchema, LinkChangeDiffSchema]);
+type ChangeDiff = v.InferOutput<typeof ChangeDiffSchema>;
+
+// Group boundaries identify standalone completion effects. Check the entire
+// transition, including inherited successor fields, before accepting a receipt
+// as canonical state. The date-only recurrence helper is shared with the planner.
+function validCompletion(changes: ChangeDiff[], serverNow: string): boolean {
+  const [root, successor] = changes;
+  if (root?.entity !== 'task' || root.before?.row.status !== 'pending' || !('row' in root.after)) return false;
+  const before = root.before.row;
+  const completed = { ...before, status: 'done', defer_kind: 'none', defer_until: null, focused_until: null, updated_at: serverNow };
+  const completedRow = root.after.row;
+  if (!Object.entries(completed).every(([field, stored]) => completedRow[field as keyof typeof completed] === stored)) return false;
+  if (before.recurrence === null) return changes.length === 1;
+  if (changes.length !== 2 || successor?.entity !== 'task' || successor.before !== null || !('row' in successor.after)
+    || before.due_date === null || before.due_all_day === false) return false;
+  const rule = parseRrule(before.recurrence);
+  const anchor = parseIsoDate(before.due_date.slice(0, 10));
+  if (!rule.ok || !anchor.ok) return false;
+  try {
+    const expected = { ...before, id: successor.id, status: 'pending',
+      due_date: `${nextOccurrence(rule.value.parts, anchor.value)}T12:00:00Z`, due_all_day: true,
+      created_at: serverNow, updated_at: serverNow, defer_kind: 'none', defer_until: null, focused_until: null,
+      kickoff_note: before.session_log ?? before.kickoff_note, session_log: null, duty_id: null, occurrence_at: null };
+    const after = successor.after.row;
+    return Object.entries(expected).every(([field, stored]) => after[field as keyof typeof after] === stored);
+  } catch {
+    return false;
+  }
+}
 function validDiffIdentity(value: { serverNow: string; batch?: true | undefined; changeGroups?: number[] | undefined; changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
   if (value.changes.length === 0) return false;
   if (value.batch !== true && value.changeGroups !== undefined) return false;
@@ -174,9 +203,13 @@ function validDiffIdentity(value: { serverNow: string; batch?: true | undefined;
       createdIds.add(change.id);
     }
   }
-  if (value.changes.length > 1 && value.batch !== true) {
+  if (value.batch !== true) {
     const [root, ...effects] = value.changes;
-    if (root?.entity === 'task' && 'deleted' in root.after) {
+    if (root?.entity === 'task' && root.before?.row.status === 'pending' && 'row' in root.after && root.after.row.status === 'done') {
+      if (!validCompletion(value.changes, value.serverNow)) return false;
+    } else if (value.changes.length === 1) {
+      // Simple non-completion commands have no derived effects.
+    } else if (root?.entity === 'task' && 'deleted' in root.after) {
       if (!effects.every(effect => effect.entity === 'link' && 'deleted' in effect.after && effect.before?.row !== null
         && effect.before !== null && (effect.before.row.from_task_id === root.id || effect.before.row.to_task_id === root.id))) return false;
     } else if (root?.entity === 'project' && 'deleted' in root.after) {
@@ -187,9 +220,7 @@ function validDiffIdentity(value: { serverNow: string; batch?: true | undefined;
         return Object.entries(expected).every(([field, stored]) => after[field as keyof typeof after] === stored);
       })) return false;
     } else {
-      const successor = effects[0];
-      if (effects.length !== 1 || root?.entity !== 'task' || successor?.entity !== 'task' || root.before?.row.status !== 'pending'
-        || !('row' in root.after) || root.after.row.status !== 'done' || successor.before !== null || !('row' in successor.after) || successor.after.row.status !== 'pending') return false;
+      return false;
     }
   }
   return Object.keys(value.refs).length <= (value.batch ? 20 : 1) && Object.values(value.refs).every(id => createdIds.has(id));

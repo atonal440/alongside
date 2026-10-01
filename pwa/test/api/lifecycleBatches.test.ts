@@ -20,8 +20,9 @@ it.each([
  ...[{title:'Changed'},{status:'done'},{project_id:project.id},{updated_at:'2026-10-02T10:00:00.123Z'}].map(patch=>({...result,changes:[root,{...member,after:{...member.after,row:{...member.after.row,...patch}}},other]})),
 ].map(body=>({body})))('rejects malformed groups and altered compound effect fields',({body})=>{expect(parseChangesResult(body).ok).toBe(false);});
 it('requires grouped provenance for completion images while preserving old simple receipts',()=>{
- const completed={entity:'task',id:task.id,before:{row:task,revision:1},after:{row:{...task,status:'done'},revision:2}};
- const successor={entity:'task',id:'t_next001',before:null,after:{row:{...task,id:'t_next001'},revision:1}};
+ const recurring={...task,recurrence:'FREQ=WEEKLY',due_date:'2026-10-05T12:00:00Z',due_all_day:true};
+ const completed={entity:'task',id:task.id,before:{row:recurring,revision:1},after:{row:{...recurring,status:'done'},revision:2}};
+ const successor={entity:'task',id:'t_next001',before:null,after:{row:{...recurring,id:'t_next001',due_date:'2026-10-12T12:00:00Z'},revision:1}};
  expect(parseChangesResult({...result,changeGroups:[2,1],changes:[completed,successor,other],refs:{next:'t_next001'}}).ok).toBe(true);
  expect(parseChangesResult({...result,changeGroups:undefined,changes:[completed,successor,other],refs:{next:'t_next001'}}).ok).toBe(false);
  expect(parseChangesResult({...result,changeGroups:undefined,changes:[{...other,id:'t_third1',before:{...other.before,row:{...other.before.row,id:'t_third1'}},after:{...other.after,row:{...other.after.row,id:'t_third1'}}},other]}).ok).toBe(true);
