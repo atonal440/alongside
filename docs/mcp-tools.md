@@ -413,3 +413,14 @@ Only planning settings use this protocol so far. Task commands, graph references
 offline command overlays and full delta sync remain gated. Settings export is a
 preferences document, not a full backup; restore non-null values through
 `planning.set` using `actor: import` and the destination's expected revision.
+
+
+## Entity version lookup
+
+`get_entity_version` accepts a strict task/project/duty key with `entity` and
+`id`, or a link key with `entity: "link"`, `from`, `to` and `linkType`. It returns
+the key, workspace `structuralRevision` and `version` from one SQL statement.
+A null version has no ledger history; non-null versions have a numeric
+`revision` and `deletedAt` (null when live). Retained deletion records survive
+v1 restore and ID reuse. This lookup does not fetch row content or enable task
+commands/delta sync. See [the version contract](shared/entity-versions.md).

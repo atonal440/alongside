@@ -1,7 +1,7 @@
 # Power-user todo implementation checklist
 
-Status: Slice 1 and Slice 2a merged/deployed. Slice 2b settings commands implemented and locally verified; PR review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
-Updated: 2026-09-30.
+Status: Slices 1, 2a and 2b merged/deployed. Slice 2c revision foundation implemented; automated review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
+Updated: 2026-10-01.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
 This checklist owns sequencing/progress, not another copy of the contracts.
@@ -92,6 +92,28 @@ Depends on slice 1. Goal: make compound work safe before storing rich graphs.
 
 Acceptance: replay cannot duplicate creation; concurrency cannot silently
 overwrite; oversize rejection changes nothing; offline intent survives conflict.
+
+### Remaining increments and review gates
+
+Each increment receives tests and automated PR review before merge. Resolve
+findings and obtain a clean review of the final head; passing CI alone is not
+the review gate. Merge authorizes the existing production deployment workflow.
+
+- **2c — legacy writer revision foundation:** entity/structural revision ledger,
+  deletion records, storage triggers covering direct/Plan/import/cascade writes,
+  atomic guards and parsed REST/MCP/PWA version lookup. No task command or sync
+  capability enabled. Implemented; review/merge pending.
+- **2d — reliable existing task/project/link commands:** stable IDs/client refs,
+  semantic command planning, coherent content/version reads, receipts and
+  atomic final-state/aggregate validation. Split command families further if
+  needed to keep each PR reviewable. Keep the legacy PWA usable.
+- **2e — workspace sync and restore:** consistent snapshot and fixed-watermark
+  deltas covering all current user data, tombstones/retention/reset policy,
+  import epoch and bounded versioned export/import retaining v1 input.
+- **2f — offline reconciliation and capability gate:** canonical IDB data plus
+  ordered optimistic commands, retained conflicts/failed intent and inspectable
+  rebase. Negotiate versions and gate incompatible writers only after the
+  compatible PWA and backend protocol are ready together.
 
 ## Slice 3 — Tasks, hierarchy, explicit dates, and organization
 
@@ -410,3 +432,37 @@ Slice 2b final review verification: full `npm run verify` passes with 330 Worker
 432 PWA tests, both typechecks, Worker dry-run (763.73 KiB / gzip 133.47 KiB) and
 PWA build. Fresh/upgrade snapshot parity and an unchanged `db:generate` verify
 the review fix. Bot re-review is required on the pushed fix before merge.
+
+
+### 2026-10-01 — Slice 2c: legacy writer revision foundation
+
+PR #44 merged as `d56080d`; the clean automated review covered `f892bbe` and
+Deploy run 36808885930 succeeded for Worker migration 010 and PWA Pages.
+
+Branch: `codex/power-user-slice-2c`; automated review/merge pending. Migration
+011 backfills existing task/project/link/duty identities at revision zero and
+installs storage triggers maintaining entity revisions, retained deletion
+records and a conservative workspace structural revision. This catches direct
+Drizzle, raw SQL, Plan, recurrence, bulk detachment, v1 import and FK cascade
+writers without changing their legacy row/IDB contracts. Recreated IDs keep
+increasing revisions. Exhaustion and late failures roll back the original write.
+
+Plan supports entity/aggregate guards inside its transactional batch, counted
+by the generated SQL compiler. One coherent version lookup is exposed through
+REST/MCP and the parsed PWA API client. No task command, public delta feed,
+calendar revision, import epoch or offline overlay is claimed by this step.
+See [the transition contract](../shared/entity-versions.md).
+
+Acceptance: full `npm run verify` passes (359 Worker / 443 PWA tests, both
+typechecks, Worker dry-run 769.24 KiB / gzip 134.42 KiB, PWA build). Fresh and
+upgraded schema/snapshot parity passes; a second `db:generate` reports no
+changes. Real SQLite tests cover race guards, legacy writers, rollback,
+backfill, delete/recreate, cascades with recursive triggers on/off, and revision
+exhaustion even under outer OR IGNORE/REPLACE policies. Isolated Wrangler/D1
+migrations 001–011 and REST/MCP smoke on port 8789 passed version reads, legacy
+updates, link cascade tombstones, strict inputs and unchanged capability gates.
+Normal development and production data were not modified by local testing.
+Automated review and merge remain pending.
+Next: reliable existing task/project/link command families with coherent
+content/version reads, stable IDs/ref maps and receipts; then workspace sync,
+restore epochs and retained offline intention. Broad capability gates stay off.
