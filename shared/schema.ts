@@ -1,4 +1,5 @@
-import { sqliteTable, text, integer, primaryKey, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
+import { sqliteTable, text, integer, primaryKey, uniqueIndex, index, check } from 'drizzle-orm/sqlite-core';
 
 export const projects = sqliteTable('projects', {
   id:           text('id').primaryKey(),
@@ -100,3 +101,30 @@ export type Project   = typeof projects.$inferSelect;
 export type TaskLink  = typeof taskLinks.$inferSelect;
 export type ActionLog = typeof actionLog.$inferSelect;
 export type Duty      = typeof duties.$inferSelect;
+
+// Empty until explicitly configured through reliable commands. This foundation
+// has read/preview APIs only; it does not silently adopt the host's timezone.
+export const planningSettings = sqliteTable('planning_settings', {
+  id: integer('id').primaryKey(),
+  timezone: text('timezone').notNull(),
+  buffer_minutes: integer('buffer_minutes').notNull().default(0),
+  revision: integer('revision').notNull().default(0),
+  created_at: text('created_at').notNull(),
+  updated_at: text('updated_at').notNull(),
+}, t => [
+  check('planning_settings_singleton', sql`${t.id} = 1`),
+  check('planning_settings_buffer', sql`typeof(${t.buffer_minutes}) = 'integer' AND ${t.buffer_minutes} BETWEEN 0 AND 1440`),
+  check('planning_settings_revision', sql`typeof(${t.revision}) = 'integer' AND ${t.revision} BETWEEN 0 AND 9007199254740991`),
+]);
+export const planningWorkingHours = sqliteTable('planning_working_hours', {
+  settings_id: integer('settings_id').notNull().references(() => planningSettings.id, { onDelete: 'cascade' }),
+  weekday: integer('weekday').notNull(),
+  start_time: text('start_time').notNull(),
+  end_time: text('end_time').notNull(),
+}, t => [
+  primaryKey({ columns: [t.settings_id, t.weekday, t.start_time] }),
+  check('planning_hours_singleton', sql`${t.settings_id} = 1`),
+  check('planning_hours_weekday', sql`typeof(${t.weekday}) = 'integer' AND ${t.weekday} BETWEEN 1 AND 7`),
+  check('planning_hours_start', sql`${t.start_time} GLOB '[0-2][0-9]:[0-5][0-9]' AND ${t.start_time} < '24:00'`),
+  check('planning_hours_end', sql`${t.end_time} GLOB '[0-2][0-9]:[0-5][0-9]' AND ${t.end_time} < '24:00' AND ${t.end_time} > ${t.start_time}`),
+]);

@@ -46,3 +46,33 @@ export function parseProjectId(input: unknown): Result<ParsedProjectId, Validati
 export function parseOAuthCode(input: unknown): Result<OAuthCode, ValidationError[]> {
   return parseSchema(OAuthCodeSchema, input);
 }
+
+// Prefixes are shared by client-minted IDs and server IDs. The reliable command
+// layer decides minting/replay ownership; parsing never implies existence.
+function entityIdSchema<const Name extends string>(prefix: string, _name: Name) {
+  return v.pipe(v.string(), v.regex(new RegExp(`^${prefix}_[0-9A-Za-z_-]{5,64}$`)), v.transform(value => value as Brand<string, Name>));
+}
+export const DutyIdSchema = entityIdSchema('d', 'DutyId');
+export const TimeBlockIdSchema = entityIdSchema('b', 'TimeBlockId');
+export const ReminderIdSchema = entityIdSchema('r', 'ReminderId');
+export const CommandIdSchema = entityIdSchema('c', 'CommandId');
+export const TagIdSchema = entityIdSchema('tag', 'TagId');
+export const EntryIdSchema = entityIdSchema('e', 'EntryId');
+export const WorkLogIdSchema = entityIdSchema('w', 'WorkLogId');
+export const SavedQueryIdSchema = entityIdSchema('q', 'SavedQueryId');
+export type DutyId = v.InferOutput<typeof DutyIdSchema>;
+export type TimeBlockId = v.InferOutput<typeof TimeBlockIdSchema>;
+export type ReminderId = v.InferOutput<typeof ReminderIdSchema>;
+export type CommandId = v.InferOutput<typeof CommandIdSchema>;
+export type TagId = v.InferOutput<typeof TagIdSchema>;
+export type EntryId = v.InferOutput<typeof EntryIdSchema>;
+export type WorkLogId = v.InferOutput<typeof WorkLogIdSchema>;
+export type SavedQueryId = v.InferOutput<typeof SavedQueryIdSchema>;
+export const parseDutyId = (input: unknown) => parseSchema(DutyIdSchema, input);
+export const parseTimeBlockId = (input: unknown) => parseSchema(TimeBlockIdSchema, input);
+export const parseReminderId = (input: unknown) => parseSchema(ReminderIdSchema, input);
+export const parseCommandId = (input: unknown) => parseSchema(CommandIdSchema, input);
+export const parseTagId = (input: unknown) => parseSchema(TagIdSchema, input);
+export const parseEntryId = (input: unknown) => parseSchema(EntryIdSchema, input);
+export const parseWorkLogId = (input: unknown) => parseSchema(WorkLogIdSchema, input);
+export const parseSavedQueryId = (input: unknown) => parseSchema(SavedQueryIdSchema, input);

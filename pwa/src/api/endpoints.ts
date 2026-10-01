@@ -1,3 +1,5 @@
+import { parseCapabilities, parseTimeResolution, parseLegacyDatesPreview, type Capabilities, type TimeResolution, type LegacyDatesPreview, type ResolveTimeInput, type LegacyDatesPreviewInput } from '@shared/wire/planning';
+import type { Timezone } from '@shared/parse';
 import * as v from 'valibot';
 import type { Task, Project, TaskLink } from '../types';
 import { TaskRowSchema, ProjectRowSchema, TaskLinkRowSchema, parseTaskRow } from '@shared/wire/rows';
@@ -60,6 +62,19 @@ function jsonBody(body: unknown): RequestInit {
 }
 
 export const api = {
+  capabilities(config: ApiConfig, timezone?: Timezone): Promise<ApiResult<Capabilities>> {
+    const query = timezone === undefined ? '' : `?timezone=${encodeURIComponent(timezone)}`;
+    return apiRequest(`/api/v2/capabilities${query}`, {}, config, parseCapabilities);
+  },
+
+  resolveTime(body: ResolveTimeInput, config: ApiConfig): Promise<ApiResult<TimeResolution>> {
+    return apiRequest('/api/v2/resolve-time', jsonBody(body), config, parseTimeResolution);
+  },
+
+  previewLegacyDates(body: LegacyDatesPreviewInput, config: ApiConfig): Promise<ApiResult<LegacyDatesPreview>> {
+    return apiRequest('/api/v2/legacy-dates/preview', jsonBody(body), config, parseLegacyDatesPreview);
+  },
+
   createTask(body: TaskCreateBody, config: ApiConfig): Promise<ApiResult<Task>> {
     return apiRequest('/api/tasks', jsonBody(body), config, parseTaskRow);
   },

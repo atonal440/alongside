@@ -1,3 +1,5 @@
+import { parsePlanningSettings, type PlanningSettings } from '@shared/wire/planning';
+import type { LegacyDueRow } from './domain/temporalFoundation';
 import { nanoid } from 'nanoid';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, ne, inArray, lte, or, asc, desc, gt, and, sql } from 'drizzle-orm';
@@ -616,6 +618,27 @@ export class DB {
 
   async listAllLinks(): Promise<TaskLink[]> {
     return this.drizzle.select().from(taskLinksTable);
+  }
+
+  // Read-only typed planning configuration. Writes land with command receipts.
+  async getPlanningSettings(): Promise<PlanningSettings | null> {
+    const row = await this.d1.prepare('SELECT timezone, buffer_minutes, revision FROM planning_settings WHERE id = 1')
+      .first<{ timezone: string; buffer_minutes: number; revision: number }>();
+    if (!row) return null;
+    const hours = await this.d1.prepare('SELECT weekday, start_time AS start, end_time AS end FROM planning_working_hours WHERE settings_id = 1 ORDER BY weekday, start_time')
+      .all<{ weekday: number; start: string; end: string }>();
+    const parsed = parsePlanningSettings({ timezone: row.timezone, bufferMinutes: row.buffer_minutes, revision: row.revision, workingHours: hours.results });
+    if (!parsed.ok) throw new Error('Stored planning settings failed validation.');
+    return parsed.value;
+  }
+
+  async listLegacyDueDates(after: string | undefined, limit: number): Promise<LegacyDueRow[]> {
+    const rows = await this.d1.prepare('SELECT id, due_date, due_all_day FROM tasks WHERE due_date IS NOT NULL AND id > ? ORDER BY id LIMIT ?')
+      .bind(after ?? '', limit).all<{ id: string; due_date: string; due_all_day: number | null }>();
+    return rows.results.map(row => {
+      if (row.due_all_day !== null && row.due_all_day !== 0 && row.due_all_day !== 1) throw new Error('Invalid stored due_all_day marker.');
+      return { ...row, due_all_day: row.due_all_day === null ? null : row.due_all_day === 1 };
+    });
   }
 
   // ── Preferences ───────────────────────────────────────────────────────────
