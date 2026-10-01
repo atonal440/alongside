@@ -346,3 +346,9 @@ replacement cannot safely be split into independent wipes; staged restore is
 explicitly deferred. No reliable-command/sync/hierarchy capability is enabled.
 Next: Slice 2 receipts, stable IDs, revision/aggregate guards and feed scaffolding;
 then client intent retention/reconciliation and versioned snapshot/import gates.
+
+Slice 2a inherited verification: merged the temporal foundation's complete
+review fixes without rewriting branch history. Full `npm run verify` passes:
+303 Worker / 424 PWA tests, both typechecks, Worker dry-run (752.67 KiB / gzip
+128.81 KiB) and PWA build. Atomic-capacity functionality remains the only Slice 2
+contract enabled here; receipts/revisions/client reconciliation follow separately.
