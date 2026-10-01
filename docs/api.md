@@ -288,3 +288,17 @@ JSON polling endpoint used by the iframe. Returns active tasks.
 Complete a task from within the iframe widget.
 
 **Response:** `{ completed: Task, next?: Task }`
+
+## Atomic capacity errors
+
+Mutation plans, including v1 replacement imports and their dry-runs, are bounded
+at 100 **generated SQL statements**, including guards, logs and wipe effects.
+An oversized plan returns HTTP 413 before any write:
+
+```json
+{"error":"Atomic plan requires 101 SQL statements; the limit is 100.","code":"capacity_exceeded","requiredStatements":101,"limit":100,"retryable":false,"recoveryHint":"Reduce the atomic scope. Replacement imports cannot be split into independent wipes."}
+```
+
+Accepted plans execute in one transactional batch. This temporarily limits
+replacement imports to small snapshots until staged import is designed. Do not
+split a replacement into multiple imports: each import wipes existing data.
