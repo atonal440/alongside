@@ -108,7 +108,9 @@ in declared order. Counts cover the flat `changes` array exactly. For example,
 `[2,1]` can describe completion plus successor followed by an unrelated edit,
 or task deletion plus link tombstone followed by an unrelated edit. Each group
 must independently satisfy the standalone result contract, including complete
-field preservation for project-detached members. Groups retain boundaries even
+field preservation for project-detached members and completed tasks. Completion
+also checks successor inheritance, the next legacy recurrence date, cleared
+session state and server timestamps. Groups retain boundaries even
 when the whole result has more images than input commands.
 
 Receipts from the first mixed-batch release, which lack `changeGroups`, remain
