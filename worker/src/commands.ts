@@ -106,6 +106,7 @@ const commandEnvelope = { ...envelope, properties: { ...envelope.properties,
   commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema, ...taskFieldSchemas, ...linkSchemas, ...deleteSchemas] } },
 } };
 export const COMMAND_TOOLS = [
+  { name: 'export_workspace', description: 'Export version 2 portable data for all current user-owned families from one coherent snapshot, including duties, planning values and historical provenance. Excludes credentials, replay receipts, sync cursors, entity revisions and tombstones. Read-only; version 2 restore follows in a separate rollout increment. Existing v1 exports/imports remain available.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'get_workspace_delta', description: 'Pull up to 500 ordered user-data images after a bootstrap cursor. Omit watermark on the first page; pass its unchanged watermark with the returned cursor on every continuation. Stage all pages and reconcile them together before advancing canonical state. Mid-pull writes wait for the next pull. A sync_reset_required error requires fresh bootstrap and retained-intent rebase.', inputSchema: {
     type: 'object', additionalProperties: false, properties: {
       cursor: { type: 'object', additionalProperties: false, properties: { epoch: { type: 'integer', minimum: 0, maximum: 9007199254740991 }, sequence: { type: 'integer', minimum: 0, maximum: 9007199254740991 } }, required: ['epoch', 'sequence'] },
@@ -152,11 +153,12 @@ export async function callCommandTool(name: string, args: unknown, db: DB): Prom
     if (!key.ok) throw new CommandError(invalidInput(key.error), 400);
     return db.getEntityVersion(key.value);
   }
-  if (name === 'get_workspace_snapshot' || name === 'get_planning_settings' || name === 'export_planning_settings') {
+  if (name === 'export_workspace' || name === 'get_workspace_snapshot' || name === 'get_planning_settings' || name === 'export_planning_settings') {
     if (args === null || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).length) {
       throw new CommandError(invalidInput([{ code: 'invalid_input', path: [], message: 'Expected an empty input object.' }]), 400);
     }
     if (name === 'get_workspace_snapshot') return db.getWorkspaceSnapshot();
+    if (name === 'export_workspace') return db.exportWorkspace();
     const settings = await db.getPlanningSettings();
     if (name === 'get_planning_settings') return { contractVersion: 2, settings };
     const exported = parseSchema(PlanningSettingsExportSchema, { contractVersion: 2, kind: 'planning_settings', exportedAt: new Date().toISOString(),
@@ -173,6 +175,7 @@ export async function callCommandTool(name: string, args: unknown, db: DB): Prom
 }
 export async function handleCommandRequest(request: Request, url: URL, db: DB): Promise<Response | null> {
   const route = [
+    ['GET', '/api/v2/export', 'export_workspace'],
     ['POST', '/api/v2/sync/delta', 'get_workspace_delta'],
     ['GET', '/api/v2/sync/snapshot', 'get_workspace_snapshot'],
     ['POST', '/api/v2/link', 'get_link'],
