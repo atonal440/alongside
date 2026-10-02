@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, afterEach } from 'vitest';
-import { apiRequest, type ApiConfig } from '../../src/api/client';
+import { apiRequest, consumeUpgradeRequired, type ApiConfig } from '../../src/api/client';
 import { installFetchStub } from '../helpers/fetchStub';
 import { makeTask } from '../helpers/fixtures';
 import { parseTaskRow } from '@shared/wire/rows';
@@ -10,6 +10,16 @@ const emptyConfig: ApiConfig = { apiBase: '', authToken: '' };
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('apiRequest', () => {
+  test('announces the client protocol on every request and flags a 426', async () => {
+    const stub = installFetchStub();
+    stub.respondWith({ method: 'POST', path: '/api/tasks' }, { type: 'json', status: 426, body: { error: 'upgrade_required' } });
+    const result = await apiRequest('/api/tasks', { method: 'POST' }, config, parseTaskRow);
+    stub.restore();
+    expect(stub.calls[0]?.headers).toMatchObject({ 'X-Alongside-Client': 'pwa/2' });
+    expect(result).toMatchObject({ kind: 'http', status: 426 });
+    expect(consumeUpgradeRequired()).toBe(true);
+  });
+
   test('ok JSON parses through schema', async () => {
     const stub = installFetchStub();
     stub.respondWith({ method: 'GET', path: '/api/tasks/sync' }, {

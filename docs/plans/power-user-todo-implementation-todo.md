@@ -961,3 +961,14 @@ PR #65 merged as `064a887`. Branch: `ccr-3181a8c6-juz5qg`; review/merge pending.
 e2e:stack` boots a local worker + PWA, runs the browser sync e2e and tears down (~30s locally);
 `checks.yml` gains a parallel `E2E sync` job. Watch its wall time and flakiness; if it slows PRs
 too much, move it to a path filter or merge queue.
+
+### 2026-10-02 — Slice 2f seventh increment: version negotiation and write gate
+
+PR #66 merged as `95e5aec`. Branch: `ccr-3181a8c6-juz5qg`; review/merge pending. PWA requests
+announce `X-Alongside-Client: pwa/2`; the worker refuses browser writes (Origin present) from
+builds announcing nothing or a protocol below `MIN_WRITE_PROTOCOL` with 426 `upgrade_required`;
+capabilities report `clientProtocol` and `deltaSync: true`. The PWA keeps queued work on 426 and
+prompts a reload. Scripts, tools and `/mcp` are not gated. See the
+[API notes](../api.md#client-protocol-and-the-write-gate).
+
+Remaining in 2f: retire the legacy IDB mirror in favour of reading the canonical store directly.

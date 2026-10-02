@@ -2,6 +2,7 @@ export interface RecordedCall {
   path: string;
   method: string;
   body: unknown;
+  headers: Record<string, string>;
 }
 
 type ResponseSpec =
@@ -37,7 +38,7 @@ export function installFetchStub(): FetchStub {
     if (init?.body) {
       try { body = JSON.parse(init.body as string); } catch { body = init.body; }
     }
-    calls.push({ path: url, method, body });
+    calls.push({ path: url, method, body, headers: { ...(init?.headers as Record<string, string> | undefined) } });
 
     const idx = queue.findIndex(q => {
       if (q.matcher.method && q.matcher.method.toUpperCase() !== method.toUpperCase()) return false;

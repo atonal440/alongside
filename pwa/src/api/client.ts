@@ -1,6 +1,12 @@
 import type { ValidationError } from '@shared/parse';
 import type { Result } from '@shared/result';
 import type { ApiResult, ApiErrorBody } from './result';
+import { CLIENT_HEADER, CLIENT_PROTOCOL, UPGRADE_REQUIRED_STATUS, formatClientAnnouncement } from '@shared/wire/clientVersion';
+
+// Set when the server refuses this build as too old. The sync loop reads it once per cycle to tell
+// the user to reload; queued work is kept because 426 is treated as a transient failure.
+let upgradeRequired = false;
+export const consumeUpgradeRequired = (): boolean => { const was = upgradeRequired; upgradeRequired = false; return was; };
 
 export interface ApiConfig {
   apiBase: string;
@@ -25,6 +31,7 @@ export async function apiRequest<T>(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${config.authToken}`,
+        [CLIENT_HEADER]: formatClientAnnouncement('pwa', CLIENT_PROTOCOL),
         ...(init.headers as Record<string, string> | undefined),
       },
     });
@@ -33,6 +40,7 @@ export async function apiRequest<T>(
   }
 
   if (!res.ok) {
+    if (res.status === UPGRADE_REQUIRED_STATUS) upgradeRequired = true;
     let body: ApiErrorBody;
     try {
       const raw = await res.json() as unknown;

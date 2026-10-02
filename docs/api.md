@@ -49,6 +49,26 @@ migration or background delivery occurs through these endpoints.
 
 ---
 
+## Client protocol and the write gate
+
+Browser clients announce themselves with `X-Alongside-Client: <name>/<protocol>` (the PWA sends
+`pwa/2`; the protocol constants live in `shared/wire/clientVersion.ts`). `GET /api/v2/capabilities`
+reports `clientProtocol: {current, minimumWrite}` and `features.deltaSync: true`.
+
+A **write** (any non-`GET/HEAD/OPTIONS` request under `/api/`) that carries an `Origin` header but
+no announcement, a malformed one, or a protocol below `minimumWrite` is refused before it reaches
+a handler with HTTP **426**:
+
+```json
+{"error":"upgrade_required","message":"…","minimumProtocol":2,"clientProtocol":null}
+```
+
+`Origin` is how an older PWA build is recognised (browsers send it on cross-origin writes; those
+builds predate the header). Scripts, curl and other tools send no `Origin` and are not gated, reads
+are never gated, and `/mcp` is unaffected. The PWA treats 426 as transient: queued writes stay
+queued and the user is told to reload. Raise `MIN_WRITE_PROTOCOL` to lock out builds that cannot
+safely write after a future contract change. CORS preflight allows the header.
+
 ## Task Endpoints
 
 ### `GET /api/tasks`

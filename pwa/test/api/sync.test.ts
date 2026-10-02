@@ -10,6 +10,7 @@ import { idbQueueOp, idbGetPendingOps } from '../../src/idb/pendingOps';
 import type { PendingOp } from '../../src/api/pendingOps';
 import { idbGetAllTasks, idbPutTask } from '../../src/idb/tasks';
 import { closeDb } from '../../src/idb/db';
+import { consumeUpgradeRequired } from '../../src/api/client';
 import { idbGetRetainedOps } from '../../src/idb/retainedOps';
 
 const config: ApiConfig = { apiBase: 'http://localhost:8787', authToken: 'tok' };
@@ -298,5 +299,21 @@ describe('flushPendingOps — single flight', () => {
     expect(a.flushed).toBe(1);
     // A later flush starts a fresh run.
     expect(await flushPendingOps(config)).not.toBe(a);
+  });
+});
+
+describe('flushPendingOps — upgrade required', () => {
+  test('a 426 keeps the op queued, halts the flush and is not retained as a rejection', async () => {
+    await idbQueueOp({ op: 'task.update', taskId: 't_abc001', body: { title: 'Mine' } });
+    await idbQueueOp({ op: 'task.complete', taskId: 't_abc002' });
+    const stub = installFetchStub();
+    stub.respondWith({ method: 'PATCH', path: '/api/tasks' }, { type: 'json', status: 426, body: { error: 'upgrade_required' } });
+    const summary = await flushPendingOps(config);
+    stub.restore();
+    expect(summary).toMatchObject({ flushed: 0, halted: true, rejected: [] });
+    expect(await idbGetPendingOps()).toHaveLength(2);
+    expect(await idbGetRetainedOps()).toHaveLength(0);
+    expect(consumeUpgradeRequired()).toBe(true);
+    expect(consumeUpgradeRequired()).toBe(false);
   });
 });
