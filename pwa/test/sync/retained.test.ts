@@ -5,7 +5,8 @@ import { closeDb } from '../../src/idb/db';
 import { idbRetainOp, idbGetRetainedOps } from '../../src/idb/retainedOps';
 import { idbGetPendingOps } from '../../src/idb/pendingOps';
 import { idbGetAllTasks } from '../../src/idb/tasks';
-import { describeRetainedOp, discardRetainedOp, retryRetainedOp } from '../../src/sync/retained';
+import { makeTask } from '../helpers/fixtures';
+import { describeRetainedOp, discardRetainedOp, rebaseView, retryRebased, retryRetainedOp } from '../../src/sync/retained';
 import type { PendingOp } from '../../src/api/pendingOps';
 
 const at = '2026-10-02T09:00:00.000Z';
@@ -51,5 +52,37 @@ describe('retained op actions', () => {
     expect((await idbGetRetainedOps()).map(r => r.op.op)).toEqual(['task.complete']);
     expect(await discardRetainedOp(9999)).toBe(0);
     expect(await idbGetPendingOps()).toEqual([]);
+  });
+});
+
+describe('rebasing a refused edit', () => {
+  const edit = op({ op: 'task.update', taskId: 't_abc001', body: { title: 'Mine', notes: 'same' } });
+  const seed = async () => { await idbRetainOp(edit, { kind: 'rejected', status: 409, message: 'stale' }); return (await idbGetRetainedOps())[0]!; };
+
+  test('diffs intent against the current task and flags no-op fields', async () => {
+    const r = await seed();
+    const view = rebaseView(r, [makeTask({ id: 't_abc001', title: 'Theirs', notes: 'same' })]);
+    expect(view).toEqual({ kind: 'fields', fields: [
+      { field: 'title', intended: 'Mine', current: 'Theirs', differs: true },
+      { field: 'notes', intended: 'same', current: 'same', differs: false },
+    ] });
+  });
+
+  test('reports a vanished target and plain retries for other ops', async () => {
+    const r = await seed();
+    expect(rebaseView(r, [])).toMatchObject({ kind: 'missing' });
+    await idbRetainOp(op({ op: 'link.create', body: { from_task_id: 't_a', to_task_id: 't_b', link_type: 'blocks' } }), { kind: 'rejected', status: 400, message: 'm' });
+    expect(rebaseView((await idbGetRetainedOps())[1]!, [])).toEqual({ kind: 'plain' });
+  });
+
+  test('retrying selected fields queues only those; none selected just discards', async () => {
+    const r = await seed();
+    await retryRebased(r.id!, ['title']);
+    expect(await idbGetPendingOps()).toMatchObject([{ op: 'task.update', taskId: 't_abc001', body: { title: 'Mine' }, attempts: 0 }]);
+    expect(await idbGetRetainedOps()).toEqual([]);
+    const r2 = await seed();
+    await retryRebased(r2.id!, []);
+    expect(await idbGetPendingOps()).toHaveLength(1);
+    expect(await idbGetRetainedOps()).toEqual([]);
   });
 });

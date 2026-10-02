@@ -56,6 +56,52 @@ export async function retryRetainedOp(id: number): Promise<number> {
   return group.length;
 }
 
+export interface FieldDiff {
+  field: string;
+  /** What the refused edit tried to set. */
+  intended: unknown;
+  /** What the task holds now. */
+  current: unknown;
+  /** False when the task already has the intended value, so resubmitting it would be a no-op. */
+  differs: boolean;
+}
+
+export type RebaseView =
+  | { kind: 'fields'; fields: FieldDiff[] }
+  | { kind: 'missing'; message: string }
+  | { kind: 'plain' };
+
+/**
+ * Compare a refused edit with the task as it is now, so the user can keep only the parts
+ * that still make sense. Only task edits have per-field intent; everything else retries as is,
+ * except that an op aimed at a task that no longer exists cannot be retried at all.
+ */
+export function rebaseView(retained: RetainedOp, tasks: readonly Task[]): RebaseView {
+  const op = retained.op;
+  if (op.op === 'task.update' || op.op === 'task.complete' || op.op === 'task.delete') {
+    const task = tasks.find(t => t.id === op.taskId);
+    if (!task) return { kind: 'missing', message: 'That task no longer exists.' };
+    if (op.op !== 'task.update') return { kind: 'plain' };
+    const record = task as unknown as Record<string, unknown>;
+    return {
+      kind: 'fields',
+      fields: Object.entries(op.body).map(([field, intended]) => ({ field, intended, current: record[field] ?? null, differs: (record[field] ?? null) !== (intended ?? null) })),
+    };
+  }
+  return { kind: 'plain' };
+}
+
+/** Re-queue a refused task edit keeping only `fields`; with none selected it is just discarded. */
+export async function retryRebased(id: number, fields: readonly string[]): Promise<number> {
+  const all = await idbGetRetainedOps();
+  const target = all.find(r => r.id === id);
+  if (!target || target.op.op !== 'task.update') return 0;
+  const kept = Object.fromEntries(Object.entries(target.op.body).filter(([field]) => fields.includes(field)));
+  if (Object.keys(kept).length > 0) await idbQueueOp({ op: 'task.update', taskId: target.op.taskId, body: kept });
+  await idbDeleteRetainedOp(id);
+  return 1;
+}
+
 /** Abandon the user's intent for this op (and, for a refused create, its dependents). */
 export async function discardRetainedOp(id: number): Promise<number> {
   const all = await idbGetRetainedOps();

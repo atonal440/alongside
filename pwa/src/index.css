@@ -1670,3 +1670,7 @@ button {
 .retained-op-actions { display: flex; gap: 8px; }
 .retained-op-actions button { background: transparent; border: 0; color: var(--ink-2, var(--ink-3)); cursor: pointer; font-size: 12px; padding: 0; }
 .retained-op-actions button:hover { color: var(--ink); }
+
+.retained-rebase { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.retained-field { align-items: flex-start; color: var(--ink-2, var(--ink-3)); display: flex; gap: 6px; }
+.retained-rebase button { align-self: flex-start; background: transparent; border: 0; color: var(--ink-2, var(--ink-3)); cursor: pointer; font-size: 12px; padding: 0; }

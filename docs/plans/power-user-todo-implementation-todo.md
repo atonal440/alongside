@@ -932,3 +932,13 @@ order) and Discard. Retry is a plain resubmit; no rebase against server values y
 
 Next: rebase/edit of retained conflicts, reducer/UI integration of the overlay, then
 version negotiation and the gate.
+
+### 2026-10-02 — Slice 2f fifth increment: inspectable rebase
+
+PR #62 merged as `fd61652`. Branch: `ccr-3181a8c6-juz5qg`; review/merge pending. "Review"
+on a refused task edit shows current → intended per field and re-queues only the chosen
+fields (`rebaseView`, `retryRebased`); retry is hidden when the target task is gone. See
+[canonical workspace](../pwa/sync/canonical-workspace.md).
+
+Next: reducer/UI integration of the canonical overlay, then version negotiation and the
+capability gate.
