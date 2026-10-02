@@ -3,10 +3,15 @@ name: Checks
 on:
   pull_request:
     branches: [main]
+  # Also run on main so the npm and Playwright caches are saved where every PR can read them
+  # (caches written by a PR run are only visible to that PR).
+  push:
+    branches: [main]
 
 jobs:
   hygiene:
     name: Diff hygiene
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

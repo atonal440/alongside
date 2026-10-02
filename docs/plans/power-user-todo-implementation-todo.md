@@ -972,3 +972,9 @@ prompts a reload. Scripts, tools and `/mcp` are not gated. See the
 [API notes](../api.md#client-protocol-and-the-write-gate).
 
 Remaining in 2f: retire the legacy IDB mirror in favour of reading the canonical store directly.
+
+### 2026-10-02 — CI: run checks on main to seed caches
+
+PR #67 merged as `9e6a0b7`. `checks.yml` now also runs on pushes to `main` (diff hygiene stays
+PR-only) because caches saved by PR runs are invisible to other PRs, so the Playwright browser
+cache never warmed (E2E sync stayed ~78s). Check the next PR's E2E timing against that baseline.
