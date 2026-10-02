@@ -1,6 +1,6 @@
-import { parseWorkspaceDelta, parseWorkspaceSnapshot, type SyncEntity } from '@shared/wire/sync';
+import { parseWorkspaceDelta, parseWorkspaceSnapshot } from '@shared/wire/sync';
 
-export const now = '2026-10-01T10:00:00Z';
+const now = '2026-10-01T10:00:00Z';
 export const config = { apiBase: 'http://localhost:8787', authToken: 'tok' };
 export const taskRow = (id: string, extra: Record<string, unknown> = {}) => ({ id, title: id, notes: null, kickoff_note: null, status: 'pending', task_type: 'action', project_id: null, due_date: null,
   due_all_day: null, recurrence: null, defer_kind: 'none', defer_until: null, focused_until: null, session_log: null, duty_id: null, occurrence_at: null, created_at: now, updated_at: now, ...extra });
@@ -20,4 +20,3 @@ export function page(from: number, cursor: number, watermark: number, hasMore: b
   if (!parsed.ok) throw new Error(`bad delta fixture: ${JSON.stringify(parsed.error)}`);
   return { raw, parsed: parsed.value };
 }
-export type Image = SyncEntity;

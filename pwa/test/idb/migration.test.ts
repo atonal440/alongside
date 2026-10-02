@@ -188,7 +188,7 @@ describe('v4 → v5 migration', () => {
     const db = await getDB();
     expect([...db.objectStoreNames]).toEqual(expect.arrayContaining(['canonical_meta', 'canonical_entities', 'tasks', 'pending_ops']));
     const { idbReadCanonical } = await import('../../src/idb/canonical');
-    expect(await idbReadCanonical()).toBeNull();
+    expect(await idbReadCanonical('http://localhost:8787')).toBeNull();
     expect(await idbGetPendingOps()).toHaveLength(1);
     const keep = await new Promise<unknown>((resolve, reject) => { const req = db.transaction('tasks').objectStore('tasks').get('t_keep01'); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
     expect(keep).toMatchObject({ id: 't_keep01' });

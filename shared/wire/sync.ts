@@ -80,22 +80,39 @@ export const SyncEntitySchema = v.pipe(v.variant('entity', [
   }
 }, 'Sync row must match its retained identity and deletion state.'));
 export type SyncEntity = v.InferOutput<typeof SyncEntitySchema>;
+/**
+ * First live reference that does not resolve to a live entity, or null. Historical
+ * logs and audit deliberately retain references to deleted task/duty IDs.
+ */
+export function findDanglingReference(entities: Iterable<SyncEntity>): string | null {
+  const images = [...entities];
+  const live = new Set(images.filter(image => image.row !== null).map(image => `${image.entity}:${image.key}`));
+  const has = (entity: string, key: string | null) => key === null || live.has(`${entity}:${key}`);
+  for (const image of images) {
+    switch (image.entity) {
+      case 'task':
+        if (image.row === null) break;
+        if (!has('project', image.row.project_id)) return `Task ${image.key} references missing project ${image.row.project_id}.`;
+        if (!has('duty', image.row.duty_id)) return `Task ${image.key} references missing duty ${image.row.duty_id}.`;
+        break;
+      case 'duty':
+        if (image.row !== null && !has('project', image.row.project_id)) return `Duty ${image.key} references missing project ${image.row.project_id}.`;
+        break;
+      case 'link':
+        if (image.row !== null && (!has('task', image.row.from_task_id) || !has('task', image.row.to_task_id))) return `Link ${image.key} references a missing task.`;
+        break;
+      default:
+        break;
+    }
+  }
+  return null;
+}
 export const WorkspaceSnapshotSchema = v.pipe(v.strictObject({
   contractVersion: v.literal(2), cursor: SyncCursorSchema, structuralRevision: RevisionSchema,
   entities: v.array(SyncEntitySchema),
 }), v.check(value => {
   const identities = new Set(value.entities.map(entity => `${entity.entity}:${entity.key}`));
-  if (identities.size !== value.entities.length) return false;
-  const live = new Set(value.entities.filter(entity => entity.row !== null).map(entity => `${entity.entity}:${entity.key}`));
-  return value.entities.every(entity => {
-    if (entity.row === null) return true;
-    if (entity.entity === 'task') return (entity.row.project_id === null || live.has(`project:${entity.row.project_id}`))
-      && (entity.row.duty_id === null || live.has(`duty:${entity.row.duty_id}`));
-    if (entity.entity === 'duty') return entity.row.project_id === null || live.has(`project:${entity.row.project_id}`);
-    if (entity.entity === 'link') return live.has(`task:${entity.row.from_task_id}`) && live.has(`task:${entity.row.to_task_id}`);
-    // Historical logs deliberately retain references to deleted task/duty IDs.
-    return true;
-  });
+  return identities.size === value.entities.length && findDanglingReference(value.entities) === null;
 }, 'Snapshot identities must be unique and live references must resolve.'));
 export type WorkspaceSnapshot = v.InferOutput<typeof WorkspaceSnapshotSchema>;
 export const parseWorkspaceSnapshot = (input: unknown) => parseSchema(WorkspaceSnapshotSchema, input);

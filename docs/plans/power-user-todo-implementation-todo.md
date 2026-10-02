@@ -885,7 +885,7 @@ atomically, falling back to one bootstrap on sync resets or inconsistent pulls. 
 is not yet wired into UI state or the legacy flush; no capability gate changes. See
 [canonical workspace](../pwa/sync/canonical-workspace.md).
 
-Acceptance: full `npm run verify` passes 652 Worker / 704 PWA tests, both
+Acceptance: full `npm run verify` passes 652 Worker / 715 PWA tests, both
 typechecks/builds and Worker dry-run (895.37 KiB / gzip 158.71 KiB). New tests cover
 pure reconciliation (revision regression/equality, discontinuity, moved watermark,
 incomplete/empty pulls, cross-page dangling references, final dangling state),
@@ -895,3 +895,10 @@ resets, non-reset 409/401, inconsistent pull fallback, single-flight).
 
 Next: reducer/UI integration of canonical state with an optimistic command overlay,
 retained conflicts and inspectable rebase, then version negotiation and the gate.
+
+Review follow-up: the connection closes on `versionchange`; logout clears the canonical
+store and entries are tied to the API base; commits compare-and-set the stored cursor
+and abort atomically on any failure; the structural revision is no longer stored;
+unchanged polls reuse a validated in-memory copy; backlogs past the page bound,
+storage errors and unreadable caches have explicit outcomes; `fresh` pulls and
+credential-keyed sharing; the live-reference rule is shared with the snapshot schema.

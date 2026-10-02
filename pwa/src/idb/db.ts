@@ -147,8 +147,12 @@ export function getDB(): Promise<IDBDatabase> {
         }
       }
     };
+    req.onblocked = () => console.warn('[idb] upgrade blocked by another open tab; close it to continue');
     req.onsuccess = () => {
-      _db = req.result;
+      const opened = req.result;
+      // Let a newer tab upgrade the schema instead of blocking on this connection.
+      opened.onversionchange = () => { opened.close(); if (_db === opened) _db = null; };
+      _db = opened;
       resolve(_db);
     };
     req.onerror = () => reject(req.error);

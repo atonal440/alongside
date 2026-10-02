@@ -32,11 +32,11 @@ tombstones or detached member-task images within an atomic capacity bound.
 [Bounded mixed batches](shared/reliable-batches.md) combine creation, edits,
 state/membership and links with final-graph validation and one replay receipt.
 Completion/deletion also compose with grouped successor/cascade effects.
-[Canonical workspace store](pwa/sync/canonical-workspace.md) keeps a parsed IDB copy of server state with atomic staged pulls (not yet wired into the UI). [Workspace snapshot bootstrap](shared/workspace-sync.md) reads all current user-data
+[Workspace snapshot bootstrap](shared/workspace-sync.md) reads all current user-data
 families, retained tombstones and a matching cursor together. Storage triggers
 capture legacy and reliable writes. Bounded delta pulls retain one upper watermark
 across pages and return explicit reset diagnostics. Restore epochs and retained
-offline overlays remain subsequent increments. [Portable workspace export](shared/workspace-portability.md)
+offline overlays remain subsequent increments. The PWA's [canonical workspace store](pwa/sync/canonical-workspace.md) keeps a parsed IDB copy of server state with atomic staged pulls, not yet wired into the UI. [Portable workspace export](shared/workspace-portability.md)
 now includes all current live families and provenance from the same coherent snapshot.
 
 ## Feature highlights

@@ -1,18 +1,21 @@
 import type { Result } from '@shared/result';
 import { err, ok } from '@shared/result';
-import type { Revision, ValidationError } from '@shared/parse';
+import type { ValidationError } from '@shared/parse';
 import type { SyncCursor } from '@shared/wire/syncCursor';
-import type { SyncEntity, WorkspaceDelta, WorkspaceSnapshot } from '@shared/wire/sync';
+import { findDanglingReference, type SyncEntity, type WorkspaceDelta, type WorkspaceSnapshot } from '@shared/wire/sync';
 
 /**
  * The server's last committed workspace as the PWA knows it: one versioned image
  * per entity identity (live rows and retained tombstones) plus the cursor it is
  * current through. It is a pure cache of server state; optimistic local intent
  * stays in the pending-op queue and is overlaid on top by later increments.
+ *
+ * The structural revision is deliberately absent: the delta contract never
+ * refreshes it, so any stored copy would be stale after the first write. Read it
+ * from an entity-version lookup when a structural command needs it.
  */
 export interface CanonicalWorkspace {
   cursor: SyncCursor;
-  structuralRevision: Revision;
   entities: ReadonlyMap<string, SyncEntity>;
 }
 
@@ -22,33 +25,11 @@ function problem(code: string, message: string): ValidationError[] {
   return [{ path: [], code, message }];
 }
 
-/** Live references must resolve in the final state; historical logs/audit may name deleted entities. */
-export function danglingReference(entities: ReadonlyMap<string, SyncEntity>): string | null {
-  const live = (entity: string, key: string | null) => key === null || (entities.get(`${entity}:${key}`)?.row ?? null) !== null;
-  for (const image of entities.values()) {
-    switch (image.entity) {
-      case 'task':
-        if (image.row === null) break;
-        if (!live('project', image.row.project_id)) return `Task ${image.key} references missing project ${image.row.project_id}.`;
-        if (!live('duty', image.row.duty_id)) return `Task ${image.key} references missing duty ${image.row.duty_id}.`;
-        break;
-      case 'duty':
-        if (image.row !== null && !live('project', image.row.project_id)) return `Duty ${image.key} references missing project ${image.row.project_id}.`;
-        break;
-      case 'link':
-        if (image.row !== null && (!live('task', image.row.from_task_id) || !live('task', image.row.to_task_id))) return `Link ${image.key} references a missing task.`;
-        break;
-      default:
-        break;
-    }
-  }
-  return null;
-}
+export const danglingReference = (entities: ReadonlyMap<string, SyncEntity>): string | null => findDanglingReference(entities.values());
 
 export function canonicalFromSnapshot(snapshot: WorkspaceSnapshot): CanonicalWorkspace {
   return {
     cursor: snapshot.cursor,
-    structuralRevision: snapshot.structuralRevision,
     entities: new Map(snapshot.entities.map(image => [entityId(image), image])),
   };
 }
@@ -78,7 +59,7 @@ export function applyStagedPull(base: CanonicalWorkspace, pages: readonly Worksp
   }
   const dangling = danglingReference(entities);
   if (dangling) return err(problem('dangling_reference', dangling));
-  return ok({ cursor, structuralRevision: base.structuralRevision, entities });
+  return ok({ cursor, entities });
 }
 
 /** Images that differ from the base; the incremental IDB commit writes exactly these. */
