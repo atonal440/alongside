@@ -65,11 +65,11 @@ existing cursors and feed history.
 
 ## Rollout boundary
 
-Bootstrap and fixed-watermark delta reads now accompany all-writer capture.
-Restore epoch transitions, canonical IDB state and retained offline intentions
-follow in separate increments.
-`reliableCommands` and `deltaSync` capability gates remain false until the complete
-protocol and PWA rollout are ready. The existing PWA queue still uses legacy sync.
+Bootstrap, fixed-watermark delta reads, all-writer capture, restore epoch transitions, the PWA's
+canonical store and retained offline intent have all shipped (see the
+[PWA canonical workspace](../pwa/sync/canonical-workspace.md)). The `deltaSync` capability is
+true and `GET /api/v2/capabilities` reports `clientProtocol`. `reliableCommands` stays false until
+the PWA's queue sends versioned command envelopes instead of legacy REST writes (plan item 2g).
 
 ## Fixed-watermark delta pulls
 

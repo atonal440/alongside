@@ -93,5 +93,5 @@ advanced) instead of a stale-cursor message; read a snapshot to see what is live
 
 Staged restores for larger workspaces, archival storage of incoming audit and v1
 input with migration diagnostics remain separate increments; the legacy
-`POST /api/import` is unchanged. The PWA does not yet call restore from any UI, and
-canonical IDB/offline reconciliation still follows.
+`POST /api/import` is unchanged. The PWA does not yet call restore from any UI; it
+rebases onto the new epoch through its normal canonical pull.

@@ -1,6 +1,6 @@
 # Power-user todo implementation checklist
 
-Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion merged/deployed. Bounded mixed graph batches merged/deployed. Compound lifecycle batches merged/deployed. Workspace bootstrap, delta and portable export merged/deployed; bounded v2 restore implemented with review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
+Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion merged/deployed. Bounded mixed graph batches merged/deployed. Compound lifecycle batches merged/deployed. Workspace bootstrap, delta, portable export and bounded v2 restore merged/deployed. Slice 2f (canonical store, queue-replay read path, retained intent with rebase, version gate, legacy mirror retired) merged/deployed. One Slice 2 item remains open (2g, below); Slices 3–7 remain unimplemented.
 Updated: 2026-10-02.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
@@ -79,19 +79,41 @@ Depends on slice 1. Goal: make compound work safe before storing rich graphs.
   for operations that promise logical atomicity.
 - [x] Add `preview_changes`/`apply_changes`: diff, IDs/ref map, warnings,
   expected versions, and final-state revalidation. Keep legacy adapters usable.
-- [ ] Add consistent snapshot/delta sync, fixed paginated watermarks, cursor
-  reset/retention contract, and import epoch.
-- [ ] Migrate IDB and parsed pending commands to server snapshot plus optimistic
-  overlay. Retain 409 conflicts/failed intent with inspectable rebase; preserve
-  command ordering and graph references. Retry auth/429/network/5xx as before.
-- [ ] Negotiate client capability/version and block incompatible old writes.
-- [ ] Version export/import scaffolding and retain v1 input. Support bounded
+- [x] Add consistent snapshot/delta sync, fixed paginated watermarks, cursor
+  reset/retention contract, and import epoch. (#55–#58)
+- [x] Migrate IDB to server snapshot plus optimistic overlay (canonical store +
+  queue replay; the legacy mirror is gone). Retain refused/409 intent with an
+  inspectable rebase; preserve command ordering and graph references; retry
+  auth/429/network/5xx as before. (#59–#65, #69. Rebase is field-level for task
+  edits; other retained ops retry as is.)
+- [ ] **2g — send PWA writes as reliable commands.** The queued ops are still
+  legacy REST calls (`POST/PATCH/DELETE /api/tasks…`) with no command ID, client
+  ref or base revision. So a lost response on a queued create can duplicate the
+  task on resend, and a concurrent edit from another device overwrites instead
+  of surfacing a 409 conflict. Move the queue to versioned command envelopes
+  through `apply_changes` (command IDs, expected revisions, stable client IDs),
+  with a PWA queue migration, and then raise `reliableCommands`.
+- [x] Negotiate client capability/version and block incompatible old writes.
+  (#67. REST writes from browsers only, recognised by `Origin`; `/mcp` and
+  scripts are not gated.)
+- [x] Version export/import scaffolding and retain v1 input. Support bounded
   atomic imports first; reject unsafe wipe/chunk plans before modifying data.
-- [ ] Test lost-response replay, ID/hash mismatch, concurrent edits, phantom
-  graph/calendar changes, rollback, tombstones, cursor expiry, and offline rebase.
+  (v2 export #57 and bounded atomic restore #58; the legacy `POST /api/import`
+  stays as the v1 path and is itself one capacity-checked atomic plan with a
+  dry run. Not done: v1 migration diagnostics and staged large restores, which
+  are deferred by design.)
+- [x] Test lost-response replay, ID/hash mismatch, concurrent edits, phantom
+  graph changes, rollback, tombstones and cursor expiry at the worker and
+  sync-client level, and offline rebase of refused edits. Still untested, and
+  tied to 2g: end-to-end concurrent offline edits from two clients, and
+  lost-response replay of a queued PWA create. Calendar phantom checks wait for
+  Slice 4's reservations.
 
 Acceptance: replay cannot duplicate creation; concurrency cannot silently
 overwrite; oversize rejection changes nothing; offline intent survives conflict.
+Status: the server meets all four for reliable commands and restore, and offline
+intent survives refusal in the PWA. The first two do not yet hold for PWA-queued
+writes until 2g.
 
 ### Remaining increments and review gates
 
@@ -113,11 +135,14 @@ the review gate. Merge authorizes the existing production deployment workflow.
   deltas covering all current user data, tombstones/retention/reset policy,
   import epoch and bounded versioned export/import retaining v1 input. Bootstrap/
   all-writer feed, delta and portable export merged/deployed in PRs #55–#57; bounded
-  v2 restore with epoch advance is under review.
+  v2 restore with epoch advance merged/deployed in PR #58.
 - **2f — offline reconciliation and capability gate:** canonical IDB data plus
   ordered optimistic commands, retained conflicts/failed intent and inspectable
-  rebase. Canonical store and staged pulls are the first increment (review pending). Negotiate versions and gate incompatible writers only after the
-  compatible PWA and backend protocol are ready together.
+  rebase. Merged/deployed in PRs #59–#69: canonical store and staged pulls,
+  pending-op overlay, retained intent with retry/discard and field-level rebase,
+  version negotiation with the 426 write gate, the canonical read path and
+  retirement of the legacy mirror, plus a browser sync e2e in CI. The queue
+  itself still sends legacy REST writes; that is 2g.
 
 ## Slice 3 — Tasks, hierarchy, explicit dates, and organization
 
@@ -312,6 +337,8 @@ has not been verified; merging triggers the existing deploy workflow.
 Next task: Slice 2 reliable commands/reconciliation, in deployable sub-slices
 with one branch/PR each. Do not expose task-date writes before receipt, revision,
 atomic-capacity and client conflict-retention guards are ready.
+(Update 2026-10-02: everything but item 2g in the Slice 2 checklist is in place;
+2g should land before Slice 3 exposes task-date writes from the PWA.)
 
 As work lands, append date, commit/PR if applicable, new migrations, gates and
 deployment state, targeted check results, smoke evidence, compatibility limits,
