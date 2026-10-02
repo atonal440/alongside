@@ -5,7 +5,7 @@ It accepts one `planning.set` command: a complete replacement of timezone,
 buffer and weekday working hours. Single task/project creation now extends the protocol; see
 [reliable creation](reliable-creation.md). Date and graph writers remain later
 increments. `get_capabilities.features.reliableCommands` and `deltaSync` therefore
-remain false for the broader task workflow.
+remain false for the broader task workflow. *(Superseded: the PWA queue now sends reliable commands and `reliableCommands`/`deltaSync` are true; see [the PWA command queue](../pwa/sync/canonical-workspace.md#reliable-command-queue).)*
 
 ## Preview and apply
 

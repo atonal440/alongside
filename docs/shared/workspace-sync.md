@@ -68,8 +68,8 @@ existing cursors and feed history.
 Bootstrap, fixed-watermark delta reads, all-writer capture, restore epoch transitions, the PWA's
 canonical store and retained offline intent have all shipped (see the
 [PWA canonical workspace](../pwa/sync/canonical-workspace.md)). The `deltaSync` capability is
-true and `GET /api/v2/capabilities` reports `clientProtocol`. `reliableCommands` stays false until
-the PWA's queue sends versioned command envelopes instead of legacy REST writes (plan item 2g).
+true and `GET /api/v2/capabilities` reports `clientProtocol`. `reliableCommands` is true now that
+the PWA's queue sends versioned command envelopes instead of legacy REST writes.
 
 ## Fixed-watermark delta pulls
 
@@ -108,4 +108,4 @@ a reset diagnostic is information, not a substitute for bootstrap contents.
 
 Delta reads now exist, but versioned restore transitions and canonical/offline
 IDB integration remain separate rollout increments. The broad `deltaSync` and
-`reliableCommands` capability gates remain false until that integration is ready.
+`reliableCommands` capability gates remain false until that integration is ready. *(Superseded: the PWA queue now sends reliable commands and `reliableCommands`/`deltaSync` are true; see [the PWA command queue](../pwa/sync/canonical-workspace.md#reliable-command-queue).)*

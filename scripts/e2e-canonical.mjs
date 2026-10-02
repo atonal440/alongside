@@ -120,6 +120,36 @@ try {
   await waitFor('completion flushed', async () => (await rest('GET', `/api/tasks/${doomed.id}`)).status === 'done');
   step('offline completion survives a reload, then flushes');
 
+  // 4c. A create whose response is lost after the server applied it is replayed, not duplicated.
+  await page.route(`${API}/api/v2/changes`, async route => { await route.fetch(); await route.abort('connectionreset'); }, { times: 1 });
+  await add(name('lost response'));
+  await waitFor('create reached the server', async () => (await serverTasks()).some(t => t.title === name('lost response')));
+  await page.waitForTimeout(500);
+  await open(); // the retry resends the identical command; the server replays its receipt
+  await waitFor('lost-response create still on screen', () => seen(name('lost response')));
+  await page.waitForTimeout(1500);
+  assert.equal((await serverTasks()).filter(t => t.title === name('lost response')).length, 1);
+  step('a create whose response was lost is replayed, not duplicated');
+
+  // 4d. A change made elsewhere while this device was offline is a conflict to review, never a silent overwrite.
+  const contested = await rest('POST', '/api/tasks', { title: name('contested') });
+  await open();
+  await page.getByRole('button', { name: 'All Tasks' }).first().click();
+  await page.getByText(name('contested')).first().click();
+  await setOffline(true);
+  await page.getByRole('button', { name: /Focus this/ }).click();
+  await page.waitForTimeout(500);
+  await rest('PATCH', `/api/tasks/${contested.id}`, { title: name('contested elsewhere') });
+  await setOffline(false);
+  await open();
+  await waitFor('conflict retained', () => seen('Needs attention (1)'));
+  assert.ok(await seen('Focus a task'));
+  assert.equal((await rest('GET', `/api/tasks/${contested.id}`)).focused_until, null);
+  await page.getByText('Retry', { exact: true }).first().click();
+  await waitFor('rebased focus applied', async () => (await rest('GET', `/api/tasks/${contested.id}`)).focused_until !== null);
+  assert.equal((await rest('GET', `/api/tasks/${contested.id}`)).title, name('contested elsewhere'));
+  step('an offline edit that raced another device is retained as a conflict; retry rebases it');
+
   // 5. A task deleted on the server disappears on the next refresh.
   await rest('DELETE', `/api/tasks/${remote.id}`);
   await open();

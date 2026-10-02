@@ -10,13 +10,16 @@ import { parsePendingOp, type PendingOp } from './pendingOps';
  */
 export type RetainedReason =
   | { kind: 'rejected'; status: number; message: string }
-  | { kind: 'dependency'; dependsOn: string; message: string };
+  | { kind: 'dependency'; dependsOn: string; message: string }
+  // The identity moved on since the command was made (another device, or an earlier refused command).
+  | { kind: 'conflict'; status: number; message: string; currentRevision: number | null };
 
 export type RetainedOp = { id?: number; retained_at: string; reason: RetainedReason; op: PendingOp };
 
 const ReasonSchema = v.variant('kind', [
   v.object({ kind: v.literal('rejected'), status: v.number(), message: v.string() }),
   v.object({ kind: v.literal('dependency'), dependsOn: v.string(), message: v.string() }),
+  v.object({ kind: v.literal('conflict'), status: v.number(), message: v.string(), currentRevision: v.nullable(v.number()) }),
 ]);
 const EnvelopeSchema = v.object({ id: v.optional(v.number()), retained_at: v.string(), reason: ReasonSchema, op: v.unknown() });
 

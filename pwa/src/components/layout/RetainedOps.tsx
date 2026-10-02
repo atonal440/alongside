@@ -9,7 +9,7 @@ import { requestSync } from '../../context/actions';
 const show = (value: unknown): string => (value === null || value === undefined ? '(empty)' : String(value));
 
 /** Field-by-field choice for a refused edit: keep only the changes that still make sense. */
-function Rebase({ item, tasks, onDone }: { item: RetainedOp; tasks: readonly Task[]; onDone: () => void }) {
+function Rebase({ item, tasks, apiBase, onDone }: { item: RetainedOp; tasks: readonly Task[]; apiBase: string; onDone: () => void }) {
   const view = rebaseView(item, tasks);
   const [picked, setPicked] = useState<Set<string>>(() => new Set(view.kind === 'fields' ? view.fields.filter(f => f.differs).map(f => f.field) : []));
   if (view.kind !== 'fields') return null;
@@ -22,7 +22,7 @@ function Rebase({ item, tasks, onDone }: { item: RetainedOp; tasks: readonly Tas
           <span>{f.field}: {show(f.current)} → {show(f.intended)}{f.differs ? '' : ' (already set)'}</span>
         </label>
       ))}
-      <button onClick={() => { retryRebased(item.id!, [...picked]).then(() => { onDone(); requestSync(); }, onDone); }}>
+      <button onClick={() => { retryRebased(item.id!, [...picked], apiBase).then(() => { onDone(); requestSync(); }, onDone); }}>
         {picked.size > 0 ? 'Retry selected' : 'Discard all'}
       </button>
     </div>
@@ -52,11 +52,11 @@ export function RetainedOps() {
           <div className="retained-op-reason">{item.reason.message}</div>
           <div className="retained-op-actions">
             {/* A dependent is retried through the refused op it waits on. */}
-            {item.reason.kind === 'rejected' && item.op.op === 'task.update' && <button onClick={() => setReviewing(reviewing === item.id ? null : item.id!)}>Review</button>}
-            {item.reason.kind === 'rejected' && rebaseView(item, state.tasks).kind !== 'missing' && <button onClick={() => act(retryRetainedOp, item.id!, requestSync)}>Retry</button>}
+            {item.reason.kind !== 'dependency' && rebaseView(item, state.tasks).kind === 'fields' && <button onClick={() => setReviewing(reviewing === item.id ? null : item.id!)}>Review</button>}
+            {item.reason.kind !== 'dependency' && rebaseView(item, state.tasks).kind !== 'missing' && <button onClick={() => act(id => retryRetainedOp(id, state.apiBase), item.id!, requestSync)}>Retry</button>}
             <button onClick={() => act(discardRetainedOp, item.id!)}>Discard</button>
           </div>
-          {reviewing === item.id && <Rebase item={item} tasks={state.tasks} onDone={() => { setReviewing(null); refresh(); }} />}
+          {reviewing === item.id && <Rebase item={item} tasks={state.tasks} apiBase={state.apiBase} onDone={() => { setReviewing(null); refresh(); }} />}
         </div>
       ))}
     </div>

@@ -54,3 +54,38 @@ describe('overlayPendingOps', () => {
     expect(del.outcomes[1]).toMatchObject({ kind: 'skipped', reason: 'endpoint_missing' });
   });
 });
+
+describe('overlayPendingOps — reliable commands', () => {
+  const cmd = (intent: Record<string, unknown>) => op({ op: 'command', commandId: 'c_x00001', base: 1, intent });
+
+  it('replays create, edit, schedule, defer and completion intents in order', () => {
+    const view = overlayPendingOps(base(), [
+      cmd({ kind: 'task.create', id: 't_new0001', title: 'New', notes: null, kickoffNote: 'k', taskType: 'plan' }),
+      cmd({ kind: 'task.content', id: 't_new0001', notes: 'details' }),
+      cmd({ kind: 'task.focus', id: 't_aaaaa1', focusedUntil: '2026-10-03T12:00:00Z' }),
+      cmd({ kind: 'task.complete', id: 't_bbbbb1', successorId: null }),
+    ]);
+    expect(view.outcomes.every(o => o.kind === 'applied')).toBe(true);
+    expect(view.tasks.find(t => t.id === 't_new0001')).toMatchObject({ title: 'New', notes: 'details', kickoff_note: 'k', task_type: 'plan' });
+    expect(view.tasks.find(t => t.id === 't_aaaaa1')?.focused_until).toBe('2026-10-03T12:00:00Z');
+    expect(view.tasks.find(t => t.id === 't_bbbbb1')?.status).toBe('done');
+  });
+
+  it('deletes cascade to links; link intents respect existing state and endpoints', () => {
+    const link = { from: 't_aaaaa1', to: 't_bbbbb1', linkType: 'blocks' };
+    const dup = overlayPendingOps(base(), [cmd({ kind: 'link.add', ...link }), cmd({ kind: 'link.remove', ...link }), cmd({ kind: 'link.remove', ...link })]);
+    expect(dup.outcomes.map(o => (o.kind === 'skipped' ? o.reason : 'applied'))).toEqual(['link_exists', 'applied', 'link_missing']);
+    const del = overlayPendingOps(base(), [cmd({ kind: 'task.delete', id: 't_bbbbb1' }), cmd({ kind: 'link.add', ...link, linkType: 'related' })]);
+    expect(del.links).toEqual([]);
+    expect(del.outcomes[1]).toMatchObject({ kind: 'skipped', reason: 'endpoint_missing' });
+  });
+
+  it('skips intents for missing tasks and duplicate creates without blocking later ones', () => {
+    const view = overlayPendingOps(base(), [
+      cmd({ kind: 'task.reopen', id: 't_gone001' }),
+      cmd({ kind: 'task.create', id: 't_aaaaa1', title: 'dup', notes: null, kickoffNote: null, taskType: 'action' }),
+      cmd({ kind: 'task.type', id: 't_aaaaa1', taskType: 'plan' }),
+    ]);
+    expect(view.outcomes.map(o => (o.kind === 'skipped' ? o.reason : 'applied'))).toEqual(['task_missing', 'task_exists', 'applied']);
+  });
+});

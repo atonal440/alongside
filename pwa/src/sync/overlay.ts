@@ -3,6 +3,7 @@ import type { IsoDateTime, NonEmptyString } from '@shared/parse';
 import type { PendingOp } from '../api/pendingOps';
 import { applyComplete, applyUpdate, newLocalTask, type TaskUpdatePatch } from '../domain/taskMutations';
 import type { CanonicalWorkspace } from './canonical';
+import { applyIntentToTask } from './intent';
 
 /**
  * What the user sees: the canonical workspace with the ordered pending-op queue
@@ -83,6 +84,33 @@ export function overlayPendingOps(base: Pick<CanonicalWorkspace, 'entities'>, op
       }
       case 'link.delete':
         return links.delete(linkKey(op.body)) ? { kind: 'applied' } : skipped('link_missing', 'The link is not in the workspace.');
+      case 'command': {
+        const intent = op.intent;
+        if (intent.kind === 'link.add') {
+          if (!tasks.has(intent.from) || !tasks.has(intent.to)) return skipped('endpoint_missing', 'A linked task is not in the workspace.');
+          const link: TaskLink = { from_task_id: intent.from, to_task_id: intent.to, link_type: intent.linkType };
+          if (links.has(linkKey(link))) return skipped('link_exists', 'The link already exists.');
+          links.set(linkKey(link), link);
+          return { kind: 'applied' };
+        }
+        if (intent.kind === 'link.remove') {
+          return links.delete(linkKey({ from_task_id: intent.from, to_task_id: intent.to, link_type: intent.linkType })) ? { kind: 'applied' } : skipped('link_missing', 'The link is not in the workspace.');
+        }
+        if (intent.kind === 'task.create') {
+          if (tasks.has(intent.id)) return skipped('task_exists', `Task ${intent.id} already exists.`);
+          tasks.set(intent.id, { ...newLocalTask(intent.title as NonEmptyString<200>, at, intent.id), notes: intent.notes, kickoff_note: intent.kickoffNote, task_type: intent.taskType } as Task);
+          return { kind: 'applied' };
+        }
+        const task = tasks.get(intent.id);
+        if (!task) return skipped('task_missing', `Task ${intent.id} is not in the workspace.`);
+        if (intent.kind === 'task.delete') {
+          tasks.delete(intent.id);
+          for (const [key, link] of links) if (link.from_task_id === intent.id || link.to_task_id === intent.id) links.delete(key);
+          return { kind: 'applied' };
+        }
+        tasks.set(intent.id, applyIntentToTask(task, intent, at));
+        return { kind: 'applied' };
+      }
     }
   });
 

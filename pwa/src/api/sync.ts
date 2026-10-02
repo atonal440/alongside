@@ -1,6 +1,12 @@
 import { parseTaskRow } from '@shared/wire/rows';
 import type { ApiConfig } from './client';
+import type { ApiResult } from './result';
 import { toRequest, rebindTaskId } from './pendingOps';
+import { api } from './endpoints';
+import { buildEnvelope, type CommandOp } from '../sync/envelope';
+import { parseCommandEnvelope, type CommandEnvelope } from '@shared/wire/commands';
+import { parseProjectId, parseTaskId } from '@shared/parse';
+import type { RetainedReason } from './retainedOps';
 import type { PendingOp } from './pendingOps';
 import { isDurableFailure } from './result';
 import { messageFromResult, referencesTaskId, ATTEMPTS_CAP } from './syncPolicy';
@@ -46,6 +52,72 @@ async function dropDependentOps(taskId: string, dependsOn: string): Promise<Set<
   return skipped;
 }
 
+// The task whose row and the aggregate revision to ask the server about before building a command.
+function lookupTaskId(op: CommandOp): string {
+  const i = op.intent;
+  return i.kind === 'link.add' || i.kind === 'link.remove' ? i.from : i.id;
+}
+
+const synthetic = (status: number, error: string): ApiResult<unknown> => ({ kind: 'http', status, body: { error } });
+
+/**
+ * Send one command. The envelope is built once, from the server's current row and aggregate
+ * revision, and persisted before the first send; every retry (a lost response, a transient failure)
+ * resends exactly that payload under the same command ID, so the server replays the original result
+ * instead of applying it twice. Only a structural-guard conflict, which proves nothing was applied,
+ * discards it and builds again, once.
+ */
+async function sendCommand(initial: CommandOp, config: ApiConfig): Promise<{ result: ApiResult<unknown>; op: CommandOp }> {
+  let op = initial;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    // A previously sent envelope is only trusted if it still parses; anything else is rebuilt.
+    const stored = attempt === 0 && op.sent !== undefined ? parseCommandEnvelope(op.sent) : null;
+    let envelope: CommandEnvelope;
+    if (stored?.ok) {
+      envelope = stored.value;
+    } else {
+      const taskId = parseTaskId(lookupTaskId(op));
+      if (!taskId.ok) return { result: synthetic(422, 'The change refers to an invalid task ID.'), op };
+      const target = await api.entity({ entity: 'task', id: taskId.value }, config);
+      if (target.kind !== 'ok') return { result: target, op };
+      let projectRevision: number | null = null;
+      if (op.intent.kind === 'task.project' && op.intent.projectId) {
+        const projectId = parseProjectId(op.intent.projectId);
+        if (!projectId.ok) return { result: synthetic(422, 'The change refers to an invalid project ID.'), op };
+        const project = await api.entity({ entity: 'project', id: projectId.value }, config);
+        if (project.kind !== 'ok') return { result: project, op };
+        projectRevision = project.value.version?.revision ?? null;
+      }
+      const row = target.value.entity === 'task' ? target.value.row : null;
+      const built = buildEnvelope(op, { row, structuralRevision: target.value.structuralRevision, projectRevision });
+      if (!built.ok) return { result: synthetic(422, built.error[0]?.message ?? 'The change could not be expressed as a command.'), op };
+      envelope = built.value;
+      op = { ...op, sent: envelope };
+      if (op.id !== undefined) await idbPutPendingOp(op);
+    }
+    const result = await api.applyChanges(envelope, config);
+    const code = result.kind === 'http' ? result.body.contractError?.code : undefined;
+    if (code === 'structural_conflict' && attempt === 0) {
+      { const { sent: _discarded, ...rest } = op; op = rest as CommandOp; }
+      if (op.id !== undefined) await idbPutPendingOp(op);
+      continue;
+    }
+    // Two structural conflicts in a row mean the graph is busy, not that the command is wrong.
+    return { result: code === 'structural_conflict' ? { kind: 'network' } : result, op };
+  }
+  return { result: { kind: 'network' }, op };
+}
+
+function retainedReason(result: ApiResult<unknown>): RetainedReason {
+  const message = messageFromResult(result);
+  const status = result.kind === 'http' ? result.status : 0;
+  if (result.kind === 'http' && result.body.contractError?.code === 'revision_conflict') {
+    const current = result.body.contractError.currentEntity?.version?.revision ?? result.body.contractError.currentLink?.version?.revision ?? null;
+    return { kind: 'conflict', status, message, currentRevision: current };
+  }
+  return { kind: 'rejected', status, message };
+}
+
 // Overlapping flushes (StrictMode's doubled effects, a service-worker nudge landing mid-cycle)
 // would each send the same queued op and duplicate creates, so concurrent callers share one run.
 let inFlight: Promise<FlushSummary> | null = null;
@@ -66,7 +138,15 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
     const op = ops[i]!;
     if (op.id !== undefined && skippedIds.has(op.id)) continue;
 
-    const result = await toRequest(op, config);
+    let live: PendingOp = op;
+    let result: ApiResult<unknown>;
+    if (op.op === 'command') {
+      const sent = await sendCommand(op, config);
+      result = sent.result;
+      live = sent.op;
+    } else {
+      result = await toRequest(op, config);
+    }
 
     if (result.kind === 'contract') {
       // 2xx response whose body failed the schema check. The server has already
@@ -129,14 +209,15 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
       const message = messageFromResult(result);
       rejected.push(message);
       // Keep the user's intent with the diagnostics before it leaves the queue.
-      await idbRetainOp(op, { kind: 'rejected', status: result.kind === 'http' ? result.status : 0, message });
+      await idbRetainOp(op, retainedReason(result));
       await idbDeletePendingOp(op.id!);
 
-      if (op.op === 'task.create') {
+      if (op.op === 'task.create' || (op.op === 'command' && op.intent.kind === 'task.create')) {
+        const createdId = op.op === 'task.create' ? op.localId : (op.intent as { id: string }).id;
         // All ops targeting this temp ID will also fail (the task will never
         // exist on the server), so drop them and mark them as skipped in the
         // current loop to avoid sending doomed requests.
-        const newSkipped = await dropDependentOps(op.localId, op.localId);
+        const newSkipped = await dropDependentOps(createdId, createdId);
         for (const id of newSkipped) skippedIds.add(id);
       }
       continue;
@@ -145,7 +226,7 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
     // Transient failure (network, 5xx, unconfigured): increment attempts and
     // stop the flush to preserve op ordering. Later ops are not attempted.
     const newAttempts = op.attempts + 1;
-    await idbPutPendingOp({ ...op, attempts: newAttempts } as PendingOp);
+    await idbPutPendingOp({ ...live, attempts: newAttempts } as PendingOp);
     halted = true;
 
     if (newAttempts >= ATTEMPTS_CAP && !_stuckNoticeFired) {

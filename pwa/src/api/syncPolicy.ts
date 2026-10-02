@@ -31,5 +31,9 @@ export function referencesTaskId(op: PendingOp, taskId: string): boolean {
     case 'link.create':
     case 'link.delete':
       return op.body.from_task_id === taskId || op.body.to_task_id === taskId;
+    case 'command':
+      return op.intent.kind === 'link.add' || op.intent.kind === 'link.remove'
+        ? op.intent.from === taskId || op.intent.to === taskId
+        : op.intent.id === taskId || (op.intent.kind === 'task.complete' && op.intent.successorId === taskId);
   }
 }

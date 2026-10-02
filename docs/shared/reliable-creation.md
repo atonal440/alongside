@@ -10,7 +10,7 @@ work with its original envelope/results.
 This is a narrow transition: creation is reliable, while lifecycle changes, link commands, mixed graph batches, workspace delta sync
 and the optimistic IDB command overlay remain later increments. Broader
 `reliableCommands` and `deltaSync` capability gates stay false, and the existing
-PWA task queue continues using legacy operations.
+PWA task queue continues using legacy operations. *(Superseded: the PWA queue now sends reliable commands and `reliableCommands`/`deltaSync` are true; see [the PWA command queue](../pwa/sync/canonical-workspace.md#reliable-command-queue).)*
 
 ## Read the planning basis together
 

@@ -132,6 +132,39 @@ copying `worker/.dev.vars.example`); it takes about 30 seconds locally. CI runs 
 and installed outside the repo lockfiles and its browser cached; logs and a failure screenshot
 upload as an artifact on failure.
 
+## Reliable command queue
+
+User writes are queued as `command` ops (`pwa/src/sync/intent.ts`), each one server command
+(`/api/v2/changes`) for one identity: a multi-field edit becomes a content command, a type command,
+a schedule command and so on (`intentsFromPatch`, which only emits fields that actually changed). A
+command op stores a stable `commandId`, an `Intent`, and `base`: the revision of the written
+identity it was made against.
+
+- **Guards.** `predictBase` (`base.ts`) computes `base` at queue time: the canonical revision of the
+  identity (live or tombstone, null if unseen) plus one for each queued command that writes it
+  first. A create has `base: null` and uses a client-minted task ID, so nothing is rebound after it
+  flushes. If another device wrote the entity meanwhile the server's revision differs and the
+  command is refused with `revision_conflict`; nothing is silently overwritten.
+- **Sending.** `sendCommand` (`api/sync.ts`) asks the server for the target row and the aggregate
+  (structural) revision just before sending, builds the envelope (`envelope.ts`, which parses it
+  with the shared schema), **persists it on the op before the first send**, and resends exactly
+  that payload under the same command ID on any retry. A lost response is therefore replayed by
+  the server's receipt, never applied twice. Only a `structural_conflict`, which proves nothing
+  was applied, discards the stored envelope and rebuilds once with the new aggregate revision.
+- **Outcomes.** Success drops the op. `revision_conflict` retains it as a `conflict` with the
+  server's current revision; other 4xx are retained as `rejected`; a refused create retains the
+  commands queued on its task as dependencies; 5xx/network/426 keep it queued and halt the flush.
+- **Rebase.** Retrying a retained command makes a new command (new ID, `base` predicted from the
+  workspace as it is now), which is what resolves a conflict. For edits, **Review** works on the
+  intent's fields exactly as it did for legacy edits, and "Retry selected" re-queues only those.
+- **Overlay.** `overlayPendingOps` replays commands with `applyIntentToTask`, mirroring the server
+  transitions (defer clears focus, focus clears defer, completion clears both).
+
+Trade-off: a multi-field edit is several commands, applied or refused independently, because the
+server writes each identity once per command batch and a conflict is easiest to review per family.
+Queued ops from before this change are legacy REST ops; they still flush through the old route and
+are overlaid as before, and nothing creates new ones.
+
 ## Version negotiation
 
 Every PWA request carries `X-Alongside-Client: pwa/<protocol>`. The worker answers a write from a
