@@ -88,10 +88,17 @@ The sidebar's "Needs attention" list (`RetainedOps`) shows each retained op with
 reason. **Retry** (`retryRetainedOp`) re-queues the op with fresh attempts and requests a
 sync; retrying a refused create re-queues it together with the dependents retained
 because of it, in original order, and restores its local placeholder task. **Discard**
-abandons the op (and those dependents). Retry is a plain resubmit, not yet a rebase
-against current server values; an inspectable rebase remains a later increment.
+abandons the op (and those dependents).
+
+**Review** (refused task edits only) is the inspectable rebase. `rebaseView` diffs the
+edit against the task as the app now holds it (already resynced to server truth after the
+rejection): each field shows current → intended, and fields the task already has are
+disabled. `retryRebased` re-queues an edit containing only the checked fields, or just
+discards when none are checked. A target task that no longer exists hides Retry. The
+comparison uses the legacy task list; it moves to the canonical overlay when that is wired
+into UI state. Retry on other ops stays a plain resubmit.
 
 ## Out of scope for this increment
 
-Wiring the canonical store and overlay into reducer/UI state, a rebase that edits retained conflicts against current server state, version negotiation and the capability
+Wiring the canonical store and overlay into reducer/UI state,  version negotiation and the capability
 gate remain later 2f increments. The legacy queue and `syncFromServer` are unchanged.

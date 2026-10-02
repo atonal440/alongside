@@ -8,6 +8,8 @@ import { renderWithState } from '../helpers/renderWithState';
 import { closeDb } from '../../src/idb/db';
 import { idbRetainOp, idbGetRetainedOps } from '../../src/idb/retainedOps';
 import { RetainedOps } from '../../src/components/layout/RetainedOps';
+import { makeTask } from '../helpers/fixtures';
+import { idbGetPendingOps } from '../../src/idb/pendingOps';
 import type { PendingOp } from '../../src/api/pendingOps';
 
 beforeEach(async () => { closeDb(); await resetIdb(); });
@@ -27,5 +29,15 @@ describe('RetainedOps', () => {
     await userEvent.click(screen.getByText('Discard'));
     await waitFor(async () => expect(await idbGetRetainedOps()).toEqual([]));
     await waitFor(() => expect(screen.queryByText('Needs attention (1)')).toBeNull());
+  });
+
+  test('review lets the user keep only chosen fields of a refused edit', async () => {
+    await idbRetainOp({ op: 'task.update', taskId: 't_abc001', body: { title: 'Mine', notes: 'n' }, created_at: '2026-10-02T09:00:00.000Z', attempts: 0 } as PendingOp, { kind: 'rejected', status: 409, message: 'stale' });
+    renderWithState(<RetainedOps />, { tasks: [makeTask({ id: 't_abc001', title: 'Theirs' })] });
+    await userEvent.click(await screen.findByText('Review'));
+    await userEvent.click(screen.getByLabelText(/notes:/));
+    await userEvent.click(screen.getByText('Retry selected'));
+    await waitFor(async () => expect(await idbGetPendingOps()).toMatchObject([{ op: 'task.update', body: { title: 'Mine' } }]));
+    expect(await idbGetRetainedOps()).toEqual([]);
   });
 });
