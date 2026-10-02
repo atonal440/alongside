@@ -21,7 +21,7 @@ export interface OverlayView {
   outcomes: OverlayOutcome[];
 }
 
-const linkKey = (l: Pick<TaskLink, 'from_task_id' | 'to_task_id' | 'link_type'>) => `${l.from_task_id}\n${l.to_task_id}\n${l.link_type}`;
+const linkKey = (l: { from_task_id: string; to_task_id: string; link_type: string }) => `${l.from_task_id}\n${l.to_task_id}\n${l.link_type}`;
 const skipped = (reason: Extract<OverlayOutcome, { kind: 'skipped' }>['reason'], message: string): OverlayOutcome => ({ kind: 'skipped', reason, message });
 
 export function overlayPendingOps(base: CanonicalWorkspace, ops: readonly PendingOp[]): OverlayView {
