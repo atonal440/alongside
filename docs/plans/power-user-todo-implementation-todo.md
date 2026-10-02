@@ -785,3 +785,10 @@ matching cursor metadata instead of aggregating the entire workspace into a D1
 value. Empty workspaces retain a metadata-only result. Regressions and the real
 local Worker verify a 250-task workspace larger than 2 MB. Full verification
 passes 615 Worker / 616 PWA tests and Worker dry-run (871.01 KiB / gzip 152.81 KiB).
+
+Legacy compatibility review follow-up: sync read codecs preserve `snooze_task`
+in historical logs and the previously advertised preference choices without
+rewriting source rows or broadening current write validation. Git history
+confirms the former names/values; pre-014 upgrade and PWA boundary regressions
+cover them. Full verification passes 616 Worker / 622 PWA tests and Worker
+dry-run (871.24 KiB / gzip 152.93 KiB).

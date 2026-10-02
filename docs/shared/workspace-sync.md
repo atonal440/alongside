@@ -27,7 +27,11 @@ rows with repeated cursor metadata, avoiding D1's single-row/value size limit.
 An empty workspace returns one metadata-only query row. It explicitly projects current
 columns so retired upgrade-only columns cannot leak. Both Worker and PWA parse
 all families, identity/deletion agreement, unique identities and live references.
-Historical logs may reference deleted tasks or duties. Credentials, OAuth codes,
+Historical logs may reference deleted tasks or duties and retain the retired
+`snooze_task` tool name. Read codecs preserve previously advertised preference
+values (`sort_by=urgency|manual`, `session_log=manual`,
+`interruption_style=minimal`, `planning_prompt=manual`) without rewriting
+provenance or widening current write validation. Credentials, OAuth codes,
 command receipts and operational metadata are excluded. This is a sync bootstrap,
 not a portable backup or restore input.
 

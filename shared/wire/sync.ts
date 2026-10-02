@@ -17,12 +17,14 @@ const linkKey = v.pipe(v.string(), v.check(value => {
   } catch { return false; }
 }, 'Expected a canonical link identity tuple.'));
 export const PreferenceRowSchema = v.variant('key', [
-  v.strictObject({ key: v.literal('sort_by'), value: v.picklist(['readiness', 'due', 'project']) }),
+  // These read codecs preserve values advertised by retired MCP writers. New
+  // preference writes still use the current domain's stricter choices.
+  v.strictObject({ key: v.literal('sort_by'), value: v.picklist(['readiness', 'due', 'project', 'urgency', 'manual']) }),
   v.strictObject({ key: v.literal('urgency_visibility'), value: v.picklist(['show', 'hide']) }),
   v.strictObject({ key: v.literal('kickoff_nudge'), value: v.picklist(['always', 'missing', 'never']) }),
-  v.strictObject({ key: v.literal('session_log'), value: v.picklist(['ask_at_end', 'auto_generate', 'off']) }),
-  v.strictObject({ key: v.literal('interruption_style'), value: v.picklist(['proactive', 'quiet']) }),
-  v.strictObject({ key: v.literal('planning_prompt'), value: v.picklist(['auto', 'always', 'never']) }),
+  v.strictObject({ key: v.literal('session_log'), value: v.picklist(['ask_at_end', 'auto_generate', 'off', 'manual']) }),
+  v.strictObject({ key: v.literal('interruption_style'), value: v.picklist(['proactive', 'quiet', 'minimal']) }),
+  v.strictObject({ key: v.literal('planning_prompt'), value: v.picklist(['auto', 'always', 'never', 'manual']) }),
   v.strictObject({ key: v.literal('last_session_at'), value: IsoDateTimeSchema }),
 ]);
 export const DutyRowSchema = v.strictObject({
@@ -35,7 +37,7 @@ export const DutyRowSchema = v.strictObject({
   created_at: IsoDateTimeSchema, updated_at: IsoDateTimeSchema,
 });
 export const SyncActionLogRowSchema = v.strictObject({
-  id: positiveId, tool_name: ToolNameSchema, task_id: v.nullable(TaskIdSchema), duty_id: v.nullable(DutyIdSchema),
+  id: positiveId, tool_name: v.union([ToolNameSchema, v.literal('snooze_task')]), task_id: v.nullable(TaskIdSchema), duty_id: v.nullable(DutyIdSchema),
   title: boundedStringSchema(500), detail: v.nullable(boundedStringSchema(2_000)), created_at: IsoDateTimeSchema,
 });
 export const SyncAuditRowSchema = v.strictObject({

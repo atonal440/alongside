@@ -45,3 +45,17 @@ it.each(malformed.map(body=>({body})))('rejects malformed versions, identities, 
  const stub=installFetchStub();stub.respondWith({method:'GET',path:'/api/v2/sync/snapshot'},{type:'json',status:200,body});
  try{expect((await api.workspaceSnapshot(config)).kind).toBe('contract');}finally{stub.restore();}
 });
+
+it.each([
+ {key:'sort_by',value:'urgency'}, {key:'sort_by',value:'manual'},
+ {key:'session_log',value:'manual'}, {key:'interruption_style',value:'minimal'}, {key:'planning_prompt',value:'manual'},
+])('preserves previously advertised preference $key=$value at the PWA read boundary',async row=>{
+ const raw={...body,entities:[{entity:'preference',key:row.key,revision:0,deletedAt:null,row}]};
+ const stub=installFetchStub();stub.respondWith({method:'GET',path:'/api/v2/sync/snapshot'},{type:'json',status:200,body:raw});
+ try{expect(await api.workspaceSnapshot(config)).toEqual({kind:'ok',value:raw});}finally{stub.restore();}
+});
+it('preserves the retired snooze tool name in historical action logs',async()=>{
+ const raw={...body,entities:[{entity:'action_log',key:'3',revision:0,deletedAt:null,row:{id:3,tool_name:'snooze_task',task_id:'t_deleted',duty_id:null,title:'Historical snooze',detail:null,created_at:now}}]};
+ const stub=installFetchStub();stub.respondWith({method:'GET',path:'/api/v2/sync/snapshot'},{type:'json',status:200,body:raw});
+ try{expect(await api.workspaceSnapshot(config)).toEqual({kind:'ok',value:raw});}finally{stub.restore();}
+});

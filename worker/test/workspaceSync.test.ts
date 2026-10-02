@@ -216,3 +216,21 @@ it('returns a parsed metadata-only bootstrap for an empty workspace',async()=>{
  try {expect(await new DB(d1).getWorkspaceSnapshot()).toEqual({contractVersion:2,cursor:{epoch:0,sequence:0},structuralRevision:0,entities:[]});}
  finally{sql.close();}
 });
+
+it('bootstraps previously advertised preferences and retired log names without rewriting provenance',async()=>{
+ const sql=new DatabaseSync(':memory:');
+ try {
+  const dir=fileURLToPath(new URL('../migrations/',import.meta.url));
+  for(const name of readdirSync(dir).filter(name=>name.endsWith('.sql')&&name<'014').sort())sql.exec(readFileSync(`${dir}/${name}`,'utf8'));
+  sql.exec(`INSERT INTO user_preferences VALUES('sort_by','urgency'),('session_log','manual'),('interruption_style','minimal'),('planning_prompt','manual');
+   INSERT INTO action_log(tool_name,task_id,title,created_at) VALUES('snooze_task','t_deleted','Historical snooze','${now}')`);
+  const beforePrefs=sql.prepare('SELECT * FROM user_preferences').all();const beforeLog=sql.prepare('SELECT * FROM action_log').all();
+  sql.exec(readFileSync(`${dir}/014_workspace_sync.sql`,'utf8'));
+  const d1={prepare(query:string){return{async all(){return{success:true,results:sql.prepare(query).all()};}};}} as unknown as D1Database;
+  const snapshot=await new DB(d1).getWorkspaceSnapshot();
+  expect(snapshot.entities.filter(row=>row.entity==='preference').map(row=>row.row)).toEqual([...beforePrefs].sort((a,b)=>(a.key as string).localeCompare(b.key as string)));
+  expect(snapshot.entities.find(row=>row.entity==='action_log')).toMatchObject({revision:0,row:beforeLog[0]});
+  expect(sql.prepare('SELECT * FROM user_preferences').all()).toEqual(beforePrefs);expect(sql.prepare('SELECT * FROM action_log').all()).toEqual(beforeLog);
+  expect(feed(sql)).toEqual([]);
+ }finally{sql.close();}
+});
