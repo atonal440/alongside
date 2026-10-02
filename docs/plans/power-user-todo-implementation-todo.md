@@ -70,14 +70,14 @@ no new parser depends on host-local Date behavior. No background engine enabled.
 
 Depends on slice 1. Goal: make compound work safe before storing rich graphs.
 
-- [ ] Add stable client IDs/client refs, versioned command envelopes, expected
+- [x] Add stable client IDs/client refs, versioned command envelopes, expected
   revisions, command IDs, payload hashes, and replay receipts.
-- [ ] Extend pure `Plan`/SQL apply with in-batch version/aggregate guards,
+- [x] Extend pure `Plan`/SQL apply with in-batch version/aggregate guards,
   receipts, change feed, tombstones, and audit. Every writer advances revisions.
 - [x] Count generated SQL including guards/logs/receipts/side effects before
   apply. Reject oversized atomic plans; eliminate unsafe multi-batch chunking
   for operations that promise logical atomicity.
-- [ ] Add `preview_changes`/`apply_changes`: diff, IDs/ref map, warnings,
+- [x] Add `preview_changes`/`apply_changes`: diff, IDs/ref map, warnings,
   expected versions, and final-state revalidation. Keep legacy adapters usable.
 - [ ] Add consistent snapshot/delta sync, fixed paginated watermarks, cursor
   reset/retention contract, and import epoch.
@@ -108,10 +108,12 @@ the review gate. Merge authorizes the existing production deployment workflow.
   atomic final-state/aggregate validation. Creation-only increment merged/deployed in PR #46. Guarded content edits merged/deployed in PR #47. Guarded state, completion and task fields merged/deployed in PRs #48–#50.
   Reliable links merged/deployed in PR #51. Task/project deletion merged/deployed in PR #52. Bounded mixed creation/edit/
   state/membership/link batches merged/deployed in PR #53. Compound lifecycle
-  batch effects implemented; review/merge pending. Keep the legacy PWA usable.
+  batch effects merged/deployed in PR #54. Keep the legacy PWA usable.
 - **2e — workspace sync and restore:** consistent snapshot and fixed-watermark
   deltas covering all current user data, tombstones/retention/reset policy,
-  import epoch and bounded versioned export/import retaining v1 input.
+  import epoch and bounded versioned export/import retaining v1 input. Bootstrap/
+  all-writer feed merged/deployed in PR #55; delta and portable export increments
+  are under review.
 - **2f — offline reconciliation and capability gate:** canonical IDB data plus
   ordered optimistic commands, retained conflicts/failed intent and inspectable
   rebase. Negotiate versions and gate incompatible writers only after the
@@ -814,4 +816,31 @@ Isolated actual-D1 smoke passes a 2.63 MB page, fixed-watermark continuations,
 next-pull mid-write delivery, REST/MCP parity, explicit reset, limits and gates.
 
 Next: bounded versioned workspace restore/export and import epoch transitions,
+then canonical IDB/retained offline intentions and capability negotiation.
+
+### 2026-10-01 — Slice 2e third increment: coherent portable export
+
+PR #55 merged as `621efa8` after clean automated review of final head `49bf3d2`,
+green checks and all three findings resolved. Deployment 36945020841 succeeded,
+including migration 014 and both Worker/PWA deployments. PR #56 delta received a
+clean review of `9455248`; synchronizing the production base produced `66cd2b7`,
+which is awaiting its final fresh review/CI before a separate merge.
+
+Branch: `codex/power-user-slice-2e-export`; review/merge pending. Adds a version 2
+portable document containing all eight current live user-data families and
+provenance from one coherent read. Strict fields/references preserve current and
+supported historical values; credentials, receipt/replay data, sync/version
+metadata and tombstones are excluded. Existing v1 export/import stays available.
+Version 2 restore follows separately. See
+[workspace portability](../shared/workspace-portability.md).
+
+Acceptance: full `npm run verify` passes 640 Worker / 658 PWA tests, both
+typechecks/builds and Worker dry-run (882.00 KiB / gzip 155.38 KiB). Fresh/upgrade
+cases cover all families, one-read/no-write behavior, historical values/provenance,
+portable key scope, tombstone exclusion, empty data and v1 compatibility. PWA
+rejects unsupported fields, duplicate identities, invalid rows and live references.
+Actual local D1 smoke passes a 2.65 MB export, live-row counts, REST/MCP parity,
+unchanged cursor, strict inputs and the existing v1 export.
+
+Next: bounded restore/preflight, portable archival audit and import epochs,
 then canonical IDB/retained offline intentions and capability negotiation.

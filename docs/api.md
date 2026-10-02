@@ -454,3 +454,13 @@ reason, current cursor and retention floor. Fetch a fresh snapshot and rebase
 retained intent; a diagnostic cursor alone cannot replace lost contents.
 See [fixed-watermark delta pulls](shared/workspace-sync.md#fixed-watermark-delta-pulls).
 Broad capability gates remain false pending restore/offline integration.
+
+### Version 2 workspace export
+
+`GET /api/v2/export` accepts no query parameters and returns a portable document
+with `version:2`, `exported_at`, tasks/projects/links/duties, preference rows,
+planning values and action/command provenance. One coherent snapshot supplies
+all families. Credentials, replay receipts, sync metadata, revisions and tombstones
+are excluded. See [workspace portability](shared/workspace-portability.md) for
+strict row/reference validation and the remaining v2 restore rollout. Existing
+v1 export/import endpoints are unchanged; v2 restore follows separately.
