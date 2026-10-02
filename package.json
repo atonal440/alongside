@@ -6,6 +6,7 @@
     "dev:stop": "node scripts/dev.mjs stop",
     "dev:status": "node scripts/dev.mjs status",
     "e2e": "node scripts/e2e-canonical.mjs",
+    "e2e:stack": "node scripts/e2e-stack.mjs",
     "verify": "npm --prefix worker run typecheck && npm --prefix worker run test && npm --prefix worker run build:dry && npm --prefix pwa run typecheck && npm --prefix pwa run test && npm --prefix pwa run build",
     "skill:zip": "cd .claude/skills && rm -f alongside-daily.zip && zip -rq alongside-daily.zip alongside-daily -x '*.DS_Store' && echo 'Wrote .claude/skills/alongside-daily.zip — upload at claude.ai/settings/capabilities'"
   }
