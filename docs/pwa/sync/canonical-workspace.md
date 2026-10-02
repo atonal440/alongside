@@ -88,7 +88,7 @@ The sidebar's "Needs attention" list (`RetainedOps`) shows each retained op with
 reason. **Retry** (`retryRetainedOp`) re-queues the op with fresh attempts and requests a
 sync; retrying a refused create re-queues it together with the dependents retained
 because of it, in original order, and restores its local placeholder task. **Discard**
-abandons the op (and those dependents). 
+abandons the op (and those dependents).
 
 **Review** (refused task edits only) is the inspectable rebase. `rebaseView` diffs the
 edit against the task as the app now holds it (already resynced to server truth after the
