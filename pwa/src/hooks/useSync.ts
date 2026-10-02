@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useAppState } from './useAppState';
 import { flushPendingOps, syncFromServer } from '../api/sync';
 import { registerSyncCallback } from '../context/actions';
+import { shadowSync } from '../sync/shadow';
 
 export function useSync() {
   const { state, dispatch } = useAppState();
@@ -29,6 +30,10 @@ export function useSync() {
             links: result.links ?? [],
           });
           dispatch({ type: 'SET_SYNC_STATUS', status: flush.halted ? 'offline' : 'online' });
+          // Best-effort shadow of the canonical read path; never affects status or state.
+          void shadowSync(config, { tasks: result.tasks, links: result.links ?? [] }).then(({ divergences }) => {
+            if (divergences.length > 0) console.warn('[sync] canonical view diverges from legacy state', divergences.slice(0, 20));
+          });
         } else {
           dispatch({ type: 'SET_SYNC_STATUS', status: 'offline' });
         }
