@@ -126,6 +126,19 @@ describe.each(['fresh', 'upgrade'] as const)('version 2 workspace restore (%s)',
   });
 });
 
+it('rejects a huge chained link graph by size before any recursive traversal', async () => {
+  const { sql, d1, batches } = sqliteD1(); const db = new DB(d1);
+  try {
+    const base = { id: '', title: 't', notes: null, kickoff_note: null, status: 'pending', task_type: 'action', project_id: null, due_date: null, due_all_day: null, recurrence: null,
+      defer_kind: 'none', defer_until: null, focused_until: null, session_log: null, duty_id: null, occurrence_at: null, created_at: now, updated_at: now };
+    const ids = Array.from({ length: 20000 }, (_, index) => `t_chain${String(index).padStart(6, '0')}`);
+    const doc = { version: 2, exported_at: now, tasks: ids.map(id => ({ ...base, id })), projects: [], duties: [], preferences: [], planning_settings: null, action_log: [], command_audit: [],
+      links: ids.slice(1).map((id, index) => ({ from_task_id: ids[index]!, to_task_id: id, link_type: 'blocks' })) };
+    await expect(db.restoreWorkspace(input(doc, cursorOf(sql), 'preflight') as never)).rejects.toMatchObject({ status: 413, detail: { code: 'capacity_exceeded' } });
+    expect(batches).toEqual([]);
+  } finally { sql.close(); }
+});
+
 describe('restore transports', () => {
   it('exposes strict REST and MCP restore with identical results and no weaker input', async () => {
     const { sql, d1 } = sqliteD1(); const db = new DB(d1);

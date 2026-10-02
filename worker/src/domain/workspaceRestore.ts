@@ -7,6 +7,9 @@ import type { AppError } from './errors';
 import { validationErrorResult } from './errors';
 import { findBlocksCycle } from './link';
 
+const ATOMIC_STATEMENT_LIMIT = 100;
+const RESTORE_FIXED_STATEMENTS = 9; // cursor guard, epoch advance, seven wipe deletes
+
 function problem(path: string[], code: string, message: string): ValidationError {
   return { path, code, message };
 }
@@ -43,6 +46,11 @@ export function planWorkspaceRestore(
   input: WorkspaceRestoreInput, planningRevision: number, now: EventInstant,
 ): Result<Plan, AppError> {
   const doc = input.document;
+  // Every row costs at least one statement, plus the guard, epoch advance and wipe. Reject by size
+  // first so graph traversal never runs on documents that capacity would refuse anyway.
+  const minimumStatements = RESTORE_FIXED_STATEMENTS + doc.tasks.length + doc.projects.length + doc.links.length
+    + doc.duties.length + doc.preferences.length + doc.action_log.length;
+  if (minimumStatements > ATOMIC_STATEMENT_LIMIT) return err({ kind: 'capacity_exceeded', requiredStatements: minimumStatements, limit: ATOMIC_STATEMENT_LIMIT });
   const errors = restoreProblems(doc);
   if (errors.length > 0) return err(validationErrorResult(errors));
   const settings = doc.planning_settings;

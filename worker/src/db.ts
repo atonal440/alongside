@@ -667,17 +667,16 @@ export class DB {
     const clock = parseEventInstant(new Date().toISOString());
     if (!clock.ok) throw new Error('Invalid server clock.');
     const plan = planWorkspaceRestore(input, baseline.planningRevision, clock.value);
+    const tooLarge = (error: AppError): CommandError | null => error.kind !== 'capacity_exceeded' ? null
+      : new CommandError({ code: 'capacity_exceeded', path: ['document'], message: `Atomic restore requires ${error.requiredStatements} SQL statements; the limit is 100.`,
+        retryable: false, requiredStatements: error.requiredStatements, limit: 100, recoveryHint: 'Restore is one atomic replacement and is never split into independent wipes. Reduce the document or wait for staged restore.' }, 413);
     if (!plan.ok) {
       // Command routes map CommandError only; keep semantic problems a 400 with paths.
       if (plan.error.kind === 'validation') throw new CommandError(invalidInput(plan.error.errors), 400);
-      throwAppError(plan.error);
+      throw tooLarge(plan.error) ?? new DomainOperationError(plan.error);
     }
     const capacity = checkPlanCapacity(this.d1, plan.value);
-    if (!capacity.ok) {
-      if (capacity.error.kind === 'capacity_exceeded') throw new CommandError({ code: 'capacity_exceeded', path: ['document'], message: `Atomic restore requires ${capacity.error.requiredStatements} SQL statements; the limit is 100.`,
-        retryable: false, requiredStatements: capacity.error.requiredStatements, limit: 100, recoveryHint: 'Restore is one atomic replacement and is never split into independent wipes. Reduce the document or wait for staged restore.' }, 413);
-      throwAppError(capacity.error);
-    }
+    if (!capacity.ok) throw tooLarge(capacity.error) ?? new DomainOperationError(capacity.error);
     const base = { contractVersion: 2 as const, mode: input.mode, previousCursor: baseline.cursor, replaces: baseline.counts, restores: restoreCounts(input.document),
       notRestored: { command_audit: input.document.command_audit.length }, requiredStatements: capacity.value.requiredStatements, limit: 100 as const, nextEpoch: baseline.cursor.epoch + 1 };
     let resultingCursor = null;
