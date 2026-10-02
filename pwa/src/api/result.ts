@@ -13,7 +13,9 @@ export type ApiResult<T> =
 // 401/403/429 are recoverable: the user can fix credentials or wait out rate
 // limiting. Treating them as durable would permanently drop queued ops (data
 // loss) in cases where sync just needs credentials refreshed.
-const TRANSIENT_4XX = new Set([401, 403, 429]);
+// 426 means this build is too old to write: nothing is wrong with the write itself, so keep it
+// queued until the user reloads into a newer build.
+const TRANSIENT_4XX = new Set([401, 403, 426, 429]);
 
 // Semantic validation rejections (400/404/409/422) and contract violations are
 // durable: retrying cannot succeed without user action to change the write.

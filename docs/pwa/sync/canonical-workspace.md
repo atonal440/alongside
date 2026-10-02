@@ -129,6 +129,15 @@ copying `worker/.dev.vars.example`); it takes about 30 seconds locally. CI runs 
 and installed outside the repo lockfiles and its browser cached; logs and a failure screenshot
 upload as an artifact on failure.
 
+## Version negotiation
+
+Every PWA request carries `X-Alongside-Client: pwa/<protocol>`. The worker answers a write from a
+browser that announces nothing or too old a protocol with 426 `upgrade_required` (see the
+[API notes](../../api.md#client-protocol-and-the-write-gate)). On the client 426 is classified
+transient, so the flush halts with ops kept in the queue (not retained, not dropped), and `useSync`
+toasts once per cycle to reload; `consumeUpgradeRequired` carries the signal out of `apiRequest`.
+Reads still work, so an old tab keeps showing data. The browser e2e probes the gate directly.
+
 ## Out of scope for this increment
 
 Wiring the canonical store and overlay into reducer/UI state,  version negotiation and the capability

@@ -41,6 +41,18 @@ const add = async title => { await page.getByPlaceholder('Search tasks, projects
 const step = label => console.log(`ok - ${label}`);
 
 try {
+  // 0. The protocol gate: a browser-origin write with no (old PWA) or too-old announcement is refused;
+  //    a current announcement and a header-less script are not. Reads are never gated.
+  const probe = (headers, method = 'POST') => fetch(`${API}/api/tasks`, { method, headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json', ...headers }, body: method === 'GET' ? undefined : JSON.stringify({ title: name('gate probe') }) });
+  const old = await probe({ Origin: 'https://old.example' });
+  assert.equal(old.status, 426);
+  assert.equal((await old.json()).error, 'upgrade_required');
+  assert.equal((await probe({ Origin: 'https://old.example', 'X-Alongside-Client': 'pwa/1' })).status, 426);
+  assert.equal((await probe({ Origin: 'https://old.example' }, 'GET')).status, 200);
+  assert.equal((await probe({ Origin: 'https://new.example', 'X-Alongside-Client': 'pwa/2' })).status, 201);
+  assert.equal((await probe({})).status, 201);
+  step('old browser writes get 426; current clients, scripts and reads pass');
+
   // 1. A task created elsewhere (REST) arrives through the canonical pull.
   const remote = await rest('POST', '/api/tasks', { title: name('from server') });
   await open();

@@ -1,5 +1,6 @@
 import { DB } from './db';
 import { handleApiRequest } from './api';
+import { checkClientGate } from './clientGate';
 import { handleMcpRequest } from './mcp';
 import { handleUiRequest } from './ui';
 import { verifySignature } from './sign';
@@ -22,7 +23,7 @@ export default {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Alongside-Client',
         },
       });
     }
@@ -77,7 +78,7 @@ export default {
     let response: Response;
 
     if (url.pathname.startsWith('/api/')) {
-      response = await handleApiRequest(request, url, db);
+      response = checkClientGate(request) ?? await handleApiRequest(request, url, db);
     } else if (url.pathname.startsWith('/mcp')) {
       response = await handleMcpRequest(request, db, env);
     } else if (url.pathname.startsWith('/ui')) {

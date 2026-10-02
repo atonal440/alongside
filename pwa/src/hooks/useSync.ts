@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useAppState } from './useAppState';
 import { flushPendingOps } from '../api/sync';
 import { refreshFromCanonical } from '../sync/refresh';
+import { consumeUpgradeRequired } from '../api/client';
 import { registerSyncCallback } from '../context/actions';
 
 export function useSync() {
@@ -32,6 +33,10 @@ export function useSync() {
           dispatch({ type: 'SET_SYNC_STATUS', status: flush.halted ? 'offline' : 'online' });
         } else {
           dispatch({ type: 'SET_SYNC_STATUS', status: 'offline' });
+        }
+
+        if (consumeUpgradeRequired()) {
+          dispatch({ type: 'SET_TOAST', message: 'A newer version of Alongside is required. Reload the app to update; your changes are kept.' });
         }
 
         // Toast rejection messages after the resync so server truth is already

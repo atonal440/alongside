@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { CLIENT_PROTOCOL, MIN_WRITE_PROTOCOL } from './clientVersion';
 import { SyncResetSchema } from './syncCursor';
 import { EntitySnapshotSchema, LinkSnapshotSchema } from './versions';
 import { EventInstantSchema, LocalDateSchema, LocalTimeSchema, MinuteInstantSchema, PositiveMinutesSchema, RevisionSchema, TaskIdSchema, parseSchema } from '../parse';
@@ -45,7 +46,8 @@ export const ContractErrorSchema = v.strictObject({
 export const CapabilitiesSchema = v.strictObject({
   contractVersion: v.literal(2), serverNow: EventInstantSchema, timezone: TimezoneSchema,
   timezoneSource: TimezoneSourceSchema, setupRequired: v.boolean(),
-  features: v.strictObject({ temporalResolution: v.literal(true), legacyDatePreview: v.literal(true), reliableCommands: v.literal(false), hierarchy: v.literal(false), taskDates: v.literal(false), timeblocks: v.literal(false), reminders: v.literal(false), seriesMaterialization: v.literal(false), deltaSync: v.literal(false) }),
+  features: v.strictObject({ temporalResolution: v.literal(true), legacyDatePreview: v.literal(true), reliableCommands: v.literal(false), hierarchy: v.literal(false), taskDates: v.literal(false), timeblocks: v.literal(false), reminders: v.literal(false), seriesMaterialization: v.literal(false), deltaSync: v.literal(true) }),
+  clientProtocol: v.strictObject({ current: v.literal(CLIENT_PROTOCOL), minimumWrite: v.literal(MIN_WRITE_PROTOCOL) }),
   limits: v.strictObject({ atomicStatements: v.literal(100), maxHierarchyDepth: v.literal(32), maxPreviewRows: v.literal(500), maxDurationMinutes: PositiveMinutesSchema }),
   delivery: v.strictObject({ inbox: v.literal('unavailable'), webPush: v.literal('unconfigured'), backgroundEnabled: v.literal(false) }),
   recurrencePolicy: v.strictObject({ gap: v.literal('skip'), fold: v.literal('earlier') }),

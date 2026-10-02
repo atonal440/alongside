@@ -35,7 +35,7 @@ describe('Slice 1 REST/MCP foundation', () => {
     const { db } = sqliteDb();
     const capabilities = await callFoundationTool('get_capabilities', {}, db, now);
     expect(parseSchema(CapabilitiesSchema, capabilities).ok).toBe(true);
-    expect(capabilities).toMatchObject({ serverNow: now, timezone: 'UTC', timezoneSource: 'fallback_utc', setupRequired: true, features: { reliableCommands: false, taskDates: false, reminders: false }, delivery: { webPush: 'unconfigured', backgroundEnabled: false } });
+    expect(capabilities).toMatchObject({ serverNow: now, timezone: 'UTC', timezoneSource: 'fallback_utc', setupRequired: true, features: { reliableCommands: false, taskDates: false, reminders: false, deltaSync: true }, clientProtocol: { current: 2, minimumWrite: 2 }, delivery: { webPush: 'unconfigured', backgroundEnabled: false } });
   });
   it('reads and validates stored settings and supports explicit request zones', async () => {
     const { db, sql } = sqliteDb();

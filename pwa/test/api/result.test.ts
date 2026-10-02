@@ -21,6 +21,7 @@ describe('isDurableFailure', () => {
   // Recoverable 4xx: credentials can be fixed, rate limit can be waited out
   test('false for 401 (recoverable)', () => { expect(isDurableFailure(http(401))).toBe(false); });
   test('false for 403 (recoverable)', () => { expect(isDurableFailure(http(403))).toBe(false); });
+  test('false for 426 (upgrade required keeps the write queued)', () => { expect(isDurableFailure(http(426))).toBe(false); });
   test('false for 429 (rate limit)', () => { expect(isDurableFailure(http(429))).toBe(false); });
 });
 
@@ -38,6 +39,7 @@ describe('isTransientFailure', () => {
   // Recoverable 4xx treated as transient to preserve queued ops
   test('true for 401 (recoverable)', () => { expect(isTransientFailure(http(401))).toBe(true); });
   test('true for 403 (recoverable)', () => { expect(isTransientFailure(http(403))).toBe(true); });
+  test('true for 426 (upgrade required)', () => { expect(isTransientFailure(http(426))).toBe(true); });
   test('true for 429 (rate limit)', () => { expect(isTransientFailure(http(429))).toBe(true); });
 });
 
