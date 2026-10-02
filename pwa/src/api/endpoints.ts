@@ -1,5 +1,5 @@
 import { parseFoundationErrorEnvelope, parseCapabilities, parseTimeResolution, parseLegacyDatesPreview, type Capabilities, type TimeResolution, type LegacyDatesPreview, type ResolveTimeInput, type LegacyDatesPreviewInput } from '@shared/wire/planning';
-import { parseWorkspaceSnapshot, type WorkspaceSnapshot } from '@shared/wire/sync';
+import { parseWorkspaceSnapshot, parseWorkspaceDelta, type WorkspaceSnapshot, type WorkspaceDelta, type WorkspaceDeltaInput } from '@shared/wire/sync';
 import { parseChangesPreview, parseChangesResult, parsePlanningSettingsExport, parsePlanningSettingsResponse, type ChangesPreview, type ChangesResult, type CommandEnvelope, type PlanningSettingsExport, type PlanningSettingsResponse } from '@shared/wire/commands';
 import type { Timezone } from '@shared/parse';
 import { parseEntityVersionResponse, parseEntitySnapshot, parseLinkSnapshot, type LinkKey, type LinkSnapshot, type EntityReadKey, type EntitySnapshot, type EntityKey, type EntityVersionResponse } from '@shared/wire/versions';
@@ -88,6 +88,17 @@ function parseFoundationError(raw: unknown): Result<ApiErrorBody, ValidationErro
 }
 
 export const api = {
+  workspaceDelta(body: WorkspaceDeltaInput, config: ApiConfig): Promise<ApiResult<WorkspaceDelta>> {
+    return apiRequest('/api/v2/sync/delta', jsonBody(body), config, raw => {
+      const parsed = parseWorkspaceDelta(raw);
+      if (!parsed.ok) return parsed;
+      const result = parsed.value;
+      if (result.from.epoch !== body.cursor.epoch || result.from.sequence !== body.cursor.sequence
+        || (body.watermark !== undefined && (result.watermark.epoch !== body.watermark.epoch || result.watermark.sequence !== body.watermark.sequence))
+        || result.changes.length > (body.limit ?? 100)) return { ok: false, error: [{ code: 'sync_response_mismatch', path: [], message: 'Delta response does not match the requested cursor, watermark or limit.' }] };
+      return parsed;
+    }, parseFoundationError);
+  },
   workspaceSnapshot(config: ApiConfig): Promise<ApiResult<WorkspaceSnapshot>> {
     return apiRequest('/api/v2/sync/snapshot', {}, config, parseWorkspaceSnapshot, parseFoundationError);
   },

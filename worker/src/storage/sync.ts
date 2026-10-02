@@ -1,4 +1,6 @@
-import { parseWorkspaceSnapshot, type WorkspaceSnapshot } from '@shared/wire/sync';
+import { parseWorkspaceSnapshot, parseWorkspaceDelta, parseSyncCursor, type WorkspaceSnapshot, type WorkspaceDelta, type WorkspaceDeltaInput } from '@shared/wire/sync';
+import { parseRevision } from '@shared/parse';
+import { CommandError } from '../domain/commands';
 
 // Fixed identifiers only, never caller-provided SQL. Keep explicit row columns
 // so obsolete upgrade-only columns (tasks.session_id) cannot cross the boundary.
@@ -45,5 +47,50 @@ export async function readWorkspaceSnapshot(db: D1Database): Promise<WorkspaceSn
     cursor: { epoch: metadata.epoch, sequence: metadata.watermark },
     structuralRevision: metadata.structural_revision, entities });
   if (!parsed.ok) throw new Error(`Workspace snapshot failed validation: ${JSON.stringify(parsed.error)}`);
+  return parsed.value;
+}
+
+// Cursor metadata and the bounded historical images share this SQL snapshot.
+// A continuation uses the first page's upper watermark, never today's rows.
+const deltaQuery = `SELECT sync_metadata.epoch,sync_metadata.watermark,sync_metadata.retention_floor,
+  history.seq,history.entity,history.entity_key,history.revision,history.deleted_at,history.row_json
+  FROM sync_metadata LEFT JOIN (
+    SELECT seq,entity,entity_key,revision,deleted_at,row_json FROM sync_feed
+    WHERE epoch=(SELECT epoch FROM sync_metadata WHERE id=1) AND seq > ?
+      AND seq <= COALESCE(?,(SELECT watermark FROM sync_metadata WHERE id=1))
+    ORDER BY seq LIMIT ?
+  ) AS history ON 1 WHERE sync_metadata.id=1 ORDER BY history.seq`;
+
+export async function readWorkspaceDelta(db: D1Database, input: WorkspaceDeltaInput): Promise<WorkspaceDelta> {
+  const limit = input.limit ?? 100;
+  const result = await db.prepare(deltaQuery).bind(input.cursor.sequence, input.watermark?.sequence ?? null, limit + 1)
+    .all<{ epoch: number; watermark: number; retention_floor: number;
+      seq: number | null; entity: string | null; entity_key: string | null; revision: number | null; deleted_at: string | null; row_json: string | null }>();
+  const metadata = result.results[0];
+  if (!metadata) throw new Error('Workspace sync metadata is missing.');
+  const current = parseSyncCursor({ epoch: metadata.epoch, sequence: metadata.watermark });
+  const floor = parseRevision(metadata.retention_floor);
+  if (!current.ok || !floor.ok) throw new Error('Workspace sync metadata failed validation.');
+  const reason = input.cursor.epoch !== current.value.epoch ? 'epoch_changed'
+    : input.cursor.sequence < floor.value ? 'history_expired'
+    : input.cursor.sequence > current.value.sequence ? 'cursor_ahead'
+    : input.watermark !== undefined && input.watermark.sequence > current.value.sequence ? 'watermark_ahead' : null;
+  if (reason !== null) throw new CommandError({ code: 'sync_reset_required', path: ['cursor'],
+    message: 'This sync cursor cannot resume against the current workspace history.', retryable: false,
+    recoveryHint: 'Discard staged delta pages, fetch a fresh workspace snapshot and rebase retained local intentions before writing.',
+    syncReset: { reason, currentCursor: current.value, retentionFloor: floor.value },
+  }, 409);
+  const watermark = input.watermark ?? current.value;
+  const raw = result.results.filter(row => row.seq !== null);
+  const hasMore = raw.length > limit;
+  const changes = raw.slice(0, limit).map(row => ({ sequence: row.seq, entity: {
+    entity: row.entity, key: row.entity_key, revision: row.revision, deletedAt: row.deleted_at,
+    row: row.row_json === null ? null : JSON.parse(row.row_json),
+  } }));
+  // Validate every image and the sequence relationship before using a cursor.
+  const sequence = hasMore ? changes.at(-1)?.sequence : watermark.sequence;
+  const parsed = parseWorkspaceDelta({ contractVersion: 2, from: input.cursor, watermark,
+    cursor: { epoch: current.value.epoch, sequence }, hasMore, changes });
+  if (!parsed.ok) throw new Error(`Workspace delta failed validation: ${JSON.stringify(parsed.error)}`);
   return parsed.value;
 }
