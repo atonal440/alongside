@@ -1,4 +1,4 @@
-import type { ActionLog, Project, Task, TaskLink } from '@shared/types';
+import type { ActionLog, Duty, Project, Task, TaskLink } from '@shared/types';
 import type { LinkType, ProjectId, TaskId } from '../parse';
 import type { PreferenceEntry } from './preference';
 import type { CommandId, EventInstant, Revision } from '@shared/parse';
@@ -20,6 +20,7 @@ export type PreCheck =
   | { kind: 'planning.revision'; expected: Revision | null }
   | { kind: 'entity.revision'; key: EntityKey; expected: Revision | null }
   | { kind: 'workspace.structural_revision'; expected: Revision }
+  | { kind: 'sync.cursor'; epoch: number; sequence: number }
   | { kind: 'custom'; description: string };
 
 export type Op =
@@ -40,7 +41,14 @@ export type Op =
   | { kind: 'command.audit'; commandId: CommandId; actor: 'user' | 'llm' | 'import'; reason: string | null; result: ChangesResult }
   | { kind: 'command.feed'; result: ChangesResult }
   | { kind: 'graph.assert_acyclic'; from: TaskId; to: TaskId }
-  | { kind: 'wipe' };
+  | { kind: 'wipe' }
+  // Version 2 restore: whole-workspace replacement that preserves every portable column.
+  | { kind: 'sync.epoch_advance' }
+  | { kind: 'workspace.wipe' }
+  | { kind: 'duty.restore'; row: Duty }
+  | { kind: 'task.restore'; row: TaskRow }
+  | { kind: 'pref.restore'; key: string; value: string }
+  | { kind: 'log.restore'; entry: ActionLogRow };
 
 export interface Plan {
   ops: Op[];

@@ -40,10 +40,58 @@ or portable row fields are rejected instead of silently discarding future user
 data. The source snapshot returns separate D1 rows, so aggregate workspace size
 does not hit D1's individual-row/value limit.
 
-## Rollout boundary
+## Restoring a version 2 export
 
-This increment provides coherent full-data export. Version 2 restore, semantic
-import preflight, archival audit storage, import-epoch transitions and retained
-local-intent reconciliation follow in subsequent increments. Do not send a v2
-export to the legacy import endpoint. Existing v1 export/import remains available;
-the next restore increment will retain v1 input with migration diagnostics.
+`POST /api/v2/restore`, MCP `restore_workspace` and PWA `api.restoreWorkspace`
+take `{contractVersion:2, mode, expectedCursor, document}`, where `document` is an
+unmodified export and `expectedCursor` is the `{epoch, sequence}` from a current
+snapshot (or `previousCursor` of an earlier preflight). Restore **replaces** the
+workspace: every task, project, link, duty, preference, planning setting and action
+log row is deleted and the document's rows are inserted.
+
+Use it in two steps with identical input:
+
+1. `mode:"preflight"` parses the document, runs the semantic checks (duty
+   occurrence pairing/uniqueness, no self-links, acyclic `blocks` graph), builds the
+   real SQL plan and counts it. It returns what would be replaced and restored and
+   writes nothing.
+2. `mode:"apply"` runs the same plan as one atomic D1 batch.
+
+The batch starts with a guard that aborts everything unless the sync metadata is
+still at `expectedCursor`, so a writer that commits after preflight (or between the
+Worker's read and the batch) produces a 409 `restore_cursor_conflict` and changes
+nothing; re-export, review and preflight again. Next it advances the **epoch** by one,
+then wipes, then inserts in dependency order. Because the epoch advances before any
+row write, all restore feed events belong to the new epoch: every cursor from the
+old epoch gets `sync_reset_required`/`epoch_changed` and must re-bootstrap, and
+deleted-then-restored identities keep monotonic revisions. The result's
+`resultingCursor` is the new epoch with the pre-restore watermark as its sequence: a
+resume point that replays the restore events, cannot skip later writers and is never
+below the retention floor. Bootstrap for a cheaper snapshot.
+
+Results contain `previousCursor`, `resultingCursor` (null for preflight), `nextEpoch`,
+`replaces` and `restores` per-family counts, `notRestored`, `requiredStatements`
+and `limit:100`. The PWA parser rejects a response whose mode, cursor, restored
+counts or audit count differ from the request.
+
+**Boundaries.** A restore is one atomic batch, so it is bounded by the 100-statement
+limit (the cursor guard, epoch advance and seven wipe statements use 9, planning
+settings use two plus one per working-hours interval, leaving roughly 90 rows). Larger documents fail with 413 `capacity_exceeded` before any write; they
+are never split into wipe-then-chunk. Incoming `command_audit` is validated and
+counted in `notRestored.command_audit` but not stored: audit rows reference replay
+receipts, which stay local and are not portable. Existing receipts, audit, OAuth
+state, entity revisions and tombstones are untouched, so old command IDs keep their
+original results. Planning settings get revision `previous + 1` and fresh timestamps; a document
+without settings leaves none, so a later first write restarts at revision 1. The
+epoch change forces clients to rebase before any retained revision could matter.
+
+Restore keeps every exported row as stored: it checks references, duty occurrence
+pairing and an acyclic `blocks` graph, but not per-task domain rules, and it keeps
+legacy `related` self-links, so any export round-trips. If an `apply` response is lost
+after the batch commits, a retry returns 409 `restore_outcome_unknown` (the epoch
+advanced) instead of a stale-cursor message; read a snapshot to see what is live.
+
+Staged restores for larger workspaces, archival storage of incoming audit and v1
+input with migration diagnostics remain separate increments; the legacy
+`POST /api/import` is unchanged. The PWA does not yet call restore from any UI, and
+canonical IDB/offline reconciliation still follows.

@@ -2,6 +2,7 @@ import { parseSchema } from '@shared/parse';
 import { CommandEnvelopeSchema, PlanningSettingsExportSchema } from '@shared/wire/commands';
 import { parseEntityKey, parseEntityReadKey, parseLinkKey } from '@shared/wire/versions';
 import { parseWorkspaceDeltaInput } from '@shared/wire/sync';
+import { parseWorkspaceRestoreInput } from '@shared/wire/workspaceRestore';
 import { CommandError } from './domain/commands';
 import { invalidInput } from './domain/temporalFoundation';
 import { readJson } from './parse/request';
@@ -106,7 +107,14 @@ const commandEnvelope = { ...envelope, properties: { ...envelope.properties,
   commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema, ...taskFieldSchemas, ...linkSchemas, ...deleteSchemas] } },
 } };
 export const COMMAND_TOOLS = [
-  { name: 'export_workspace', description: 'Export version 2 portable data for all current user-owned families from one coherent snapshot, including duties, planning values and historical provenance. Excludes credentials, replay receipts, sync cursors, entity revisions and tombstones. Read-only; version 2 restore follows in a separate rollout increment. Existing v1 exports/imports remain available.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
+  { name: 'export_workspace', description: 'Export version 2 portable data for all current user-owned families from one coherent snapshot, including duties, planning values and historical provenance. Excludes credentials, replay receipts, sync cursors, entity revisions and tombstones. Read-only; restore it with restore_workspace. Existing v1 exports/imports remain available.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
+  { name: 'restore_workspace', description: 'Replace the whole workspace from a version 2 export document in one atomic batch, advancing the sync epoch so every client must re-bootstrap. Requires the expectedCursor from a current get_workspace_snapshot (an export carries none); any intervening write conflicts and changes nothing. mode "preflight" validates, counts and reports without writing; use it first, then repeat identical input with mode "apply". Restores tasks, projects, links, duties, preferences, planning settings and action log; incoming command_audit is validated but not restored, and receipts/credentials are untouched. Blocks cycles and duplicate duty occurrences are rejected; documents needing more than 100 SQL statements are rejected with capacity_exceeded, never split. Destructive: it deletes all current user data.', inputSchema: {
+    type: 'object', additionalProperties: false, properties: {
+      contractVersion: { const: 2 }, mode: { enum: ['preflight', 'apply'] },
+      expectedCursor: { type: 'object', additionalProperties: false, properties: { epoch: { type: 'integer', minimum: 0, maximum: 9007199254740991 }, sequence: { type: 'integer', minimum: 0, maximum: 9007199254740991 } }, required: ['epoch', 'sequence'] },
+      document: { type: 'object', description: 'A complete version 2 export_workspace document, unmodified.', properties: { version: { const: 2 } }, required: ['version'] },
+    }, required: ['contractVersion', 'mode', 'expectedCursor', 'document'],
+  } },
   { name: 'get_workspace_delta', description: 'Pull up to 500 ordered user-data images after a bootstrap cursor. Omit watermark on the first page; pass its unchanged watermark with the returned cursor on every continuation. Stage all pages and reconcile them together before advancing canonical state. Mid-pull writes wait for the next pull. A sync_reset_required error requires fresh bootstrap and retained-intent rebase.', inputSchema: {
     type: 'object', additionalProperties: false, properties: {
       cursor: { type: 'object', additionalProperties: false, properties: { epoch: { type: 'integer', minimum: 0, maximum: 9007199254740991 }, sequence: { type: 'integer', minimum: 0, maximum: 9007199254740991 } }, required: ['epoch', 'sequence'] },
@@ -137,6 +145,11 @@ export async function callCommandTool(name: string, args: unknown, db: DB): Prom
     const input = parseWorkspaceDeltaInput(args);
     if (!input.ok) throw new CommandError(invalidInput(input.error), 400);
     return db.getWorkspaceDelta(input.value);
+  }
+  if (name === 'restore_workspace') {
+    const input = parseWorkspaceRestoreInput(args);
+    if (!input.ok) throw new CommandError(invalidInput(input.error), 400);
+    return db.restoreWorkspace(input.value);
   }
   if (name === 'get_link') {
     const key = parseLinkKey(args);
@@ -176,6 +189,7 @@ export async function callCommandTool(name: string, args: unknown, db: DB): Prom
 export async function handleCommandRequest(request: Request, url: URL, db: DB): Promise<Response | null> {
   const route = [
     ['GET', '/api/v2/export', 'export_workspace'],
+    ['POST', '/api/v2/restore', 'restore_workspace'],
     ['POST', '/api/v2/sync/delta', 'get_workspace_delta'],
     ['GET', '/api/v2/sync/snapshot', 'get_workspace_snapshot'],
     ['POST', '/api/v2/link', 'get_link'],

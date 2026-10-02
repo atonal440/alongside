@@ -524,6 +524,16 @@ diagnostics and requires fresh bootstrap plus retained-intent rebase. See
 Accepts only `{}` and returns a coherent version 2 portable export of every
 current user-data family, including duties, planning values and historical
 provenance. Excludes credentials, replay receipts, sync cursors/revisions and
-tombstones. Read-only; v2 restore follows separately. See
+tombstones. Read-only; restore with `restore_workspace`. See
 [workspace portability](shared/workspace-portability.md) for exact fields and
 legacy compatibility.
+
+### `restore_workspace`
+
+Accepts `{contractVersion:2, mode, expectedCursor, document}` and replaces the
+whole workspace from a version 2 export. Always run `mode:"preflight"` first (no
+writes), then repeat identical input with `mode:"apply"`. Apply is one atomic batch
+guarded by `expectedCursor`, advances the sync epoch so clients must re-bootstrap,
+and fails with `restore_cursor_conflict` (409) or `capacity_exceeded` (413) without
+changing data. Incoming `command_audit` is validated but not restored. Destructive;
+see [workspace portability](shared/workspace-portability.md#restoring-a-version-2-export).

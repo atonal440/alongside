@@ -56,6 +56,13 @@ const TASK_INSERT_COLUMNS = [
   'focused_until',
 ] as const;
 
+const TASK_RESTORE_COLUMNS = [...TASK_INSERT_COLUMNS, 'duty_id', 'occurrence_at'] as const;
+const DUTY_RESTORE_COLUMNS = [
+  'id', 'title', 'notes', 'kickoff_note', 'task_type', 'project_id', 'rrule', 'dtstart', 'timezone', 'status',
+  'catch_up', 'last_spawned_at', 'next_occurrence_at', 'created_at', 'updated_at',
+] as const;
+const LOG_RESTORE_COLUMNS = ['id', 'tool_name', 'task_id', 'duty_id', 'title', 'detail', 'created_at'] as const;
+
 const TASK_UPDATE_COLUMNS = [
   'title',
   'notes',
@@ -212,6 +219,12 @@ async function runPreCheck(d1: D1Database, check: PreCheck): Promise<Result<void
         return err(storageError('Failed to read planning revision.', cause));
       }
     }
+    case 'sync.cursor': {
+      try {
+        const row = await d1.prepare('SELECT epoch, watermark FROM sync_metadata WHERE id=1').first<{ epoch: number; watermark: number }>();
+        return row?.epoch === check.epoch && row.watermark === check.sequence ? ok(undefined) : err({ kind: 'conflict', message: 'Workspace changed since the supplied sync cursor.' });
+      } catch (cause) { return err(storageError('Failed to read sync cursor.', cause)); }
+    }
     case 'custom':
       return err({
         kind: 'invariant_violation',
@@ -255,6 +268,10 @@ function bindPreCheckGuard(d1: D1Database, check: PreCheck): PlannedStatement[] 
       const statement = d1.prepare(`INSERT INTO planning_settings (id,timezone,created_at,updated_at) SELECT 1,NULL,'','' WHERE ${condition}`);
       return [guardedStatement(check.expected === null ? statement : statement.bind(check.expected))];
     }
+    case 'sync.cursor':
+      // Violates the singleton CHECK (and trigger) inside the batch if any writer advanced the feed.
+      return [guardedStatement(d1.prepare(`INSERT INTO sync_metadata(id) SELECT 2
+        WHERE NOT EXISTS (SELECT 1 FROM sync_metadata WHERE id=1 AND epoch=? AND watermark=?)`).bind(check.epoch, check.sequence))];
     case 'custom':
       return [];
     default:
@@ -396,6 +413,21 @@ function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
             .bind(op.entry.tool_name, op.entry.task_id, op.entry.title, op.entry.detail, op.entry.created_at),
         ),
       ];
+    case 'sync.epoch_advance':
+      return [guardedStatement(d1.prepare('UPDATE sync_metadata SET epoch=epoch+1 WHERE id=1'))];
+    case 'workspace.wipe':
+      // Dependency order: tasks reference duties, duties/tasks reference projects. Receipts,
+      // audit, credentials and sync/version ledgers are deliberately retained.
+      return ['task_links', 'action_log', 'tasks', 'duties', 'projects', 'user_preferences', 'planning_settings']
+        .map(table => guardedStatement(d1.prepare(`DELETE FROM ${table}`)));
+    case 'duty.restore':
+      return [guardedStatement(bindInsert(d1, 'duties', DUTY_RESTORE_COLUMNS, op.row))];
+    case 'task.restore':
+      return [guardedStatement(bindInsert(d1, 'tasks', TASK_RESTORE_COLUMNS, op.row))];
+    case 'pref.restore':
+      return [guardedStatement(d1.prepare('INSERT INTO user_preferences (key,value) VALUES (?,?)').bind(op.key, op.value))];
+    case 'log.restore':
+      return [guardedStatement(bindInsert(d1, 'action_log', LOG_RESTORE_COLUMNS, op.entry))];
     case 'wipe':
       return [
         guardedStatement(d1.prepare('DELETE FROM task_links')),

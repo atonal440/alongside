@@ -463,4 +463,14 @@ planning values and action/command provenance. One coherent snapshot supplies
 all families. Credentials, replay receipts, sync metadata, revisions and tombstones
 are excluded. See [workspace portability](shared/workspace-portability.md) for
 strict row/reference validation and the remaining v2 restore rollout. Existing
-v1 export/import endpoints are unchanged; v2 restore follows separately.
+v1 export/import endpoints are unchanged.
+
+### Version 2 workspace restore
+
+`POST /api/v2/restore` takes `{contractVersion:2, mode:"preflight"|"apply",
+expectedCursor:{epoch,sequence}, document}` with a version 2 export as `document`.
+Preflight validates and reports counts without writing; apply atomically replaces all
+user data, advances the sync epoch and returns `resultingCursor`. A cursor that no
+longer matches returns 409 `restore_cursor_conflict`; a document needing more than
+100 SQL statements returns 413 `capacity_exceeded`; semantic problems return 400.
+Destructive: see [workspace portability](shared/workspace-portability.md#restoring-a-version-2-export).

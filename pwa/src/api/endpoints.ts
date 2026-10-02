@@ -1,6 +1,7 @@
 import { parseFoundationErrorEnvelope, parseCapabilities, parseTimeResolution, parseLegacyDatesPreview, type Capabilities, type TimeResolution, type LegacyDatesPreview, type ResolveTimeInput, type LegacyDatesPreviewInput } from '@shared/wire/planning';
 import { parseWorkspaceSnapshot, parseWorkspaceDelta, type WorkspaceSnapshot, type WorkspaceDelta, type WorkspaceDeltaInput } from '@shared/wire/sync';
 import { parseWorkspaceExport, type WorkspaceExport } from '@shared/wire/workspaceExport';
+import { parseWorkspaceRestoreResult, restoreCounts, sameRestoreCounts, type WorkspaceRestoreInput, type WorkspaceRestoreResult } from '@shared/wire/workspaceRestore';
 import { parseChangesPreview, parseChangesResult, parsePlanningSettingsExport, parsePlanningSettingsResponse, type ChangesPreview, type ChangesResult, type CommandEnvelope, type PlanningSettingsExport, type PlanningSettingsResponse } from '@shared/wire/commands';
 import type { Timezone } from '@shared/parse';
 import { parseEntityVersionResponse, parseEntitySnapshot, parseLinkSnapshot, type LinkKey, type LinkSnapshot, type EntityReadKey, type EntitySnapshot, type EntityKey, type EntityVersionResponse } from '@shared/wire/versions';
@@ -91,6 +92,19 @@ function parseFoundationError(raw: unknown): Result<ApiErrorBody, ValidationErro
 export const api = {
   exportWorkspace(config: ApiConfig): Promise<ApiResult<WorkspaceExport>> {
     return apiRequest('/api/v2/export', {}, config, parseWorkspaceExport, parseFoundationError);
+  },
+  /** Destructive in `apply` mode; always preflight first. The response must echo the request's mode and cursor. */
+  restoreWorkspace(body: WorkspaceRestoreInput, config: ApiConfig): Promise<ApiResult<WorkspaceRestoreResult>> {
+    return apiRequest('/api/v2/restore', jsonBody(body), config, raw => {
+      const parsed = parseWorkspaceRestoreResult(raw);
+      if (!parsed.ok) return parsed;
+      const result = parsed.value;
+      if (result.mode !== body.mode || result.previousCursor.epoch !== body.expectedCursor.epoch || result.previousCursor.sequence !== body.expectedCursor.sequence
+        || !sameRestoreCounts(result.restores, restoreCounts(body.document)) || result.notRestored.command_audit !== body.document.command_audit.length) {
+        return { ok: false, error: [{ code: 'restore_response_mismatch', path: [], message: 'Restore response does not match the request mode, cursor or document counts.' }] };
+      }
+      return parsed;
+    }, parseFoundationError);
   },
   workspaceDelta(body: WorkspaceDeltaInput, config: ApiConfig): Promise<ApiResult<WorkspaceDelta>> {
     return apiRequest('/api/v2/sync/delta', jsonBody(body), config, raw => {
