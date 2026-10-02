@@ -103,6 +103,23 @@ try {
   await waitFor('list cleared', async () => !(await seen('Needs attention')));
   step('refused edit is retained, shown, and discardable; task rolls back to server truth');
 
+  // 4b. Completing a task offline is queued (not lost across a reload) and reaches the server on reconnect.
+  const doomed = (await serverTasks()).find(t => t.title === name('online add'));
+  await open();
+  await page.getByRole('button', { name: 'All Tasks' }).first().click();
+  await page.getByText(name('online add')).first().click();
+  await setOffline(true);
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.waitForTimeout(500);
+  await page.reload();
+  await page.getByText('Log out').first().waitFor();
+  await page.waitForTimeout(1500);
+  assert.equal((await rest('GET', `/api/tasks/${doomed.id}`)).status, 'pending');
+  await setOffline(false);
+  await open();
+  await waitFor('completion flushed', async () => (await rest('GET', `/api/tasks/${doomed.id}`)).status === 'done');
+  step('offline completion survives a reload, then flushes');
+
   // 5. A task deleted on the server disappears on the next refresh.
   await rest('DELETE', `/api/tasks/${remote.id}`);
   await open();

@@ -8,9 +8,9 @@ Field-level row schemas shared between the worker's import pipeline and the PWA'
 
 | Schema | Output type | Used by |
 |--------|-------------|---------|
-| `TaskRowSchema` | `Task` | PWA API client (stage 3), PWA IDB decode (stage 8) |
-| `ProjectRowSchema` | `Project` | Worker import, PWA API client, PWA IDB decode |
-| `TaskLinkRowSchema` | `TaskLink` | Worker import, PWA API client, PWA IDB decode |
+| `TaskRowSchema` | `Task` | PWA API client (stage 3), canonical sync schemas |
+| `ProjectRowSchema` | `Project` | Worker import, PWA API client, canonical sync schemas |
+| `TaskLinkRowSchema` | `TaskLink` | Worker import, PWA API client, canonical sync schemas |
 
 Each schema validates **field-level constraints only**: branded IDs (regex format), enum membership, ISO timestamps, RRULE syntax, and text length bounds. No cross-field invariants.
 
@@ -22,7 +22,7 @@ Rules like `defer_kind === 'until'` ↔ `defer_until` present, recurrence requir
 
 - **Worker:** `taskFromRow` in `worker/src/domain/task.ts`
 - **PWA writes:** stage 6 local mutation guards (`pwa/src/domain/taskMutations.ts`)
-- **PWA IDB reads:** stage 8 decode layer (`pwa/src/idb/decode.ts`)
+- **PWA IDB reads:** canonical store parsing (`pwa/src/idb/canonical.ts`)
 
 Do not add cross-field checks here — they would cause the import pipeline and response parsers to reject rows the system currently accepts.
 

@@ -115,7 +115,7 @@ describe('schema upgrades', () => {
   test('an open connection closes on versionchange so a newer tab can upgrade', async () => {
     const db = await getDB();
     const upgraded = new Promise<void>((resolve, reject) => {
-      const req = indexedDB.open('alongside', 6);
+      const req = indexedDB.open('alongside', 99);
       req.onupgradeneeded = () => {};
       req.onsuccess = () => { req.result.close(); resolve(); };
       req.onerror = () => reject(req.error);

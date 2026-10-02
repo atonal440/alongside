@@ -108,7 +108,7 @@ Then reload the PWA.
 - Auth is a single static bearer token from `AUTH_TOKEN`. The `/ui/*` routes skip auth so the iframe widget can be embedded.
 - Recurrence has two profiles during the duties rollout. Legacy task `Rrule` remains infinite/date-only (`DAILY|WEEKLY|MONTHLY|YEARLY` plus its date filters) until Stage 10. Duty-only `SeriesRrule` adds `HOURLY|MINUTELY`, `COUNT|UNTIL`, and `BYHOUR|BYMINUTE`; it rejects `SECONDLY`, `BYSECOND`, recurrence sets, and exceptions. `COUNT` and `UNTIL` are mutually exclusive; UNTIL is basic UTC datetime text normalized to minute UTC. Zoned series expansion uses deterministic, host-independent `Intl` wall-clock conversion (spring gaps skip, fall folds choose the earliest UTC instant), with a named 10,000-occurrence guard. Duty `dtstart` is always timed — no bare-date/all-day/noon inference.
 - The MCP endpoint is `/mcp` and expects JSON-RPC POST requests.
-- PWA sync is local-first: writes go to IndexedDB immediately, then flush to the worker. Merge is last-write-wins on `updated_at`.
+- PWA sync is local-first: every user write is queued as a pending op, the UI shows the stored canonical workspace with the queue replayed on top, and the single-flight flush sends ops to the worker in order. Reads come from `pullWorkspace` (snapshot + fixed-watermark deltas); refused ops are retained for review, not dropped. See `docs/pwa/sync/canonical-workspace.md`.
 - State management is `useReducer` plus React context. Async ops are plain async functions in `pwa/src/context/actions.ts` that take `dispatch` as a parameter.
 - IndexedDB is a module layer, not hooks: pure async I/O functions with no React dependency.
 - The service worker uses Workbox through `vite-plugin-pwa` with the `injectManifest` strategy so the app keeps control of service worker logic.
@@ -176,7 +176,7 @@ Output directory: `pwa/dist`.
 The PWA uses branded types (`IsoDate`, `NonEmptyString<N>`, `Rrule`, …) for all domain values. Raw strings from external sources must be **parsed before use** — once parsed, the branded type flows through without re-validation. This applies to four boundaries:
 
 1. **API responses** — `pwa/src/api/endpoints.ts` parses every REST response through valibot row schemas (`parseTaskRow`, etc.). Never trust raw JSON beyond this layer.
-2. **IDB reads** — `pwa/src/idb/decode.ts` repairs and validates rows read from IndexedDB. Corrupt rows are quarantined-in-place; repairs are written back. The decode pipeline wires into all IDB read modules (`idbGetAllTasks`, etc.).
+2. **IDB reads** — `pwa/src/idb/canonical.ts` parses every stored canonical image through the shared sync schemas and treats anything corrupt, partial, dangling or from another server as "no canonical state" (the next pull re-bootstraps). Queue and retained-op records are parsed on read (`parsePendingOp`, `parseRetainedOp`). There is no separate task/project/link mirror: the UI shows the canonical workspace with the pending-op queue replayed on top (`pwa/src/sync/view.ts`).
 3. **Form submissions** — `pwa/src/domain/taskForm.ts` (`parseTaskForm`) validates and brands form strings. Never pass raw `input.value` strings into domain types or action creators.
 4. **Pending ops** — `pwa/src/api/pendingOps.ts` (`parsePendingOp`) validates IDB queue records on read. Legacy shapes are migrated by the IDB upgrade pipeline.
 

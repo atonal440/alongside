@@ -18,7 +18,7 @@ All data lives in IndexedDB. Four object stores mirror the worker's D1 schema an
 | `pendingOps` | Serialized API calls queued while offline |
 | `canonical_entities`, `canonical_meta` | Versioned server entity images and their sync cursor (cache; read by `pullWorkspace` only) |
 
-The IDB schema is initialized by [[idb-db|pwa/src/idb/db.ts]] on first open; each store is managed by its own module ([[idb-tasks|idb/tasks.ts]], [[idb-projects|idb/projects.ts]], [[idb-links|idb/links.ts]], [[pendingOps|idb/pendingOps.ts]]). These modules are plain async functions with no React dependency — they are imported by action creators and the sync hook, not by components.
+The IDB schema is initialized by [[idb-db|pwa/src/idb/db.ts]] on first open; the queue, retained ops and canonical cache are managed by their own modules ([[pendingOps|idb/pendingOps.ts]], `idb/retainedOps.ts`, `idb/canonical.ts`). These modules are plain async functions with no React dependency — they are imported by action creators and the sync hook, not by components.
 
 React state (AppState) holds in-memory copies of the same arrays plus all UI state. It is always derived from IDB on boot and kept in sync by the action creators.
 
@@ -57,11 +57,11 @@ This keeps the UI responsive regardless of network state. Temp IDs (local nanoid
 
 [[useSync|pwa/src/hooks/useSync.ts]] is called once in `AppShell` and manages the full sync lifecycle:
 
-1. On mount: `flushPendingOps` → `syncFromServer`
+1. On mount: `flushPendingOps` → `refreshFromCanonical`
 2. Every 30 seconds: repeat
 3. On service worker sync message: repeat
 
-[[sync|pwa/src/api/sync.ts]] implements both functions. `flushPendingOps` drains the pending ops queue in chronological order. `syncFromServer` replaces local IDB with a full server pull (tasks, projects, links) and dispatches `SET_*` actions to refresh React state. Conflict resolution is last-write-wins on `updated_at`.
+[[sync|pwa/src/api/sync.ts]] implements both functions. `flushPendingOps` drains the pending ops queue in chronological order. `refreshFromCanonical` (`pwa/src/sync/refresh.ts`) pulls the canonical workspace and dispatches `SET_DATA` with it plus the queue replayed on top. Concurrency control is revision-based on the server; refused ops are retained for review.
 
 ## View model: taskFlow
 
@@ -154,7 +154,7 @@ pwa/
     shared/                 readiness.test.ts — shared/readiness.ts (isDeferred, isFocused, readinessScore…)
     utils/                  design.test.ts, taskFlow.test.ts, small.test.ts
     context/                reducer.test.ts, actions.test.ts
-    idb/                    pendingOps.test.ts, decode.test.ts (includes migration round-trip and quarantine)
+    idb/                    pendingOps, retainedOps, canonical and migration tests
     api/                    client.test.ts, endpoints.test.ts, sync.test.ts, pendingOps.test.ts
     domain/                 taskMutations.test.ts, taskForm.test.ts
     components/             EditView.test.tsx, AddBar.test.tsx, DeferMenu.test.tsx (jsdom env)
@@ -172,7 +172,7 @@ The PWA enforces a **parse at boundary, brand thereafter** discipline. Values fr
 | Boundary | Module | What it does |
 |---|---|---|
 | REST responses | `api/endpoints.ts` | Every response is parsed through a row schema (`parseTaskRow`, etc.); contract violations are classified as `kind: 'contract'` rather than silently used |
-| IDB reads | `idb/decode.ts` | Rows are repaired (legacy shapes migrated), validated, and quarantined-in-place if corrupt; repairs are written back; an `onDecodeReport` hook triggers a toast on first quarantine |
+| IDB reads | `idb/canonical.ts`, `api/pendingOps.ts`, `api/retainedOps.ts` | Canonical images are parsed through the shared sync schemas (corruption reads as a cache miss and re-bootstraps); queue and retained records are parsed on read and malformed ones skipped with a warning |
 | Form submissions | `domain/taskForm.ts` | `parseTaskForm` validates and brands all string inputs; field-level errors are returned for inline display |
 | Pending ops queue | `api/pendingOps.ts` | `parsePendingOp` validates records on IDB read; the IDB v4 upgrade pipeline migrates legacy queue shapes |
 

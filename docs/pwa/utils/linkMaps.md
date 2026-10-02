@@ -10,7 +10,7 @@ Utilities for turning the flat `TaskLink[]` array into lookup maps used by the U
 
 ## See Also
 
-- [[idb-links|pwa/src/idb/links.ts]] — source of the `TaskLink[]` array these maps are built from
+- `pwa/src/sync/overlay.ts` — derives the `TaskLink[]` array these maps are built from
 - [[DetailView]] — renders "Blocked by" and "Unlocks" groups using these maps
 - [[AllView]] — uses `buildBlocksMap` to group tasks under their blockers
 - [[readiness]] — `hasActiveBlocker` also scans links but in a different shape

@@ -20,11 +20,6 @@ export interface AppState {
 
 export type AppAction =
   | { type: 'SET_DATA'; tasks: Task[]; projects: Project[]; links: TaskLink[] }
-  | { type: 'UPSERT_TASK'; task: Task }
-  | { type: 'DELETE_TASK'; id: string }
-  | { type: 'UPSERT_PROJECT'; project: Project }
-  | { type: 'UPSERT_LINK'; link: TaskLink }
-  | { type: 'DELETE_LINK'; from: string; to: string; linkType: TaskLink['link_type'] }
   | { type: 'SET_VIEW'; view: AppState['currentView'] | 'session' }
   | { type: 'SET_PROJECT_FILTER'; id: string | null }
   | { type: 'SET_EDITING'; id: string | null }
@@ -70,45 +65,6 @@ export function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'SET_DATA':
       return { ...state, tasks: action.tasks, projects: action.projects, links: action.links };
-
-    case 'UPSERT_TASK': {
-      const exists = state.tasks.some(t => t.id === action.task.id);
-      const tasks = exists
-        ? state.tasks.map(t => t.id === action.task.id ? action.task : t)
-        : [...state.tasks, action.task];
-      return { ...state, tasks };
-    }
-
-    case 'DELETE_TASK':
-      return { ...state, tasks: state.tasks.filter(t => t.id !== action.id) };
-
-    case 'UPSERT_PROJECT': {
-      const exists = state.projects.some(p => p.id === action.project.id);
-      const projects = exists
-        ? state.projects.map(p => p.id === action.project.id ? action.project : p)
-        : [...state.projects, action.project];
-      return { ...state, projects };
-    }
-
-    case 'UPSERT_LINK': {
-      const exists = state.links.some(l =>
-        l.from_task_id === action.link.from_task_id &&
-        l.to_task_id === action.link.to_task_id &&
-        l.link_type === action.link.link_type,
-      );
-      const links = exists ? state.links : [...state.links, action.link];
-      return { ...state, links };
-    }
-
-    case 'DELETE_LINK':
-      return {
-        ...state,
-        links: state.links.filter(l =>
-          !(l.from_task_id === action.from &&
-            l.to_task_id === action.to &&
-            l.link_type === action.linkType),
-        ),
-      };
 
     case 'SET_VIEW':
       return { ...state, currentView: action.view === 'session' ? 'review' : action.view, editingTaskId: null, detailTaskId: null };

@@ -4,7 +4,6 @@ import { toRequest, rebindTaskId } from './pendingOps';
 import type { PendingOp } from './pendingOps';
 import { isDurableFailure } from './result';
 import { messageFromResult, referencesTaskId, ATTEMPTS_CAP } from './syncPolicy';
-import { idbPutTask, idbDeleteTask } from '../idb/tasks';
 import { idbRetainOp } from '../idb/retainedOps';
 import {
   idbGetPendingOps, idbDeletePendingOp, idbPutPendingOp,
@@ -110,11 +109,8 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
           continue;
         }
 
-        const serverTask = parsed.value;
-        const newId = serverTask.id;
+        const newId = parsed.value.id;
         await idbDeletePendingOp(op.id!);
-        await idbDeleteTask(oldId);
-        await idbPutTask(serverTask);
         // Rebind in IDB and in the local array so subsequent ops in this cycle
         // use the real server ID, not the temp ID.
         await rebindTempId(oldId, newId);
@@ -142,10 +138,6 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
         // current loop to avoid sending doomed requests.
         const newSkipped = await dropDependentOps(op.localId, op.localId);
         for (const id of newSkipped) skippedIds.add(id);
-        // The temp task has no pending create op protecting it, so syncFromServer
-        // will delete it. Delete it from IDB now so the state is consistent even
-        // if syncFromServer is skipped (e.g. we're offline).
-        await idbDeleteTask(op.localId);
       }
       continue;
     }

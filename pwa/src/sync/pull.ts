@@ -32,6 +32,20 @@ const isSyncReset = (result: ApiResult<unknown>): boolean =>
 let cache: { source: string; workspace: CanonicalWorkspace } | null = null;
 export function resetPullCache(): void { cache = null; }
 
+/**
+ * The canonical workspace as last committed, for readers that must not wait on the network. Uses
+ * the same in-memory copy as `pullWorkspace` when the stored cursor still matches it. An unreadable
+ * or missing store reads as null (the next pull re-bootstraps it).
+ */
+export async function currentWorkspace(source: string): Promise<CanonicalWorkspace | null> {
+  const cursor = await idbReadCanonicalCursor(source);
+  if (!cursor) return null;
+  if (cache?.source === source && cache.workspace.cursor.epoch === cursor.epoch && cache.workspace.cursor.sequence === cursor.sequence) return cache.workspace;
+  const workspace = await idbReadCanonical(source);
+  if (workspace) cache = { source, workspace };
+  return workspace;
+}
+
 interface Flight { key: string; promise: Promise<PullOutcome>; trailing: Promise<PullOutcome> | null }
 let flight: Flight | null = null;
 

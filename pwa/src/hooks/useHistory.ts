@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useAppState } from './useAppState';
 import type { AppState } from '../context/reducer';
-import { idbGetAllTasks } from '../idb/tasks';
+import { loadView } from '../sync/view';
 
 interface HistoryState {
   view: AppState['currentView'] | 'session';
@@ -42,7 +42,7 @@ export function useHistory() {
       if (!s) return;
       dispatch({ type: 'SET_VIEW', view: normalizeView(s.view) });
       if (s.editId || s.detailId) {
-        const tasks = await idbGetAllTasks();
+        const { tasks } = await loadView(state.apiBase);
         const taskMap = Object.fromEntries(tasks.map(t => [t.id, t]));
         if (s.editId && taskMap[s.editId]) {
           dispatch({ type: 'SET_EDITING', id: s.editId });
@@ -62,5 +62,5 @@ export function useHistory() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [dispatch]);
+  }, [dispatch, state.apiBase]);
 }
