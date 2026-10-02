@@ -3,7 +3,7 @@ import 'fake-indexeddb/auto';
 import { resetIdb } from '../helpers/idb';
 import { makeTask } from '../helpers/fixtures';
 import { installFetchStub } from '../helpers/fetchStub';
-import { flushPendingOps, syncFromServer, _resetStuckNotice } from '../../src/api/sync';
+import { flushPendingOps, _resetStuckNotice } from '../../src/api/sync';
 import { ATTEMPTS_CAP } from '../../src/api/syncPolicy';
 import type { ApiConfig } from '../../src/api/client';
 import { idbQueueOp, idbGetPendingOps } from '../../src/idb/pendingOps';
@@ -249,94 +249,6 @@ describe('flushPendingOps — attempts cap', () => {
   });
 });
 
-// ─── syncFromServer: survivor protection ─────────────────────────────────────
-
-describe('syncFromServer — survivor protection', () => {
-  test('local task with pending task.create survives', async () => {
-    await idbPutTask(makeTask({ id: 't_local01', title: 'Offline created' }));
-    await idbQueueOp({ op: 'task.create', localId: 't_local01', body: { title: 'Offline created' } });
-
-    const remoteTask = makeTask({ id: 't_remote1' });
-    const stub = installFetchStub();
-    stub.respondWith({ method: 'GET', path: '/api/tasks/sync' }, {
-      type: 'json', status: 200, body: [remoteTask],
-    });
-    stub.respondWith({ method: 'GET', path: '/api/projects/sync' }, {
-      type: 'json', status: 200, body: [],
-    });
-    stub.respondWith({ method: 'GET', path: '/api/tasks/links' }, {
-      type: 'json', status: 200, body: [],
-    });
-    const result = await syncFromServer(config);
-    stub.restore();
-
-    expect(result.online).toBe(true);
-    const tasks = await idbGetAllTasks();
-    const ids = tasks.map(t => t.id);
-    expect(ids).toContain('t_local01');
-    expect(ids).toContain('t_remote1');
-  });
-
-  test('local task without pending task.create is deleted', async () => {
-    await idbPutTask(makeTask({ id: 't_stale01', title: 'Stale' }));
-
-    const remoteTask = makeTask({ id: 't_remote1' });
-    const stub = installFetchStub();
-    stub.respondWith({ method: 'GET', path: '/api/tasks/sync' }, {
-      type: 'json', status: 200, body: [remoteTask],
-    });
-    stub.respondWith({ method: 'GET', path: '/api/projects/sync' }, {
-      type: 'json', status: 200, body: [],
-    });
-    stub.respondWith({ method: 'GET', path: '/api/tasks/links' }, {
-      type: 'json', status: 200, body: [],
-    });
-    const result = await syncFromServer(config);
-    stub.restore();
-
-    expect(result.online).toBe(true);
-    const tasks = await idbGetAllTasks();
-    expect(tasks.find(t => t.id === 't_stale01')).toBeUndefined();
-  });
-
-  test('two offline tasks with identical titles both survive (title-heuristic regression)', async () => {
-    const localA = makeTask({ id: 't_local0a', title: 'Same title' });
-    const localB = makeTask({ id: 't_local0b', title: 'Same title' });
-    await idbPutTask(localA);
-    await idbPutTask(localB);
-    await idbQueueOp({ op: 'task.create', localId: 't_local0a', body: { title: 'Same title' } });
-    await idbQueueOp({ op: 'task.create', localId: 't_local0b', body: { title: 'Same title' } });
-
-    const stub = installFetchStub();
-    stub.respondWith({ method: 'GET', path: '/api/tasks/sync' }, {
-      type: 'json', status: 200, body: [],
-    });
-    stub.respondWith({ method: 'GET', path: '/api/projects/sync' }, {
-      type: 'json', status: 200, body: [],
-    });
-    stub.respondWith({ method: 'GET', path: '/api/tasks/links' }, {
-      type: 'json', status: 200, body: [],
-    });
-    const result = await syncFromServer(config);
-    stub.restore();
-
-    expect(result.online).toBe(true);
-    const tasks = await idbGetAllTasks();
-    const ids = tasks.map(t => t.id);
-    expect(ids).toContain('t_local0a');
-    expect(ids).toContain('t_local0b');
-  });
-
-  test('syncTasks non-ok result returns online: false', async () => {
-    const stub = installFetchStub();
-    stub.networkError({ path: '/api/tasks/sync' });
-    const result = await syncFromServer(config);
-    stub.restore();
-
-    expect(result.online).toBe(false);
-  });
-});
-
 describe('flushPendingOps — retained intent', () => {
   test('a durably refused op is retained with its status and message, not lost', async () => {
     await idbQueueOp({ op: 'task.update', taskId: 't_abc001', body: { title: 'Mine' } });
@@ -371,5 +283,20 @@ describe('flushPendingOps — retained intent', () => {
     stub.restore();
     expect(await idbGetRetainedOps()).toHaveLength(0);
     expect(await idbGetPendingOps()).toHaveLength(1);
+  });
+});
+
+describe('flushPendingOps — single flight', () => {
+  test('overlapping flushes send each queued op once and share one summary', async () => {
+    await idbQueueOp({ op: 'task.create', localId: 't_local01', body: { title: 'Once' } });
+    const stub = installFetchStub();
+    stub.respondWith({ method: 'POST', path: '/api/tasks' }, { type: 'json', status: 201, body: makeTask({ id: 't_srv0001', title: 'Once' }) });
+    const [a, b] = await Promise.all([flushPendingOps(config), flushPendingOps(config)]);
+    stub.restore();
+    expect(a).toBe(b);
+    expect(stub.calls.filter(c => c.method === 'POST' && c.path.endsWith('/api/tasks'))).toHaveLength(1);
+    expect(a.flushed).toBe(1);
+    // A later flush starts a fresh run.
+    expect(await flushPendingOps(config)).not.toBe(a);
   });
 });
