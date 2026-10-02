@@ -8,7 +8,7 @@ The alongside PWA is a React + TypeScript single-page application built with Vit
 
 ## Data model
 
-All data lives in four IndexedDB object stores (mirroring the worker's D1 schema):
+All data lives in IndexedDB. Four object stores mirror the worker's D1 schema and drive the UI today; two more hold a derived [canonical copy of server state](sync/canonical-workspace.md) that is not yet wired into the UI:
 
 | Store | Contents |
 |---|---|
@@ -16,6 +16,7 @@ All data lives in four IndexedDB object stores (mirroring the worker's D1 schema
 | `projects` | All projects including archived ones |
 | `links` | Task dependency edges (`from_task_id`, `to_task_id`, `link_type`) |
 | `pendingOps` | Serialized API calls queued while offline |
+| `canonical_entities`, `canonical_meta` | Versioned server entity images and their sync cursor (cache; read by `pullWorkspace` only) |
 
 The IDB schema is initialized by [[idb-db|pwa/src/idb/db.ts]] on first open; each store is managed by its own module ([[idb-tasks|idb/tasks.ts]], [[idb-projects|idb/projects.ts]], [[idb-links|idb/links.ts]], [[pendingOps|idb/pendingOps.ts]]). These modules are plain async functions with no React dependency — they are imported by action creators and the sync hook, not by components.
 

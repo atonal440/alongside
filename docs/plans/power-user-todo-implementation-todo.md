@@ -116,7 +116,7 @@ the review gate. Merge authorizes the existing production deployment workflow.
   v2 restore with epoch advance is under review.
 - **2f — offline reconciliation and capability gate:** canonical IDB data plus
   ordered optimistic commands, retained conflicts/failed intent and inspectable
-  rebase. Negotiate versions and gate incompatible writers only after the
+  rebase. Canonical store and staged pulls are the first increment (review pending). Negotiate versions and gate incompatible writers only after the
   compatible PWA and backend protocol are ready together.
 
 ## Slice 3 — Tasks, hierarchy, explicit dates, and organization
@@ -873,3 +873,32 @@ so oversize rejection comes from exact plan counting alone; legacy `related`
 self-links round-trip; a lost apply response reports `restore_outcome_unknown` rather
 than claiming nothing changed. Restore does not re-run per-task domain validation, so
 backups keep every stored row exactly as exported.
+
+### 2026-10-02 — Slice 2f first increment: canonical store and staged pulls
+
+PR #58 merged as `b5b6bcb` (bounded v2 restore with epoch advance; deploy triggered).
+
+Branch: `claude/slice-2f-reconcile`; review/merge pending. IDB v5 adds a canonical
+server-state cache (versioned entity images, tombstones, cursor) read through strict
+boundary parsing, and `pullWorkspace` stages snapshot/delta pages and commits them
+atomically, falling back to one bootstrap on sync resets or inconsistent pulls. It
+is not yet wired into UI state or the legacy flush; no capability gate changes. See
+[canonical workspace](../pwa/sync/canonical-workspace.md).
+
+Acceptance: full `npm run verify` passes 652 Worker / 715 PWA tests, both
+typechecks/builds and Worker dry-run (895.37 KiB / gzip 158.71 KiB). New tests cover
+pure reconciliation (revision regression/equality, discontinuity, moved watermark,
+incomplete/empty pulls, cross-page dangling references, final dangling state),
+IDB round trip/replace/commit/abort/corruption-as-miss, the v4→v5 upgrade, and
+pull orchestration (bootstrap, fixed-watermark continuation, mid-pull failure,
+resets, non-reset 409/401, inconsistent pull fallback, single-flight).
+
+Next: reducer/UI integration of canonical state with an optimistic command overlay,
+retained conflicts and inspectable rebase, then version negotiation and the gate.
+
+Review follow-up: the connection closes on `versionchange`; logout clears the canonical
+store and entries are tied to the API base; commits compare-and-set the stored cursor
+and abort atomically on any failure; the structural revision is no longer stored;
+unchanged polls reuse a validated in-memory copy; backlogs past the page bound,
+storage errors and unreadable caches have explicit outcomes; `fresh` pulls and
+credential-keyed sharing; the live-reference rule is shared with the snapshot schema.

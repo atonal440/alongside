@@ -34,6 +34,7 @@ pwa/
   src/context/     Reducer and async action creators
   src/idb/         IndexedDB modules
   src/api/         REST client and sync
+  src/sync/        Canonical workspace reconciliation and staged pulls
   src/hooks/       App state, sync, history hooks
   src/components/  Layout, common UI, task cards, views
   src/utils/       Queueing, task flow, design helpers, link maps
