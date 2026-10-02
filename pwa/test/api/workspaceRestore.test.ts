@@ -12,16 +12,17 @@ const result=(overrides:Record<string,unknown>={})=>({contractVersion:2,mode:'pr
 const send=async(mode:'preflight'|'apply',body:unknown)=>{const stub=installFetchStub();stub.respondWith({method:'POST',path:'/api/v2/restore'},{type:'json',status:200,body});try{return await api.restoreWorkspace(request(mode),config);}finally{stub.restore();}};
 it('parses preflight and apply results that echo the request',async()=>{
  expect((await send('preflight',result())).kind).toBe('ok');
- expect((await send('apply',result({mode:'apply',applied:true,resultingCursor:{epoch:1,sequence:19}}))).kind).toBe('ok');
+ expect((await send('apply',result({mode:'apply',applied:true,resultingCursor:{epoch:1,sequence:4}}))).kind).toBe('ok');
 });
 it.each([
- {name:'wrong mode',sent:'preflight' as const,body:result({mode:'apply',applied:true,resultingCursor:{epoch:1,sequence:19}})},
+ {name:'wrong mode',sent:'preflight' as const,body:result({mode:'apply',applied:true,resultingCursor:{epoch:1,sequence:4}})},
  {name:'other cursor',body:result({previousCursor:{epoch:0,sequence:5}})},
  {name:'other counts',body:result({restores:{...zero,tasks:2}})},
  {name:'hidden audit count',body:result({notRestored:{command_audit:1}})},
  {name:'applied without cursor',body:result({applied:true})},
  {name:'epoch skipped',body:result({nextEpoch:3})},
- {name:'new epoch mismatch',body:result({mode:'apply',applied:true,resultingCursor:{epoch:0,sequence:19}})},
+ {name:'new epoch mismatch',body:result({mode:'apply',applied:true,resultingCursor:{epoch:0,sequence:4}})},
+ {name:'resume point skips restore events',body:result({mode:'apply',applied:true,resultingCursor:{epoch:1,sequence:19}})},
  {name:'over capacity',body:result({requiredStatements:101})},
  {name:'unknown field',body:{...result(),secret:'x'}},
 ])('rejects $name',async({body,...rest})=>{

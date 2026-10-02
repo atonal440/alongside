@@ -65,8 +65,9 @@ then wipes, then inserts in dependency order. Because the epoch advances before 
 row write, all restore feed events belong to the new epoch: every cursor from the
 old epoch gets `sync_reset_required`/`epoch_changed` and must re-bootstrap, and
 deleted-then-restored identities keep monotonic revisions. The result's
-`resultingCursor` is `{epoch: next, sequence: 0}`, a resume point that replays the
-restore events and cannot skip later writers; bootstrap for a cheaper snapshot.
+`resultingCursor` is the new epoch with the pre-restore watermark as its sequence: a
+resume point that replays the restore events, cannot skip later writers and is never
+below the retention floor. Bootstrap for a cheaper snapshot.
 
 Results contain `previousCursor`, `resultingCursor` (null for preflight), `nextEpoch`,
 `replaces` and `restores` per-family counts, `notRestored`, `requiredStatements`

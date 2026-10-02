@@ -30,7 +30,7 @@ export const WorkspaceRestoreResultSchema = v.pipe(v.strictObject({
   mode: v.picklist(['preflight', 'apply']),
   applied: v.boolean(),
   previousCursor: SyncCursorSchema,
-  /** Null for preflight; after apply, sequence 0 of the new epoch (resume point, not a snapshot). */
+  /** Null for preflight; after apply, the new epoch with the pre-restore watermark as its sequence (a resume point, not a snapshot). */
   resultingCursor: v.nullable(SyncCursorSchema),
   replaces: RestoreCountsSchema,
   restores: RestoreCountsSchema,
@@ -41,7 +41,8 @@ export const WorkspaceRestoreResultSchema = v.pipe(v.strictObject({
   nextEpoch: RevisionSchema,
 }), v.check(value => value.applied === (value.mode === 'apply') && (value.resultingCursor === null) === !value.applied
   && value.nextEpoch === value.previousCursor.epoch + 1
-  && (value.resultingCursor === null || value.resultingCursor.epoch === value.nextEpoch),
+  && (value.resultingCursor === null
+    || (value.resultingCursor.epoch === value.nextEpoch && value.resultingCursor.sequence === value.previousCursor.sequence)),
 'Restore result must agree with its mode, epoch transition and cursor.'));
 export type WorkspaceRestoreResult = v.InferOutput<typeof WorkspaceRestoreResultSchema>;
 export const parseWorkspaceRestoreResult = (input: unknown) => parseSchema(WorkspaceRestoreResultSchema, input);

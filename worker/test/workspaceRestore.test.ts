@@ -47,7 +47,7 @@ describe.each(['fresh', 'upgrade'] as const)('version 2 workspace restore (%s)',
 
       const result = await db.restoreWorkspace(input(exported, cursor) as never);
       expect(result).toMatchObject({ applied: true, previousCursor: cursor, resultingCursor: { epoch: cursor.epoch + 1 } });
-      expect(result.resultingCursor!.sequence).toBe(0);
+      expect(result.resultingCursor!.sequence).toBe(cursor.sequence);
       expect(batches.length).toBe(batchCount + 1);
       const after = await db.exportWorkspace();
       expect(portable(after)).toEqual(portable(exported));
@@ -56,7 +56,7 @@ describe.each(['fresh', 'upgrade'] as const)('version 2 workspace restore (%s)',
       expect(sql.prepare("SELECT command_id FROM command_receipts").all()).toEqual([{ command_id: 'c_restore1' }]);
       expect(sql.prepare("SELECT t.duty_id FROM tasks t WHERE id='t_first1'").get()).toEqual({ duty_id: 'd_first1' });
       await expect(db.getWorkspaceDelta({ cursor }  as never)).rejects.toMatchObject({ detail: { syncReset: { reason: 'epoch_changed' } } });
-      const delta = await db.getWorkspaceDelta({ cursor: { epoch: result.resultingCursor!.epoch, sequence: 0 } } as never);
+      const delta = await db.getWorkspaceDelta({ cursor: result.resultingCursor! } as never);
       expect(delta.changes.length).toBeGreaterThan(0);
       // The dropped rows are tombstoned and the workspace is bootstrap-consistent.
       const snapshot = await db.getWorkspaceSnapshot();

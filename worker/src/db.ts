@@ -688,9 +688,10 @@ export class DB {
         throw new CommandError({ code: 'storage_unavailable', path: [], message: 'The restore could not be committed. Nothing was changed.', retryable: true,
           recoveryHint: 'Run preflight again with the current cursor, then retry apply.' }, 503);
       }
-      // The first cursor of the new epoch. Resuming from sequence 0 replays every restore event and
-      // can never skip a writer that commits after this batch; a fresh bootstrap is cheaper.
-      resultingCursor = { epoch: baseline.cursor.epoch + 1, sequence: 0 };
+      // Resume point in the new epoch: the pre-restore watermark. Every restore event has a higher
+      // sequence, and a watermark is never below the retention floor, so replaying from here neither
+      // skips a later writer nor reads as expired history. A fresh bootstrap is cheaper.
+      resultingCursor = { epoch: baseline.cursor.epoch + 1, sequence: baseline.cursor.sequence };
     }
     const result = parseWorkspaceRestoreResult({ ...base, applied: input.mode === 'apply', resultingCursor });
     if (!result.ok) throw new Error('Restore result failed validation.');
