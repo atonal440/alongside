@@ -9,6 +9,11 @@ export const RestoreCountsSchema = v.strictObject({
   tasks: count, projects: count, links: count, duties: count, preferences: count, planning_settings: v.picklist([0, 1]), action_log: count,
 });
 export type RestoreCounts = v.InferOutput<typeof RestoreCountsSchema>;
+export function restoreCounts(doc: { tasks: unknown[]; projects: unknown[]; links: unknown[]; duties: unknown[]; preferences: unknown[]; planning_settings: unknown; action_log: unknown[] }): RestoreCounts {
+  return { tasks: doc.tasks.length, projects: doc.projects.length, links: doc.links.length, duties: doc.duties.length,
+    preferences: doc.preferences.length, planning_settings: doc.planning_settings === null ? 0 : 1, action_log: doc.action_log.length };
+}
+export const sameRestoreCounts = (a: RestoreCounts, b: RestoreCounts): boolean => RESTORE_FAMILIES.every(family => a[family] === b[family]);
 
 /** `preflight` validates and reports without writing; `apply` commits one atomic replacement. */
 export const WorkspaceRestoreInputSchema = v.strictObject({
@@ -25,7 +30,7 @@ export const WorkspaceRestoreResultSchema = v.pipe(v.strictObject({
   mode: v.picklist(['preflight', 'apply']),
   applied: v.boolean(),
   previousCursor: SyncCursorSchema,
-  /** Null for preflight; after apply, the first cursor of the new epoch. */
+  /** Null for preflight; after apply, sequence 0 of the new epoch (resume point, not a snapshot). */
   resultingCursor: v.nullable(SyncCursorSchema),
   replaces: RestoreCountsSchema,
   restores: RestoreCountsSchema,

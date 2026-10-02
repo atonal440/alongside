@@ -65,7 +65,8 @@ then wipes, then inserts in dependency order. Because the epoch advances before 
 row write, all restore feed events belong to the new epoch: every cursor from the
 old epoch gets `sync_reset_required`/`epoch_changed` and must re-bootstrap, and
 deleted-then-restored identities keep monotonic revisions. The result's
-`resultingCursor` is the first cursor of the new epoch.
+`resultingCursor` is `{epoch: next, sequence: 0}`, a resume point that replays the
+restore events and cannot skip later writers; bootstrap for a cheaper snapshot.
 
 Results contain `previousCursor`, `resultingCursor` (null for preflight), `nextEpoch`,
 `replaces` and `restores` per-family counts, `notRestored`, `requiredStatements`
@@ -73,13 +74,15 @@ and `limit:100`. The PWA parser rejects a response whose mode, cursor, restored
 counts or audit count differ from the request.
 
 **Boundaries.** A restore is one atomic batch, so it is bounded by the 100-statement
-limit (about 80 rows once the guard, epoch, wipe and planning statements are
-counted). Larger documents fail with 413 `capacity_exceeded` before any write; they
+limit (the cursor guard, epoch advance and seven wipe statements use 9, planning
+settings use two plus one per working-hours interval, leaving roughly 90 rows). Larger documents fail with 413 `capacity_exceeded` before any write; they
 are never split into wipe-then-chunk. Incoming `command_audit` is validated and
 counted in `notRestored.command_audit` but not stored: audit rows reference replay
 receipts, which stay local and are not portable. Existing receipts, audit, OAuth
 state, entity revisions and tombstones are untouched, so old command IDs keep their
-original results. Planning settings get revision `previous + 1`.
+original results. Planning settings get revision `previous + 1` and fresh timestamps; a document
+without settings leaves none, so a later first write restarts at revision 1. The
+epoch change forces clients to rebase before any retained revision could matter.
 
 Staged restores for larger workspaces, archival storage of incoming audit and v1
 input with migration diagnostics remain separate increments; the legacy

@@ -2,8 +2,8 @@ import type { Revision } from '@shared/parse';
 import { readWorkspaceSnapshot, readWorkspaceDelta } from './storage/sync';
 import type { WorkspaceDeltaInput } from '@shared/wire/sync';
 import { workspaceExport } from './domain/workspaceExport';
-import { planWorkspaceRestore, restoreCounts } from './domain/workspaceRestore';
-import { parseWorkspaceRestoreResult, type RestoreCounts, type WorkspaceRestoreInput, type WorkspaceRestoreResult } from '@shared/wire/workspaceRestore';
+import { planWorkspaceRestore } from './domain/workspaceRestore';
+import { parseWorkspaceRestoreResult, restoreCounts, type RestoreCounts, type WorkspaceRestoreInput, type WorkspaceRestoreResult } from '@shared/wire/workspaceRestore';
 import { planBatchCommand, type CommandReader } from './domain/batchCommands';
 import { readDeleteContext } from './storage/deletion';
 import { planDeleteCommand } from './domain/deleteCommands';
@@ -17,6 +17,7 @@ import { parsePlanningSettings, type PlanningSettings } from '@shared/wire/plann
 import type { LegacyDueRow } from './domain/temporalFoundation';
 import { ChangesResultSchema, StoredReceiptSchema, type CommandEnvelope, type ChangesResult, type ChangesPreview } from '@shared/wire/commands';
 import { parseSchema, parseEventInstant, type EventInstant, type CommandId } from '@shared/parse';
+import { invalidInput } from './domain/temporalFoundation';
 import { CommandError, commandHash, payloadConflict, planSettingsCommand, planCreateCommand, creationConflict, planContentCommand, entityCommandConflict, planStateCommand, commandEntityKey, planCompleteCommand, planTaskProjectCommand, revisionConflict } from './domain/commands';
 import { nanoid } from 'nanoid';
 import { drizzle } from 'drizzle-orm/d1';
@@ -666,7 +667,11 @@ export class DB {
     const clock = parseEventInstant(new Date().toISOString());
     if (!clock.ok) throw new Error('Invalid server clock.');
     const plan = planWorkspaceRestore(input, baseline.planningRevision, clock.value);
-    if (!plan.ok) throwAppError(plan.error);
+    if (!plan.ok) {
+      // Command routes map CommandError only; keep semantic problems a 400 with paths.
+      if (plan.error.kind === 'validation') throw new CommandError(invalidInput(plan.error.errors), 400);
+      throwAppError(plan.error);
+    }
     const capacity = checkPlanCapacity(this.d1, plan.value);
     if (!capacity.ok) {
       if (capacity.error.kind === 'capacity_exceeded') throw new CommandError({ code: 'capacity_exceeded', path: ['document'], message: `Atomic restore requires ${capacity.error.requiredStatements} SQL statements; the limit is 100.`,
@@ -681,10 +686,12 @@ export class DB {
       if (!applied.ok) {
         const current = await this.readRestoreBaseline();
         if (applied.error.kind === 'conflict' || current.cursor.epoch !== baseline.cursor.epoch || current.cursor.sequence !== baseline.cursor.sequence) throw this.restoreCursorConflict(current.cursor);
-        throwAppError(applied.error);
+        throw new CommandError({ code: 'storage_unavailable', path: [], message: 'The restore could not be committed. Nothing was changed.', retryable: true,
+          recoveryHint: 'Run preflight again with the current cursor, then retry apply.' }, 503);
       }
-      const after = await this.readRestoreBaseline();
-      resultingCursor = after.cursor;
+      // The first cursor of the new epoch. Resuming from sequence 0 replays every restore event and
+      // can never skip a writer that commits after this batch; a fresh bootstrap is cheaper.
+      resultingCursor = { epoch: baseline.cursor.epoch + 1, sequence: 0 };
     }
     const result = parseWorkspaceRestoreResult({ ...base, applied: input.mode === 'apply', resultingCursor });
     if (!result.ok) throw new Error('Restore result failed validation.');

@@ -1,7 +1,7 @@
 import type { Result } from '@shared/result';
 import { err, ok } from '@shared/result';
 import { parseRevision, type EventInstant, type ValidationError } from '@shared/parse';
-import type { RestoreCounts, WorkspaceRestoreInput } from '@shared/wire/workspaceRestore';
+import type { WorkspaceRestoreInput } from '@shared/wire/workspaceRestore';
 import type { Plan } from './Op';
 import type { AppError } from './errors';
 import { validationErrorResult } from './errors';
@@ -32,11 +32,6 @@ function restoreProblems(doc: WorkspaceRestoreInput['document']): ValidationErro
   const cycle = findBlocksCycle(doc.links);
   if (cycle) errors.push(problem(['document', 'links'], 'cycle', `Blocks links must be acyclic. Cycle: ${cycle.join(' -> ')}.`));
   return errors;
-}
-
-export function restoreCounts(doc: WorkspaceRestoreInput['document']): RestoreCounts {
-  return { tasks: doc.tasks.length, projects: doc.projects.length, links: doc.links.length, duties: doc.duties.length,
-    preferences: doc.preferences.length, planning_settings: doc.planning_settings === null ? 0 : 1, action_log: doc.action_log.length };
 }
 
 /**

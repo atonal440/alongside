@@ -47,7 +47,7 @@ describe.each(['fresh', 'upgrade'] as const)('version 2 workspace restore (%s)',
 
       const result = await db.restoreWorkspace(input(exported, cursor) as never);
       expect(result).toMatchObject({ applied: true, previousCursor: cursor, resultingCursor: { epoch: cursor.epoch + 1 } });
-      expect(result.resultingCursor!.sequence).toBeGreaterThan(cursor.sequence);
+      expect(result.resultingCursor!.sequence).toBe(0);
       expect(batches.length).toBe(batchCount + 1);
       const after = await db.exportWorkspace();
       expect(portable(after)).toEqual(portable(exported));
@@ -60,7 +60,7 @@ describe.each(['fresh', 'upgrade'] as const)('version 2 workspace restore (%s)',
       expect(delta.changes.length).toBeGreaterThan(0);
       // The dropped rows are tombstoned and the workspace is bootstrap-consistent.
       const snapshot = await db.getWorkspaceSnapshot();
-      expect(snapshot.cursor).toEqual(result.resultingCursor);
+      expect(snapshot.cursor.epoch).toEqual(result.resultingCursor!.epoch);
       expect(snapshot.entities.find(image => image.entity === 'task' && image.key === 't_extra1')).toMatchObject({ row: null });
     } finally { sql.close(); }
   });
@@ -104,11 +104,11 @@ describe.each(['fresh', 'upgrade'] as const)('version 2 workspace restore (%s)',
 
       const [first, other] = exported.tasks;
       const cycle = { ...exported, tasks: [{ ...first!, duty_id: null, occurrence_at: null }, other!], duties: [], links: [{ from_task_id: first!.id, to_task_id: other!.id, link_type: 'blocks' }, { from_task_id: other!.id, to_task_id: first!.id, link_type: 'blocks' }] };
-      await expect(db.restoreWorkspace(input(cycle, fresh) as never)).rejects.toMatchObject({ appError: { kind: 'validation' } });
+      await expect(db.restoreWorkspace(input(cycle, fresh) as never)).rejects.toMatchObject({ status: 400, detail: { code: 'invalid_input' } });
       const half = { ...exported, tasks: [{ ...first!, occurrence_at: null }, other!] };
-      await expect(db.restoreWorkspace(input(half, fresh) as never)).rejects.toMatchObject({ appError: { kind: 'validation' } });
+      await expect(db.restoreWorkspace(input(half, fresh) as never)).rejects.toMatchObject({ status: 400, detail: { code: 'invalid_input' } });
       const dup = { ...exported, tasks: [first!, { ...other!, duty_id: first!.duty_id, occurrence_at: first!.occurrence_at }] };
-      await expect(db.restoreWorkspace(input(dup, fresh) as never)).rejects.toMatchObject({ appError: { kind: 'validation' } });
+      await expect(db.restoreWorkspace(input(dup, fresh) as never)).rejects.toMatchObject({ status: 400, detail: { code: 'invalid_input' } });
       expect(sql.prepare("SELECT COUNT(*) AS n FROM tasks").get()).toEqual({ n: 3 });
       expect(batches).toHaveLength(1); // only the raced attempt reached storage, and it aborted
     } finally { sql.close(); }
@@ -138,6 +138,11 @@ describe('restore transports', () => {
       const viaRest = await (await rest(input(exported, cursor, 'preflight'))).json();
       const viaMcp = (await rpc(input(exported, cursor, 'preflight'))).result.structuredContent;
       expect(viaMcp).toEqual(viaRest); expect(viaRest).toMatchObject({ applied: false });
+      const [a, b] = exported.tasks;
+      const cyclic = { ...exported, tasks: [{ ...a!, duty_id: null, occurrence_at: null }, b!], duties: [], links: [{ from_task_id: a!.id, to_task_id: b!.id, link_type: 'blocks' }, { from_task_id: b!.id, to_task_id: a!.id, link_type: 'blocks' }] };
+      const semantic = await rest(input(cyclic, cursor)); expect(semantic.status).toBe(400);
+      expect(await semantic.json()).toMatchObject({ error: { code: 'invalid_input', details: [{ code: 'cycle' }] } });
+      expect((await rpc(input(cyclic, cursor))).result.isError).toBe(true);
       expect((await rest({ ...input(exported, cursor), mode: 'wipe' })).status).toBe(400);
       expect((await rest({ ...input(exported, cursor), extra: true })).status).toBe(400);
       expect((await rest({ ...input({ ...exported, tasks: 'x' }, cursor) })).status).toBe(400);

@@ -1,7 +1,7 @@
 import { parseFoundationErrorEnvelope, parseCapabilities, parseTimeResolution, parseLegacyDatesPreview, type Capabilities, type TimeResolution, type LegacyDatesPreview, type ResolveTimeInput, type LegacyDatesPreviewInput } from '@shared/wire/planning';
 import { parseWorkspaceSnapshot, parseWorkspaceDelta, type WorkspaceSnapshot, type WorkspaceDelta, type WorkspaceDeltaInput } from '@shared/wire/sync';
 import { parseWorkspaceExport, type WorkspaceExport } from '@shared/wire/workspaceExport';
-import { parseWorkspaceRestoreResult, type WorkspaceRestoreInput, type WorkspaceRestoreResult } from '@shared/wire/workspaceRestore';
+import { parseWorkspaceRestoreResult, restoreCounts, sameRestoreCounts, type WorkspaceRestoreInput, type WorkspaceRestoreResult } from '@shared/wire/workspaceRestore';
 import { parseChangesPreview, parseChangesResult, parsePlanningSettingsExport, parsePlanningSettingsResponse, type ChangesPreview, type ChangesResult, type CommandEnvelope, type PlanningSettingsExport, type PlanningSettingsResponse } from '@shared/wire/commands';
 import type { Timezone } from '@shared/parse';
 import { parseEntityVersionResponse, parseEntitySnapshot, parseLinkSnapshot, type LinkKey, type LinkSnapshot, type EntityReadKey, type EntitySnapshot, type EntityKey, type EntityVersionResponse } from '@shared/wire/versions';
@@ -99,10 +99,8 @@ export const api = {
       const parsed = parseWorkspaceRestoreResult(raw);
       if (!parsed.ok) return parsed;
       const result = parsed.value;
-      const restores = { tasks: body.document.tasks.length, projects: body.document.projects.length, links: body.document.links.length, duties: body.document.duties.length,
-        preferences: body.document.preferences.length, planning_settings: body.document.planning_settings === null ? 0 : 1, action_log: body.document.action_log.length };
       if (result.mode !== body.mode || result.previousCursor.epoch !== body.expectedCursor.epoch || result.previousCursor.sequence !== body.expectedCursor.sequence
-        || JSON.stringify(result.restores) !== JSON.stringify(restores) || result.notRestored.command_audit !== body.document.command_audit.length) {
+        || !sameRestoreCounts(result.restores, restoreCounts(body.document)) || result.notRestored.command_audit !== body.document.command_audit.length) {
         return { ok: false, error: [{ code: 'restore_response_mismatch', path: [], message: 'Restore response does not match the request mode, cursor or document counts.' }] };
       }
       return parsed;
