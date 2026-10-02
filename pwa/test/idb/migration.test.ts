@@ -194,3 +194,17 @@ describe('v4 → v5 migration', () => {
     expect(keep).toMatchObject({ id: 't_keep01' });
   });
 });
+
+describe('v5 → v6 migration', () => {
+  test('adds the retained-ops store without disturbing queued ops', async () => {
+    await openRaw('alongside', 5, (_, tx) => {
+      putInto(tx, 'pending_ops', { op: 'task.complete', taskId: 't_keep01', created_at: '2026-01-01T00:00:00.000Z', attempts: 0 });
+    });
+    const { getDB } = await import('../../src/idb/db');
+    const db = await getDB();
+    expect([...db.objectStoreNames]).toContain('retained_ops');
+    expect(await idbGetPendingOps()).toHaveLength(1);
+    const { idbGetRetainedOps } = await import('../../src/idb/retainedOps');
+    expect(await idbGetRetainedOps()).toEqual([]);
+  });
+});

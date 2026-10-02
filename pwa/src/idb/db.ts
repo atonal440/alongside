@@ -1,5 +1,5 @@
 const IDB_NAME = 'alongside';
-const IDB_VERSION = 5;
+const IDB_VERSION = 6;
 
 let _db: IDBDatabase | null = null;
 
@@ -92,6 +92,10 @@ export function getDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains('canonical_entities')) {
         db.createObjectStore('canonical_entities', { keyPath: 'id' });
+      }
+      // v6: durably refused commands retained with diagnostics instead of dropped.
+      if (!db.objectStoreNames.contains('retained_ops')) {
+        db.createObjectStore('retained_ops', { keyPath: 'id', autoIncrement: true });
       }
       // v3: snoozed_until → defer_until + defer_kind. Rewrite each task in
       // place, and rewrite queued offline task updates so unsynced work

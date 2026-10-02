@@ -10,6 +10,7 @@ import { idbQueueOp, idbGetPendingOps } from '../../src/idb/pendingOps';
 import type { PendingOp } from '../../src/api/pendingOps';
 import { idbGetAllTasks, idbPutTask } from '../../src/idb/tasks';
 import { closeDb } from '../../src/idb/db';
+import { idbGetRetainedOps } from '../../src/idb/retainedOps';
 
 const config: ApiConfig = { apiBase: 'http://localhost:8787', authToken: 'tok' };
 const AT = '2026-06-17T10:00:00.000Z';
@@ -333,5 +334,42 @@ describe('syncFromServer — survivor protection', () => {
     stub.restore();
 
     expect(result.online).toBe(false);
+  });
+});
+
+describe('flushPendingOps — retained intent', () => {
+  test('a durably refused op is retained with its status and message, not lost', async () => {
+    await idbQueueOp({ op: 'task.update', taskId: 't_abc001', body: { title: 'Mine' } });
+    const stub = installFetchStub();
+    stub.respondWith({ method: 'PATCH', path: '/api/tasks' }, { type: 'json', status: 409, body: { error: 'stale_revision' } });
+    await flushPendingOps(config);
+    stub.restore();
+    expect(await idbGetPendingOps()).toHaveLength(0);
+    const retained = await idbGetRetainedOps();
+    expect(retained).toHaveLength(1);
+    expect(retained[0]).toMatchObject({ reason: { kind: 'rejected', status: 409, message: 'stale_revision' }, op: { op: 'task.update', taskId: 't_abc001', body: { title: 'Mine' } } });
+  });
+
+  test('a refused create retains its dependents, in order, as dependency failures', async () => {
+    await idbPutTask(makeTask({ id: 't_local01' }));
+    await idbQueueOp({ op: 'task.create', localId: 't_local01', body: { title: 'X' } });
+    await idbQueueOp({ op: 'task.update', taskId: 't_local01', body: { title: 'Y' } });
+    await idbQueueOp({ op: 'task.complete', taskId: 't_local01' });
+    const stub = installFetchStub();
+    stub.respondWith({ method: 'POST', path: '/api/tasks' }, { type: 'json', status: 400, body: { error: 'Invalid' } });
+    await flushPendingOps(config);
+    stub.restore();
+    const retained = await idbGetRetainedOps();
+    expect(retained.map(r => [r.op.op, r.reason.kind])).toEqual([['task.create', 'rejected'], ['task.update', 'dependency'], ['task.complete', 'dependency']]);
+  });
+
+  test('transient failures are not retained', async () => {
+    await idbQueueOp({ op: 'task.complete', taskId: 't_abc001' });
+    const stub = installFetchStub();
+    stub.respondWith({ method: 'POST', path: '/api/tasks/t_abc001/complete' }, { type: 'json', status: 503, body: { error: 'down' } });
+    await flushPendingOps(config);
+    stub.restore();
+    expect(await idbGetRetainedOps()).toHaveLength(0);
+    expect(await idbGetPendingOps()).toHaveLength(1);
   });
 });
