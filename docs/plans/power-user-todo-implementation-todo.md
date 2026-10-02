@@ -922,3 +922,13 @@ diagnostics instead of dropped. No UI yet; retry/transient policy unchanged. See
 
 Next: surface retained ops and inspectable rebase, reducer/UI integration of the overlay,
 then version negotiation and the gate.
+
+### 2026-10-02 — Slice 2f fourth increment: surface retained intent
+
+PR #61 merged as `fcb46f6`. Branch: `ccr-3181a8c6-juz5qg`; review/merge pending. Sidebar
+"Needs attention" list for retained ops with Retry (re-queue, refused-create group in
+order) and Discard. Retry is a plain resubmit; no rebase against server values yet. See
+[canonical workspace](../pwa/sync/canonical-workspace.md).
+
+Next: rebase/edit of retained conflicts, reducer/UI integration of the overlay, then
+version negotiation and the gate.

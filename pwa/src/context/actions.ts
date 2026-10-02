@@ -34,6 +34,10 @@ export function registerSyncCallback(fn: () => void): void {
   _requestSync = fn;
 }
 
+export function requestSync(): void {
+  _requestSync?.();
+}
+
 // Queue only transient failures; durable rejections (4xx) are never retried.
 // `unconfigured` behaves like offline — queue the op for later.
 function shouldQueue(result: ApiResult<unknown>): boolean {

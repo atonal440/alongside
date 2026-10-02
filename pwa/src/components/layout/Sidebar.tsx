@@ -9,6 +9,7 @@ import { idbClearRetainedOps } from '../../idb/retainedOps';
 import { idbClearProjects } from '../../idb/projects';
 import { idbClearTasks } from '../../idb/tasks';
 import { idbClearCanonical } from '../../idb/canonical';
+import { RetainedOps } from './RetainedOps';
 import { resetPullCache } from '../../sync/pull';
 
 const VIEWS: { id: AppState['currentView']; label: string }[] = [
@@ -119,6 +120,8 @@ export function Sidebar() {
           ))
         )}
       </div>
+
+      <RetainedOps />
 
       <div className={`sidebar-footer ${isConfigured ? state.syncStatus : 'logged-out'}`}>
         <div className="sidebar-footer-status">

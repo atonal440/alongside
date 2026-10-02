@@ -82,10 +82,16 @@ retains its queued dependents as `{kind:'dependency', dependsOn}`, in queue orde
 Retained ops never flush again and are not overlaid. Auth/429/network/5xx stay retryable
 and are never retained. Reads parse each record (`parseRetainedOp`, embedding
 `parsePendingOp`) and skip malformed ones with a warning; logout clears the store. The
-toast and resync behaviour is unchanged. Surfacing retained ops and an inspectable rebase
-are later increments.
+toast and resync behaviour is unchanged.
+
+The sidebar's "Needs attention" list (`RetainedOps`) shows each retained op with its
+reason. **Retry** (`retryRetainedOp`) re-queues the op with fresh attempts and requests a
+sync; retrying a refused create re-queues it together with the dependents retained
+because of it, in original order, and restores its local placeholder task. **Discard**
+abandons the op (and those dependents). Retry is a plain resubmit, not yet a rebase
+against current server values; an inspectable rebase remains a later increment.
 
 ## Out of scope for this increment
 
-Wiring the canonical store and overlay into reducer/UI state, inspectable rebase of retained conflicts, version negotiation and the capability
+Wiring the canonical store and overlay into reducer/UI state, a rebase that edits retained conflicts against current server state, version negotiation and the capability
 gate remain later 2f increments. The legacy queue and `syncFromServer` are unchanged.
