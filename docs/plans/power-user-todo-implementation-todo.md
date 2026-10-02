@@ -1,6 +1,6 @@
 # Power-user todo implementation checklist
 
-Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion merged/deployed. Bounded mixed graph batches merged/deployed. Compound lifecycle batches merged/deployed. Workspace bootstrap, delta, portable export and bounded v2 restore merged/deployed. Slice 2f (canonical store, queue-replay read path, retained intent with rebase, version gate, legacy mirror retired) merged/deployed. One Slice 2 item remains open (2g, below); Slices 3–7 remain unimplemented.
+Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion merged/deployed. Bounded mixed graph batches merged/deployed. Compound lifecycle batches merged/deployed. Workspace bootstrap, delta, portable export and bounded v2 restore merged/deployed. Slice 2f (canonical store, queue-replay read path, retained intent with rebase, version gate, legacy mirror retired) merged/deployed. Slice 2 (including 2g, reliable PWA commands) is complete; Slices 3–7 remain unimplemented.
 Updated: 2026-10-02.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
@@ -86,13 +86,17 @@ Depends on slice 1. Goal: make compound work safe before storing rich graphs.
   inspectable rebase; preserve command ordering and graph references; retry
   auth/429/network/5xx as before. (#59–#65, #69. Rebase is field-level for task
   edits; other retained ops retry as is.)
-- [ ] **2g — send PWA writes as reliable commands.** The queued ops are still
+- [x] **2g — send PWA writes as reliable commands.** The queued ops are still
   legacy REST calls (`POST/PATCH/DELETE /api/tasks…`) with no command ID, client
   ref or base revision. So a lost response on a queued create can duplicate the
   task on resend, and a concurrent edit from another device overwrites instead
   of surfacing a 409 conflict. Move the queue to versioned command envelopes
   through `apply_changes` (command IDs, expected revisions, stable client IDs),
-  with a PWA queue migration, and then raise `reliableCommands`.
+  with a PWA queue migration, and then raise `reliableCommands`. Done: the queue
+  holds command ops with stable IDs and predicted base revisions, flushed with
+  stored-envelope replay; `reliableCommands` is true. Legacy queued REST ops still
+  flush (nothing creates new ones). Browser e2e covers lost-response replay and an
+  offline edit that races another device.
 - [x] Negotiate client capability/version and block incompatible old writes.
   (#67. REST writes from browsers only, recognised by `Origin`; `/mcp` and
   scripts are not gated.)
@@ -104,16 +108,13 @@ Depends on slice 1. Goal: make compound work safe before storing rich graphs.
   are deferred by design.)
 - [x] Test lost-response replay, ID/hash mismatch, concurrent edits, phantom
   graph changes, rollback, tombstones and cursor expiry at the worker and
-  sync-client level, and offline rebase of refused edits. Still untested, and
-  tied to 2g: end-to-end concurrent offline edits from two clients, and
-  lost-response replay of a queued PWA create. Calendar phantom checks wait for
-  Slice 4's reservations.
+  sync-client level, offline rebase of refused edits, and (browser e2e) lost-response
+  replay of a queued create and a conflicting offline edit. Calendar phantom
+  checks wait for Slice 4's reservations.
 
 Acceptance: replay cannot duplicate creation; concurrency cannot silently
 overwrite; oversize rejection changes nothing; offline intent survives conflict.
-Status: the server meets all four for reliable commands and restore, and offline
-intent survives refusal in the PWA. The first two do not yet hold for PWA-queued
-writes until 2g.
+Status: met for reliable commands, restore and PWA-queued writes (2g).
 
 ### Remaining increments and review gates
 
@@ -338,7 +339,7 @@ Next task: Slice 2 reliable commands/reconciliation, in deployable sub-slices
 with one branch/PR each. Do not expose task-date writes before receipt, revision,
 atomic-capacity and client conflict-retention guards are ready.
 (Update 2026-10-02: everything but item 2g in the Slice 2 checklist is in place;
-2g should land before Slice 3 exposes task-date writes from the PWA.)
+2g has since landed.)
 
 As work lands, append date, commit/PR if applicable, new migrations, gates and
 deployment state, targeted check results, smoke evidence, compatibility limits,
@@ -1018,3 +1019,13 @@ completion step. See [canonical workspace](../pwa/sync/canonical-workspace.md).
 This closes Slice 2f's planned scope. Remaining Slice 2 checkbox items to revisit: the offline
 rebase of retained conflicts is a field-level resubmit for task edits only; retained-op rebase for
 links/deletes against changed graphs is not attempted.
+
+### 2026-10-02 — Slice 2g: reliable PWA commands
+
+PR #70 merged as `f24a45b`. Branch: `ccr-3181a8c6-juz5qg`; review/merge pending. The PWA queue now
+holds one reliable command per written identity (stable command ID, intent, predicted base
+revision). The flush builds each envelope from the server row and aggregate revision, persists it
+before sending and resends it verbatim after a lost response; revision conflicts are retained with
+the current revision and retry rebases as a new command. Found while testing: persisting attempts
+from the pre-send copy of an op would have dropped the stored envelope and defeated replay.
+`reliableCommands` is now true. See [canonical workspace](../pwa/sync/canonical-workspace.md#reliable-command-queue).

@@ -53,7 +53,7 @@ migration or background delivery occurs through these endpoints.
 
 Browser clients announce themselves with `X-Alongside-Client: <name>/<protocol>` (the PWA sends
 `pwa/2`; the protocol constants live in `shared/wire/clientVersion.ts`). `GET /api/v2/capabilities`
-reports `clientProtocol: {current, minimumWrite}` and `features.deltaSync: true`.
+reports `clientProtocol: {current, minimumWrite}` and `features.deltaSync` / `features.reliableCommands: true`.
 
 A **write** (any non-`GET/HEAD/OPTIONS` request under `/api/`) that carries an `Origin` header but
 no announcement, a malformed one, or a protocol below `minimumWrite` is refused before it reaches

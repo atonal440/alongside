@@ -92,6 +92,6 @@ Slice 2c introduced version reads and internal Plan guards.
 and coherent content/version reads alongside `planning.set`. The full task command protocol,
 canonical snapshot/delta feed, import epoch, optimistic IDB overlay, retained
 conflict intent and old-client write negotiation remain subsequent Slice 2
-increments. `reliableCommands` and `deltaSync` capability gates remain false.
+increments. `reliableCommands` and `deltaSync` capability gates remain false. *(Superseded: the PWA queue now sends reliable commands and `reliableCommands`/`deltaSync` are true; see [the PWA command queue](../pwa/sync/canonical-workspace.md#reliable-command-queue).)*
 Calendar guards must land with their corresponding writers before reservations
 are enabled.

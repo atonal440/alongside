@@ -90,7 +90,7 @@ stored results continue parsing. REST and MCP share planners and wire schemas;
 the PWA API parses new command results and transition/conflict diagnostics.
 The PWA queue still uses legacy operations. Broad `reliableCommands` and
 `deltaSync` remain false pending deletion/graph batches, workspace
-sync/restore and retained offline intention. Future task statuses, terminal
+sync/restore and retained offline intention. *(Superseded: the PWA queue now sends reliable commands and `reliableCommands`/`deltaSync` are true; see [the PWA command queue](../pwa/sync/canonical-workspace.md#reliable-command-queue).)* Future task statuses, terminal
 timestamps and soft deletion belong to their planned later slice.
 
 These transitions also compose in [bounded mixed batches](reliable-batches.md),

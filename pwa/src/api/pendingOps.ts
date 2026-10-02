@@ -5,6 +5,7 @@ import type { ApiConfig } from './client';
 import type { ApiResult } from './result';
 import { api } from './endpoints';
 import type { TaskCreateBody, TaskUpdateBody, LinkBody } from './endpoints';
+import { IntentSchema, type Intent } from '../sync/intent';
 
 export type PendingOpPayload =
   | { op: 'task.create'; localId: string; body: TaskCreateBody }
@@ -12,7 +13,11 @@ export type PendingOpPayload =
   | { op: 'task.complete'; taskId: string }
   | { op: 'task.delete'; taskId: string }
   | { op: 'link.create'; body: LinkBody }
-  | { op: 'link.delete'; body: LinkBody };
+  | { op: 'link.delete'; body: LinkBody }
+  // A reliable command: one server command per op. `base` is the revision of the written identity this
+  // command was made against (null = it must not exist yet), `sent` is the exact envelope once a send
+  // was attempted, so a retry after a lost response replays the same payload under the same ID.
+  | { op: 'command'; commandId: string; intent: Intent; base: number | null; sent?: unknown };
 
 export type PendingOp = { id?: number; created_at: string; attempts: number } & PendingOpPayload;
 
@@ -30,6 +35,8 @@ export function toRequest(op: PendingOp, config: ApiConfig): Promise<ApiResult<u
       return api.createLink(op.body, config);
     case 'link.delete':
       return api.deleteLink(op.body, config);
+    case 'command':
+      throw new Error('Command ops are sent by sendCommand, not as a REST request.');
   }
 }
 
@@ -69,6 +76,9 @@ export function rebindTaskId(op: PendingOp, oldId: string, newId: string): Pendi
         },
       };
     }
+    case 'command':
+      // Command IDs are client-minted and stable: nothing is ever rebound.
+      return op;
   }
 }
 
@@ -118,6 +128,7 @@ const PendingOpSchema = v.variant('op', [
   v.object({ ...baseFields, op: v.literal('task.delete'), taskId: v.string() }),
   v.object({ ...baseFields, op: v.literal('link.create'), body: LinkBodySchema }),
   v.object({ ...baseFields, op: v.literal('link.delete'), body: LinkBodySchema }),
+  v.object({ ...baseFields, op: v.literal('command'), commandId: v.string(), intent: IntentSchema, base: v.nullable(v.number()), sent: v.optional(v.unknown()) }),
 ]);
 
 // Repair for ops queued before due_all_day existed (offline writes made by an

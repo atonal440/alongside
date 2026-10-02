@@ -2,10 +2,12 @@ import type { Dispatch } from 'react';
 import type { Task, TaskLink } from '../types';
 import type { AppAction } from './reducer';
 import type { ApiConfig } from '../api/client';
-import type { PendingOpPayload } from '../api/pendingOps';
 import type { IsoDateTime, NonEmptyString } from '@shared/parse';
-import { idbQueueOp } from '../idb/pendingOps';
+import { idbGetPendingOps, idbQueueOp } from '../idb/pendingOps';
 import { loadView } from '../sync/view';
+import { currentWorkspace } from '../sync/pull';
+import { predictBase } from '../sync/base';
+import { intentsFromPatch, intentWrites, type Intent } from '../sync/intent';
 import { genId } from '../utils/genId';
 import {
   applyUpdate,
@@ -37,22 +39,31 @@ function nowIso(): IsoDateTime {
   return new Date().toISOString() as IsoDateTime;
 }
 
-// Every user write has one shape: queue the command, show the result of replaying the queue on the
-// canonical state, and ask for a sync. The flush owns sending, ordering, retries and retaining
-// refusals, so an action never talks to the server and the screen is always canonical + queue.
-async function commit(ops: PendingOpPayload[], config: ApiConfig, dispatch: Dispatch<AppAction>): Promise<void> {
-  for (const op of ops) await idbQueueOp(op);
+// Every user write has one shape: turn it into reliable commands (one per identity it writes), queue
+// them, show the result of replaying the queue on the canonical state, and ask for a sync. Each
+// command is guarded by the revision it was made against (predicted from the canonical workspace
+// plus the commands already queued), so a change made elsewhere meanwhile surfaces as a conflict
+// instead of being overwritten, and carries its own command ID so a lost response can be replayed.
+// The flush owns sending, ordering, retries and retaining refusals; actions never touch the network.
+async function commit(intents: Intent[], config: ApiConfig, dispatch: Dispatch<AppAction>): Promise<void> {
+  if (intents.length > 0) {
+    const workspace = (await currentWorkspace(config.apiBase)) ?? { entities: new Map() };
+    for (const intent of intents) {
+      const base = intent.kind === 'task.create' ? null : predictBase(workspace, await idbGetPendingOps(), intentWrites(intent)[0]!);
+      await idbQueueOp({ op: 'command', commandId: genId('c'), intent, base });
+    }
+  }
   const view = await loadView(config.apiBase);
   dispatch({ type: 'SET_DATA', tasks: view.tasks, projects: view.projects, links: view.links });
-  requestSync();
+  if (intents.length > 0) requestSync();
 }
 
 async function findTask(id: string, config: ApiConfig): Promise<Task | undefined> {
   return (await loadView(config.apiBase)).tasks.find(t => t.id === id);
 }
 
-// Run a pure mutation against the current task and queue its patch. A refused mutation (for
-// example focusing a completed task) is reported without queueing anything.
+// Run a pure mutation against the current task, then queue the commands for what it changed. A
+// refused mutation (for example focusing a completed task) is reported and queues nothing.
 async function mutate(
   id: string,
   config: ApiConfig,
@@ -66,7 +77,7 @@ async function mutate(
     dispatch({ type: 'SET_TOAST', message: mutation.error.message });
     return false;
   }
-  await commit([{ op: 'task.update', taskId: id, body: mutation.value.body }], config, dispatch);
+  await commit(intentsFromPatch(task, mutation.value.body as TaskUpdatePatch & { status?: string }), config, dispatch);
   return true;
 }
 
@@ -75,7 +86,7 @@ export async function createTaskAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  await commit([{ op: 'task.create', localId: genId('t'), body: { title } }], config, dispatch);
+  await commit([{ kind: 'task.create', id: genId('t'), title, notes: null, kickoffNote: null, taskType: 'action' }], config, dispatch);
 }
 
 export async function updateTaskAction(
@@ -92,7 +103,7 @@ export async function deleteTaskAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  await commit([{ op: 'task.delete', taskId: id }], config, dispatch);
+  if (await findTask(id, config)) await commit([{ kind: 'task.delete', id }], config, dispatch);
 }
 
 export async function completeTaskAction(
@@ -107,7 +118,7 @@ export async function completeTaskAction(
     dispatch({ type: 'SET_TOAST', message: mutation.error.message });
     return null;
   }
-  await commit([{ op: 'task.complete', taskId: id }], config, dispatch);
+  await commit([{ kind: 'task.complete', id, successorId: task.recurrence !== null ? genId('t') : null }], config, dispatch);
   // The server creates the next occurrence; it arrives with the next sync.
   return mutation.value.wasRecurring ? 'Done! The next occurrence will appear after syncing.' : null;
 }
@@ -161,7 +172,8 @@ export async function createLinkAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  await commit([{ op: 'link.create', body: { from_task_id: fromId, to_task_id: toId, link_type: linkType } }], config, dispatch);
+  const [from, to] = linkType === 'related' && fromId > toId ? [toId, fromId] : [fromId, toId];
+  await commit([{ kind: 'link.add', from, to, linkType }], config, dispatch);
 }
 
 export async function deleteLinkAction(
@@ -171,5 +183,9 @@ export async function deleteLinkAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  await commit([{ op: 'link.delete', body: { from_task_id: fromId, to_task_id: toId, link_type: linkType } }], config, dispatch);
+  // A related link may be stored in either endpoint order; remove whichever identity exists.
+  const view = await loadView(config.apiBase);
+  const stored = view.links.find(l => l.link_type === linkType && ((l.from_task_id === fromId && l.to_task_id === toId) || (linkType === 'related' && l.from_task_id === toId && l.to_task_id === fromId)));
+  if (!stored) return;
+  await commit([{ kind: 'link.remove', from: stored.from_task_id, to: stored.to_task_id, linkType }], config, dispatch);
 }

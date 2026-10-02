@@ -82,7 +82,7 @@ and the PWA API parses versioned before/after rows and conflicts.
 
 The existing PWA queue still uses legacy operations. Broader `reliableCommands`
 and `deltaSync` remain false until lifecycle/link/batch commands, consistent
-sync, restore epochs and retained offline intent land. This release does not
+sync, restore epochs and retained offline intent land. *(Superseded: the PWA queue now sends reliable commands and `reliableCommands`/`deltaSync` are true; see [the PWA command queue](../pwa/sync/canonical-workspace.md#reliable-command-queue).)* This release does not
 enable undo: recorded before/after values are groundwork for later guarded
 compensating commands, not permission to overwrite intervening work.
 
