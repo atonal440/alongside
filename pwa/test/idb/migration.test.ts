@@ -175,3 +175,22 @@ describe('v3 → v4 migration', () => {
     }
   });
 });
+
+describe('v4 → v5 migration', () => {
+  test('adds the canonical stores without disturbing existing tasks or queued ops', async () => {
+    await openRaw('alongside', 4, (_, tx) => {
+      putInto(tx, 'tasks', { id: 't_keep01', title: 'Keep', notes: null, status: 'pending', due_date: null, due_all_day: null, recurrence: null,
+        created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z', defer_until: null, defer_kind: 'none', task_type: 'action',
+        project_id: null, kickoff_note: null, session_log: null, focused_until: null, duty_id: null, occurrence_at: null });
+      putInto(tx, 'pending_ops', { op: 'task.complete', taskId: 't_keep01', created_at: '2026-01-01T00:00:00.000Z', attempts: 0 });
+    });
+    const { getDB } = await import('../../src/idb/db');
+    const db = await getDB();
+    expect([...db.objectStoreNames]).toEqual(expect.arrayContaining(['canonical_meta', 'canonical_entities', 'tasks', 'pending_ops']));
+    const { idbReadCanonical } = await import('../../src/idb/canonical');
+    expect(await idbReadCanonical()).toBeNull();
+    expect(await idbGetPendingOps()).toHaveLength(1);
+    const keep = await new Promise<unknown>((resolve, reject) => { const req = db.transaction('tasks').objectStore('tasks').get('t_keep01'); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
+    expect(keep).toMatchObject({ id: 't_keep01' });
+  });
+});

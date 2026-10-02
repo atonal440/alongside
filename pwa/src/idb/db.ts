@@ -1,5 +1,5 @@
 const IDB_NAME = 'alongside';
-const IDB_VERSION = 4;
+const IDB_VERSION = 5;
 
 let _db: IDBDatabase | null = null;
 
@@ -85,6 +85,13 @@ export function getDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains('links')) {
         db.createObjectStore('links', { keyPath: ['from_task_id', 'to_task_id', 'link_type'] });
+      }
+      // v5: canonical server-state cache (derived; safe to drop and re-bootstrap).
+      if (!db.objectStoreNames.contains('canonical_meta')) {
+        db.createObjectStore('canonical_meta', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('canonical_entities')) {
+        db.createObjectStore('canonical_entities', { keyPath: 'id' });
       }
       // v3: snoozed_until → defer_until + defer_kind. Rewrite each task in
       // place, and rewrite queued offline task updates so unsynced work
