@@ -63,8 +63,17 @@ committing a guess. Other 409s are not treated as resets. Concurrent callers wit
 same credentials share one in-flight pull; pass `{fresh:true}` after your own write to
 run a pull that starts after the in-flight one, and different credentials never share.
 
+## Overlaying pending commands
+
+`overlayPendingOps(canonical, ops)` (`pwa/src/sync/overlay.ts`) is the pure projection the
+UI will read: canonical live tasks, projects and links with the queued ops replayed in
+queue order. It reuses the local mutation rules (`applyUpdate`, `applyComplete`), never
+mutates its inputs, and never throws. An op that cannot apply to the current state (task
+gone, duplicate create, invalid edit, missing link endpoint) is skipped and reported in
+`outcomes[i]` with a reason, and later ops still run. That reporting is the hook for the
+retained-conflict and rebase work: nothing here drops or rewrites the queue.
+
 ## Out of scope for this increment
 
-Wiring the canonical store into reducer/UI state, overlaying pending commands,
-retained conflicts and inspectable rebase, version negotiation and the capability
+Wiring the canonical store and overlay into reducer/UI state, retained conflicts and inspectable rebase, version negotiation and the capability
 gate remain later 2f increments. The legacy queue and `syncFromServer` are unchanged.
