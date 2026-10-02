@@ -122,7 +122,12 @@ worker and PWA: server-created tasks arriving, online add once, offline add surv
 and flushing exactly once, a refused edit retained and discardable, and a server-side delete
 propagating. Offline is simulated by blocking the API origin, since the dev server has no service
 worker to serve the app shell offline. It needs `playwright` resolvable
-(`PLAYWRIGHT_MODULE=/path/to/playwright` to point at one).
+(`PLAYWRIGHT_MODULE=/path/to/playwright` to point at one). `npm run e2e:stack` starts the worker
+and PWA itself, runs the script and tears both down (after `npm --prefix worker run db:init` and
+copying `worker/.dev.vars.example`); it takes about 30 seconds locally. CI runs it as a separate
+`E2E sync` job in `checks.yml`, in parallel with the Worker and PWA jobs, with Playwright pinned
+and installed outside the repo lockfiles and its browser cached; logs and a failure screenshot
+upload as an artifact on failure.
 
 ## Out of scope for this increment
 

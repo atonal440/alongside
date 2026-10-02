@@ -954,3 +954,10 @@ is not a goal (the data will be wiped and restarted on v2). A new browser end-to
 single-flight. See [canonical workspace](../pwa/sync/canonical-workspace.md).
 
 Next: version negotiation and the capability gate, then retiring the legacy mirror.
+
+### 2026-10-02 — Slice 2f: e2e sync check in CI
+
+PR #65 merged as `064a887`. Branch: `ccr-3181a8c6-juz5qg`; review/merge pending. `npm run
+e2e:stack` boots a local worker + PWA, runs the browser sync e2e and tears down (~30s locally);
+`checks.yml` gains a parallel `E2E sync` job. Watch its wall time and flakiness; if it slows PRs
+too much, move it to a path filter or merge queue.

@@ -47,3 +47,55 @@ jobs:
       - run: npm ci --prefix pwa
       - run: npm --prefix pwa run typecheck
       - run: npm --prefix pwa run build
+
+  # Browser sync e2e. A separate job so it runs in parallel with the others and only the
+  # check itself (not the Worker/PWA jobs) is as slow as it is.
+  e2e:
+    name: E2E sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      PLAYWRIGHT_VERSION: '1.56.1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            worker/package-lock.json
+            pwa/package-lock.json
+      - run: npm ci --prefix worker
+      - run: npm ci --prefix pwa
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+      - name: Install Playwright (pinned, outside the repo lockfiles)
+        run: |
+          npm install --no-save --prefix "$RUNNER_TEMP/pw" "playwright@${PLAYWRIGHT_VERSION}"
+          echo "PLAYWRIGHT_MODULE=$RUNNER_TEMP/pw/node_modules/playwright" >> "$GITHUB_ENV"
+      - name: Install Chromium
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install-deps chromium
+          else
+            "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+          fi
+      - name: Prepare the local Worker
+        run: |
+          cp worker/.dev.vars.example worker/.dev.vars
+          npm --prefix worker run db:init
+      - name: Run sync e2e
+        run: npm run e2e:stack
+        env:
+          E2E_LOG_DIR: ${{ runner.temp }}/e2e-logs
+          E2E_SHOT: ${{ runner.temp }}/e2e-logs/failure.png
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: ${{ runner.temp }}/e2e-logs
