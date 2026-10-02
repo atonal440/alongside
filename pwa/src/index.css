@@ -1663,3 +1663,10 @@ button {
   .btn-act { margin-left: 0; }
   .btn-delete { margin-left: 0; }
 }
+
+.retained-op { border: 1px solid var(--border); border-radius: 6px; font-size: 12px; margin: 4px 0; padding: 8px; }
+.retained-op-title { color: var(--ink); font-weight: 600; }
+.retained-op-reason { color: var(--ink-3); margin: 2px 0 6px; }
+.retained-op-actions { display: flex; gap: 8px; }
+.retained-op-actions button { background: transparent; border: 0; color: var(--ink-2, var(--ink-3)); cursor: pointer; font-size: 12px; padding: 0; }
+.retained-op-actions button:hover { color: var(--ink); }
