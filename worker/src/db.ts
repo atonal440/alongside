@@ -2,6 +2,8 @@ import type { Revision } from '@shared/parse';
 import { readWorkspaceSnapshot, readWorkspaceDelta } from './storage/sync';
 import type { WorkspaceDeltaInput } from '@shared/wire/sync';
 import { workspaceExport } from './domain/workspaceExport';
+import { planWorkspaceRestore, restoreCounts } from './domain/workspaceRestore';
+import { parseWorkspaceRestoreResult, type RestoreCounts, type WorkspaceRestoreInput, type WorkspaceRestoreResult } from '@shared/wire/workspaceRestore';
 import { planBatchCommand, type CommandReader } from './domain/batchCommands';
 import { readDeleteContext } from './storage/deletion';
 import { planDeleteCommand } from './domain/deleteCommands';
@@ -640,6 +642,60 @@ export class DB {
   async getWorkspaceSnapshot() { return readWorkspaceSnapshot(this.d1); }
   async getWorkspaceDelta(input: WorkspaceDeltaInput) { return readWorkspaceDelta(this.d1, input); }
   async exportWorkspace() { return workspaceExport(await this.getWorkspaceSnapshot(), new Date().toISOString()); }
+
+  /** One statement: cursor, planning revision and live family counts agree. */
+  private async readRestoreBaseline(): Promise<{ cursor: { epoch: number; sequence: number }; planningRevision: number; counts: RestoreCounts }> {
+    const row = await this.d1.prepare(`SELECT m.epoch, m.watermark, (SELECT COALESCE(MAX(revision),0) FROM planning_settings) AS planning_revision,
+      (SELECT COUNT(*) FROM tasks) AS tasks, (SELECT COUNT(*) FROM projects) AS projects, (SELECT COUNT(*) FROM task_links) AS links,
+      (SELECT COUNT(*) FROM duties) AS duties, (SELECT COUNT(*) FROM user_preferences) AS preferences,
+      (SELECT COUNT(*) FROM planning_settings) AS planning_settings, (SELECT COUNT(*) FROM action_log) AS action_log
+      FROM sync_metadata m WHERE m.id=1`).first<Record<string, number>>();
+    if (!row) throw new Error('Sync metadata is missing.');
+    return { cursor: { epoch: row.epoch!, sequence: row.watermark! }, planningRevision: row.planning_revision!,
+      counts: { tasks: row.tasks!, projects: row.projects!, links: row.links!, duties: row.duties!, preferences: row.preferences!,
+        planning_settings: row.planning_settings! as 0 | 1, action_log: row.action_log! } };
+  }
+
+  /**
+   * Replace the workspace from a version 2 export in one atomic batch. Preflight
+   * runs the identical validation/capacity/cursor checks and writes nothing.
+   */
+  async restoreWorkspace(input: WorkspaceRestoreInput): Promise<WorkspaceRestoreResult> {
+    const baseline = await this.readRestoreBaseline();
+    if (baseline.cursor.epoch !== input.expectedCursor.epoch || baseline.cursor.sequence !== input.expectedCursor.sequence) throw this.restoreCursorConflict(baseline.cursor);
+    const clock = parseEventInstant(new Date().toISOString());
+    if (!clock.ok) throw new Error('Invalid server clock.');
+    const plan = planWorkspaceRestore(input, baseline.planningRevision, clock.value);
+    if (!plan.ok) throwAppError(plan.error);
+    const capacity = checkPlanCapacity(this.d1, plan.value);
+    if (!capacity.ok) {
+      if (capacity.error.kind === 'capacity_exceeded') throw new CommandError({ code: 'capacity_exceeded', path: ['document'], message: `Atomic restore requires ${capacity.error.requiredStatements} SQL statements; the limit is 100.`,
+        retryable: false, requiredStatements: capacity.error.requiredStatements, limit: 100, recoveryHint: 'Restore is one atomic replacement and is never split into independent wipes. Reduce the document or wait for staged restore.' }, 413);
+      throwAppError(capacity.error);
+    }
+    const base = { contractVersion: 2 as const, mode: input.mode, previousCursor: baseline.cursor, replaces: baseline.counts, restores: restoreCounts(input.document),
+      notRestored: { command_audit: input.document.command_audit.length }, requiredStatements: capacity.value.requiredStatements, limit: 100 as const, nextEpoch: baseline.cursor.epoch + 1 };
+    let resultingCursor = null;
+    if (input.mode === 'apply') {
+      const applied = await applyPlan(this.d1, plan.value);
+      if (!applied.ok) {
+        const current = await this.readRestoreBaseline();
+        if (applied.error.kind === 'conflict' || current.cursor.epoch !== baseline.cursor.epoch || current.cursor.sequence !== baseline.cursor.sequence) throw this.restoreCursorConflict(current.cursor);
+        throwAppError(applied.error);
+      }
+      const after = await this.readRestoreBaseline();
+      resultingCursor = after.cursor;
+    }
+    const result = parseWorkspaceRestoreResult({ ...base, applied: input.mode === 'apply', resultingCursor });
+    if (!result.ok) throw new Error('Restore result failed validation.');
+    return result.value;
+  }
+
+  private restoreCursorConflict(current: { epoch: number; sequence: number }): CommandError {
+    return new CommandError({ code: 'restore_cursor_conflict', path: ['expectedCursor'], retryable: false,
+      message: `The workspace changed after the supplied cursor; it is now at epoch ${current.epoch}, sequence ${current.sequence}. Nothing was changed.`,
+      recoveryHint: 'Export again, review the new state, and rerun preflight with the current cursor before applying.' }, 409);
+  }
 
   async getEntitySnapshot(key: EntityReadKey): Promise<EntitySnapshot> {
     return readEntitySnapshot(this.d1, key);
