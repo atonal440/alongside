@@ -98,15 +98,31 @@ discards when none are checked. A target task that no longer exists hides Retry.
 comparison uses the legacy task list; it moves to the canonical overlay when that is wired
 into UI state. Retry on other ops stays a plain resubmit.
 
-## Shadow mode in the sync cycle
+## The read path
 
-`useSync` now runs `shadowSync` (`pwa/src/sync/shadow.ts`) after each successful legacy
-sync: it pulls the canonical store (`fresh`, so it starts after the legacy writes), overlays
-the pending ops, and `compareToLegacy` checks that task ids, titles, statuses, project
-membership and links match what the legacy sync just put on screen. Divergences are logged
-as a console warning (first 20); nothing changes UI state, sync status or the queue, and
-pull failures are swallowed into the result. This is the evidence step before reads move to
-the canonical overlay: warnings that show up in real use point at a mismatch to fix first.
+`useSync` flushes the pending-op queue, then calls `refreshFromCanonical`
+(`pwa/src/sync/refresh.ts`): `pullWorkspace` (fresh, so it starts after the flush's writes),
+`overlayPendingOps` over the result, and `idbReplaceView` writes the derived tasks, projects
+and links to the legacy IDB mirror in one transaction. The reducer and the optimistic action
+creators still read and write that mirror, so they are unchanged. The old per-collection REST
+reads (`/api/tasks/sync`, `/api/projects/sync`, `/api/tasks/links`) are no longer used by the
+PWA.
+
+Consequences worth knowing: an offline-created task or edit survives every refresh because its
+queued op is replayed, not because a survivor rule protects a local row; a rejected write rolls
+back on the next refresh because nothing replays it (it is retained instead); an offline or
+failed pull leaves the mirror and the user's edits untouched and reports offline.
+
+`flushPendingOps` is single-flight: overlapping callers (React StrictMode's doubled effects, a
+service-worker nudge mid-cycle) share one run, because two concurrent flushes sent the same
+queued create twice and duplicated the task.
+
+`npm run e2e` (`scripts/e2e-canonical.mjs`) drives this path in a real browser against a local
+worker and PWA: server-created tasks arriving, online add once, offline add surviving a reload
+and flushing exactly once, a refused edit retained and discardable, and a server-side delete
+propagating. Offline is simulated by blocking the API origin, since the dev server has no service
+worker to serve the app shell offline. It needs `playwright` resolvable
+(`PLAYWRIGHT_MODULE=/path/to/playwright` to point at one).
 
 ## Out of scope for this increment
 

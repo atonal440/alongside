@@ -943,12 +943,14 @@ fields (`rebaseView`, `retryRebased`); retry is hidden when the target task is g
 Next: reducer/UI integration of the canonical overlay, then version negotiation and the
 capability gate.
 
-### 2026-10-02 — Slice 2f sixth increment: canonical shadow sync
+### 2026-10-02 — Slice 2f sixth increment: canonical read path
 
-PR #63 merged as `23640d4`. Branch: `ccr-3181a8c6-juz5qg`; review/merge pending. Each
-legacy sync cycle now also pulls the canonical store and compares "canonical + pending
-ops" with the legacy state, logging divergences. No UI, status or queue effect. See
-[canonical workspace](../pwa/sync/canonical-workspace.md).
+PR #63 merged as `23640d4`; PR #64 (a shadow comparison) merged as `de58b22` and is superseded
+here. Branch: `ccr-3181a8c6-juz5qg`; review/merge pending. The PWA now reads through the canonical
+store plus pending-op overlay (`refreshFromCanonical`) and writes the result to the IDB mirror in
+one transaction; the legacy `syncFromServer` and shadow comparison are gone. Migrating legacy data
+is not a goal (the data will be wiped and restarted on v2). A new browser end-to-end script
+(`npm run e2e`) caught that overlapping flushes duplicated queued creates; `flushPendingOps` is now
+single-flight. See [canonical workspace](../pwa/sync/canonical-workspace.md).
 
-Next: switch reads to the canonical overlay once divergences are clean, then version
-negotiation and the capability gate.
+Next: version negotiation and the capability gate, then retiring the legacy mirror.

@@ -1,31 +1,14 @@
-import type { Task, Project, TaskLink } from '@shared/types';
 import { parseTaskRow } from '@shared/wire/rows';
 import type { ApiConfig } from './client';
-import { api } from './endpoints';
 import { toRequest, rebindTaskId } from './pendingOps';
 import type { PendingOp } from './pendingOps';
 import { isDurableFailure } from './result';
 import { messageFromResult, referencesTaskId, ATTEMPTS_CAP } from './syncPolicy';
-import {
-  idbGetAllTasks, idbPutTask, idbDeleteTask,
-} from '../idb/tasks';
-import {
-  idbClearProjects, idbPutProject,
-} from '../idb/projects';
-import {
-  idbClearLinks, idbPutLink,
-} from '../idb/links';
+import { idbPutTask, idbDeleteTask } from '../idb/tasks';
 import { idbRetainOp } from '../idb/retainedOps';
 import {
   idbGetPendingOps, idbDeletePendingOp, idbPutPendingOp,
 } from '../idb/pendingOps';
-
-export interface SyncResult {
-  online: boolean;
-  tasks?: Task[];
-  projects?: Project[];
-  links?: TaskLink[];
-}
 
 export interface FlushSummary {
   flushed: number;
@@ -64,7 +47,16 @@ async function dropDependentOps(taskId: string, dependsOn: string): Promise<Set<
   return skipped;
 }
 
-export async function flushPendingOps(config: ApiConfig): Promise<FlushSummary> {
+// Overlapping flushes (StrictMode's doubled effects, a service-worker nudge landing mid-cycle)
+// would each send the same queued op and duplicate creates, so concurrent callers share one run.
+let inFlight: Promise<FlushSummary> | null = null;
+
+export function flushPendingOps(config: ApiConfig): Promise<FlushSummary> {
+  if (!inFlight) inFlight = flushQueue(config).finally(() => { inFlight = null; });
+  return inFlight;
+}
+
+async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
   const ops = await idbGetPendingOps();
   let flushed = 0;
   const rejected: string[] = [];
@@ -173,55 +165,4 @@ export async function flushPendingOps(config: ApiConfig): Promise<FlushSummary> 
   }
 
   return { flushed, rejected, halted };
-}
-
-export async function syncFromServer(config: ApiConfig): Promise<SyncResult> {
-  const remote = await api.syncTasks(config);
-  if (remote.kind !== 'ok') return { online: false };
-
-  const remoteTasks = remote.value;
-  const remoteMap = Object.fromEntries(remoteTasks.map(t => [t.id, t]));
-  const pendingOps = await idbGetPendingOps();
-
-  // A local task survives server-absence iff a pending task.create op carries
-  // its id as localId. Title-based matching is intentionally removed here
-  // (stage 5): two tasks with the same title both survive correctly.
-  const offlineCreatedIds = new Set(
-    pendingOps
-      .filter((op): op is Extract<typeof op, { op: 'task.create' }> => op.op === 'task.create')
-      .map(op => op.localId),
-  );
-
-  const local = await idbGetAllTasks();
-  for (const lt of local) {
-    if (!remoteMap[lt.id] && !offlineCreatedIds.has(lt.id)) {
-      await idbDeleteTask(lt.id);
-    }
-  }
-  for (const rt of remoteTasks) {
-    await idbPutTask(rt);
-  }
-
-  const [projectsResult, linksResult] = await Promise.all([
-    api.syncProjects(config),
-    api.listLinks(config),
-  ]);
-
-  let projects: Project[] = [];
-  let links: TaskLink[] = [];
-
-  if (projectsResult.kind === 'ok') {
-    projects = projectsResult.value;
-    await idbClearProjects();
-    for (const p of projects) await idbPutProject(p);
-  }
-  if (linksResult.kind === 'ok') {
-    links = linksResult.value;
-    await idbClearLinks();
-    for (const l of links) await idbPutLink(l);
-  }
-
-  const finalTasks = await idbGetAllTasks();
-
-  return { online: true, tasks: finalTasks, projects, links };
 }
