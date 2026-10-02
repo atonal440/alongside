@@ -1,7 +1,7 @@
 # Power-user todo implementation checklist
 
-Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion merged/deployed. Bounded mixed graph batches merged/deployed. Compound lifecycle batches implemented with review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
-Updated: 2026-10-01.
+Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion merged/deployed. Bounded mixed graph batches merged/deployed. Compound lifecycle batches merged/deployed. Workspace bootstrap, delta and portable export merged/deployed; bounded v2 restore implemented with review/merge pending. Remaining Slice 2 work and Slices 3–7 remain unimplemented.
+Updated: 2026-10-02.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
 This checklist owns sequencing/progress, not another copy of the contracts.
@@ -112,8 +112,8 @@ the review gate. Merge authorizes the existing production deployment workflow.
 - **2e — workspace sync and restore:** consistent snapshot and fixed-watermark
   deltas covering all current user data, tombstones/retention/reset policy,
   import epoch and bounded versioned export/import retaining v1 input. Bootstrap/
-  all-writer feed merged/deployed in PR #55; delta and portable export increments
-  are under review.
+  all-writer feed, delta and portable export merged/deployed in PRs #55–#57; bounded
+  v2 restore with epoch advance is under review.
 - **2f — offline reconciliation and capability gate:** canonical IDB data plus
   ordered optimistic commands, retained conflicts/failed intent and inspectable
   rebase. Negotiate versions and gate incompatible writers only after the
@@ -844,3 +844,26 @@ unchanged cursor, strict inputs and the existing v1 export.
 
 Next: bounded restore/preflight, portable archival audit and import epochs,
 then canonical IDB/retained offline intentions and capability negotiation.
+
+### 2026-10-02 — Slice 2e fourth increment: bounded atomic v2 restore
+
+PRs #56 and #57 merged (delta `da9fbb8`, export `cb3b182`).
+
+Branch: `claude/zen-planck-4ykmrm`; review/merge pending. Adds `restore_workspace` /
+`POST /api/v2/restore` / `api.restoreWorkspace`: preflight (no writes) and apply of
+a v2 export as one atomic batch guarded by the caller's sync cursor, advancing the
+epoch before the wipe/insert so old cursors reset. Capacity above 100 statements is
+rejected before writes; incoming command audit is validated but not restored. See
+[restoring a v2 export](../shared/workspace-portability.md#restoring-a-version-2-export).
+
+Next: staged restore for larger workspaces, archival audit storage and v1 input with
+migration diagnostics, then canonical IDB/retained offline intentions and capability
+negotiation.
+
+Acceptance: full `npm run verify` passes 649 Worker / 669 PWA tests, both
+typechecks/builds and Worker dry-run (894.33 KiB / gzip 158.37 KiB). Fresh/upgrade
+cases cover preflight without writes, full replacement and round-trip equality,
+tombstoned dropped rows, empty restore, epoch reset of old cursors, stale and raced
+cursors, 413 oversize, cycle/occurrence rejection, late-failure rollback including
+the epoch, retained receipts and REST/MCP parity. PWA tests reject mismatched mode,
+cursor, counts and malformed results.
