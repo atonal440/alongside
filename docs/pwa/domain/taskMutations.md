@@ -49,7 +49,7 @@ Discriminated union — `{ kind: 'someday', until: ... }` is unrepresentable at 
 
 ## Non-goals
 
-- **Recurring successor minting**: `applyComplete` does not mint the next occurrence. That is the server's responsibility. The local write just marks the task done; the successor arrives via `syncFromServer`.
+- **Recurring successor minting**: `applyComplete` does not mint the next occurrence. That is the server's responsibility. The local write just marks the task done; the successor arrives with the next canonical pull.
 - **Branded field types in AppState**: All functions accept and return plain `Task` row shapes. Branded inputs (`NonEmptyString<200>`, `IsoDateTime`) appear only in function parameters where the type-level distinction adds value — stage 7 will parse form input before calling these functions.
 
 ## `TaskUpdatePatch`

@@ -8,7 +8,6 @@ import { ATTEMPTS_CAP } from '../../src/api/syncPolicy';
 import type { ApiConfig } from '../../src/api/client';
 import { idbQueueOp, idbGetPendingOps } from '../../src/idb/pendingOps';
 import type { PendingOp } from '../../src/api/pendingOps';
-import { idbGetAllTasks, idbPutTask } from '../../src/idb/tasks';
 import { closeDb } from '../../src/idb/db';
 import { consumeUpgradeRequired } from '../../src/api/client';
 import { idbGetRetainedOps } from '../../src/idb/retainedOps';
@@ -161,8 +160,7 @@ describe('flushPendingOps — task.create reconciliation', () => {
     expect((linkCall?.body as Record<string, unknown>)?.from_task_id).toBe('t_srv0001');
   });
 
-  test('400: dependent ops dropped and temp task deleted from IDB', async () => {
-    await idbPutTask(makeTask({ id: 't_local01', title: 'Temp' }));
+  test('400: dependent ops leave the queue (retained, not sent)', async () => {
     await idbQueueOp({ op: 'task.create', localId: 't_local01', body: { title: 'Temp' } });
     await idbQueueOp({ op: 'task.update', taskId: 't_local01', body: { title: 'Updated' } });
     await idbQueueOp({ op: 'link.create', body: { from_task_id: 't_local01', to_task_id: 't_other01', link_type: 'blocks' } });
@@ -177,13 +175,9 @@ describe('flushPendingOps — task.create reconciliation', () => {
     expect(summary.rejected).toHaveLength(1);
     expect(summary.rejected[0]).toContain('Validation failed');
     expect(await idbGetPendingOps()).toHaveLength(0);
-    // Temp task removed from IDB
-    const tasks = await idbGetAllTasks();
-    expect(tasks.find(t => t.id === 't_local01')).toBeUndefined();
   });
 
   test('400: rejected once even when dependent ops are present', async () => {
-    await idbPutTask(makeTask({ id: 't_local01' }));
     await idbQueueOp({ op: 'task.create', localId: 't_local01', body: { title: 'X' } });
     await idbQueueOp({ op: 'task.update', taskId: 't_local01', body: { title: 'Y' } });
     await idbQueueOp({ op: 'task.complete', taskId: 't_local01' });
@@ -264,7 +258,6 @@ describe('flushPendingOps — retained intent', () => {
   });
 
   test('a refused create retains its dependents, in order, as dependency failures', async () => {
-    await idbPutTask(makeTask({ id: 't_local01' }));
     await idbQueueOp({ op: 'task.create', localId: 't_local01', body: { title: 'X' } });
     await idbQueueOp({ op: 'task.update', taskId: 't_local01', body: { title: 'Y' } });
     await idbQueueOp({ op: 'task.complete', taskId: 't_local01' });

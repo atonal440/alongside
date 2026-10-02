@@ -3,11 +3,8 @@ import { pushNav } from '../../hooks/useHistory';
 import { projectColor } from '../../utils/design';
 import { isReady } from '@shared/readiness';
 import type { AppState } from '../../context/reducer';
-import { idbClearLinks } from '../../idb/links';
 import { idbClearPendingOps } from '../../idb/pendingOps';
 import { idbClearRetainedOps } from '../../idb/retainedOps';
-import { idbClearProjects } from '../../idb/projects';
-import { idbClearTasks } from '../../idb/tasks';
 import { idbClearCanonical } from '../../idb/canonical';
 import { RetainedOps } from './RetainedOps';
 import { resetPullCache } from '../../sync/pull';
@@ -23,9 +20,6 @@ async function clearLocalAppData(): Promise<void> {
     idbClearPendingOps(),
     idbClearRetainedOps(),
     idbClearCanonical().finally(resetPullCache),
-    idbClearLinks(),
-    idbClearProjects(),
-    idbClearTasks(),
   ]);
 }
 

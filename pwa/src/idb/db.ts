@@ -1,5 +1,5 @@
 const IDB_NAME = 'alongside';
-const IDB_VERSION = 6;
+const IDB_VERSION = 7;
 
 let _db: IDBDatabase | null = null;
 
@@ -72,19 +72,8 @@ export function getDB(): Promise<IDBDatabase> {
     req.onupgradeneeded = (event) => {
       const db = req.result;
       const oldVersion = (event as IDBVersionChangeEvent).oldVersion;
-      if (!db.objectStoreNames.contains('tasks')) {
-        const store = db.createObjectStore('tasks', { keyPath: 'id' });
-        store.createIndex('status', 'status');
-        store.createIndex('due_date', 'due_date');
-      }
       if (!db.objectStoreNames.contains('pending_ops')) {
         db.createObjectStore('pending_ops', { keyPath: 'id', autoIncrement: true });
-      }
-      if (!db.objectStoreNames.contains('projects')) {
-        db.createObjectStore('projects', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('links')) {
-        db.createObjectStore('links', { keyPath: ['from_task_id', 'to_task_id', 'link_type'] });
       }
       // v5: canonical server-state cache (derived; safe to drop and re-bootstrap).
       if (!db.objectStoreNames.contains('canonical_meta')) {
@@ -97,32 +86,21 @@ export function getDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains('retained_ops')) {
         db.createObjectStore('retained_ops', { keyPath: 'id', autoIncrement: true });
       }
-      // v3: snoozed_until → defer_until + defer_kind. Rewrite each task in
-      // place, and rewrite queued offline task updates so unsynced work
-      // survives the schema change.
+      // v3: snoozed_until → defer_until + defer_kind, rewritten in queued offline task updates so
+      // unsynced work survives the schema change. (The task store this once also rewrote is gone in
+      // v7: tasks are now derived from the canonical workspace plus the queue.)
       if (oldVersion < 3) {
         const tx = req.transaction;
-        if (tx) {
-          const taskStore = tx.objectStore('tasks');
-          const cursorReq = taskStore.openCursor();
-          cursorReq.onsuccess = () => {
-            const cursor = cursorReq.result;
+        if (tx && db.objectStoreNames.contains('pending_ops')) {
+          const opStore = tx.objectStore('pending_ops');
+          const opCursorReq = opStore.openCursor();
+          opCursorReq.onsuccess = () => {
+            const cursor = opCursorReq.result;
             if (!cursor) return;
             const value = cursor.value as Record<string, unknown>;
-            if (migrateLegacyDeferShape(value)) cursor.update(value);
+            if (migratePendingOpBody(value)) cursor.update(value);
             cursor.continue();
           };
-          if (db.objectStoreNames.contains('pending_ops')) {
-            const opStore = tx.objectStore('pending_ops');
-            const opCursorReq = opStore.openCursor();
-            opCursorReq.onsuccess = () => {
-              const cursor = opCursorReq.result;
-              if (!cursor) return;
-              const value = cursor.value as Record<string, unknown>;
-              if (migratePendingOpBody(value)) cursor.update(value);
-              cursor.continue();
-            };
-          }
         }
       }
       // v4: translate {method, path, body, local_id} ops to the typed PendingOp union.
@@ -149,6 +127,11 @@ export function getDB(): Promise<IDBDatabase> {
             cursor.continue();
           };
         }
+      }
+      // v7: the legacy task/project/link mirror is retired. Nothing reads or writes it; the UI shows the
+      // canonical workspace with the pending-op queue replayed on top.
+      for (const legacy of ['tasks', 'projects', 'links']) {
+        if (db.objectStoreNames.contains(legacy)) db.deleteObjectStore(legacy);
       }
     };
     req.onblocked = () => console.warn('[idb] upgrade blocked by another open tab; close it to continue');

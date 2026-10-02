@@ -1,8 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 import { resetIdb } from '../helpers/idb';
-import { makeTask } from '../helpers/fixtures';
-import type { NonEmptyString } from '@shared/parse';
+import type { BoundedString, NonEmptyString } from '@shared/parse';
 import { installFetchStub } from '../helpers/fetchStub';
 import {
   registerSyncCallback,
@@ -11,284 +10,134 @@ import {
   deleteLinkAction,
   completeTaskAction,
   updateTaskAction,
+  deleteTaskAction,
+  focusTaskAction,
 } from '../../src/context/actions';
 import type { AppAction } from '../../src/context/reducer';
 import type { ApiConfig } from '../../src/api/client';
 import { idbGetPendingOps } from '../../src/idb/pendingOps';
-import { idbGetAllTasks, idbPutTask } from '../../src/idb/tasks';
 import { closeDb } from '../../src/idb/db';
+import { resetPullCache, pullWorkspace } from '../../src/sync/pull';
+import { config as syncConfig, snapshot, taskImage } from '../helpers/syncFixtures';
 
-const config: ApiConfig = { apiBase: 'http://localhost:8787', authToken: 'tok' };
+const config: ApiConfig = syncConfig;
 
 function makeDispatch() {
   const actions: AppAction[] = [];
-  const dispatch = (a: AppAction) => { actions.push(a); };
-  return { actions, dispatch };
+  return { actions, dispatch: (a: AppAction) => { actions.push(a); } };
+}
+const lastData = (actions: AppAction[]) => [...actions].reverse().find((a): a is Extract<AppAction, { type: 'SET_DATA' }> => a.type === 'SET_DATA');
+
+// Seed a canonical workspace through the real pull path, then forbid further network use: actions
+// must never talk to the server themselves.
+async function seed(entities: unknown[]) {
+  const stub = installFetchStub();
+  stub.respondWith({ method: 'GET', path: '/api/v2/sync/snapshot' }, { type: 'json', status: 200, body: snapshot({ epoch: 1, sequence: 1 }, entities) });
+  await pullWorkspace(config, { fresh: true });
+  stub.restore();
+  return installFetchStub();
 }
 
-beforeEach(async () => {
-  closeDb();
-  await resetIdb();
-});
+beforeEach(async () => { closeDb(); await resetIdb(); resetPullCache(); registerSyncCallback(() => {}); });
+afterEach(() => { closeDb(); vi.restoreAllMocks(); });
 
-afterEach(() => {
-  closeDb();
-  vi.restoreAllMocks();
-});
-
-// ─── createLinkAction ─────────────────────────────────────────────────────────
-
-describe('createLinkAction', () => {
-  test('409 self-link: toast dispatched, op not queued, sync triggered', async () => {
-    let syncCalled = false;
-    registerSyncCallback(() => { syncCalled = true; });
-
-    const { actions, dispatch } = makeDispatch();
+describe('actions queue commands and show canonical + queue', () => {
+  test('createTaskAction queues a create, shows it immediately and requests a sync, with no network call', async () => {
     const stub = installFetchStub();
-    stub.respondWith({ method: 'POST', path: '/api/tasks/links' }, {
-      type: 'json', status: 409, body: { error: 'Self-links not allowed' },
-    });
-
-    await createLinkAction('t_abc001', 't_abc001', 'blocks', config, dispatch);
-    stub.restore();
-
-    // Toast was dispatched
-    const toast = actions.find(a => a.type === 'SET_TOAST');
-    expect(toast).toBeDefined();
-    expect((toast as Extract<AppAction, { type: 'SET_TOAST' }>).message).toContain('Self-links not allowed');
-
-    // Op was not queued
-    expect(await idbGetPendingOps()).toHaveLength(0);
-
-    // Resync was triggered
-    expect(syncCalled).toBe(true);
-  });
-
-  test('offline: link is queued, no toast', async () => {
+    let syncs = 0;
+    registerSyncCallback(() => { syncs++; });
     const { actions, dispatch } = makeDispatch();
-    const stub = installFetchStub();
-    stub.networkError({ method: 'POST', path: '/api/tasks/links' });
-
-    await createLinkAction('t_abc001', 't_bcd001', 'blocks', config, dispatch);
+    await createTaskAction('Buy milk' as NonEmptyString<200>, config, dispatch);
     stub.restore();
-
     const ops = await idbGetPendingOps();
     expect(ops).toHaveLength(1);
-    expect(ops[0]!.op).toBe('link.create');
-    expect(actions.find(a => a.type === 'SET_TOAST')).toBeUndefined();
+    expect(ops[0]).toMatchObject({ op: 'task.create', body: { title: 'Buy milk' } });
+    expect(lastData(actions)?.tasks.map(t => t.title)).toEqual(['Buy milk']);
+    expect(syncs).toBe(1);
+    expect(stub.calls).toHaveLength(0);
   });
-});
 
-// ─── completeTaskAction ───────────────────────────────────────────────────────
-
-describe('completeTaskAction', () => {
-  test('offline: op queued, no toast from rejection', async () => {
-    const task = makeTask({ id: 't_abc001' });
-    await idbPutTask(task);
-
+  test('updateTaskAction queues only the patch and the view reflects it', async () => {
+    const stub = await seed([taskImage('t_abc001', 1, { title: 'Old' })]);
     const { actions, dispatch } = makeDispatch();
-    const stub = installFetchStub();
-    stub.networkError({ method: 'POST', path: '/complete' });
+    await updateTaskAction('t_abc001', { title: 'New' as NonEmptyString<200> }, config, dispatch);
+    stub.restore();
+    expect(await idbGetPendingOps()).toMatchObject([{ op: 'task.update', taskId: 't_abc001', body: { title: 'New' } }]);
+    expect(lastData(actions)?.tasks.find(t => t.id === 't_abc001')?.title).toBe('New');
+    expect(stub.calls).toHaveLength(0);
+  });
 
+  test('a refused local mutation toasts and queues nothing', async () => {
+    const stub = await seed([taskImage('t_abc001', 1, { status: 'done' })]);
+    const { actions, dispatch } = makeDispatch();
+    await focusTaskAction('t_abc001', config, dispatch);
+    stub.restore();
+    expect(actions.some(a => a.type === 'SET_TOAST')).toBe(true);
+    expect(await idbGetPendingOps()).toHaveLength(0);
+  });
+
+  test('unknown task ids are ignored', async () => {
+    const stub = await seed([]);
+    const { actions, dispatch } = makeDispatch();
+    await updateTaskAction('t_missing', { title: 'x' as NonEmptyString<200> }, config, dispatch);
+    expect(await completeTaskAction('t_missing', config, dispatch)).toBeNull();
+    stub.restore();
+    expect(actions).toEqual([]);
+    expect(await idbGetPendingOps()).toHaveLength(0);
+  });
+
+  test('completeTaskAction queues the completion; recurring tasks explain the next occurrence', async () => {
+    const stub = await seed([taskImage('t_once01', 1), taskImage('t_rec001', 1, { due_date: '2026-10-03T12:00:00Z', due_all_day: true, recurrence: 'FREQ=DAILY' })]);
+    const { actions, dispatch } = makeDispatch();
+    expect(await completeTaskAction('t_once01', config, dispatch)).toBeNull();
+    expect(await completeTaskAction('t_rec001', config, dispatch)).toMatch(/next occurrence/i);
+    stub.restore();
+    expect((await idbGetPendingOps()).map(o => o.op)).toEqual(['task.complete', 'task.complete']);
+    expect(lastData(actions)?.tasks.every(t => t.status === 'done')).toBe(true);
+  });
+
+  test('completing an already-done task toasts and queues nothing', async () => {
+    const stub = await seed([taskImage('t_abc001', 1, { status: 'done' })]);
+    const { actions, dispatch } = makeDispatch();
     await completeTaskAction('t_abc001', config, dispatch);
     stub.restore();
-
-    const ops = await idbGetPendingOps();
-    expect(ops).toHaveLength(1);
-    expect(ops[0]!.op).toBe('task.complete');
-    expect(actions.find(a => a.type === 'SET_TOAST')).toBeUndefined();
-  });
-
-  test('already done locally: toast dispatched, no API call made', async () => {
-    // applyComplete guards locally — no server round-trip needed when the row is
-    // already done in IDB. (A 409 from the server would mean the same thing but
-    // we catch it before the request.)
-    const task = makeTask({ id: 't_abc001', status: 'done' });
-    await idbPutTask(task);
-
-    let syncCalled = false;
-    registerSyncCallback(() => { syncCalled = true; });
-
-    const { actions, dispatch } = makeDispatch();
-    // No stub registered — any network call would throw if the guard fails.
-    const stub = installFetchStub();
-
-    await completeTaskAction('t_abc001', config, dispatch);
-    stub.restore();
-
-    const toast = actions.find(a => a.type === 'SET_TOAST');
-    expect(toast).toBeDefined();
-    expect((toast as Extract<AppAction, { type: 'SET_TOAST' }>).message).toContain('already');
+    expect(actions.some(a => a.type === 'SET_TOAST')).toBe(true);
     expect(await idbGetPendingOps()).toHaveLength(0);
-    // No resync triggered — guard fires locally, no server rejection to roll back.
-    expect(syncCalled).toBe(false);
   });
 
-  test('recurring task offline: toast message about next occurrence returned', async () => {
-    const task = makeTask({ id: 't_abc001', recurrence: 'FREQ=DAILY', due_date: '2026-06-17' });
-    await idbPutTask(task);
-
-    const { dispatch } = makeDispatch();
-    const stub = installFetchStub();
-    stub.networkError({ method: 'POST', path: '/complete' });
-
-    const msg = await completeTaskAction('t_abc001', config, dispatch);
-    stub.restore();
-
-    expect(msg).toContain('Next occurrence will sync');
-    const ops = await idbGetPendingOps();
-    expect(ops).toHaveLength(1);
-    expect(ops[0]!.op).toBe('task.complete');
-  });
-});
-
-// ─── createTaskAction ─────────────────────────────────────────────────────────
-
-describe('createTaskAction', () => {
-  test('400: toast dispatched, temp task eventually deleted by resync', async () => {
-    let syncCalled = false;
-    registerSyncCallback(() => { syncCalled = true; });
-
+  test('deleteTaskAction queues a delete and removes the task and its links from view', async () => {
+    const link = { entity: 'link', key: JSON.stringify(['t_aaaaa1', 't_bbbbb1', 'blocks']), revision: 1, deletedAt: null, row: { from_task_id: 't_aaaaa1', to_task_id: 't_bbbbb1', link_type: 'blocks' } };
+    const stub = await seed([taskImage('t_aaaaa1', 1), taskImage('t_bbbbb1', 1), link]);
     const { actions, dispatch } = makeDispatch();
-    const stub = installFetchStub();
-    stub.respondWith({ method: 'POST', path: '/api/tasks' }, {
-      type: 'json', status: 400, body: { error: 'Title too short' },
-    });
-
-    await createTaskAction('A' as NonEmptyString<200>, config, dispatch);
+    await deleteTaskAction('t_aaaaa1', config, dispatch);
     stub.restore();
-
-    const toast = actions.find(a => a.type === 'SET_TOAST');
-    expect(toast).toBeDefined();
-    expect(await idbGetPendingOps()).toHaveLength(0);
-    expect(syncCalled).toBe(true);
+    const data = lastData(actions)!;
+    expect(data.tasks.map(t => t.id)).toEqual(['t_bbbbb1']);
+    expect(data.links).toEqual([]);
+    expect(await idbGetPendingOps()).toMatchObject([{ op: 'task.delete', taskId: 't_aaaaa1' }]);
   });
 
-  test('offline: op queued with localId, temp task remains in IDB', async () => {
-    const { dispatch } = makeDispatch();
-    const stub = installFetchStub();
-    stub.networkError({ method: 'POST', path: '/api/tasks' });
-
-    await createTaskAction('New task' as NonEmptyString<200>, config, dispatch);
-    stub.restore();
-
-    const ops = await idbGetPendingOps();
-    expect(ops).toHaveLength(1);
-    const op = ops[0] as Extract<typeof ops[number], { op: 'task.create' }>;
-    expect(op.op).toBe('task.create');
-    expect(op.body.title).toBe('New task');
-
-    const tasks = await idbGetAllTasks();
-    expect(tasks.find(t => t.id === op.localId)).toBeDefined();
-  });
-});
-
-// ─── pending-create guard ─────────────────────────────────────────────────────
-
-describe('writes against pending local tasks', () => {
-  async function seedOfflineCreate(): Promise<string> {
-    const { dispatch } = makeDispatch();
-    const stub = installFetchStub();
-    stub.networkError({ method: 'POST', path: '/api/tasks' });
-    await createTaskAction('Offline task' as NonEmptyString<200>, config, dispatch);
-    stub.restore();
-    const ops = await idbGetPendingOps();
-    const createOp = ops.find(o => o.op === 'task.create') as Extract<typeof ops[number], { op: 'task.create' }>;
-    return createOp.localId;
-  }
-
-  test('updateTaskAction on temp-id: queued without API call', async () => {
-    const tempId = await seedOfflineCreate();
-
-    // installFetchStub with no routes configured: any network call would throw
-    const stub = installFetchStub();
-    const { dispatch, actions } = makeDispatch();
-    await updateTaskAction(tempId, { title: 'Revised' as NonEmptyString<200> }, config, dispatch);
-    stub.restore();
-
-    const opsAfter = await idbGetPendingOps();
-    expect(opsAfter.some(o => o.op === 'task.update')).toBe(true);
-    expect(actions.find(a => a.type === 'SET_TOAST')).toBeUndefined();
-  });
-
-  test('completeTaskAction on temp-id: queued without API call', async () => {
-    const tempId = await seedOfflineCreate();
-
-    const stub = installFetchStub();
-    const { dispatch, actions } = makeDispatch();
-    await completeTaskAction(tempId, config, dispatch);
-    stub.restore();
-
-    const opsAfter = await idbGetPendingOps();
-    expect(opsAfter.some(o => o.op === 'task.complete')).toBe(true);
-    expect(actions.find(a => a.type === 'SET_TOAST')).toBeUndefined();
-  });
-
-  test('createLinkAction with temp-id endpoint: queued without API call', async () => {
-    const tempId = await seedOfflineCreate();
-
-    const stub = installFetchStub();
-    const { dispatch, actions } = makeDispatch();
-    await createLinkAction(tempId, 't_abc001', 'blocks', config, dispatch);
-    stub.restore();
-
-    const opsAfter = await idbGetPendingOps();
-    expect(opsAfter.some(o => o.op === 'link.create')).toBe(true);
-    expect(actions.find(a => a.type === 'SET_TOAST')).toBeUndefined();
-  });
-
-  test('deleteLinkAction with temp-id endpoint: queued without API call', async () => {
-    const tempId = await seedOfflineCreate();
-
-    const stub = installFetchStub();
-    const { dispatch, actions } = makeDispatch();
-    await deleteLinkAction(tempId, 't_abc001', 'blocks', config, dispatch);
-    stub.restore();
-
-    const opsAfter = await idbGetPendingOps();
-    expect(opsAfter.some(o => o.op === 'link.delete')).toBe(true);
-    expect(actions.find(a => a.type === 'SET_TOAST')).toBeUndefined();
-  });
-});
-
-// ─── updateTaskAction ─────────────────────────────────────────────────────────
-
-describe('updateTaskAction', () => {
-  test('400: toast dispatched, op not queued', async () => {
-    const task = makeTask({ id: 't_abc001' });
-    await idbPutTask(task);
-
-    let syncCalled = false;
-    registerSyncCallback(() => { syncCalled = true; });
+  test('link actions queue link ops and the view follows', async () => {
+    const stub = await seed([taskImage('t_aaaaa1', 1), taskImage('t_bbbbb1', 1)]);
     const { actions, dispatch } = makeDispatch();
-
-    const stub = installFetchStub();
-    stub.respondWith({ method: 'PATCH', path: '/api/tasks' }, {
-      type: 'json', status: 400, body: { error: 'Invalid update' },
-    });
-
-    await updateTaskAction('t_abc001', { title: '' as NonEmptyString<200> }, config, dispatch);
+    await createLinkAction('t_aaaaa1', 't_bbbbb1', 'blocks', config, dispatch);
+    expect(lastData(actions)?.links).toHaveLength(1);
+    await deleteLinkAction('t_aaaaa1', 't_bbbbb1', 'blocks', config, dispatch);
     stub.restore();
-
-    const toast = actions.find(a => a.type === 'SET_TOAST');
-    expect(toast).toBeDefined();
-    expect(await idbGetPendingOps()).toHaveLength(0);
-    expect(syncCalled).toBe(true);
+    expect(lastData(actions)?.links).toEqual([]);
+    expect((await idbGetPendingOps()).map(o => o.op)).toEqual(['link.create', 'link.delete']);
   });
 
-  test('offline: op queued', async () => {
-    const task = makeTask({ id: 't_abc001' });
-    await idbPutTask(task);
-
-    const { dispatch } = makeDispatch();
+  test('commands on an offline-created task replay in queue order against its temp id', async () => {
     const stub = installFetchStub();
-    stub.networkError({ method: 'PATCH', path: '/api/tasks' });
-
-    await updateTaskAction('t_abc001', { title: 'Updated' as NonEmptyString<200> }, config, dispatch);
+    const { actions, dispatch } = makeDispatch();
+    await createTaskAction('Draft' as NonEmptyString<200>, config, dispatch);
+    const id = lastData(actions)!.tasks[0]!.id;
+    await updateTaskAction(id, { notes: 'details' as BoundedString<10000> }, config, dispatch);
+    await completeTaskAction(id, config, dispatch);
     stub.restore();
-
-    const ops = await idbGetPendingOps();
-    expect(ops).toHaveLength(1);
-    expect(ops[0]!.op).toBe('task.update');
+    expect((await idbGetPendingOps()).map(o => o.op)).toEqual(['task.create', 'task.update', 'task.complete']);
+    expect(lastData(actions)?.tasks).toMatchObject([{ id, title: 'Draft', notes: 'details', status: 'done' }]);
+    expect(stub.calls).toHaveLength(0);
   });
 });

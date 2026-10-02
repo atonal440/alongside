@@ -3,9 +3,6 @@ import type { PendingOp, PendingOpPayload } from '../api/pendingOps';
 import type { RetainedOp } from '../api/retainedOps';
 import { idbDeleteRetainedOp, idbGetRetainedOps } from '../idb/retainedOps';
 import { idbQueueOp } from '../idb/pendingOps';
-import { idbGetAllTasks, idbPutTask } from '../idb/tasks';
-import { newLocalTask } from '../domain/taskMutations';
-import type { IsoDateTime, NonEmptyString } from '@shared/parse';
 
 /** One-line description of the intent a retained op preserves. */
 export function describeRetainedOp(retained: RetainedOp): string {
@@ -43,13 +40,6 @@ export async function retryRetainedOp(id: number): Promise<number> {
   if (!target) return 0;
   const group = retryGroup(all, target);
   for (const r of group) {
-    if (r.op.op === 'task.create') {
-      const known = (await idbGetAllTasks()).some(t => t.id === (r.op as Extract<PendingOp, { op: 'task.create' }>).localId);
-      if (!known) {
-        const { localId, body } = r.op;
-        await idbPutTask({ ...newLocalTask(body.title as NonEmptyString<200>, new Date().toISOString() as IsoDateTime, localId), ...body } as Task);
-      }
-    }
     await idbQueueOp(payloadOf(r.op));
     await idbDeleteRetainedOp(r.id!);
   }

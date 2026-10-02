@@ -1,19 +1,13 @@
 import type { Dispatch } from 'react';
-import type { TaskLink } from '../types';
+import type { Task, TaskLink } from '../types';
 import type { AppAction } from './reducer';
 import type { ApiConfig } from '../api/client';
-import type { ApiResult } from '../api/result';
+import type { PendingOpPayload } from '../api/pendingOps';
 import type { IsoDateTime, NonEmptyString } from '@shared/parse';
-import { api } from '../api/endpoints';
-import { isTransientFailure } from '../api/result';
-import { messageFromResult } from '../api/syncPolicy';
-import { idbGetAllTasks, idbPutTask, idbDeleteTask } from '../idb/tasks';
-import { idbPutLink, idbDeleteLink } from '../idb/links';
-import { idbGetPendingOps, idbQueueOp } from '../idb/pendingOps';
+import { idbQueueOp } from '../idb/pendingOps';
+import { loadView } from '../sync/view';
 import { genId } from '../utils/genId';
-import { localDateOf } from '../utils/design';
 import {
-  newLocalTask,
   applyUpdate,
   applyComplete,
   applyDefer,
@@ -22,12 +16,13 @@ import {
   applyUnfocus,
   applyReopen,
   type DeferInput,
+  type LocalMutationError,
   type TaskUpdatePatch,
+  type TaskWrite,
 } from '../domain/taskMutations';
+import type { Result } from '@shared/result';
 
-// Registered by useSync so that durable rejections can trigger a resync that
-// rolls local state back to server truth (the rollback mechanism for optimistic
-// writes — no per-op inverse operations needed).
+// Registered by useSync so that actions can ask for a prompt sync after queueing a command.
 let _requestSync: (() => void) | null = null;
 
 export function registerSyncCallback(fn: () => void): void {
@@ -38,33 +33,41 @@ export function requestSync(): void {
   _requestSync?.();
 }
 
-// Queue only transient failures; durable rejections (4xx) are never retried.
-// `unconfigured` behaves like offline — queue the op for later.
-function shouldQueue(result: ApiResult<unknown>): boolean {
-  return isTransientFailure(result) || result.kind === 'unconfigured';
-}
-
-// Returns true if `id` is the localId of a pending task.create op.
-// Dependent writes on a temp-id task must be queued rather than sent directly:
-// the server doesn't know the temp id yet, so any API call would get a 404
-// (durable) and the write would be silently dropped instead of rebound after
-// the create flushes.
-async function hasPendingCreate(id: string): Promise<boolean> {
-  const ops = await idbGetPendingOps();
-  return ops.some(op => op.op === 'task.create' && op.localId === id);
-}
-
-// Dispatch a toast from a durable server rejection (4xx only) and trigger
-// resync to restore server truth. `contract` results are excluded because the
-// server applied the write despite the schema mismatch.
-function handleRejection(result: ApiResult<unknown>, dispatch: Dispatch<AppAction>): void {
-  if (result.kind !== 'http') return;
-  dispatch({ type: 'SET_TOAST', message: messageFromResult(result) });
-  _requestSync?.();
-}
-
 function nowIso(): IsoDateTime {
   return new Date().toISOString() as IsoDateTime;
+}
+
+// Every user write has one shape: queue the command, show the result of replaying the queue on the
+// canonical state, and ask for a sync. The flush owns sending, ordering, retries and retaining
+// refusals, so an action never talks to the server and the screen is always canonical + queue.
+async function commit(ops: PendingOpPayload[], config: ApiConfig, dispatch: Dispatch<AppAction>): Promise<void> {
+  for (const op of ops) await idbQueueOp(op);
+  const view = await loadView(config.apiBase);
+  dispatch({ type: 'SET_DATA', tasks: view.tasks, projects: view.projects, links: view.links });
+  requestSync();
+}
+
+async function findTask(id: string, config: ApiConfig): Promise<Task | undefined> {
+  return (await loadView(config.apiBase)).tasks.find(t => t.id === id);
+}
+
+// Run a pure mutation against the current task and queue its patch. A refused mutation (for
+// example focusing a completed task) is reported without queueing anything.
+async function mutate(
+  id: string,
+  config: ApiConfig,
+  dispatch: Dispatch<AppAction>,
+  apply: (task: Task) => Result<TaskWrite, LocalMutationError>,
+): Promise<boolean> {
+  const task = await findTask(id, config);
+  if (!task) return false;
+  const mutation = apply(task);
+  if (!mutation.ok) {
+    dispatch({ type: 'SET_TOAST', message: mutation.error.message });
+    return false;
+  }
+  await commit([{ op: 'task.update', taskId: id, body: mutation.value.body }], config, dispatch);
+  return true;
 }
 
 export async function createTaskAction(
@@ -72,40 +75,7 @@ export async function createTaskAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  const now = nowIso();
-  const task = newLocalTask(title, now, genId('t'));
-  await idbPutTask(task);
-  dispatch({ type: 'UPSERT_TASK', task });
-
-  const result = await api.createTask({ title }, config);
-  if (result.kind === 'ok') {
-    const serverTask = result.value;
-    await idbDeleteTask(task.id);
-    await idbPutTask(serverTask);
-    dispatch({ type: 'DELETE_TASK', id: task.id });
-    dispatch({ type: 'UPSERT_TASK', task: serverTask });
-  } else if (result.kind === 'contract') {
-    // Server applied the write but the body failed schema validation.
-    // Don't queue a retry (would duplicate the task). Best-effort: extract
-    // the raw id field and update the local task so any follow-up edits,
-    // links, or deletes reference the real server ID rather than the temp ID.
-    const raw = result.raw as Record<string, unknown> | undefined;
-    const serverId = typeof raw?.['id'] === 'string' ? raw['id'] : null;
-    if (serverId) {
-      const reidentified = { ...task, id: serverId };
-      await idbDeleteTask(task.id);
-      await idbPutTask(reidentified);
-      dispatch({ type: 'DELETE_TASK', id: task.id });
-      dispatch({ type: 'UPSERT_TASK', task: reidentified });
-    }
-    // If we can't extract an id, leave the temp task; syncFromServer reconciles it.
-  } else if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'task.create', localId: task.id, body: { title } });
-  } else {
-    // Durable server rejection (4xx). No pending create op means syncFromServer
-    // will delete the temp task; resync is the rollback mechanism.
-    handleRejection(result, dispatch);
-  }
+  await commit([{ op: 'task.create', localId: genId('t'), body: { title } }], config, dispatch);
 }
 
 export async function updateTaskAction(
@@ -114,28 +84,7 @@ export async function updateTaskAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  const tasks = await idbGetAllTasks();
-  const task = tasks.find(t => t.id === id);
-  if (!task) return;
-  const mutation = applyUpdate(task, updates, nowIso());
-  if (!mutation.ok) {
-    dispatch({ type: 'SET_TOAST', message: mutation.error.message });
-    return;
-  }
-  const { task: updated, body } = mutation.value;
-  await idbPutTask(updated);
-  dispatch({ type: 'UPSERT_TASK', task: updated });
-
-  if (await hasPendingCreate(id)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body });
-    return;
-  }
-  const result = await api.updateTask(id, body, config);
-  if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body });
-  } else {
-    handleRejection(result, dispatch);
-  }
+  await mutate(id, config, dispatch, task => applyUpdate(task, updates, nowIso()));
 }
 
 export async function deleteTaskAction(
@@ -143,19 +92,7 @@ export async function deleteTaskAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  await idbDeleteTask(id);
-  dispatch({ type: 'DELETE_TASK', id });
-
-  if (await hasPendingCreate(id)) {
-    await idbQueueOp({ op: 'task.delete', taskId: id });
-    return;
-  }
-  const result = await api.deleteTask(id, config);
-  if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'task.delete', taskId: id });
-  } else {
-    handleRejection(result, dispatch);
-  }
+  await commit([{ op: 'task.delete', taskId: id }], config, dispatch);
 }
 
 export async function completeTaskAction(
@@ -163,41 +100,16 @@ export async function completeTaskAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<string | null> {
-  const tasks = await idbGetAllTasks();
-  const task = tasks.find(t => t.id === id);
+  const task = await findTask(id, config);
   if (!task) return null;
-
   const mutation = applyComplete(task, nowIso());
   if (!mutation.ok) {
     dispatch({ type: 'SET_TOAST', message: mutation.error.message });
     return null;
   }
-  const { task: updated, wasRecurring } = mutation.value;
-  await idbPutTask(updated);
-  dispatch({ type: 'UPSERT_TASK', task: updated });
-
-  if (await hasPendingCreate(id)) {
-    await idbQueueOp({ op: 'task.complete', taskId: id });
-    if (wasRecurring) return 'Done! Next occurrence will sync when online.';
-    return null;
-  }
-  const result = await api.completeTask(id, config);
-  if (result.kind === 'ok') {
-    if (result.value.next) {
-      await idbPutTask(result.value.next);
-      dispatch({ type: 'UPSERT_TASK', task: result.value.next });
-      const nextDue = result.value.next.due_date;
-      return `Done! Next: <span class="next-date">${nextDue ? localDateOf(nextDue) : ''}</span>`;
-    }
-  } else if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'task.complete', taskId: id });
-    if (wasRecurring) return 'Done! Next occurrence will sync when online.';
-  } else {
-    // Durable rejection (e.g. 409 invalid_transition — task already done).
-    // Resync restores the correct server state.
-    handleRejection(result, dispatch);
-  }
-  return null;
+  await commit([{ op: 'task.complete', taskId: id }], config, dispatch);
+  // The server creates the next occurrence; it arrives with the next sync.
+  return mutation.value.wasRecurring ? 'Done! The next occurrence will appear after syncing.' : null;
 }
 
 export async function deferTaskAction(
@@ -206,28 +118,7 @@ export async function deferTaskAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  const tasks = await idbGetAllTasks();
-  const task = tasks.find(t => t.id === id);
-  if (!task) return;
-  const mutation = applyDefer(task, defer, nowIso());
-  if (!mutation.ok) {
-    dispatch({ type: 'SET_TOAST', message: mutation.error.message });
-    return;
-  }
-  const { task: updated, body } = mutation.value;
-  await idbPutTask(updated);
-  dispatch({ type: 'UPSERT_TASK', task: updated });
-
-  if (await hasPendingCreate(id)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body });
-    return;
-  }
-  const result = await api.updateTask(id, body, config);
-  if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body });
-  } else {
-    handleRejection(result, dispatch);
-  }
+  await mutate(id, config, dispatch, task => applyDefer(task, defer, nowIso()));
 }
 
 export async function clearDeferAction(
@@ -235,28 +126,7 @@ export async function clearDeferAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  const tasks = await idbGetAllTasks();
-  const task = tasks.find(t => t.id === id);
-  if (!task) return;
-  const mutation = applyClearDefer(task, nowIso());
-  if (!mutation.ok) {
-    dispatch({ type: 'SET_TOAST', message: mutation.error.message });
-    return;
-  }
-  const { task: updated, body } = mutation.value;
-  await idbPutTask(updated);
-  dispatch({ type: 'UPSERT_TASK', task: updated });
-
-  if (await hasPendingCreate(id)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body });
-    return;
-  }
-  const result = await api.updateTask(id, body, config);
-  if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body });
-  } else {
-    handleRejection(result, dispatch);
-  }
+  await mutate(id, config, dispatch, task => applyClearDefer(task, nowIso()));
 }
 
 export async function focusTaskAction(
@@ -265,28 +135,7 @@ export async function focusTaskAction(
   dispatch: Dispatch<AppAction>,
   hours = 3,
 ): Promise<void> {
-  const tasks = await idbGetAllTasks();
-  const task = tasks.find(t => t.id === id);
-  if (!task) return;
-  const mutation = applyFocus(task, hours, nowIso());
-  if (!mutation.ok) {
-    dispatch({ type: 'SET_TOAST', message: mutation.error.message });
-    return;
-  }
-  const { task: updated, body } = mutation.value;
-  await idbPutTask(updated);
-  dispatch({ type: 'UPSERT_TASK', task: updated });
-
-  if (await hasPendingCreate(id)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body });
-    return;
-  }
-  const result = await api.updateTask(id, body, config);
-  if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body });
-  } else {
-    handleRejection(result, dispatch);
-  }
+  await mutate(id, config, dispatch, task => applyFocus(task, hours, nowIso()));
 }
 
 export async function unfocusTaskAction(
@@ -294,28 +143,7 @@ export async function unfocusTaskAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  const tasks = await idbGetAllTasks();
-  const task = tasks.find(t => t.id === id);
-  if (!task) return;
-  const mutation = applyUnfocus(task, nowIso());
-  if (!mutation.ok) {
-    dispatch({ type: 'SET_TOAST', message: mutation.error.message });
-    return;
-  }
-  const { task: updated, body } = mutation.value;
-  await idbPutTask(updated);
-  dispatch({ type: 'UPSERT_TASK', task: updated });
-
-  if (await hasPendingCreate(id)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body });
-    return;
-  }
-  const result = await api.updateTask(id, body, config);
-  if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body });
-  } else {
-    handleRejection(result, dispatch);
-  }
+  await mutate(id, config, dispatch, task => applyUnfocus(task, nowIso()));
 }
 
 export async function reopenTaskAction(
@@ -323,28 +151,7 @@ export async function reopenTaskAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  const tasks = await idbGetAllTasks();
-  const task = tasks.find(t => t.id === id);
-  if (!task) return;
-  const mutation = applyReopen(task, nowIso());
-  if (!mutation.ok) {
-    dispatch({ type: 'SET_TOAST', message: mutation.error.message });
-    return;
-  }
-  const { task: updated, body } = mutation.value;
-  await idbPutTask(updated);
-  dispatch({ type: 'UPSERT_TASK', task: updated });
-
-  if (await hasPendingCreate(id)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body });
-    return;
-  }
-  const result = await api.updateTask(id, body, config);
-  if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'task.update', taskId: id, body });
-  } else {
-    handleRejection(result, dispatch);
-  }
+  await mutate(id, config, dispatch, task => applyReopen(task, nowIso()));
 }
 
 export async function createLinkAction(
@@ -354,23 +161,7 @@ export async function createLinkAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  const link: TaskLink = { from_task_id: fromId, to_task_id: toId, link_type: linkType };
-  await idbPutLink(link);
-  dispatch({ type: 'UPSERT_LINK', link });
-
-  const body = { from_task_id: fromId, to_task_id: toId, link_type: linkType };
-  if (await hasPendingCreate(fromId) || await hasPendingCreate(toId)) {
-    await idbQueueOp({ op: 'link.create', body });
-    return;
-  }
-  const result = await api.createLink(body, config);
-  if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'link.create', body });
-  } else {
-    // Durable rejection (e.g. 409 for self-link or blocks cycle): the optimistic
-    // link is removed by the resync triggered inside handleRejection.
-    handleRejection(result, dispatch);
-  }
+  await commit([{ op: 'link.create', body: { from_task_id: fromId, to_task_id: toId, link_type: linkType } }], config, dispatch);
 }
 
 export async function deleteLinkAction(
@@ -380,18 +171,5 @@ export async function deleteLinkAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  await idbDeleteLink(fromId, toId, linkType);
-  dispatch({ type: 'DELETE_LINK', from: fromId, to: toId, linkType });
-
-  const body = { from_task_id: fromId, to_task_id: toId, link_type: linkType };
-  if (await hasPendingCreate(fromId) || await hasPendingCreate(toId)) {
-    await idbQueueOp({ op: 'link.delete', body });
-    return;
-  }
-  const result = await api.deleteLink(body, config);
-  if (shouldQueue(result)) {
-    await idbQueueOp({ op: 'link.delete', body });
-  } else {
-    handleRejection(result, dispatch);
-  }
+  await commit([{ op: 'link.delete', body: { from_task_id: fromId, to_task_id: toId, link_type: linkType } }], config, dispatch);
 }

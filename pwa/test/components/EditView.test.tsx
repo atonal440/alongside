@@ -7,7 +7,6 @@ import { makeTask } from '../helpers/fixtures';
 import { renderWithState } from '../helpers/renderWithState';
 import { EditView } from '../../src/components/views/EditView';
 import { resetIdb } from '../helpers/idb';
-import { idbPutTask } from '../../src/idb/tasks';
 import { closeDb } from '../../src/idb/db';
 
 vi.mock('../../src/context/actions', async (importOriginal) => {
@@ -28,7 +27,6 @@ const TASK = makeTask({ id: 't_edit01', title: 'Write tests', recurrence: null, 
 beforeEach(async () => {
   closeDb();
   await resetIdb();
-  await idbPutTask(TASK);
   vi.clearAllMocks();
 });
 
@@ -71,7 +69,6 @@ describe('EditView — validation errors', () => {
 
   test('recurrence without due date shows inline error and does NOT call updateTaskAction', async () => {
     const task = makeTask({ id: 't_edit02', recurrence: 'FREQ=WEEKLY;INTERVAL=1', due_date: null });
-    await idbPutTask(task);
     renderWithState(<EditView />, {
       tasks: [task],
       editingTaskId: task.id,

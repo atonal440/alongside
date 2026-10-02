@@ -978,3 +978,16 @@ Remaining in 2f: retire the legacy IDB mirror in favour of reading the canonical
 PR #67 merged as `9e6a0b7`. `checks.yml` now also runs on pushes to `main` (diff hygiene stays
 PR-only) because caches saved by PR runs are invisible to other PRs, so the Playwright browser
 cache never warmed (E2E sync stayed ~78s). Check the next PR's E2E timing against that baseline.
+
+### 2026-10-02 — Slice 2f: legacy mirror retired
+
+PR #68 merged as `d69b090`. Branch: `ccr-3181a8c6-juz5qg`; review/merge pending. The UI now shows
+canonical workspace + queue replayed (`loadView`, `refreshFromCanonical`); user actions only queue a
+command, dispatch the replayed view and request a sync (no direct API calls, so no per-action
+failure policy). IDB v7 deletes the `tasks`/`projects`/`links` mirror; `idb/decode.ts`, the
+incremental reducer actions and the old survivor logic are gone. Browser e2e gains an offline
+completion step. See [canonical workspace](../pwa/sync/canonical-workspace.md).
+
+This closes Slice 2f's planned scope. Remaining Slice 2 checkbox items to revisit: the offline
+rebase of retained conflicts is a field-level resubmit for task edits only; retained-op rebase for
+links/deletes against changed graphs is not attempted.

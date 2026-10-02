@@ -18,4 +18,4 @@ Pure state management logic. No side effects, no async — just types and the re
 
 - [[actions]] — async action creators that dispatch to this reducer
 - [[AppContext]] — provides `dispatch` to the component tree via `useContext`
-- [[idb-tasks|pwa/src/idb/tasks.ts]] — IDB writes that precede reducer dispatches
+- `pwa/src/sync/view.ts` — the canonical-plus-queue view that action creators dispatch via `SET_DATA`

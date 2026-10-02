@@ -4,7 +4,6 @@ import { resetIdb } from '../helpers/idb';
 import { closeDb } from '../../src/idb/db';
 import { idbRetainOp, idbGetRetainedOps } from '../../src/idb/retainedOps';
 import { idbGetPendingOps } from '../../src/idb/pendingOps';
-import { idbGetAllTasks } from '../../src/idb/tasks';
 import { makeTask } from '../helpers/fixtures';
 import { describeRetainedOp, discardRetainedOp, rebaseView, retryRebased, retryRetainedOp } from '../../src/sync/retained';
 import type { PendingOp } from '../../src/api/pendingOps';
@@ -34,7 +33,6 @@ describe('retained op actions', () => {
     expect(pending.map(p => p.op)).toEqual(['task.create', 'task.update']);
     expect(pending.every(p => p.attempts === 0)).toBe(true);
     expect((await idbGetRetainedOps()).map(r => r.op.op)).toEqual(['task.complete']);
-    expect((await idbGetAllTasks()).map(t => t.id)).toEqual(['t_local01']);
   });
 
   test('retrying an unrelated op touches only that op', async () => {

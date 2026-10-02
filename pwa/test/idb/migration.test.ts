@@ -177,7 +177,7 @@ describe('v3 → v4 migration', () => {
 });
 
 describe('v4 → v5 migration', () => {
-  test('adds the canonical stores without disturbing existing tasks or queued ops', async () => {
+  test('adds the canonical stores without disturbing queued ops', async () => {
     await openRaw('alongside', 4, (_, tx) => {
       putInto(tx, 'tasks', { id: 't_keep01', title: 'Keep', notes: null, status: 'pending', due_date: null, due_all_day: null, recurrence: null,
         created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z', defer_until: null, defer_kind: 'none', task_type: 'action',
@@ -186,12 +186,10 @@ describe('v4 → v5 migration', () => {
     });
     const { getDB } = await import('../../src/idb/db');
     const db = await getDB();
-    expect([...db.objectStoreNames]).toEqual(expect.arrayContaining(['canonical_meta', 'canonical_entities', 'tasks', 'pending_ops']));
+    expect([...db.objectStoreNames]).toEqual(expect.arrayContaining(['canonical_meta', 'canonical_entities', 'pending_ops']));
     const { idbReadCanonical } = await import('../../src/idb/canonical');
     expect(await idbReadCanonical('http://localhost:8787')).toBeNull();
     expect(await idbGetPendingOps()).toHaveLength(1);
-    const keep = await new Promise<unknown>((resolve, reject) => { const req = db.transaction('tasks').objectStore('tasks').get('t_keep01'); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
-    expect(keep).toMatchObject({ id: 't_keep01' });
   });
 });
 
@@ -206,5 +204,26 @@ describe('v5 → v6 migration', () => {
     expect(await idbGetPendingOps()).toHaveLength(1);
     const { idbGetRetainedOps } = await import('../../src/idb/retainedOps');
     expect(await idbGetRetainedOps()).toEqual([]);
+  });
+});
+
+describe('v6 → v7 migration', () => {
+  test('retires the legacy task/project/link mirror and keeps queued ops', async () => {
+    await openRaw('alongside', 6, (_, tx) => {
+      putInto(tx, 'tasks', { id: 't_old001', title: 'Old mirror row' });
+      putInto(tx, 'pending_ops', { op: 'task.complete', taskId: 't_keep01', created_at: '2026-01-01T00:00:00.000Z', attempts: 0 });
+    });
+    const { getDB } = await import('../../src/idb/db');
+    const db = await getDB();
+    const names = [...db.objectStoreNames];
+    for (const gone of ['tasks', 'projects', 'links']) expect(names).not.toContain(gone);
+    expect(names).toEqual(expect.arrayContaining(['pending_ops', 'retained_ops', 'canonical_meta', 'canonical_entities']));
+    expect(await idbGetPendingOps()).toHaveLength(1);
+  });
+
+  test('a fresh install never creates the legacy stores', async () => {
+    const { getDB } = await import('../../src/idb/db');
+    const db = await getDB();
+    expect([...db.objectStoreNames].sort()).toEqual(['canonical_entities', 'canonical_meta', 'pending_ops', 'retained_ops']);
   });
 });

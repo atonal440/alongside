@@ -1,7 +1,7 @@
 import type { Task, TaskLink, Project } from '../types';
-import type { IsoDateTime } from '@shared/parse';
+import type { IsoDateTime, NonEmptyString } from '@shared/parse';
 import type { PendingOp } from '../api/pendingOps';
-import { applyComplete, applyUpdate, type TaskUpdatePatch } from '../domain/taskMutations';
+import { applyComplete, applyUpdate, newLocalTask, type TaskUpdatePatch } from '../domain/taskMutations';
 import type { CanonicalWorkspace } from './canonical';
 
 /**
@@ -24,7 +24,7 @@ export interface OverlayView {
 const linkKey = (l: { from_task_id: string; to_task_id: string; link_type: string }) => `${l.from_task_id}\n${l.to_task_id}\n${l.link_type}`;
 const skipped = (reason: Extract<OverlayOutcome, { kind: 'skipped' }>['reason'], message: string): OverlayOutcome => ({ kind: 'skipped', reason, message });
 
-export function overlayPendingOps(base: CanonicalWorkspace, ops: readonly PendingOp[]): OverlayView {
+export function overlayPendingOps(base: Pick<CanonicalWorkspace, 'entities'>, ops: readonly PendingOp[]): OverlayView {
   const tasks = new Map<string, Task>();
   const links = new Map<string, TaskLink>();
   const projects: Project[] = [];
@@ -42,11 +42,14 @@ export function overlayPendingOps(base: CanonicalWorkspace, ops: readonly Pendin
         if (tasks.has(op.localId)) return skipped('task_exists', `Task ${op.localId} already exists.`);
         const { body } = op;
         tasks.set(op.localId, {
-          id: op.localId, title: body.title, notes: body.notes ?? null, status: 'pending',
-          due_date: body.due_date ?? null, due_all_day: body.due_date ? (body.due_all_day ?? null) : null,
-          recurrence: body.recurrence ?? null, created_at: at, updated_at: at, defer_until: null, defer_kind: 'none',
-          task_type: body.task_type ?? 'action', project_id: body.project_id ?? null, kickoff_note: body.kickoff_note ?? null,
-          session_log: null, focused_until: null, duty_id: null, occurrence_at: null,
+          ...newLocalTask(body.title as NonEmptyString<200>, at, op.localId),
+          notes: body.notes ?? null,
+          due_date: body.due_date ?? null,
+          due_all_day: body.due_date ? (body.due_all_day ?? null) : null,
+          recurrence: body.recurrence ?? null,
+          task_type: body.task_type ?? 'action',
+          project_id: body.project_id ?? null,
+          kickoff_note: body.kickoff_note ?? null,
         } as Task);
         return { kind: 'applied' };
       }

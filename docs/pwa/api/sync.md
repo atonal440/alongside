@@ -18,9 +18,7 @@ Every write attempt lands in one of five outcome categories. The policy applied 
 
 ## Types
 
-**`FlushSummary`** — `{ flushed: number; rejected: string[]; halted: boolean }`. `flushed` counts ops processed (ok + contract + 4xx). `rejected` collects human-readable messages from durable 4xx rejections for `useSync` to toast after the subsequent `syncFromServer`. `halted` is true when the flush stopped at a transient failure.
-
-**`SyncResult`** — `{ online: boolean; tasks?: Task[]; projects?: Project[]; links?: TaskLink[] }`. Returned by `syncFromServer`.
+**`FlushSummary`** — `{ flushed: number; rejected: string[]; halted: boolean }`. `flushed` counts ops processed (ok + contract + 4xx). `rejected` collects human-readable messages from durable 4xx rejections for `useSync` to toast after the subsequent refresh (the refused op is also retained for review). `halted` is true when the flush stopped at a transient failure.
 
 **`WriteOutcome`** (`syncPolicy.ts`) — `'applied' | 'queued' | { kind: 'rejected'; message: string }`. Internal classification used by flush and action creators.
 
@@ -30,19 +28,19 @@ Every write attempt lands in one of five outcome categories. The policy applied 
 
 Reads all `PendingOp`s from IndexedDB in FIFO order and replays them:
 
-- On success (`ok`): delete the op. For `task.create`, parse the server row, replace the temp task in IDB, and rebind all subsequent ops in the current cycle's array (so dependent ops are sent with the real server ID in the same flush, not the next one) and in IDB (for ops not yet reached in this cycle).
-- On durable failure (4xx): delete the op and add the error message to `rejected`. For `task.create`, additionally delete all queued ops that reference its `localId` (they target an ID that will never exist) and delete the temp task from IDB.
+- On success (`ok`): delete the op. For `task.create`, parse the server row and rebind all subsequent ops in the current cycle's array (so dependent ops are sent with the real server ID in the same flush, not the next one) and in IDB (for ops not yet reached in this cycle).
+- On durable failure (4xx): retain the op with its status and message (`idbRetainOp`), remove it from the queue and add the message to `rejected`. For `task.create`, additionally retain all queued ops that reference its `localId` as dependency failures (they target an ID that will never exist).
 - On transient failure: increment `attempts`, persist, and `break`. The flush stops here to preserve op ordering. If `attempts ≥ 25` (the cap), fires a "changes aren't syncing" notice once per app session.
 
-**`syncFromServer(config)`** → `SyncResult`
+`flushPendingOps` is single-flight: overlapping callers share one run, so a queued create is never sent twice.
 
-Fetches tasks, projects, and links from the server and writes them into IDB. LWW merge: server data overwrites local. A local task survives server-absence iff a pending `task.create` op carries its `id` as `localId` — this is the rollback mechanism for offline-created tasks after a durable create rejection. Two tasks with identical titles both survive correctly (the previous title-based heuristic is gone).
+Reading is no longer in this module: see `refreshFromCanonical` in [canonical workspace](../sync/canonical-workspace.md).
 
 **`_resetStuckNotice()`** — Test helper that resets the per-session stuck-sync flag.
 
 ## Rollback for Optimistic Writes
 
-The PWA has no per-op inverse operations. Rollback is always resync: when an action creator gets a durable rejection, it dispatches a toast and calls `requestSync()` (registered by `useSync`). The subsequent `syncFromServer` overwrites local state with server truth. For optimistic links rejected by the server (e.g. self-links, `blocks` cycles), `listLinks` from the server restores the correct graph.
+The PWA has no per-op inverse operations. Rollback is replay: a refused op leaves the queue (it is retained), so the next canonical-plus-queue view simply no longer includes it, and `useSync` toasts the reason.
 
 ## syncPolicy.ts helpers
 

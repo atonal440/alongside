@@ -68,9 +68,9 @@ IndexedDB write (optimistic, local-first)
        ├─► flushPendingOps ──────────────────► Worker REST API (/api/*)
        │     (queued if offline)                      │
        │                                              ▼
-       └─► syncFromServer ◄──────────────────  Cloudflare D1 (SQLite)
-             (full pull, last-write-wins               │
-              on updated_at)                           │
+       └─► refreshFromCanonical ◄────────────  Cloudflare D1 (SQLite)
+             (snapshot + fixed-watermark               │
+              deltas, then queue replayed)             │
                                                ┌───────┴──────────┐
                                                │                  │
                                                ▼                  ▼
@@ -82,7 +82,7 @@ IndexedDB write (optimistic, local-first)
                                             client
 ```
 
-Local IndexedDB is always written first. [[sync|pwa/api/sync.ts]] replays queued ops when the network is available (`flushPendingOps`) and pulls a full snapshot (`syncFromServer`) for reconciliation. The Worker's [[db|worker/db.ts]] is the authoritative store; the same data is exposed over the MCP endpoint via [[mcp|worker/mcp.ts]]. External clients (e.g. Claude.ai) go through [[oauth|worker/oauth.ts]] before reaching `/mcp`.
+Every user write is queued in IndexedDB first and shown immediately (canonical workspace + queue replayed). [[sync|pwa/api/sync.ts]] sends queued ops in order when the network is available (`flushPendingOps`), and `refreshFromCanonical` pulls the canonical workspace (snapshot, then deltas) for reconciliation. The Worker's [[db|worker/db.ts]] is the authoritative store; the same data is exposed over the MCP endpoint via [[mcp|worker/mcp.ts]]. External clients (e.g. Claude.ai) go through [[oauth|worker/oauth.ts]] before reaching `/mcp`.
 
 ## Directory structure
 
@@ -124,9 +124,6 @@ docs/
       actions.md           ← pwa/src/context/actions.ts
     idb/
       db.md                ← pwa/src/idb/db.ts
-      tasks.md             ← pwa/src/idb/tasks.ts
-      projects.md          ← pwa/src/idb/projects.ts
-      links.md             ← pwa/src/idb/links.ts
       pendingOps.md        ← pwa/src/idb/pendingOps.ts
     api/
       client.md            ← pwa/src/api/client.ts

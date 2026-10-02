@@ -100,18 +100,21 @@ into UI state. Retry on other ops stays a plain resubmit.
 
 ## The read path
 
-`useSync` flushes the pending-op queue, then calls `refreshFromCanonical`
-(`pwa/src/sync/refresh.ts`): `pullWorkspace` (fresh, so it starts after the flush's writes),
-`overlayPendingOps` over the result, and `idbReplaceView` writes the derived tasks, projects
-and links to the legacy IDB mirror in one transaction. The reducer and the optimistic action
-creators still read and write that mirror, so they are unchanged. The old per-collection REST
-reads (`/api/tasks/sync`, `/api/projects/sync`, `/api/tasks/links`) are no longer used by the
-PWA.
+There is no separate task/project/link mirror (IDB v7 deleted it). What the UI shows is always
+**canonical workspace + pending-op queue replayed**:
 
-Consequences worth knowing: an offline-created task or edit survives every refresh because its
-queued op is replayed, not because a survivor rule protects a local row; a rejected write rolls
-back on the next refresh because nothing replays it (it is retained instead); an offline or
-failed pull leaves the mirror and the user's edits untouched and reports offline.
+- `loadView(source)` (`pwa/src/sync/view.ts`) builds it from the stored canonical workspace (via
+  `currentWorkspace`, which reuses `pull.ts`'s validated in-memory copy while the stored cursor
+  matches) and the queue, with no network. It is used on boot and after every user write.
+- `useSync` flushes the queue, then calls `refreshFromCanonical` (`pwa/src/sync/refresh.ts`):
+  `pullWorkspace` (fresh, so it starts after the flush's writes) then the same replay. Offline or
+  failed pulls report offline and change nothing stored.
+- Writes (`pwa/src/context/actions.ts`) only queue a command, dispatch the replayed view and ask for
+  a sync; they never call the server.
+
+Consequences: an offline-created task or edit survives every refresh because its queued op is
+replayed; a refused write vanishes on the next refresh because it left the queue (it is retained for
+review); and there is no second copy of server state to drift from the canonical one.
 
 `flushPendingOps` is single-flight: overlapping callers (React StrictMode's doubled effects, a
 service-worker nudge mid-cycle) share one run, because two concurrent flushes sent the same
