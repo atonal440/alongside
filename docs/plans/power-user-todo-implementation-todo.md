@@ -902,3 +902,13 @@ and abort atomically on any failure; the structural revision is no longer stored
 unchanged polls reuse a validated in-memory copy; backlogs past the page bound,
 storage errors and unreadable caches have explicit outcomes; `fresh` pulls and
 credential-keyed sharing; the live-reference rule is shared with the snapshot schema.
+
+### 2026-10-02 — Slice 2f second increment: pending-op overlay
+
+PR #59 merged as `91ab9ae`. Branch: `ccr-3181a8c6-juz5qg`. Adds the pure
+`overlayPendingOps` projection (canonical workspace + ordered pending ops, with a per-op
+applied/skipped outcome). Not yet wired into UI state or the flush; no gate changes. See
+[canonical workspace](../pwa/sync/canonical-workspace.md).
+
+Next: reducer/UI integration, retained 409 conflicts and inspectable rebase, then version
+negotiation and the gate.
