@@ -912,3 +912,13 @@ applied/skipped outcome). Not yet wired into UI state or the flush; no gate chan
 
 Next: reducer/UI integration, retained 409 conflicts and inspectable rebase, then version
 negotiation and the gate.
+
+### 2026-10-02 — Slice 2f third increment: retained failed intent
+
+PR #60 merged as `a037781`. Branch: `ccr-3181a8c6-juz5qg`; review/merge pending. IDB v6
+adds `retained_ops`; durable rejections (incl. 409) and their dependents are retained with
+diagnostics instead of dropped. No UI yet; retry/transient policy unchanged. See
+[canonical workspace](../pwa/sync/canonical-workspace.md).
+
+Next: surface retained ops and inspectable rebase, reducer/UI integration of the overlay,
+then version negotiation and the gate.

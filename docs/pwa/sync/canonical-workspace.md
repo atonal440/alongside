@@ -73,7 +73,19 @@ gone, duplicate create, invalid edit, missing link endpoint) is skipped and repo
 `outcomes[i]` with a reason, and later ops still run. That reporting is the hook for the
 retained-conflict and rebase work: nothing here drops or rewrites the queue.
 
+## Retained failed intent
+
+IDB v6 adds a `retained_ops` store. When the legacy flush hits a durable 4xx (including
+409), the op is written there with `{kind:'rejected', status, message}` *before* it leaves
+the queue, so the user's intended change is no longer lost; a refused `task.create` also
+retains its queued dependents as `{kind:'dependency', dependsOn}`, in queue order.
+Retained ops never flush again and are not overlaid. Auth/429/network/5xx stay retryable
+and are never retained. Reads parse each record (`parseRetainedOp`, embedding
+`parsePendingOp`) and skip malformed ones with a warning; logout clears the store. The
+toast and resync behaviour is unchanged. Surfacing retained ops and an inspectable rebase
+are later increments.
+
 ## Out of scope for this increment
 
-Wiring the canonical store and overlay into reducer/UI state, retained conflicts and inspectable rebase, version negotiation and the capability
+Wiring the canonical store and overlay into reducer/UI state, inspectable rebase of retained conflicts, version negotiation and the capability
 gate remain later 2f increments. The legacy queue and `syncFromServer` are unchanged.

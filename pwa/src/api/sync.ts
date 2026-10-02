@@ -15,6 +15,7 @@ import {
 import {
   idbClearLinks, idbPutLink,
 } from '../idb/links';
+import { idbRetainOp } from '../idb/retainedOps';
 import {
   idbGetPendingOps, idbDeletePendingOp, idbPutPendingOp,
 } from '../idb/pendingOps';
@@ -48,13 +49,14 @@ async function rebindTempId(oldId: string, newId: string): Promise<void> {
   }
 }
 
-// Delete all queued ops that reference taskId. Returns the IDB ids that were
+// Retain (then remove from the queue) all queued ops that reference taskId. Returns the IDB ids that were
 // deleted so the flush loop can skip them without re-fetching.
-async function dropDependentOps(taskId: string): Promise<Set<number>> {
+async function dropDependentOps(taskId: string, dependsOn: string): Promise<Set<number>> {
   const skipped = new Set<number>();
   const pending = await idbGetPendingOps();
   for (const op of pending) {
     if (referencesTaskId(op, taskId) && op.id !== undefined) {
+      await idbRetainOp(op, { kind: 'dependency', dependsOn, message: 'Not sent because the task it depends on was rejected.' });
       await idbDeletePendingOp(op.id);
       skipped.add(op.id);
     }
@@ -135,15 +137,18 @@ export async function flushPendingOps(config: ApiConfig): Promise<FlushSummary> 
     }
 
     if (isDurableFailure(result)) {
-      // 4xx rejection: the write can never succeed. Drop it and report to caller.
-      rejected.push(messageFromResult(result));
+      // 4xx rejection: the write can never succeed. Retain it with diagnostics, remove it from the queue and report to caller.
+      const message = messageFromResult(result);
+      rejected.push(message);
+      // Keep the user's intent with the diagnostics before it leaves the queue.
+      await idbRetainOp(op, { kind: 'rejected', status: result.kind === 'http' ? result.status : 0, message });
       await idbDeletePendingOp(op.id!);
 
       if (op.op === 'task.create') {
         // All ops targeting this temp ID will also fail (the task will never
         // exist on the server), so drop them and mark them as skipped in the
         // current loop to avoid sending doomed requests.
-        const newSkipped = await dropDependentOps(op.localId);
+        const newSkipped = await dropDependentOps(op.localId, op.localId);
         for (const id of newSkipped) skippedIds.add(id);
         // The temp task has no pending create op protecting it, so syncFromServer
         // will delete it. Delete it from IDB now so the state is consistent even
