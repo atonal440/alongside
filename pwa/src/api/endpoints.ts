@@ -1,4 +1,5 @@
 import { parseFoundationErrorEnvelope, parseCapabilities, parseTimeResolution, parseLegacyDatesPreview, type Capabilities, type TimeResolution, type LegacyDatesPreview, type ResolveTimeInput, type LegacyDatesPreviewInput } from '@shared/wire/planning';
+import { parseWorkspaceSnapshot, type WorkspaceSnapshot } from '@shared/wire/sync';
 import { parseChangesPreview, parseChangesResult, parsePlanningSettingsExport, parsePlanningSettingsResponse, type ChangesPreview, type ChangesResult, type CommandEnvelope, type PlanningSettingsExport, type PlanningSettingsResponse } from '@shared/wire/commands';
 import type { Timezone } from '@shared/parse';
 import { parseEntityVersionResponse, parseEntitySnapshot, parseLinkSnapshot, type LinkKey, type LinkSnapshot, type EntityReadKey, type EntitySnapshot, type EntityKey, type EntityVersionResponse } from '@shared/wire/versions';
@@ -87,6 +88,9 @@ function parseFoundationError(raw: unknown): Result<ApiErrorBody, ValidationErro
 }
 
 export const api = {
+  workspaceSnapshot(config: ApiConfig): Promise<ApiResult<WorkspaceSnapshot>> {
+    return apiRequest('/api/v2/sync/snapshot', {}, config, parseWorkspaceSnapshot, parseFoundationError);
+  },
   link(key: LinkKey, config: ApiConfig): Promise<ApiResult<LinkSnapshot>> {
     return apiRequest('/api/v2/link', jsonBody(key), config, parseLinkSnapshot, parseFoundationError);
   },

@@ -105,6 +105,7 @@ const commandEnvelope = { ...envelope, properties: { ...envelope.properties,
   commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema, ...taskFieldSchemas, ...linkSchemas, ...deleteSchemas] } },
 } };
 export const COMMAND_TOOLS = [
+  { name: 'get_workspace_snapshot', description: 'Read all current user-data families, retained deletion revisions and a matching sync cursor in one consistent snapshot. Includes tasks, projects, links, duties, preferences, planning settings and provenance; excludes credentials and receipts. This is sync bootstrap, not portable restore. Delta pulls and offline overlays follow later.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'get_link', description: 'Read an exact link orientation, its live/deleted revision and the structural revision together. Related additions require ascending IDs; legacy reversed links remain inspectable/removable. Use for reliable link planning.', inputSchema: {
     type: 'object', additionalProperties: false, properties: { entity: { const: 'link' }, from: { type: 'string' }, to: { type: 'string' }, linkType: { enum: ['blocks', 'related'] } }, required: ['entity', 'from', 'to', 'linkType'],
   } },
@@ -138,10 +139,11 @@ export async function callCommandTool(name: string, args: unknown, db: DB): Prom
     if (!key.ok) throw new CommandError(invalidInput(key.error), 400);
     return db.getEntityVersion(key.value);
   }
-  if (name === 'get_planning_settings' || name === 'export_planning_settings') {
+  if (name === 'get_workspace_snapshot' || name === 'get_planning_settings' || name === 'export_planning_settings') {
     if (args === null || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).length) {
       throw new CommandError(invalidInput([{ code: 'invalid_input', path: [], message: 'Expected an empty input object.' }]), 400);
     }
+    if (name === 'get_workspace_snapshot') return db.getWorkspaceSnapshot();
     const settings = await db.getPlanningSettings();
     if (name === 'get_planning_settings') return { contractVersion: 2, settings };
     const exported = parseSchema(PlanningSettingsExportSchema, { contractVersion: 2, kind: 'planning_settings', exportedAt: new Date().toISOString(),
@@ -158,6 +160,7 @@ export async function callCommandTool(name: string, args: unknown, db: DB): Prom
 }
 export async function handleCommandRequest(request: Request, url: URL, db: DB): Promise<Response | null> {
   const route = [
+    ['GET', '/api/v2/sync/snapshot', 'get_workspace_snapshot'],
     ['POST', '/api/v2/link', 'get_link'],
     ['POST', '/api/v2/entity', 'get_entity'],
     ['POST', '/api/v2/entity-version', 'get_entity_version'],

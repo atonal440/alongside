@@ -185,3 +185,47 @@ export const entityVersions = sqliteTable('entity_versions', {
   check('entity_versions_entity', sql`${t.entity} IN ('task','project','link','duty')`),
   check('entity_versions_revision', sql`typeof(${t.revision}) = 'integer' AND ${t.revision} BETWEEN 0 AND 9007199254740991`),
 ]);
+
+// Independent of command receipts: triggers cover legacy, reliable and raw SQL
+// writers. Cursors use an import epoch and a fixed sequence watermark; removing
+// history advances the retention floor without expiring receipts or tombstones.
+export const syncMetadata = sqliteTable('sync_metadata', {
+  id: integer('id').primaryKey(),
+  epoch: integer('epoch').notNull().default(0),
+  watermark: integer('watermark').notNull().default(0),
+  retention_floor: integer('retention_floor').notNull().default(0),
+}, t => [
+  check('sync_metadata_singleton', sql`${t.id} = 1`),
+  check('sync_metadata_epoch', sql`typeof(${t.epoch}) = 'integer' AND ${t.epoch} BETWEEN 0 AND 9007199254740991`),
+  check('sync_metadata_watermark', sql`typeof(${t.watermark}) = 'integer' AND ${t.watermark} BETWEEN 0 AND 9007199254740991`),
+  check('sync_metadata_floor', sql`typeof(${t.retention_floor}) = 'integer' AND ${t.retention_floor} BETWEEN 0 AND ${t.watermark}`),
+]);
+export const syncAuxVersions = sqliteTable('sync_aux_versions', {
+  entity: text('entity', { enum: ['preference', 'planning_settings', 'action_log', 'command_audit'] }).notNull(),
+  entity_key: text('entity_key').notNull(),
+  revision: integer('revision').notNull(),
+  deleted_at: text('deleted_at'),
+}, t => [
+  primaryKey({ columns: [t.entity, t.entity_key] }),
+  check('sync_aux_entity', sql`${t.entity} IN ('preference','planning_settings','action_log','command_audit')`),
+  check('sync_aux_revision', sql`typeof(${t.revision}) = 'integer' AND ${t.revision} BETWEEN 0 AND 9007199254740991`),
+]);
+export const syncFeed = sqliteTable('sync_feed', {
+  seq: integer('seq').primaryKey({ autoIncrement: true }),
+  epoch: integer('epoch').notNull(),
+  entity: text('entity', { enum: ['task', 'project', 'link', 'duty', 'preference', 'planning_settings', 'action_log', 'command_audit'] }).notNull(),
+  entity_key: text('entity_key').notNull(),
+  revision: integer('revision').notNull(),
+  operation: text('operation', { enum: ['upsert', 'delete'] }).notNull(),
+  row_json: text('row_json').notNull(),
+  deleted_at: text('deleted_at'),
+  recorded_at: text('recorded_at').notNull(),
+}, t => [
+  check('sync_feed_seq', sql`typeof(${t.seq}) = 'integer' AND ${t.seq} BETWEEN 1 AND 9007199254740991`),
+  check('sync_feed_epoch', sql`typeof(${t.epoch}) = 'integer' AND ${t.epoch} BETWEEN 0 AND 9007199254740991`),
+  check('sync_feed_entity', sql`${t.entity} IN ('task','project','link','duty','preference','planning_settings','action_log','command_audit')`),
+  check('sync_feed_revision', sql`typeof(${t.revision}) = 'integer' AND ${t.revision} BETWEEN 0 AND 9007199254740991`),
+  check('sync_feed_operation', sql`${t.operation} IN ('upsert','delete')`),
+  check('sync_feed_row', sql`json_valid(${t.row_json})`),
+  index('sync_feed_entity').on(t.entity, t.entity_key, t.seq),
+]);

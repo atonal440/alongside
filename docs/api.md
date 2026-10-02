@@ -429,3 +429,14 @@ null; versions distinguish no history from tombstones. The row's ID and
 live/deleted state must agree with the version. Read this together before
 planning reliable commands. See [stable creation](shared/reliable-creation.md)
 for creation envelopes, project guards and conflict/replay behavior.
+
+### Workspace sync bootstrap
+
+`GET /api/v2/sync/snapshot` accepts no query parameters and returns
+`{contractVersion:2,cursor:{epoch,sequence},structuralRevision,entities}` from one
+consistent SQL read. Each entity has `entity`, `key`, `revision`, `deletedAt`
+and `row`; tombstones retain versions with null rows. Includes all eight current
+user-data families and provenance, excluding credentials and command receipts.
+See [workspace sync](shared/workspace-sync.md) for keys, validation, all-writer
+capture and rollout boundaries. This is bootstrap; delta pagination and offline
+queue integration follow later. Capability gates remain false during rollout.
