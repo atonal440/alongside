@@ -860,10 +860,16 @@ Next: staged restore for larger workspaces, archival audit storage and v1 input 
 migration diagnostics, then canonical IDB/retained offline intentions and capability
 negotiation.
 
-Acceptance: full `npm run verify` passes 649 Worker / 669 PWA tests, both
+Acceptance: full `npm run verify` passes 652 Worker / 670 PWA tests, both
 typechecks/builds and Worker dry-run (894.33 KiB / gzip 158.37 KiB). Fresh/upgrade
 cases cover preflight without writes, full replacement and round-trip equality,
 tombstoned dropped rows, empty restore, epoch reset of old cursors, stale and raced
 cursors, 413 oversize, cycle/occurrence rejection, late-failure rollback including
 the epoch, retained receipts and REST/MCP parity. PWA tests reject mismatched mode,
 cursor, counts and malformed results.
+
+Review follow-ups: the blocks-cycle search is now iterative (also protecting v1 import),
+so oversize rejection comes from exact plan counting alone; legacy `related`
+self-links round-trip; a lost apply response reports `restore_outcome_unknown` rather
+than claiming nothing changed. Restore does not re-run per-task domain validation, so
+backups keep every stored row exactly as exported.

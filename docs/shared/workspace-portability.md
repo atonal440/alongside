@@ -85,6 +85,12 @@ original results. Planning settings get revision `previous + 1` and fresh timest
 without settings leaves none, so a later first write restarts at revision 1. The
 epoch change forces clients to rebase before any retained revision could matter.
 
+Restore keeps every exported row as stored: it checks references, duty occurrence
+pairing and an acyclic `blocks` graph, but not per-task domain rules, and it keeps
+legacy `related` self-links, so any export round-trips. If an `apply` response is lost
+after the batch commits, a retry returns 409 `restore_outcome_unknown` (the epoch
+advanced) instead of a stale-cursor message; read a snapshot to see what is live.
+
 Staged restores for larger workspaces, archival storage of incoming audit and v1
 input with migration diagnostics remain separate increments; the legacy
 `POST /api/import` is unchanged. The PWA does not yet call restore from any UI, and

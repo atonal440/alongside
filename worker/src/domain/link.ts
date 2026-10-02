@@ -47,34 +47,33 @@ export function findBlocksCycle(links: readonly TaskLinkLike[]): string[] | null
     adjacency.set(link.from_task_id, targets);
   }
 
+  // Iterative DFS: v1 imports and v2 restores are unbounded inputs, so recursion depth must not scale with chain length.
   const visiting = new Set<string>();
   const visited = new Set<string>();
   const stack: string[] = [];
 
-  function visit(taskId: string): string[] | null {
-    if (visiting.has(taskId)) {
-      const cycleStart = stack.indexOf(taskId);
-      return [...stack.slice(cycleStart), taskId];
+  for (const root of adjacency.keys()) {
+    if (visited.has(root)) continue;
+    const frames: { id: string; next: number }[] = [{ id: root, next: 0 }];
+    visiting.add(root);
+    stack.push(root);
+    while (frames.length > 0) {
+      const frame = frames[frames.length - 1]!;
+      const targets = adjacency.get(frame.id) ?? [];
+      if (frame.next >= targets.length) {
+        frames.pop();
+        stack.pop();
+        visiting.delete(frame.id);
+        visited.add(frame.id);
+        continue;
+      }
+      const target = targets[frame.next++]!;
+      if (visiting.has(target)) return [...stack.slice(stack.indexOf(target)), target];
+      if (visited.has(target)) continue;
+      visiting.add(target);
+      stack.push(target);
+      frames.push({ id: target, next: 0 });
     }
-    if (visited.has(taskId)) return null;
-
-    visiting.add(taskId);
-    stack.push(taskId);
-
-    for (const next of adjacency.get(taskId) ?? []) {
-      const cycle = visit(next);
-      if (cycle) return cycle;
-    }
-
-    stack.pop();
-    visiting.delete(taskId);
-    visited.add(taskId);
-    return null;
-  }
-
-  for (const taskId of adjacency.keys()) {
-    const cycle = visit(taskId);
-    if (cycle) return cycle;
   }
 
   return null;

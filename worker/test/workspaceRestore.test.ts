@@ -126,7 +126,28 @@ describe.each(['fresh', 'upgrade'] as const)('version 2 workspace restore (%s)',
   });
 });
 
-it('rejects a huge chained link graph by size before any recursive traversal', async () => {
+it('reports an uncertain outcome when the restore commits but its response is lost', async () => {
+  const { sql, d1, hooks } = sqliteD1(); const db = new DB(d1);
+  try {
+    sql.exec(seed);
+    const exported = await db.exportWorkspace(); const cursor = cursorOf(sql);
+    hooks.loseResponse = true;
+    await expect(db.restoreWorkspace(input(exported, cursor) as never)).rejects.toMatchObject({ status: 409, detail: { code: 'restore_outcome_unknown' } });
+    expect(cursorOf(sql).epoch).toBe(cursor.epoch + 1);
+  } finally { sql.close(); }
+});
+it('round-trips legacy related self-links but rejects blocks self-loops', async () => {
+  const { sql, d1 } = sqliteD1(); const db = new DB(d1);
+  try {
+    sql.exec(`INSERT INTO tasks(id,title,created_at,updated_at) VALUES('t_same11','Same','${now}','${now}'); INSERT INTO task_links VALUES('t_same11','t_same11','related');`);
+    const exported = await db.exportWorkspace();
+    expect((await db.restoreWorkspace(input(exported, cursorOf(sql)) as never)).applied).toBe(true);
+    expect(sql.prepare('SELECT COUNT(*) AS n FROM task_links').get()).toEqual({ n: 1 });
+    const loop = { ...exported, links: [{ from_task_id: 't_same11', to_task_id: 't_same11', link_type: 'blocks' }] };
+    await expect(db.restoreWorkspace(input(loop, cursorOf(sql)) as never)).rejects.toMatchObject({ status: 400 });
+  } finally { sql.close(); }
+});
+it('rejects a huge chained link graph without recursion or writes', async () => {
   const { sql, d1, batches } = sqliteD1(); const db = new DB(d1);
   try {
     const base = { id: '', title: 't', notes: null, kickoff_note: null, status: 'pending', task_type: 'action', project_id: null, due_date: null, due_all_day: null, recurrence: null,

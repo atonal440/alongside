@@ -684,7 +684,12 @@ export class DB {
       const applied = await applyPlan(this.d1, plan.value);
       if (!applied.ok) {
         const current = await this.readRestoreBaseline();
-        if (applied.error.kind === 'conflict' || current.cursor.epoch !== baseline.cursor.epoch || current.cursor.sequence !== baseline.cursor.sequence) throw this.restoreCursorConflict(current.cursor);
+        // The epoch only advances in a restore batch. If it moved, this very batch may have committed
+        // before its response was lost, so never claim nothing changed.
+        if (current.cursor.epoch !== baseline.cursor.epoch) throw new CommandError({ code: 'restore_outcome_unknown', path: ['expectedCursor'], retryable: false,
+          message: `The sync epoch is now ${current.cursor.epoch}; a restore committed, possibly this one, and its response was not delivered.`,
+          recoveryHint: 'Read get_workspace_snapshot and compare with the intended document before deciding whether to restore again.' }, 409);
+        if (applied.error.kind === 'conflict' || current.cursor.sequence !== baseline.cursor.sequence) throw this.restoreCursorConflict(current.cursor);
         throw new CommandError({ code: 'storage_unavailable', path: [], message: 'The restore could not be committed. Nothing was changed.', retryable: true,
           recoveryHint: 'Run preflight again with the current cursor, then retry apply.' }, 503);
       }
