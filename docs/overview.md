@@ -36,7 +36,8 @@ Completion/deletion also compose with grouped successor/cascade effects.
 families, retained tombstones and a matching cursor together. Storage triggers
 capture legacy and reliable writes. Bounded delta pulls retain one upper watermark
 across pages and return explicit reset diagnostics. Restore epochs and retained
-offline overlays remain subsequent increments.
+offline overlays remain subsequent increments. [Portable workspace export](shared/workspace-portability.md)
+now includes all current live families and provenance from the same coherent snapshot.
 
 ## Feature highlights
 

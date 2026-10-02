@@ -518,3 +518,12 @@ Returns ordered historical versioned images, `from`, `cursor`, `watermark` and
 wait for the next pull. `sync_reset_required` includes current-cursor/floor/reason
 diagnostics and requires fresh bootstrap plus retained-intent rebase. See
 [workspace sync](shared/workspace-sync.md#fixed-watermark-delta-pulls).
+
+### `export_workspace`
+
+Accepts only `{}` and returns a coherent version 2 portable export of every
+current user-data family, including duties, planning values and historical
+provenance. Excludes credentials, replay receipts, sync cursors/revisions and
+tombstones. Read-only; v2 restore follows separately. See
+[workspace portability](shared/workspace-portability.md) for exact fields and
+legacy compatibility.
