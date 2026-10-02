@@ -792,3 +792,26 @@ rewriting source rows or broadening current write validation. Git history
 confirms the former names/values; pre-014 upgrade and PWA boundary regressions
 cover them. Full verification passes 616 Worker / 622 PWA tests and Worker
 dry-run (871.24 KiB / gzip 152.93 KiB).
+
+### 2026-10-01 — Slice 2e second increment: fixed-watermark delta reads
+
+Branch: `codex/power-user-slice-2e-delta`; based on the bootstrap increment while
+its final automated review is pending. Delta pages expose historical images,
+strict sequence/revision relationships, one upper watermark across continuations
+and explicit 409 reset diagnostics for epoch, retention and invalid future cursors.
+PWA parsing verifies the requested range/watermark/limit as well as entity fields.
+Both bootstrap and delta queries return separate D1 rows. No migration or broad
+gate change; canonical/offline integration remains later. See
+[fixed-watermark pulls](../shared/workspace-sync.md#fixed-watermark-delta-pulls).
+
+Acceptance: full `npm run verify` passes 635 Worker / 643 PWA tests, both
+typechecks/builds and Worker dry-run (877.99 KiB / gzip 154.34 KiB). Fresh/upgrade
+cases cover interleaved writes, historical images, cascade/deletion/resurrection,
+reset reasons and in-flight expiry, allocator gaps, strict REST/MCP inputs and
+all-family staged reconciliation. PWA rejects malformed pages, changed request
+ranges/watermarks, invalid entities/revisions and missing reset diagnostics.
+Isolated actual-D1 smoke passes a 2.63 MB page, fixed-watermark continuations,
+next-pull mid-write delivery, REST/MCP parity, explicit reset, limits and gates.
+
+Next: bounded versioned workspace restore/export and import epoch transitions,
+then canonical IDB/retained offline intentions and capability negotiation.

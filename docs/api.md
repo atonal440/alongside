@@ -440,3 +440,17 @@ user-data families and provenance, excluding credentials and command receipts.
 See [workspace sync](shared/workspace-sync.md) for keys, validation, all-writer
 capture and rollout boundaries. This is bootstrap; delta pagination and offline
 queue integration follow later. Capability gates remain false during rollout.
+
+### Workspace delta pages
+
+`POST /api/v2/sync/delta` accepts `{cursor:{epoch,sequence},watermark?,limit?}`
+with a 1–500 image limit (default 100). Omit watermark on the first page; repeat
+its unchanged watermark with each returned continuation cursor. Responses contain
+`from`, `cursor`, `watermark`, `hasMore` and ordered `{sequence,entity}` images.
+Stage all pages and reconcile together before advancing canonical state.
+
+HTTP 409 `sync_reset_required` includes parsed `syncReset` diagnostics with
+reason, current cursor and retention floor. Fetch a fresh snapshot and rebase
+retained intent; a diagnostic cursor alone cannot replace lost contents.
+See [fixed-watermark delta pulls](shared/workspace-sync.md#fixed-watermark-delta-pulls).
+Broad capability gates remain false pending restore/offline integration.

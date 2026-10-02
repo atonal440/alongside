@@ -34,8 +34,9 @@ state/membership and links with final-graph validation and one replay receipt.
 Completion/deletion also compose with grouped successor/cascade effects.
 [Workspace snapshot bootstrap](shared/workspace-sync.md) reads all current user-data
 families, retained tombstones and a matching cursor together. Storage triggers
-capture legacy and reliable writes for the subsequent delta reader. Delta pulls,
-restore epochs and retained offline overlays remain subsequent increments.
+capture legacy and reliable writes. Bounded delta pulls retain one upper watermark
+across pages and return explicit reset diagnostics. Restore epochs and retained
+offline overlays remain subsequent increments.
 
 ## Feature highlights
 

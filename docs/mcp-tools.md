@@ -507,3 +507,14 @@ Includes duties, preferences, planning settings and historical provenance as wel
 as tasks/projects/links. Credentials and replay receipts are excluded. See
 [workspace sync bootstrap](shared/workspace-sync.md) for exact identity/deletion
 contracts and the remaining delta/offline rollout. This is not a restore input.
+
+### `get_workspace_delta`
+
+Accepts a bootstrap/completed-pull cursor, optional continuation watermark and
+1–500 image limit (default 100). Omit watermark on the first page; pass that
+unchanged watermark and each returned cursor through all remaining pages.
+Returns ordered historical versioned images, `from`, `cursor`, `watermark` and
+`hasMore`. Stage the whole pull before committing canonical state. Mid-pull writes
+wait for the next pull. `sync_reset_required` includes current-cursor/floor/reason
+diagnostics and requires fresh bootstrap plus retained-intent rebase. See
+[workspace sync](shared/workspace-sync.md#fixed-watermark-delta-pulls).

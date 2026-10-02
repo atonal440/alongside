@@ -48,8 +48,8 @@ FK cascades and import replacement; no-op writes still advance revisions.
 
 Feed images include full current rows, deletion timestamps, retained revisions
 and an import epoch. Settings include the ordered working-hours projection.
-Transactions may emit intermediate images of the same identity: the future delta
-reader must use its fixed upper watermark and reconcile complete pull results,
+Transactions may emit intermediate images of the same identity: the delta
+reader uses its fixed upper watermark and clients reconcile complete pull results,
 not treat each intermediate settings image as a separate user command. A replayed
 receipt performs no new writes and emits no new events.
 
@@ -65,8 +65,47 @@ existing cursors and feed history.
 
 ## Rollout boundary
 
-This increment provides bootstrap and all-writer capture. Fixed-watermark delta
-pagination, explicit cursor reset/expiry responses, restore epoch transitions,
-canonical IDB state and retained offline intentions follow in separate increments.
+Bootstrap and fixed-watermark delta reads now accompany all-writer capture.
+Restore epoch transitions, canonical IDB state and retained offline intentions
+follow in separate increments.
 `reliableCommands` and `deltaSync` capability gates remain false until the complete
 protocol and PWA rollout are ready. The existing PWA queue still uses legacy sync.
+
+## Fixed-watermark delta pulls
+
+`POST /api/v2/sync/delta`, MCP `get_workspace_delta` and PWA `api.workspaceDelta`
+accept `{cursor, watermark?, limit?}`. Use the cursor from a successful bootstrap
+or completed pull. The limit is 1–500, default 100. On the first page omit
+`watermark`; on every continuation pass the first page's unchanged watermark
+and the latest returned cursor. A watermark must share the cursor's epoch and
+cannot precede its sequence.
+
+Results contain `contractVersion`, `from`, `cursor`, `watermark`, `hasMore` and
+`changes`. Each change has `sequence` and the same versioned entity image as
+bootstrap. Sequences strictly increase; repeated identities may appear with
+increasing revisions. Historical feed images, not current rows, populate the
+page. Metadata and bounded separate image query rows share one SQL statement,
+so large pages also avoid D1's per-row/value limit. Read failures never advance
+a cursor or change storage.
+
+Stage every page until `hasMore:false`, then reconcile the complete pull in one
+local transaction. A page can split a source transaction, contain intermediate
+settings projections or temporarily omit a referenced row. Do not commit a
+partial page as a complete canonical workspace. At the end, the cursor equals
+the fixed watermark; writes committed after the first page's watermark belong
+to the next pull. Per-entity revision/deletion checks still apply to every image.
+The PWA API parser additionally verifies response/request cursor, watermark and
+limit agreement.
+
+An unusable cursor returns HTTP 409 with `code:"sync_reset_required"`,
+`retryable:false` and `syncReset:{reason,currentCursor,retentionFloor}`. Reasons
+are `epoch_changed`, `history_expired`, `cursor_ahead` or `watermark_ahead`.
+A cursor at the retention floor is valid; one below it is expired. Retention or
+an epoch transition between pages also invalidates the continuation. Discard
+staged pages, fetch a new bootstrap and rebase retained local intentions before
+writing; retrying the same cursor cannot fix the problem. The current cursor in
+a reset diagnostic is information, not a substitute for bootstrap contents.
+
+Delta reads now exist, but versioned restore transitions and canonical/offline
+IDB integration remain separate rollout increments. The broad `deltaSync` and
+`reliableCommands` capability gates remain false until that integration is ready.
