@@ -1,5 +1,6 @@
 import type { Revision } from '@shared/parse';
-import { readWorkspaceSnapshot } from './storage/sync';
+import { readWorkspaceSnapshot, readWorkspaceDelta } from './storage/sync';
+import type { WorkspaceDeltaInput } from '@shared/wire/sync';
 import { planBatchCommand, type CommandReader } from './domain/batchCommands';
 import { readDeleteContext } from './storage/deletion';
 import { planDeleteCommand } from './domain/deleteCommands';
@@ -636,6 +637,7 @@ export class DB {
 
   // Typed version/configuration reads preserve the legacy task row contract.
   async getWorkspaceSnapshot() { return readWorkspaceSnapshot(this.d1); }
+  async getWorkspaceDelta(input: WorkspaceDeltaInput) { return readWorkspaceDelta(this.d1, input); }
 
   async getEntitySnapshot(key: EntityReadKey): Promise<EntitySnapshot> {
     return readEntitySnapshot(this.d1, key);

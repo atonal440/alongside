@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { SyncResetSchema } from './syncCursor';
 import { EntitySnapshotSchema, LinkSnapshotSchema } from './versions';
 import { EventInstantSchema, LocalDateSchema, LocalTimeSchema, MinuteInstantSchema, PositiveMinutesSchema, RevisionSchema, TaskIdSchema, parseSchema } from '../parse';
 import { TimezoneSchema } from '../parse/time';
@@ -71,6 +72,7 @@ export const FoundationErrorSchema = v.strictObject({
   expectedStructuralRevision: v.optional(RevisionSchema),
   requiredStatements: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(Number.MAX_SAFE_INTEGER))),
   limit: v.optional(v.literal(100)),
+  syncReset: v.optional(SyncResetSchema),
 });
 export const LegacyDatesPreviewSchema = v.strictObject({
   contractVersion: v.literal(2), serverNow: EventInstantSchema, timezone: TimezoneSchema, timezoneSource: TimezoneSourceSchema,
@@ -81,6 +83,7 @@ export const LegacyDatesPreviewSchema = v.strictObject({
 export type LegacyDatesPreview = v.InferOutput<typeof LegacyDatesPreviewSchema>;
 export const parseLegacyDatesPreview = (input: unknown) => parseSchema(LegacyDatesPreviewSchema, input);
 
-export const FoundationErrorEnvelopeSchema = v.strictObject({ contractVersion: v.literal(2), error: FoundationErrorSchema });
+export const FoundationErrorEnvelopeSchema = v.pipe(v.strictObject({ contractVersion: v.literal(2), error: FoundationErrorSchema }),
+  v.check(value => (value.error.code === 'sync_reset_required') === (value.error.syncReset !== undefined), 'Sync reset errors require reset diagnostics.'));
 export type FoundationErrorDetail = v.InferOutput<typeof FoundationErrorSchema>;
 export const parseFoundationErrorEnvelope = (input: unknown) => parseSchema(FoundationErrorEnvelopeSchema, input);

@@ -1,6 +1,7 @@
 import { parseSchema } from '@shared/parse';
 import { CommandEnvelopeSchema, PlanningSettingsExportSchema } from '@shared/wire/commands';
 import { parseEntityKey, parseEntityReadKey, parseLinkKey } from '@shared/wire/versions';
+import { parseWorkspaceDeltaInput } from '@shared/wire/sync';
 import { CommandError } from './domain/commands';
 import { invalidInput } from './domain/temporalFoundation';
 import { readJson } from './parse/request';
@@ -105,7 +106,14 @@ const commandEnvelope = { ...envelope, properties: { ...envelope.properties,
   commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema, ...taskFieldSchemas, ...linkSchemas, ...deleteSchemas] } },
 } };
 export const COMMAND_TOOLS = [
-  { name: 'get_workspace_snapshot', description: 'Read all current user-data families, retained deletion revisions and a matching sync cursor in one consistent snapshot. Includes tasks, projects, links, duties, preferences, planning settings and provenance; excludes credentials and receipts. This is sync bootstrap, not portable restore. Delta pulls and offline overlays follow later.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
+  { name: 'get_workspace_delta', description: 'Pull up to 500 ordered user-data images after a bootstrap cursor. Omit watermark on the first page; pass its unchanged watermark with the returned cursor on every continuation. Stage all pages and reconcile them together before advancing canonical state. Mid-pull writes wait for the next pull. A sync_reset_required error requires fresh bootstrap and retained-intent rebase.', inputSchema: {
+    type: 'object', additionalProperties: false, properties: {
+      cursor: { type: 'object', additionalProperties: false, properties: { epoch: { type: 'integer', minimum: 0, maximum: 9007199254740991 }, sequence: { type: 'integer', minimum: 0, maximum: 9007199254740991 } }, required: ['epoch', 'sequence'] },
+      watermark: { type: 'object', additionalProperties: false, properties: { epoch: { type: 'integer', minimum: 0, maximum: 9007199254740991 }, sequence: { type: 'integer', minimum: 0, maximum: 9007199254740991 } }, required: ['epoch', 'sequence'] },
+      limit: { type: 'integer', minimum: 1, maximum: 500, default: 100 },
+    }, required: ['cursor'],
+  } },
+  { name: 'get_workspace_snapshot', description: 'Read all current user-data families, retained deletion revisions and a matching sync cursor in one consistent snapshot. Includes tasks, projects, links, duties, preferences, planning settings and provenance; excludes credentials and receipts. This is sync bootstrap, not portable restore. Use get_workspace_delta to resume after its cursor; offline overlays follow later.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'get_link', description: 'Read an exact link orientation, its live/deleted revision and the structural revision together. Related additions require ascending IDs; legacy reversed links remain inspectable/removable. Use for reliable link planning.', inputSchema: {
     type: 'object', additionalProperties: false, properties: { entity: { const: 'link' }, from: { type: 'string' }, to: { type: 'string' }, linkType: { enum: ['blocks', 'related'] } }, required: ['entity', 'from', 'to', 'linkType'],
   } },
@@ -124,6 +132,11 @@ export const COMMAND_TOOLS = [
   { name: 'apply_changes', description: 'Atomically apply a supported standalone command or mixed batch of 2–20 task/project/link commands including lifecycle effects, with a caller-minted command ID and expected revision. Same ID/payload returns the original result; a different payload conflicts. Includes receipt, audit and command feed. Creation supports scoped clientRef/ID mapping. Content commands change only title/notes/kickoff and task session log; Focus/deferral follow existing pending-task transitions; reopening clears both. Project state preserves members/links. Completion uses structural guards and requires a stable successor ID for legacy recurrence, or successor:null otherwise. Membership uses structural and selected-project guards. Legacy schedule changes replace only existing due-date classification/recurrence, not future explicit date roles. Link add/remove are guarded; related additions use ascending IDs and prevent reversed duplicates, blocks additions reject cycles. Task deletion returns cascade link tombstones; project deletion detaches members and rejects duty ownership. Both require structural revisions and reject oversized atomic effects before writes. Mixed batches require an envelope structural revision, distinct written identities and unique scoped clientRefs. Create referenced entities earlier in the array. Final blocks graph validation allows atomic edge replacement; the complete generated SQL must fit 100 statements. Mixed results include changeGroups with one derived-image count per command. Lifecycle effects must be disjoint; settings stay standalone. Offline overlays follow later.', inputSchema: commandEnvelope },
 ];
 export async function callCommandTool(name: string, args: unknown, db: DB): Promise<unknown> {
+  if (name === 'get_workspace_delta') {
+    const input = parseWorkspaceDeltaInput(args);
+    if (!input.ok) throw new CommandError(invalidInput(input.error), 400);
+    return db.getWorkspaceDelta(input.value);
+  }
   if (name === 'get_link') {
     const key = parseLinkKey(args);
     if (!key.ok) throw new CommandError(invalidInput(key.error), 400);
@@ -160,6 +173,7 @@ export async function callCommandTool(name: string, args: unknown, db: DB): Prom
 }
 export async function handleCommandRequest(request: Request, url: URL, db: DB): Promise<Response | null> {
   const route = [
+    ['POST', '/api/v2/sync/delta', 'get_workspace_delta'],
     ['GET', '/api/v2/sync/snapshot', 'get_workspace_snapshot'],
     ['POST', '/api/v2/link', 'get_link'],
     ['POST', '/api/v2/entity', 'get_entity'],

@@ -5,9 +5,8 @@ import { CommandIdSchema, DutyIdSchema, EventInstantSchema, IsoDateTimeSchema, L
 import { ProjectRowSchema, TaskLinkRowSchema, TaskRowSchema, taskRowEntries } from './rows';
 import { PlanningSettingsSchema, WorkingHoursSchema } from './planning';
 import { ChangeDiffSchema } from './commands';
-
-export const SyncCursorSchema = v.strictObject({ epoch: RevisionSchema, sequence: RevisionSchema });
-export type SyncCursor = v.InferOutput<typeof SyncCursorSchema>;
+import { SyncCursorSchema } from './syncCursor';
+export { SyncCursorSchema, parseSyncCursor, type SyncCursor } from './syncCursor';
 const positiveId = v.pipe(v.number(), v.safeInteger(), v.minValue(1));
 const logKey = v.pipe(v.string(), v.regex(/^[1-9][0-9]*$/), v.check(value => Number.isSafeInteger(Number(value))));
 const linkKey = v.pipe(v.string(), v.check(value => {
@@ -100,3 +99,34 @@ export const WorkspaceSnapshotSchema = v.pipe(v.strictObject({
 }, 'Snapshot identities must be unique and live references must resolve.'));
 export type WorkspaceSnapshot = v.InferOutput<typeof WorkspaceSnapshotSchema>;
 export const parseWorkspaceSnapshot = (input: unknown) => parseSchema(WorkspaceSnapshotSchema, input);
+
+export const WorkspaceDeltaInputSchema = v.pipe(v.strictObject({
+  cursor: SyncCursorSchema,
+  watermark: v.optional(SyncCursorSchema),
+  limit: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(500))),
+}), v.check(value => value.watermark === undefined || (value.watermark.epoch === value.cursor.epoch && value.watermark.sequence >= value.cursor.sequence),
+'Continuation watermark must have the cursor epoch and cannot precede it.'));
+export type WorkspaceDeltaInput = v.InferOutput<typeof WorkspaceDeltaInputSchema>;
+export const parseWorkspaceDeltaInput = (input: unknown) => parseSchema(WorkspaceDeltaInputSchema, input);
+export const WorkspaceDeltaSchema = v.pipe(v.strictObject({
+  contractVersion: v.literal(2), from: SyncCursorSchema, cursor: SyncCursorSchema,
+  watermark: SyncCursorSchema, hasMore: v.boolean(),
+  changes: v.pipe(v.array(v.strictObject({ sequence: RevisionSchema, entity: SyncEntitySchema })), v.maxLength(500)),
+}), v.check(value => {
+  if (value.from.epoch !== value.cursor.epoch || value.from.epoch !== value.watermark.epoch
+    || value.from.sequence > value.cursor.sequence || value.cursor.sequence > value.watermark.sequence) return false;
+  let previous = value.from.sequence;
+  const versions = new Map<string, number>();
+  for (const change of value.changes) {
+    if (change.sequence <= previous || change.sequence > value.cursor.sequence) return false;
+    previous = change.sequence;
+    const key = `${change.entity.entity}:${change.entity.key}`;
+    const revision = versions.get(key);
+    if (revision !== undefined && change.entity.revision <= revision) return false;
+    versions.set(key, change.entity.revision);
+  }
+  return value.hasMore ? value.changes.length > 0 && previous === value.cursor.sequence && value.cursor.sequence < value.watermark.sequence
+    : value.cursor.sequence === value.watermark.sequence;
+}, 'Delta sequences, revisions and continuation cursors must agree.'));
+export type WorkspaceDelta = v.InferOutput<typeof WorkspaceDeltaSchema>;
+export const parseWorkspaceDelta = (input: unknown) => parseSchema(WorkspaceDeltaSchema, input);
