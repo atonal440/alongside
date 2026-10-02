@@ -26,7 +26,8 @@ export function RetainedOps() {
           <div className="retained-op-title">{describeRetainedOp(item)}</div>
           <div className="retained-op-reason">{item.reason.message}</div>
           <div className="retained-op-actions">
-            <button onClick={() => act(retryRetainedOp, item.id!, requestSync)}>Retry</button>
+            {/* A dependent is retried through the refused op it waits on. */}
+            {item.reason.kind === 'rejected' && <button onClick={() => act(retryRetainedOp, item.id!, requestSync)}>Retry</button>}
             <button onClick={() => act(discardRetainedOp, item.id!)}>Discard</button>
           </div>
         </div>
