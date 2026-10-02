@@ -98,6 +98,16 @@ discards when none are checked. A target task that no longer exists hides Retry.
 comparison uses the legacy task list; it moves to the canonical overlay when that is wired
 into UI state. Retry on other ops stays a plain resubmit.
 
+## Shadow mode in the sync cycle
+
+`useSync` now runs `shadowSync` (`pwa/src/sync/shadow.ts`) after each successful legacy
+sync: it pulls the canonical store (`fresh`, so it starts after the legacy writes), overlays
+the pending ops, and `compareToLegacy` checks that task ids, titles, statuses, project
+membership and links match what the legacy sync just put on screen. Divergences are logged
+as a console warning (first 20); nothing changes UI state, sync status or the queue, and
+pull failures are swallowed into the result. This is the evidence step before reads move to
+the canonical overlay: warnings that show up in real use point at a mismatch to fix first.
+
 ## Out of scope for this increment
 
 Wiring the canonical store and overlay into reducer/UI state,  version negotiation and the capability

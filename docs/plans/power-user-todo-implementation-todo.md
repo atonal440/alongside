@@ -942,3 +942,13 @@ fields (`rebaseView`, `retryRebased`); retry is hidden when the target task is g
 
 Next: reducer/UI integration of the canonical overlay, then version negotiation and the
 capability gate.
+
+### 2026-10-02 — Slice 2f sixth increment: canonical shadow sync
+
+PR #63 merged as `23640d4`. Branch: `ccr-3181a8c6-juz5qg`; review/merge pending. Each
+legacy sync cycle now also pulls the canonical store and compares "canonical + pending
+ops" with the legacy state, logging divergences. No UI, status or queue effect. See
+[canonical workspace](../pwa/sync/canonical-workspace.md).
+
+Next: switch reads to the canonical overlay once divergences are clean, then version
+negotiation and the capability gate.
