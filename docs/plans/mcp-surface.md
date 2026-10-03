@@ -1,6 +1,6 @@
 # MCP surface: organizing a growing set of verbs
 
-Status: phases A (annotations, `/mcp/admin`, deprecated aliases, `initialize.instructions`, `toolSurface`) and B (reads, loose-intent preview, wider action-log codec) implemented; C in progress (parity matrix, version 2 receipts, composition, all 13 mutating adapters and `preference.set` built; `start_session` read-only; the sync read gate and the widget switch remain); D proposed. Updated 2026-10-03.
+Status: phases A (annotations, `/mcp/admin`, deprecated aliases, `initialize.instructions`, `toolSurface`) and B (reads, loose-intent preview, wider action-log codec) implemented; C in progress (parity matrix, version 2 receipts, composition, all 13 mutating adapters and `preference.set` built; `start_session` read-only and the sync read gate built; recording command kinds in the action log and the widget switch remain); D proposed. Updated 2026-10-03.
 
 This plan refines §10 ("REST and MCP surface") of
 [the power-user plan](power-user-todo.md). That document still owns the
@@ -578,7 +578,7 @@ never registered in `TOOLS`; that section was removed in phase A.
   receipt guarded by the link or project revision plus the structural
   revision. The command bound is raised from 20 to 100, with the 100-statement
   plan check as the real ceiling (23 tasks for `create_project`). `update_preference`
-  runs on the new standalone `preference.set` command. `start_session` is now read-only (defaults merge in memory; the gap comes from history). Remaining in C: the sync read gate for protocol < 3, and the widget switch.
+  runs on the new standalone `preference.set` command. `start_session` is now read-only (defaults merge in memory; the gap comes from history). The sync read gate is in force (`checkSyncReadGate`: snapshot and delta return 426 to `pwa/<3`, with or without `Origin`; `minimumSyncRead` in capabilities). Remaining in C: recording command kinds in the action log (now allowed), and the widget switch.
 - **C: One write path.** First build the parity matrix (see
   [Adapter parity](#adapter-parity)) and the versioned receipt shape. Then add
   same-identity composition to the batch planner, with the revised result contract (see
