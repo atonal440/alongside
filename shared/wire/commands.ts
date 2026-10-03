@@ -161,12 +161,24 @@ function validCompletion(changes: ChangeDiff[], serverNow: string): boolean {
     return false;
   }
 }
-function validDiffIdentity(value: { serverNow: string; batch?: true | undefined; changeGroups?: number[] | undefined; changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
+function validDiffIdentity(value: { serverNow: string; batch?: true | undefined; changeGroups?: number[] | undefined; commandChanges?: number[][] | undefined; changes: v.InferOutput<typeof ChangeDiffSchema>[]; refs: Record<string, string> }): boolean {
   if (value.changes.length === 0) return false;
-  if (value.batch !== true && value.changeGroups !== undefined) return false;
+  if (value.batch !== true && (value.changeGroups !== undefined || value.commandChanges !== undefined)) return false;
+  if (value.changeGroups !== undefined && value.commandChanges !== undefined) return false;
   if (value.batch === true) {
-    if (value.changes.length < 2 || value.changes.some(change => change.entity === 'planning_settings')) return false;
-    if (value.changeGroups === undefined) {
+    if (value.changes.some(change => change.entity === 'planning_settings')) return false;
+    // A composed batch (several commands writing one identity) may net down to a single change.
+    if (value.commandChanges === undefined && value.changes.length < 2) return false;
+    if (value.commandChanges !== undefined) {
+      // Each command names the changes it contributed to; some change must be shared, or the
+      // batch was not composed and uses changeGroups instead.
+      const uses = new Array<number>(value.changes.length).fill(0);
+      for (const indexes of value.commandChanges) {
+        if (indexes.some((index, at) => index >= value.changes.length || (at > 0 && index <= indexes[at - 1]!))) return false;
+        for (const index of indexes) uses[index]!++;
+      }
+      if (uses.some(count => count === 0) || !uses.some(count => count > 1)) return false;
+    } else if (value.changeGroups === undefined) {
       // Receipts from the first mixed-batch release contain only simple images.
       if (value.changes.length > 20 || value.changes.some(change => (change.entity !== 'link' && 'deleted' in change.after) || (change.entity === 'task' && change.before?.row.status === 'pending' && 'row' in change.after && change.after.row.status === 'done'))) return false;
     } else {
@@ -231,7 +243,7 @@ const RefsSchema = v.pipe(v.custom<Record<string, string>>(input => input !== nu
 v.record(ClientRefSchema, v.union([TaskIdSchema, ProjectIdSchema])));
 const resultEntries = {
   contractVersion: v.literal(2), commandId: CommandIdSchema, payloadHash: PayloadHashSchema,
-  serverNow: EventInstantSchema, batch: v.optional(v.literal(true)), changeGroups: v.optional(v.pipe(v.array(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100))), v.minLength(2), v.maxLength(20))), changes: v.pipe(v.array(ChangeDiffSchema), v.minLength(1), v.maxLength(100)),
+  serverNow: EventInstantSchema, batch: v.optional(v.literal(true)), changeGroups: v.optional(v.pipe(v.array(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100))), v.minLength(2), v.maxLength(20))), commandChanges: v.optional(v.pipe(v.array(v.pipe(v.array(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(99))), v.minLength(1), v.maxLength(100))), v.minLength(2), v.maxLength(20))), changes: v.pipe(v.array(ChangeDiffSchema), v.minLength(1), v.maxLength(100)),
   warnings: v.pipe(v.array(v.string()), v.maxLength(0)),
   refs: RefsSchema,
 };

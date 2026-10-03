@@ -498,12 +498,11 @@ with exact `requiredStatements` and `limit: 100`; no split writes occur. See
 
 Mixed `preview_changes`/`apply_changes` accept 2–20 supported non-lifecycle
 commands, including completion/deletion, with an envelope `expectedStructuralRevision`. Graph commands share
-that base revision; create referenced entities earlier and write each identity
-once. Results add `batch: true` and all scoped refs. Final dependency graphs
+that base revision; create referenced entities earlier. Several commands may write one task or project; they compose into one net change (see the bounded-batches note). Results add `batch: true` and all scoped refs. Final dependency graphs
 are validated atomically, allowing edge replacement in either add/remove order.
 The complete generated SQL must fit 100 statements; settings remain standalone.
 New mixed results include `changeGroups`, one image count per command, covering
-every successor/cascade/detachment image and enforcing each standalone contract. See [bounded mixed batches](shared/reliable-batches.md).
+every successor/cascade/detachment image and enforcing each standalone contract, or `commandChanges` when commands were composed. See [bounded mixed batches](shared/reliable-batches.md).
 
 ### `get_workspace_snapshot`
 

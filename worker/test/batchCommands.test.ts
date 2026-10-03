@@ -49,9 +49,9 @@ it('rolls back all entities and histories after a late final-graph guard failure
   const envelope=input([create('t_first1'),create('t_second'),link('t_first1','t_second')]);const preview=await db.previewChanges(envelope);hooks.failAfter=preview.requiredStatements-2;await expect(db.applyChanges(envelope)).rejects.toMatchObject({detail:{code:'storage_unavailable'}});for(const table of ['tasks','task_links','entity_versions','command_receipts','command_audit','change_feed'])expect(sql.prepare(`SELECT * FROM ${table}`).all()).toEqual([]);expect(sql.prepare('SELECT structural_revision FROM workspace_versions').get()).toMatchObject({structural_revision:0});
  }finally{sql.close();}
 });
-it('rejects duplicate written identities and reports the actual command index',async()=>{
+it('reports the actual command index when a later command in a batch is invalid',async()=>{
  const {sql,d1}=sqliteD1();const db=new DB(d1);try{
-  await expect(db.applyChanges(input([create('t_first1'),{kind:'task.type.set',id:'t_first1',expectedRevision:1,taskType:'plan'}]))).rejects.toMatchObject({detail:{code:'invalid_input',path:['commands','1']}});
+  // Two commands on one identity compose (see test/composition.test.ts); a link plus its endpoint's creation still fails by index.
   await expect(db.applyChanges(input([create('t_first1'),link('t_first1','t_second')]))).rejects.toMatchObject({detail:{code:'invalid_transition',path:['commands','1']}});expect(await db.listAllTasks()).toEqual([]);
  }finally{sql.close();}
 });

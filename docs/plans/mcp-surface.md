@@ -1,6 +1,6 @@
 # MCP surface: organizing a growing set of verbs
 
-Status: phases A (annotations, `/mcp/admin`, deprecated aliases, `initialize.instructions`, `toolSurface`) and B (reads, loose-intent preview, wider action-log codec) implemented; C started (legacy half of the [parity matrix](mcp-parity-matrix.md) pinned); rest of C and D proposed. Updated 2026-10-03.
+Status: phases A (annotations, `/mcp/admin`, deprecated aliases, `initialize.instructions`, `toolSurface`) and B (reads, loose-intent preview, wider action-log codec) implemented; C in progress (parity matrix pinned; version 2 receipts and same-identity composition built; adapters, `preference.set`, read-only `start_session` and the sync read gate remain); D proposed. Updated 2026-10-03.
 
 This plan refines §10 ("REST and MCP surface") of
 [the power-user plan](power-user-todo.md). That document still owns the
@@ -560,6 +560,15 @@ never registered in `TOOLS`; that section was removed in phase A.
   `ActionNameSchema` accepts tool names, retired names and command kinds. The
   sync read gate that rejects protocol < 3 is still phase C work, so the worker
   must not write command-kind rows yet.
+  Phase C as built so far: the legacy half of the [parity
+  matrix](mcp-parity-matrix.md); version 2 receipts (`shared/wire/receipts.ts`,
+  `Db.findToolReceipt`, `toolRequestHash`, a response codec per tool checked
+  against every legacy response); and same-identity composition in the batch
+  planner with `commandChanges` in the result. Composition rules: later
+  commands name the revision after the first write (existing: current + 1;
+  created in the batch: 1), links and delete-lifecycle effects stay write-once,
+  and create-then-delete is rejected. Loose-intent pinning predicts those
+  revisions. Receipt-first replay for the adapters is the next step.
 - **C: One write path.** First build the parity matrix (see
   [Adapter parity](#adapter-parity)) and the versioned receipt shape. Then add
   same-identity composition to the batch planner, with the revised result contract (see
