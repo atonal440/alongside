@@ -61,6 +61,19 @@ describe('bounded series searches', () => {
     expect(nextOccurrenceAfter(parts, anchor, null, instant('2026-01-01T00:00:00Z'))).toBe('2026-01-01T09:30:00Z');
   });
 
+  it('orders valid positional candidates after removing out-of-range selections', () => {
+    const parts = series('FREQ=MONTHLY;BYMONTHDAY=1,15;BYSETPOS=-1,3,1,2');
+    const start = instant('2026-01-01T09:00:00Z');
+    const member = instant('2026-01-15T09:00:00Z');
+    const through = instant('2026-01-31T09:00:00Z');
+    expect(occurrencesBetween(parts, start, null, null, through, 1)).toEqual([start]);
+    expect(nextOccurrenceAfter(parts, start, null, null)).toBe(start);
+    expect(latestOccurrenceAtOrBefore(parts, start, null, through)).toBe(member);
+    expect(isSeriesOccurrence(parts, start, null, member)).toBe(true);
+    const counted = series(`${parts.source};COUNT=1`);
+    expect(occurrencesBetween(counted, start, null, null, through)).toEqual([start]);
+  });
+
   it('rejects unbounded rule text before allocating filter combinations', () => {
     expect(parseSeriesRrule(`FREQ=DAILY;BYMINUTE=${'0,'.repeat(3000)}0`).ok).toBe(false);
   });

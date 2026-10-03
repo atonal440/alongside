@@ -122,7 +122,12 @@ export function* floatingCandidates(
       && (!boundary || (direction === 1 ? date <= boundary : date >= boundary));
     if (rule.options.bysetpos?.length) {
       const positions = buildPoslist(rule.options.bysetpos, times, first, end, info, days);
-      const unique = [...new Map(positions.map(date => [date.getTime(), date])).values()];
+      // Out-of-range positive positions produce Invalid Date in rrule. Its
+      // comparator then cannot guarantee ordering of the remaining dates.
+      const unique = [...new Map(positions
+        .filter(date => Number.isFinite(date.getTime()))
+        .map(date => [date.getTime(), date])).values()]
+        .sort((a, b) => a.getTime() - b.getTime());
       if (direction === -1) unique.reverse();
       for (const date of unique) {
         budget.spend();
