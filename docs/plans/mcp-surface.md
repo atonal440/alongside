@@ -155,11 +155,11 @@ Regression tests cover due-only, recurrence-only and all-day-only patches.
 `task.reopen` only when the task is done. On a task that is already pending
 it is omitted, as it is effectively a no-op today. If omitting it leaves no
 command at all (a call carrying only `status: "pending"` on a pending task),
-the call is a read: the verb returns the current task with
-`action_log_entry: null`. It writes nothing, so it creates no receipt, no
-audit row and no action-log entry. A `commandId` passed with it isn't
-recorded, and reusing that ID later starts a new command. Command envelopes
-and results can't be empty, so this case never reaches the planner. `task.reopen` rejects
+the call changes nothing: the verb returns the current task with
+`action_log_entry: null` and writes no entity change, audit row or
+action-log entry. Command envelopes and results can't be empty, so this case
+never reaches the planner. It is still recorded when a `commandId` is given
+(see [no-op receipts](#no-op-receipts)). `task.reopen` rejects
 pending tasks that aren't deferred, and on a deferred one it would also clear
 the deferral, which the legacy patch never did. `add_task` puts the project and task type into `task.create`
 itself. A due date or recurrence needs `task.legacy-schedule.set` on the same
@@ -245,7 +245,11 @@ rules prevent that:
   (counted toward plan capacity) and stores the entry it returns in the receipt.
   A replay returns the same `action_log_entry` without writing a second row,
   and a failed command leaves no log entry behind. `apply_changes` follows the
-  same rule if it writes action-log entries.
+  same rule if it writes action-log entries. A tool writes an action-log
+  entry only if its legacy handler does today. `update_preference`, for
+  example, returns `{ updated, key, value }` without logging, and its adapter
+  keeps that: no entry, no `action_log_entry` field. Its receipt stores that
+  response like any other.
 
   This changes what a receipt stores. `command_receipts.result_json` is
   replayed through the strict `ChangesResultSchema`, which holds only the
@@ -293,9 +297,23 @@ places, so each adapter needs explicit rules. Review has found these so far:
 | `unlink_tasks` for a link that doesn't exist | `link.remove` rejects an absent link | Read: return success, write nothing |
 | `create_project` with more than 19 `task_ids` | Envelopes and batch results cap at 20 commands | Decide in phase C: raise the command bound as far as the 100-statement capacity check allows (recommended, because statements are the real limit), or reject with a clear error and record it as a behavior change |
 
-Any call that resolves to a read under these rules writes nothing, so it
-creates no receipt and no action-log entry, and a `commandId` passed with it
-isn't recorded.
+Any call that resolves to a no-op under these rules writes no entity
+change and no action-log entry.
+
+#### No-op receipts
+
+Whether a call is a no-op depends on state at the time it runs, so a no-op
+must still record its `commandId`. Otherwise a retry could do something new.
+For example, a lost `update_task({ status: "pending" })` response on a pending
+task, retried after another client completes the task, would reopen it.
+Likewise a lost `link_tasks` response on an existing link, retried after
+someone removes the link, would add it back. So when a `commandId` is given,
+a no-op writes one receipt in its own atomic batch:
+`{ "receiptVersion": 2, "tool": <name>, "result": null, "response": <the no-op response> }`,
+with the usual request hash. A retry finds the receipt first and returns the
+stored response, whatever has changed since. A `null` result is valid only in
+a version 2 receipt, and tests cover both examples above. Without a
+`commandId` nothing is recorded, as for any call without one.
 
 That table is a starting point, not a complete list. **Phase C's first
 deliverable is a full parity matrix**, built from the legacy handlers in
@@ -507,11 +525,18 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   `apply` mode writes without a command ID or receipt, on both the admin
   endpoint and its default-endpoint alias. It is already safe against lost
   responses another way. It is guarded by the caller's `expectedCursor`, and
-  it advances the sync epoch. A retry after a commit whose response was lost
-  returns 409 `restore_outcome_unknown` rather than applying twice, and the
-  caller reads a snapshot to see what is live
-  ([workspace portability](../shared/workspace-portability.md)). The phase C
-  claims therefore exclude it explicitly. Making restore receipted (a
+  it advances the sync epoch, so it can never apply twice. A retry after a
+  commit whose response was lost hits the cursor check first
+  (`worker/src/db.ts`, `restoreWorkspace`) and returns 409
+  `restore_cursor_conflict` with the current cursor. If that cursor's epoch
+  is one past the caller's `expectedCursor.epoch`, a restore committed,
+  possibly the caller's own, and the caller reads a snapshot to check what is
+  live. `restore_outcome_unknown` is narrower: it is returned only when the
+  apply step itself fails and the epoch moved during that same call.
+  [Workspace portability](../shared/workspace-portability.md) currently says a
+  retry returns `restore_outcome_unknown`, which is inaccurate; correct it
+  when that reference is next updated. The phase C claims exclude restore
+  explicitly. Making restore receipted (a
   `commandId` and a stored result, so a retry replays) is a possible later
   improvement, but it's not needed for safety.
 - **D: Remove deprecated tools** once logs show no remaining callers, keeping
@@ -527,7 +552,10 @@ built once, on the command path, and not added to the legacy verbs as well.
 
 - The default `tools/list` stays at or below about 20 tools through slice 7.
 - Every MCP write except `restore_workspace` produces a command receipt.
-  Restore relies on its cursor guard and `restore_outcome_unknown` instead.
+  Restore relies on its cursor guard and epoch advance instead.
+- A no-op call with a `commandId` stores a receipt, and its retry returns the
+  stored no-op response even if the state has since changed.
+- `update_preference` writes no action-log entry, as today.
   Retrying a quick verb with the
   same `commandId` replays rather than duplicating, including after the first
   attempt committed and for verbs that mint IDs (`add_task`, recurring
