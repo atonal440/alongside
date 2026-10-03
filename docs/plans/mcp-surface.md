@@ -338,7 +338,19 @@ with the usual request hash. The server mints a `commandId` when the caller
 gives none, as for every quick-verb write. A retry with the same ID finds the
 receipt first and returns the stored response, whatever has changed since,
 without logging again. A `null` result is valid only in a version 2 receipt.
-Tests cover both examples above and the single log row per no-op.
+
+The no-op batch must also check that the no-op is still true when it
+commits. Otherwise a write landing between classification and commit would
+make the stored response false forever. For example, a concurrent completion
+leaves the task done after `update_task({ status: "pending" })` was judged a
+no-op, or a concurrent link add leaves `unlink_tasks` reporting success while
+the link is live. So the batch carries the same SQL guards a real command
+would: the revisions of the entities or link it read to classify the call,
+plus the structural revision where the classification depended on the graph.
+A guard failure goes through the same bounded re-read, recompile and retry
+loop as any other unpinned adapter write, and on the retry the call may no
+longer be a no-op. Tests cover both examples above, a classification race
+on each guard, and the single log row per no-op.
 
 That table is a starting point, not a complete list. **Phase C's first
 deliverable is a full parity matrix**, built from the legacy handlers in
