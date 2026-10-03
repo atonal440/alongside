@@ -204,4 +204,3 @@ export const ROWS: Row[] = [
   row('update_preference', 'internal-key', { key: 'last_session_at', value: '2026-10-01T00:00:00.000Z' }, 'Internal key'),
   row('update_preference', 'missing-value', { key: 'sort_by' }, 'No value'),
 ];
-
