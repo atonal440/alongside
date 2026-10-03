@@ -1,5 +1,7 @@
 # Stage 8 — PWA Duties UI
 
+The implemented series profile is documented in [the recurrence reference](../../shared/parse/recurrence.md). HOURLY/MINUTELY allow only INTERVAL and COUNT/UNTIL; calendar and time filters require DAILY or coarser frequency.
+
 Part of `docs/plans/duties.md`. Prerequisites: Stage 7 (PWA duty data layer).
 Read `docs/plans/pwa-type-safety.md`'s form-boundary notes first.
 

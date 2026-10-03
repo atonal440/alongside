@@ -33,3 +33,17 @@ data and is not a supported workaround.
 Task and project update SQL is built from fixed allowlists, so unexpected patch keys are ignored instead of becoming column names.
 
 Project deletes clear `tasks.project_id` before deleting the project row, matching the current "delete the project, keep the tasks" storage behavior and avoiding a foreign-key failure for non-empty projects.
+
+## Duty materialization guards
+
+A duty-backed task insert requires both duty_id and occurrence_at. It executes
+only while the live duty is active and last_spawned_at is null or strictly before
+that occurrence. ON CONFLICT(duty_id, occurrence_at) DO NOTHING makes an occurrence
+replay benign without hiding unrelated primary-key or constraint errors.
+
+The duty.update_cursor op atomically changes last_spawned_at and next_occurrence_at
+only for an active duty and a strictly newer cursor. A materialization plan must
+order inserts before its cursor update in the same batch. Older plans therefore
+cannot insert behind a newer committed cursor or regress either cursor field.
+Historical tasks retain identity and state. Duty planners and drivers are future
+work; later revision/ledger contracts must build on these guards.

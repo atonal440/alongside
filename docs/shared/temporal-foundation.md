@@ -20,11 +20,10 @@ background engine. Those features have separate rollout gates.
   with hierarchy. Entity ID parsers distinguish commands, blocks, reminders,
   duties, tags, entries, work logs, and saved queries by prefix.
 
-`Timezone` is the existing recurrence brand, also used for planning. It accepts
-UTC, the runtime's canonical Intl zone list, and Intl-validated fixed-offset
-`Etc/GMT±N` identifiers. Its spelling follows the runtime's zone database;
-for example some ICU versions list `Asia/Calcutta`. It does not accept common
-abbreviations or host-local timezone inference.
+`Timezone` aliases the shared `IanaTimezone` brand and codec. It accepts UTC,
+runtime-enumerated names, and Intl-valid, correctly cased named aliases while
+preserving input spelling. See [the timezone contract](parse/time.md). Bare
+abbreviations, numeric offsets, and host-local timezone inference remain invalid.
 
 A temporal point is a strict tagged union:
 

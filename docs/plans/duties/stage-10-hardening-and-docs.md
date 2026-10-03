@@ -1,5 +1,7 @@
 # Stage 10 — Hardening, Cleanup, and Docs
 
+The implemented series profile is documented in [the recurrence reference](../../shared/parse/recurrence.md). HOURLY/MINUTELY allow only INTERVAL and COUNT/UNTIL; calendar and time filters require DAILY or coarser frequency.
+
 Part of `docs/plans/duties.md`. Prerequisite: the earlier stages you intend to
 ship (Phase 1 = Stages 1–8 at minimum; Phase 2 = through Stage 9). This is the
 "pay down the transition" stage.

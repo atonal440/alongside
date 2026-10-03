@@ -1,23 +1,20 @@
 # shared/parse/time.ts
 
-Time helpers and the duty-local recurrence-zone boundary.
+`Timezone`, `TimezoneSchema`, and `parseTimezone` are compatibility aliases
+for the shared `IanaTimezone` brand and codec in primitives. Recurrence and
+structured planning therefore accept the same named zones.
 
-## Types and schema
+The codec accepts exact UTC, runtime-enumerated names, and correctly cased,
+slash-separated identifiers accepted by Intl, including IANA aliases such as
+Asia/Kolkata, Europe/Kyiv, US/Eastern, and Etc/GMT+5. It preserves the supplied
+spelling: canonical names vary with runtime ICU data. Unknown identifiers,
+lowercase names, bare abbreviations such as EST/GMT, and numeric offsets reject.
+Nullability is a caller concern; recurrence treats null and explicit UTC alike.
 
-**`Timezone`** — Branded IANA timezone shared by recurrence anchors and planning intent.
+`nowUtc()` returns the current branded instant. The module re-exports
+`parseIsoDate`, `parseIsoDateTime`, and `parseIanaTimezone`.
 
-**`TimezoneSchema` / `parseTimezone(input)`** — Accept exact `UTC` or membership
-in the runtime's canonical `Intl.supportedValuesOf('timeZone')` list, plus
-Intl-validated IANA fixed-offset `Etc/GMT±N` identifiers, and return the brand. Noncanonical aliases are rejected. Nullability is a
-caller concern; recurrence treats null and explicit `UTC` identically.
-
-## Functions
-
-**`nowUtc()`** — Returns the current timestamp as a branded `IsoDateTime`.
-
-The module also re-exports `parseIsoDate`, `parseIsoDateTime`, and `parseIanaTimezone`.
-
-Legacy host-local `todayInTz` and `nowInTz` remain removed. Structured planning
-resolution lives in `shared/temporal/`; it shares `Timezone` and explicitly
-reports request/workspace/UTC fallback selection. See
-[temporal foundation](../temporal-foundation.md).
+Structured planning resolution lives in `shared/temporal/` and reports
+request/workspace/UTC fallback selection. See
+[temporal foundation](../temporal-foundation.md). Host-local todayInTz/nowInTz
+remain removed.

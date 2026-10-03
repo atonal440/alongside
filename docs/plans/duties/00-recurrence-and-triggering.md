@@ -1,5 +1,7 @@
 # Foundation 00 — Recurrence and Triggering
 
+The implemented series profile is documented in [the recurrence reference](../../shared/parse/recurrence.md). HOURLY/MINUTELY allow only INTERVAL and COUNT/UNTIL; calendar and time filters require DAILY or coarser frequency.
+
 Part of `docs/plans/duties.md`. Read the master's Context and Design Pillars
 first. This document works through the two questions the whole plan rests on:
 **how does recurrence actually work once it's a series anchor**, and **what
@@ -131,8 +133,7 @@ if latest is null or latest <= cursor:                                    # noth
     return empty plan
 
 if catch_up == 'next':
-    ops       = [ duty.orphan_stale(before=latest),                       # detach stale opens < latest (race-safe)
-                  task.insert(instance @ latest) ]                        # one current instance
+    ops       = [ task.insert(instance @ latest) ]                        # one current instance
     newCursor = latest
 else:  # 'all'
     due       = occurrencesBetween(parts, dtstart, tz, cursor, now)[:maxPerRun]
@@ -166,41 +167,19 @@ Two policies, stored per duty as `catch_up`:
   is a distinct obligation (a daily journal entry, a billable log), you want the
   backlog to be real. This can pile up, by design. (Bounded per run — §4.)
 
-**What `next` does with a still-open prior instance.** The interesting case is
-when the previous instance is *still open* (uncompleted) and new occurrences come
-due. The rule (decided; supersedes an earlier "re-date the open instance" draft):
-
-1. **Orphan the stale open instances.** Detach every still-pending instance *older
-   than the occurrence being materialized* by nulling *both* `duty_id` and
-   `occurrence_at`, turning them into plain standalone tasks. This is **one bulk
-   `UPDATE`** (`duty.orphan_stale { id, before: latest }` →
-   `… WHERE duty_id=:id AND status='pending' AND occurrence_at < :latest`), not one
-   statement per instance — so a big backlog (e.g. switched from `all` to `next`)
-   can't overflow the storage batch limit and deadlock. The **`occurrence_at <
-   latest` bound is essential, not just cosmetic**: a *stale replay* (a plan built
-   from an old cursor that commits after a concurrent driver already inserted the
-   `latest` instance) must not detach that valid current task — the bound excludes
-   it, so the replay orphans nothing new and its insert hits the unique index as a
-   benign no-op. (Ordering orphan-before-insert alone does **not** protect against a
-   *concurrent* plan, only against self-collision within one plan — the predicate
-   is what makes it race-safe.)
-2. **Spawn one fresh instance** for the latest due occurrence, giving the duty
-   exactly one *current* instance.
-3. **Advance the cursor** to the latest occurrence; the intermediate missed
-   occurrences are simply dropped (never materialized) — that is what `next`
-   means.
-
-Honest tradeoff: if you never touch them, orphaned ex-instances accumulate as
-detached tasks. That is the deliberate cost of `next` — the alternative (silently
-re-dating last week's task to today) hides that you missed it. The pure
-`materializeDutyPlan` needs no per-instance input for this (the bulk op handles any
-count); Stage 4 specifies the exact op ordering.
+**Existing work is retained.** Catch-up controls missed occurrences to generate;
+previously materialized unfinished work remains attached with its original due
+date and occurrence identity. This follows the current
+[product policy](../power-user-todo.md#7-recurrence-retain-duties-add-occurrence-identity).
+The old automatic orphaning proposal is retired: it erased provenance and
+turned historical obligations into detached tasks. No replacement bulk orphan,
+deferral, or completion op is needed. Backlog is displayed explicitly.
 
 ## 4. Idempotency: the cron and a read will race
 
 With two triggers (§5), the same occurrence *will* be materialized twice
 concurrently. Correctness cannot assume otherwise. **Three** layers defend it —
-the third closes a gap an earlier two-layer draft missed:
+every duty-instance insert also checks the live cursor before writing:
 
 1. **Cursor as the fast path.** `materializeDutyPlan` only considers occurrences
    after `last_spawned_at`. Once one driver advances the cursor, the other sees
@@ -208,8 +187,7 @@ the third closes a gap an earlier two-layer draft missed:
    `Plan`*, applied in one D1 batch, so they commit together or not at all.
 2. **`UNIQUE(duty_id, occurrence_at)` as the hard backstop.** If two batches
    interleave before either commits, the second `task.insert` violates the unique
-   index. Stage 4 makes `apply` treat that specific constraint violation as a
-   benign no-op for duty-instance inserts (the occurrence already exists — that
+   index. `apply` uses targeted `ON CONFLICT(duty_id,occurrence_at) DO NOTHING` for duty-instance inserts (the occurrence already exists — that
    *is* success), not an error. Exactly one instance per `(duty, occurrence_at)`.
 3. **Monotonic cursor to prevent regression.** The unique index protects task
    *rows*, but not the cursor: two drivers can build plans from the same old
@@ -345,8 +323,7 @@ complete.
 
 Edge case worth stating: because spawn is calendar-driven, you can have an open
 instance from last week and a newly spawned one for this week at the same time
-under `catch_up: 'all'`. That is intended. Under `catch_up: 'next'` the orphan
-rule (§3) keeps exactly one *current* instance (older opens are detached).
+under either catch-up policy. Existing work stays attached (§3); catch-up only chooses which missed occurrences to generate.
 
 ## Decided (were open questions)
 
@@ -361,12 +338,11 @@ rule (§3) keeps exactly one *current* instance (older opens are detached).
 - **Deleting a duty orphans its instances** (keeps the tasks — real work the user
   may still want — nulls their `duty_id` *and* `occurrence_at`) and stops future
   spawns. Not a cascade. → Stage 6 (decided, not deferred).
-- **`catch_up: 'next'` orphans a stale open instance and spawns a fresh current
-  one** (§3). → Stage 4.
+- **`catch_up: 'next'` retains historical opens and spawns the newest missed occurrence** (§3). → Stage 4.
 
 ## Open questions deferred to their stages
 
-- Exact open-instance signature the `next` orphan rule passes into
+- Historical backlog presentation when the materializer is wired into
   `materializeDutyPlan` → Stage 4.
 - Whether the scheduled handler processes duties in id order or overdue order
   under the per-tick cap → Stage 5 (`next_occurrence_at` ascending — most-overdue

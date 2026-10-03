@@ -32,7 +32,7 @@ re-caught.
 | D6 | Minute-resolution UTC on every stored scheduling timestamp; tasks preserve all-day intent separately in `due_all_day`. | `02` |
 | D7 | Per-duty **anchor zone** (`timezone`) expands the rule; instants stored are always UTC; no global tz/date resolver. Null and explicit `UTC` have identical expansion semantics. | `02` |
 | D8 | The series anchor — `rrule` + `dtstart` + `timezone` — is **immutable**; reschedule/re-zone = `end_duty` + `create_duty`. | `02`, INV-A |
-| D9 | `catch_up: next` orphans stale opens + spawns one current; `all` spawns each (capped). | `00` §3 |
+| D9 | Historical `next` / current `latest` materializes the newest missed occurrence and retains existing unfinished work; `all` spawns each (capped). | `00` §3 |
 | D10 | Delete-duty **orphans** every instance (keeps tasks), stops future spawns. | `00`, INV-H |
 | D11 | Duty recurrence uses a parallel `SeriesRrule` profile; the legacy infinite/date-only task profile remains unchanged until Stage 10. | `01`, Stage 2 |
 | D12 | Duty `dtstart` is always a real time. Duties have no all-day flag, accept no bare-date anchor, and perform no noon/all-day inference. | `02`, Stage 2 |
@@ -91,10 +91,10 @@ The authoritative statements `dutyFromRow` and the planners enforce:
   served by *either* legacy completion-spawn *or* the materializer — never zero
   (stall) and never both (double-spawn). See `03` I1/I2 and the Stage 4↔5 atomic
   cut-over.
-- **INV-G — One current instance under `next`.** `catch_up: next` leaves exactly
-  one current pending instance; stale opens (`occurrence_at < latest`) are
-  orphaned; **the current occurrence is never orphaned** (the `< latest` bound
-  makes replay race-safe).
+- **INV-G — Retain occurrence provenance.** Catch-up selects which missed
+  occurrences to generate; it does not detach, defer, complete, or re-date
+  existing instances. Historical opens remain attached backlog. The public
+  product policy is canonical in [power-user-todo.md §7](../power-user-todo.md#7-recurrence-retain-duties-add-occurrence-identity).
 - **INV-H — FK integrity, no dangles.** `project.delete` nulls **both**
   `duties.project_id` and `tasks.project_id`. `delete_duty` orphans **all**
   instances (`duty.orphan_all`) before `duty.delete`. `wipe` deletes `duties` in FK
@@ -104,12 +104,13 @@ The authoritative statements `dutyFromRow` and the planners enforce:
   match), the check lives in `createDutyPlan` (reject `firstOcc == null`), not in
   `parseSeriesRrule`.
 - **INV-J — Bounded plans.** Every mutation's `Plan` is O(1) statements in the
-  instance count: bulk `duty.orphan_stale`/`duty.orphan_all` for orphaning,
+  instance count: bulk deletion/archival operations,
   `maxPerRun` cap for `catch_up: all`. Never one statement per instance.
 - **INV-K — Idempotent spawn (three layers).** (1) `UNIQUE(duty_id, occurrence_at)`
   → no duplicate instances; (2) monotonic `last_spawned_at` (`duty.update_cursor`
   compare-and-set) → no cursor regression; (3) `next_occurrence_at` gate + benign
-  unique-conflict handling → a late/duplicate run is a no-op. See `00` §4.
+  unique-conflict handling plus a **live-cursor predicate on each insert** →
+  a late/duplicate run is a no-op. Guarding only the cursor update is insufficient: an older plan could insert a stale instance after a newer plan commits.
 - **INV-L — Materialize is guarded on live status.** A materialize plan built while
   a duty was `active` must **no-op if the duty is no longer `active`** by the time
   it applies (a `pause_duty`/`end_duty` committed in between). `duty.exists` is not
@@ -121,53 +122,15 @@ The authoritative statements `dutyFromRow` and the planners enforce:
 
 ## 4. Calendar-primitive signatures (`shared/parse/recurrence.ts`)
 
-The legacy `Rrule` profile remains infinite and date-only: frequencies
-`DAILY|WEEKLY|MONTHLY|YEARLY`, optional `INTERVAL`, and its existing date-level
-filters. The parallel duty-only `SeriesRrule` profile supports those frequencies
-plus `HOURLY|MINUTELY`, and adds `COUNT`, `UNTIL`, `BYHOUR`, and `BYMINUTE` to the
-legacy date-filter keys. `COUNT` and `UNTIL` are mutually exclusive. `SECONDLY`,
-`BYSECOND`, recurrence sets, and exceptions remain unsupported.
+The implemented profile, finite-bound semantics, APIs, and work limits are
+canonical in [the recurrence reference](../../shared/parse/recurrence.md). Stage
+work orders must reference that contract rather than copying it. In particular,
+filtered sub-day rules are unsupported, and a search-budget error is not proof
+of exhaustion. Use `isSeriesOccurrence` to validate a cursor and
+`nextOccurrenceAfter` to validate its expected successor. Never enumerate the
+whole history to decode a duty.
 
-`UNTIL` accepts only the RFC/basic UTC datetime form `YYYYMMDDTHHMMSSZ`; parsing
-normalizes it to the canonical minute-resolution UTC instant
-`YYYY-MM-DDTHH:MM:00Z` stored in `SeriesRruleParts.until`. Bare dates, extended-ISO
-text, local datetimes, and numeric offsets are rejected. UNTIL is an inclusive
-bound on the resolved UTC occurrence instants. `COUNT` likewise counts resolved,
-valid occurrence instants: a nonexistent wall-clock candidate skipped in a DST
-gap does **not** consume a count slot.
-
-All four primitives are anchor-zone-aware — every one takes the duty's
-`timezone`. Null and explicit `UTC` both expand in UTC. Other zones use a
-host-timezone-independent `Intl.DateTimeFormat` floating-wall-clock conversion:
-a nonexistent spring-gap wall time is skipped and a repeated fall-fold wall time
-chooses the earliest matching UTC instant. Passing UTC-only for a zoned duty would
-silently drift it across DST.
-
-`TimezoneSchema` accepts exact `UTC` or a value present in the runtime's
-`Intl.supportedValuesOf('timeZone')` list; noncanonical aliases are rejected.
-
-```ts
-occurrencesBetween(parts, dtstart: IsoDateTime, timezone: Timezone | null,
-                   after: IsoDateTime | null, through: IsoDateTime,
-                   limit?: number): IsoDateTime[]   // stops after `limit` results — pass maxPerRun so a
-                                                    // far-behind high-frequency rule can't hit the runaway cap
-nextOccurrenceAfter(parts, dtstart: IsoDateTime, timezone: Timezone | null,
-                    after: IsoDateTime | null): IsoDateTime | null   // null ⇒ exhausted
-latestOccurrenceAtOrBefore(parts, dtstart: IsoDateTime, timezone: Timezone | null,
-                           instant: IsoDateTime): IsoDateTime | null // newest ≤ instant; catch_up:next
-isSeriesExhausted(parts, dtstart: IsoDateTime, timezone: Timezone | null,
-                  after: IsoDateTime | null): boolean
-```
-
-`SERIES_OCCURRENCE_CAP = 10_000` is the public expansion guard and the maximum
-`COUNT`. Without an explicit `limit`, an expansion that would return more than the
-cap throws `SeriesExpansionLimitError`. An explicit `limit` must be an integer in
-`0..SERIES_OCCURRENCE_CAP` and stops cleanly at that many results. This guard is
-separate from Stage 4's smaller, caller-selected `maxPerRun` materialization cap.
-
-`nextOccurrence(parts, from)` — the legacy, single-arg, UTC-only primitive —
-survives **only** for the migration/legacy-recurrence path (Stage 1 A2 shim,
-Stage 4 backfill), removed in Stage 10.
+The shared timezone codec is canonical in [the time reference](../../shared/parse/time.md).
 
 ## 5. Op catalog (`worker/src/domain/Op.ts` + `apply.ts`)
 
@@ -176,22 +139,23 @@ Stage 4 backfill), removed in Stage 10.
 | `duty.insert` | `{ row }` | INSERT a duty row. |
 | `duty.update` | `{ id, patch, ifStatus? }` | UPDATE template fields + `catch_up` (+ `status` via `setDutyStatusPlan`). **Never** `rrule`/`dtstart`/`timezone` (INV-A). `ifStatus: 'active'` — set **only** by the materializer's exhaustion→`ended` op — appends `AND status='active'` (INV-L); status-transition plans (`pause`/`resume`/`end_duty`) never set it (resume must apply to a `paused` row). |
 | `duty.update_cursor` | `{ id, lastSpawnedAt, nextOccurrenceAt, updatedAt }` | Monotonic **and status-guarded** (materialize-only op): `SET last_spawned_at=:new, next_occurrence_at=:next … WHERE id=:id AND status='active' AND (last_spawned_at IS NULL OR last_spawned_at<:new)`. Stale or no-longer-active = no-op (INV-K, INV-L). |
-| `duty.orphan_stale` | `{ id, before, updatedAt }` | `UPDATE tasks SET duty_id=NULL, occurrence_at=NULL … WHERE duty_id=:id AND status='pending' AND occurrence_at < :before AND EXISTS (SELECT 1 FROM duties WHERE id=:id AND status='active')`. `catch_up:next`; excludes current (INV-G); materialize-only, so the INV-L status guard is baked in. [Phase 2: also sets `template_node_key=NULL`.] |
 | `duty.orphan_all` | `{ id, updatedAt }` | `UPDATE tasks SET duty_id=NULL, occurrence_at=NULL … WHERE duty_id=:id`. Any status; before `duty.delete` (INV-H). [Phase 2: also sets `template_node_key=NULL`.] |
 | `duty.delete` | `{ id }` | DELETE the duty (after `orphan_all`). |
 | precheck `duty.exists` | `{ id }` | Guarded existence check; `not_found` if missing. |
 
-**INV-L guard mechanism.** The materializer's writes go silently inert when the
-duty is no longer `active` via **SQL predicates on the write statements
-themselves** — *not* via the precheck machinery (`duty.exists`-style guards abort
-the whole batch with an error; INV-L wants "stopped duty ⇒ successful no-op").
-Concretely: `duty.update_cursor` and `duty.orphan_stale` are materialize-only
-ops, so their statements carry the status condition unconditionally (above); the
-materializer's exhaustion transition sets `ifStatus: 'active'` on `duty.update`;
-and a **duty-instance `task.insert`** (row with non-null `duty_id`) is emitted as
-`INSERT INTO tasks (…) SELECT … WHERE EXISTS (SELECT 1 FROM duties WHERE
-id=:duty_id AND status='active')` — the same `apply` special case that already
-treats its unique-index conflict as benign (INV-K layer 3).
+**Materialization guards.** The executor already implements
+`duty.update_cursor` and duty-instance `task.insert`. Inserts require a live
+active duty whose cursor is null or strictly before the inserted occurrence.
+They use targeted `ON CONFLICT(duty_id,occurrence_at) DO NOTHING`; unrelated
+constraint failures still roll back the whole batch. Cursor advancement follows
+all inserts in that same batch and is conditional on active status and forward
+progress. Replaying an older plan after a newer one commits therefore changes
+neither tasks nor cursor. No catch-up op mutates existing instances.
+
+Later exhaustion transitions must also be conditional on live active status.
+Duty planners/drivers and their revision guards remain future work; these
+executor primitives do not enable generation by themselves. See
+[the executor contract](../../worker/storage/apply.md).
 
 Non-duty ops that duties force a change to: **`project.delete`** also nulls
 `duties.project_id` (INV-H); **`wipe`** also deletes `duties` in FK order:
@@ -212,7 +176,7 @@ one of these cells — e.g. `end_duty`×INV-D, materialize-`next`×INV-G.)
 | `resume` (`setDutyStatusPlan`) | INV-C (recompute `next_occurrence_at` from cursor); reject if `ended` (terminal). |
 | `end_duty` (`setDutyStatusPlan→ended`) | INV-D (`next_occurrence_at=NULL`; **no** exhaustion requirement — works for infinite duties). |
 | `delete_duty` (`deleteDutyPlan`) | INV-H (`duty.orphan_all` then `duty.delete`); INV-J (bounded 2 statements). |
-| materialize `next` | INV-G (`orphan_stale{before:latest}` excludes current) + INV-K (unique index on the insert); INV-C (advance cursor + `next_occurrence_at`); INV-J (bulk orphan); **INV-L (status guard — no spawn if paused/ended between plan-build and apply)**. |
+| materialize `next` | INV-G (retains existing work) + INV-K (live-cursor insert guard + unique index); INV-C (advance cursor + `next_occurrence_at`); INV-J (bounded inserts); **INV-L (status guard — no spawn if paused/ended between plan-build and apply)**. |
 | materialize `all` | INV-J (`maxPerRun` cap **passed into `occurrencesBetween` as `limit`** — expand at most `maxPerRun`, never `SERIES_OCCURRENCE_CAP`; remainder next run) + INV-K + **INV-L (status guard)**. |
 | materialize → exhausted | INV-D (`status='ended'`, `next_occurrence_at=NULL`); the `null`-cursor `COUNT=1`/future-`dtstart` case is **not** ended prematurely; **INV-L (only from a still-active row)**. |
 | complete instance (`completeTask`) | INV-F (spawns nothing — the materializer owns recurrence); session_log→next kickoff carried by the materializer. |
