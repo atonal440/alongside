@@ -6,7 +6,8 @@ import type { Task, Project } from '@shared/types';
 import type { Env } from './index';
 import { getAppHtml, getActionLogHtml } from './app-ui';
 import { parsePositiveFinite } from './parse';
-import { ADMIN_TOOL_NAMES, annotate, asDeprecatedAlias } from './toolSurface';
+import { callReadTool, READ_TOOLS, READ_TOOL_NAMES } from './reads';
+import { ADMIN_TOOL_NAMES, annotate, asDeprecatedAlias, withReplacement } from './toolSurface';
 
 interface McpRequest {
   jsonrpc: '2.0';
@@ -86,6 +87,7 @@ PREFERENCES: When the user states a preference, call update_preference immediate
 const TOOL_DEFS = [
   ...FOUNDATION_TOOLS,
   ...COMMAND_TOOLS,
+  ...READ_TOOLS,
   {
     name: 'start_session',
     description: 'Call at the start of every session. Returns ready tasks, preferences, and session instructions.',
@@ -355,7 +357,7 @@ const TOOL_DEFS = [
 ];
 
 /** Default `/mcp` list. Tools that moved to the admin endpoint or REST stay here as deprecated aliases until phase D. */
-export const TOOLS = TOOL_DEFS.map(tool => annotate(asDeprecatedAlias(tool)));
+export const TOOLS = TOOL_DEFS.map(tool => annotate(withReplacement(asDeprecatedAlias(tool))));
 
 /** Opt-in `/mcp/admin` list: export, restore, and the reads restore depends on. */
 export const ADMIN_TOOLS = ADMIN_TOOL_NAMES.map(name => {
@@ -384,6 +386,7 @@ const UI_RESOURCES = [
 async function handleToolCall(name: string, args: Record<string, unknown>, db: DB) {
   if (FOUNDATION_TOOLS.some(tool => tool.name === name)) return callFoundationTool(name, args, db);
   if (COMMAND_TOOLS.some(tool => tool.name === name)) return callCommandTool(name, args, db);
+  if (READ_TOOL_NAMES.includes(name)) return callReadTool(name, args, db);
   switch (name) {
     case 'show_tasks': {
       const taskIds = args.task_ids as string[];

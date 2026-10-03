@@ -1,7 +1,7 @@
 import * as v from 'valibot';
 import { CommandIdSchema, DutyIdSchema, EventInstantSchema, IsoDateTimeSchema, LinkTypeSchema,
   MinuteInstantSchema, ProjectIdSchema, RevisionSchema, SeriesRruleSchema, TaskIdSchema,
-  TaskTypeSchema, TimezoneSchema, ToolNameSchema, boundedStringSchema, parseSchema } from '../parse';
+  TaskTypeSchema, TimezoneSchema, ActionNameSchema, boundedStringSchema, parseSchema } from '../parse';
 import { ProjectRowSchema, TaskLinkRowSchema, TaskRowSchema, taskRowEntries } from './rows';
 import { PlanningSettingsSchema, WorkingHoursSchema } from './planning';
 import { ChangeDiffSchema } from './commands';
@@ -36,7 +36,7 @@ export const DutyRowSchema = v.strictObject({
   created_at: IsoDateTimeSchema, updated_at: IsoDateTimeSchema,
 });
 export const SyncActionLogRowSchema = v.strictObject({
-  id: positiveId, tool_name: v.union([ToolNameSchema, v.literal('snooze_task')]), task_id: v.nullable(TaskIdSchema), duty_id: v.nullable(DutyIdSchema),
+  id: positiveId, tool_name: ActionNameSchema, task_id: v.nullable(TaskIdSchema), duty_id: v.nullable(DutyIdSchema),
   title: boundedStringSchema(500), detail: v.nullable(boundedStringSchema(2_000)), created_at: IsoDateTimeSchema,
 });
 export const SyncAuditRowSchema = v.strictObject({

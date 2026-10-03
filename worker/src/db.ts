@@ -931,6 +931,15 @@ export class DB {
       .limit(limit);
   }
 
+  /** Newest-first command audit rows (the receipt's actor, reason and diff list). */
+  async listCommandAudit(limit = 50): Promise<{ command_id: string; actor: string; reason: string | null; changes_json: string; created_at: string }[]> {
+    return this.d1
+      .prepare('SELECT command_id, actor, reason, changes_json, created_at FROM command_audit ORDER BY created_at DESC, command_id DESC LIMIT ?')
+      .bind(limit)
+      .all<{ command_id: string; actor: string; reason: string | null; changes_json: string; created_at: string }>()
+      .then(r => r.results);
+  }
+
   // Seed missing default preferences (called by start_session)
   async seedDefaultPreferences(): Promise<void> {
     for (const [key, value] of Object.entries(DEFAULT_PREFERENCES)) {

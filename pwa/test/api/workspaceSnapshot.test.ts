@@ -59,3 +59,13 @@ it('preserves the retired snooze tool name in historical action logs',async()=>{
  const stub=installFetchStub();stub.respondWith({method:'GET',path:'/api/v2/sync/snapshot'},{type:'json',status:200,body:raw});
  try{expect(await api.workspaceSnapshot(config)).toEqual({kind:'ok',value:raw});}finally{stub.restore();}
 });
+it.each(['task.complete','task.legacy-schedule.set','link.add','project.content.set'])('accepts command kind %s as an action-log name',async toolName=>{
+ const raw={...body,entities:[{entity:'action_log',key:'4',revision:0,deletedAt:null,row:{id:4,tool_name:toolName,task_id:null,duty_id:null,title:'Command',detail:null,created_at:now}}]};
+ const stub=installFetchStub();stub.respondWith({method:'GET',path:'/api/v2/sync/snapshot'},{type:'json',status:200,body:raw});
+ try{expect(await api.workspaceSnapshot(config)).toEqual({kind:'ok',value:raw});}finally{stub.restore();}
+});
+it('still rejects an unknown action-log name',async()=>{
+ const raw={...body,entities:[{entity:'action_log',key:'4',revision:0,deletedAt:null,row:{id:4,tool_name:'task.explode',task_id:null,duty_id:null,title:'Bad',detail:null,created_at:now}}]};
+ const stub=installFetchStub();stub.respondWith({method:'GET',path:'/api/v2/sync/snapshot'},{type:'json',status:200,body:raw});
+ try{expect((await api.workspaceSnapshot(config)).kind).not.toBe('ok');}finally{stub.restore();}
+});

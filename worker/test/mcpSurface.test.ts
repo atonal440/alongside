@@ -18,7 +18,7 @@ async function call(path: string, surface: 'default' | 'admin', method: string, 
 
 describe('MCP tool tiers (phase A)', () => {
   it('annotates every default tool and nothing is left unclassified', () => {
-    expect(TOOLS.length).toBe(35);
+    expect(TOOLS.length).toBe(39);
     for (const tool of TOOLS) expect(tool.annotations, tool.name).toBeDefined();
     expect(Object.keys(TOOL_ANNOTATIONS).sort()).toEqual(TOOLS.map(tool => tool.name).sort());
   });

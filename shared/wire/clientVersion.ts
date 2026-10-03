@@ -6,7 +6,8 @@
  */
 export const CLIENT_HEADER = 'X-Alongside-Client';
 /** The protocol this build of the PWA speaks. */
-export const CLIENT_PROTOCOL = 2;
+/** 3 = parses command-kind action-log names (see docs/plans/mcp-surface.md). */
+export const CLIENT_PROTOCOL = 3;
 /** Oldest browser-client protocol still allowed to write. Raise it to lock out old builds. */
 export const MIN_WRITE_PROTOCOL = 2;
 export const UPGRADE_REQUIRED_STATUS = 426;

@@ -42,6 +42,11 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   get_ready_tasks: READ,
   get_project_context: READ,
   get_action_log: READ,
+  // Phase B reads
+  find: READ,
+  get_context: READ,
+  get_history: READ,
+  describe_commands: READ,
   // Preview never writes.
   preview_changes: READ,
   // start_session still seeds default preferences and stores last_session_at, so it is not
@@ -101,4 +106,21 @@ export function annotate<T extends Named>(tool: T): T & { annotations: ToolAnnot
 export function asDeprecatedAlias<T extends Named>(tool: T): T {
   const home = DEPRECATED_ALIASES[tool.name];
   return home ? { ...tool, description: `Deprecated alias. ${home} ${tool.description}` } : tool;
+}
+
+/** Read tools replaced by a phase B tool. They keep working; only the description changes. */
+export const REPLACED_BY: Record<string, string> = {
+  list_projects: 'find({ entity: "project", filter: { status } })',
+  list_tasks: 'find({ entity: "task", filter: { statuses, text } })',
+  get_ready_tasks: 'find({ entity: "task", preset: "ready", filter: { project_id } })',
+  get_project_context: 'get_context({ entity: "project", id })',
+  get_action_log: 'get_history',
+  get_entity: 'get_context({ entity, id, depth: 0 })',
+  get_link: 'get_context({ entity: "link", from, to, linkType, depth: 0 })',
+  get_planning_settings: 'get_context({ entity: "settings" })',
+};
+
+export function withReplacement<T extends Named>(tool: T): T {
+  const next = REPLACED_BY[tool.name];
+  return next ? { ...tool, description: `Deprecated: use ${next}. ${tool.description}` } : tool;
 }
