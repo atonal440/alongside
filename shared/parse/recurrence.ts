@@ -15,6 +15,8 @@ import {
   type ValidationError,
 } from './primitives';
 import type { Timezone } from './time';
+import { floatingCandidates, SeriesSearchBudget } from './seriesIterator';
+export { SERIES_SEARCH_WORK_CAP, SeriesSearchLimitError } from './seriesIterator';
 
 export type Rrule = Brand<string, 'Rrule'>;
 export type RruleFreq = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
@@ -205,6 +207,9 @@ function isDateOnlyProfile(fields: Map<string, string>, freq: RruleFreq): boolea
 }
 
 function isSeriesProfile(fields: Map<string, string>, freq: SeriesRruleFreq): boolean {
+  if (freq === 'HOURLY' || freq === 'MINUTELY') {
+    return [...fields.keys()].every(key => ['FREQ', 'INTERVAL', 'COUNT', 'UNTIL'].includes(key));
+  }
   const byday = parseByDay(fields.get('BYDAY'));
   if (byday === null) return false;
 
@@ -293,6 +298,7 @@ function parseRruleParts(input: string): RruleParts | null {
 }
 
 function parseSeriesRruleParts(input: string): SeriesRruleParts | null {
+  if (input.length > 4096) return null;
   const fields = parseFields(input, SERIES_SUPPORTED_KEYS);
   if (!fields) return null;
 
@@ -403,7 +409,6 @@ interface ExpansionContext {
   timezone: Timezone | null;
 }
 
-const RAW_CANDIDATE_CAP = 100_000;
 const zoneFormatters = new Map<string, Intl.DateTimeFormat>();
 const zoneOffsetCandidates = new Map<string, readonly number[]>();
 
@@ -563,44 +568,16 @@ function sourceWithoutFiniteBounds(source: SeriesRrule): string {
     .join(';');
 }
 
-function fastForwardAnchor(context: ExpansionContext, lowerWall: Date): Date {
-  const { freq, interval } = context.parts;
-  const unitMs = freq === 'MINUTELY'
-    ? 60_000
-    : freq === 'HOURLY'
-      ? 3_600_000
-      : null;
-  // Re-anchoring a filtered rule changes rrule's INTERVAL phase when it skips
-  // filtered periods. Only an otherwise-unfiltered sub-day rule can safely use
-  // an arithmetically equivalent DTSTART near the query boundary.
-  if (
-    unitMs === null
-    || lowerWall <= context.anchorWall
-    || context.parts.source.split(';').some(field => {
-      const key = field.slice(0, field.indexOf('='));
-      return key !== 'FREQ' && key !== 'INTERVAL' && key !== 'COUNT' && key !== 'UNTIL';
-    })
-  ) {
-    return context.anchorWall;
-  }
-
-  const stepMs = unitMs * Number(interval);
-  const elapsed = lowerWall.getTime() - context.anchorWall.getTime();
-  const steps = Math.max(0, Math.floor(elapsed / stepMs) - 1);
-  return new Date(context.anchorWall.getTime() + steps * stepMs);
-}
-
-function floatingRule(context: ExpansionContext, lowerWall?: Date): RRule {
-  const dtstart = lowerWall
-    ? fastForwardAnchor(context, lowerWall)
-    : context.anchorWall;
+function floatingRule(context: ExpansionContext): RRule {
   const parsed = rrulestr(sourceWithoutFiniteBounds(context.parts.source), {
-    dtstart,
+    dtstart: context.anchorWall,
     cache: false,
   });
   if (!(parsed instanceof RRule)) {
     throw new Error('Expected RRULE parser to return a single recurrence rule.');
   }
+  parsed.options.byhour = [...new Set(parsed.options.byhour ?? [])];
+  parsed.options.byminute = [...new Set(parsed.options.byminute ?? [])];
   return parsed;
 }
 
@@ -633,26 +610,15 @@ function visitCountOccurrences(
   const rule = floatingRule(context);
   const seen = new Set<number>();
   let validCount = 0;
-  let rawCount = 0;
-  let rawLimitExceeded = false;
-
-  rule.all(candidate => {
-    rawCount += 1;
-    if (rawCount > RAW_CANDIDATE_CAP) {
-      rawLimitExceeded = true;
-      return false;
-    }
-
+  for (const candidate of floatingCandidates(rule, context.anchorWall, 1, null, new SeriesSearchBudget())) {
     const resolved = resolveCandidate(context, candidate);
     if (resolved && resolved >= context.anchorInstant && !seen.has(resolved.getTime())) {
       seen.add(resolved.getTime());
       validCount += 1;
-      if (!visitor(resolved)) return false;
+      if (!visitor(resolved)) return;
     }
-    return validCount < Number(count);
-  });
-
-  if (rawLimitExceeded) throw new SeriesExpansionLimitError(RAW_CANDIDATE_CAP);
+    if (validCount >= Number(count)) return;
+  }
 }
 
 function validateLimit(limit: number | undefined): number | undefined {
@@ -724,22 +690,11 @@ export function occurrencesBetween(
       floatingFromInstant(throughInstant, context.timezone).getTime()
       + wallOrderCushion(throughInstant, context.timezone),
     );
-    const rule = floatingRule(context, searchStart);
-    let rawCount = 0;
-    let rawLimitExceeded = false;
-
-    rule.between(searchStart, upperWall, true, candidate => {
-      rawCount += 1;
-      if (rawCount > RAW_CANDIDATE_CAP) {
-        rawLimitExceeded = true;
-        return false;
-      }
-
+    const rule = floatingRule(context);
+    for (const candidate of floatingCandidates(rule, searchStart, 1, upperWall, new SeriesSearchBudget())) {
       const resolved = resolveCandidate(context, candidate);
-      return resolved ? visit(resolved) : true;
-    });
-
-    if (rawLimitExceeded) throw new SeriesExpansionLimitError(RAW_CANDIDATE_CAP);
+      if (resolved && !visit(resolved)) break;
+    }
   }
 
   if (outputLimitExceeded) throw new SeriesExpansionLimitError();
@@ -778,14 +733,13 @@ export function nextOccurrenceAfter(
     context.anchorWall.getTime(),
     lowerWall.getTime(),
   ));
-  const rule = floatingRule(context, searchStart);
-  let candidate = rule.after(searchStart, true);
-  let rawCount = 0;
-
-  while (candidate) {
-    rawCount += 1;
-    if (rawCount > RAW_CANDIDATE_CAP) throw new SeriesExpansionLimitError(RAW_CANDIDATE_CAP);
-
+  const rule = floatingRule(context);
+  const untilInstant = finiteUntil === null ? null : new Date(finiteUntil);
+  const upperWall = untilInstant === null ? null : new Date(
+    floatingFromInstant(untilInstant, context.timezone).getTime()
+    + wallOrderCushion(untilInstant, context.timezone),
+  );
+  for (const candidate of floatingCandidates(rule, searchStart, 1, upperWall, new SeriesSearchBudget())) {
     const resolved = resolveCandidate(context, candidate);
     if (resolved) {
       const instant = resolved.getTime();
@@ -794,7 +748,6 @@ export function nextOccurrenceAfter(
         return canonicalInstant(resolved);
       }
     }
-    candidate = rule.after(candidate, false);
   }
 
   return null;
@@ -826,19 +779,9 @@ export function latestOccurrenceAtOrBefore(
   const targetInstant = new Date(targetMs);
   const targetWall = floatingFromInstant(targetInstant, context.timezone);
   const orderCushion = wallOrderCushion(targetInstant, context.timezone);
-  const searchLower = new Date(Math.max(
-    context.anchorWall.getTime(),
-    targetWall.getTime() - orderCushion,
-  ));
   const searchUpper = new Date(targetWall.getTime() + orderCushion);
-  const rule = floatingRule(context, searchLower);
-  let candidate = rule.before(searchUpper, true);
-  let rawCount = 0;
-
-  while (candidate && candidate >= context.anchorWall) {
-    rawCount += 1;
-    if (rawCount > RAW_CANDIDATE_CAP) throw new SeriesExpansionLimitError(RAW_CANDIDATE_CAP);
-
+  const rule = floatingRule(context);
+  for (const candidate of floatingCandidates(rule, searchUpper, -1, context.anchorWall, new SeriesSearchBudget())) {
     const resolved = resolveCandidate(context, candidate);
     if (resolved) {
       const resolvedMs = resolved.getTime();
@@ -846,10 +789,20 @@ export function latestOccurrenceAtOrBefore(
         return canonicalInstant(resolved);
       }
     }
-    candidate = rule.before(candidate, false);
   }
 
   return null;
+}
+
+/** Membership without materializing the history preceding a cursor. */
+export function isSeriesOccurrence(
+  parts: SeriesRruleParts,
+  dtstart: IsoDateTime,
+  timezone: Timezone | null,
+  instant: IsoDateTime,
+): boolean {
+  const latest = latestOccurrenceAtOrBefore(parts, dtstart, timezone, instant);
+  return latest !== null && Date.parse(latest) === Date.parse(instant);
 }
 
 export function isSeriesExhausted(

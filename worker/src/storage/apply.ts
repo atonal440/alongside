@@ -54,9 +54,11 @@ const TASK_INSERT_COLUMNS = [
   'kickoff_note',
   'session_log',
   'focused_until',
+  'duty_id',
+  'occurrence_at',
 ] as const;
 
-const TASK_RESTORE_COLUMNS = [...TASK_INSERT_COLUMNS, 'duty_id', 'occurrence_at'] as const;
+const TASK_RESTORE_COLUMNS = TASK_INSERT_COLUMNS;
 const DUTY_RESTORE_COLUMNS = [
   'id', 'title', 'notes', 'kickoff_note', 'task_type', 'project_id', 'rrule', 'dtstart', 'timezone', 'status',
   'catch_up', 'last_spawned_at', 'next_occurrence_at', 'created_at', 'updated_at',
@@ -348,8 +350,26 @@ function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
     case 'command.feed':
       return op.result.changes.map(change => guardedStatement(d1.prepare(`INSERT INTO change_feed(command_id,entity,entity_id,revision,operation,payload_json,created_at) VALUES(?,?,?,?,?,?,?)`)
         .bind(op.result.commandId, change.entity, change.id, change.after.revision, 'deleted' in change.after ? 'delete' : 'upsert', JSON.stringify(change.after), op.result.serverNow)));
-    case 'task.insert':
+    case 'duty.update_cursor':
+      return [guardedStatement(d1.prepare(`UPDATE duties
+        SET last_spawned_at=?, next_occurrence_at=?, updated_at=?
+        WHERE id=? AND status='active' AND (last_spawned_at IS NULL OR last_spawned_at<?)`)
+        .bind(op.lastSpawnedAt, op.nextOccurrenceAt, op.updatedAt, op.id, op.lastSpawnedAt))];
+    case 'task.insert': {
+      if ((op.row.duty_id === null) !== (op.row.occurrence_at === null)) {
+        throw new Error('Duty identity and occurrence must be supplied together.');
+      }
+      if (op.row.duty_id !== null) {
+        const values = TASK_INSERT_COLUMNS.map(column => toBindable(op.row[column]));
+        return [guardedStatement(d1.prepare(`INSERT INTO tasks (${TASK_INSERT_COLUMNS.join(',')})
+          SELECT ${TASK_INSERT_COLUMNS.map(() => '?').join(',')}
+          WHERE EXISTS (SELECT 1 FROM duties WHERE id=? AND status='active'
+            AND (last_spawned_at IS NULL OR last_spawned_at<?))
+          ON CONFLICT(duty_id,occurrence_at) DO NOTHING`)
+          .bind(...values, op.row.duty_id, op.row.occurrence_at))];
+      }
       return [guardedStatement(bindInsert(d1, 'tasks', TASK_INSERT_COLUMNS, op.row))];
+    }
     case 'task.update': {
       const guard = { entity: 'task' as const, id: op.id };
       const statement = bindUpdate(d1, 'tasks', 'id', op.id, TASK_UPDATE_COLUMNS, op.patch);

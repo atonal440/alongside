@@ -102,7 +102,7 @@ describe('parseSeriesRrule', () => {
 });
 
 describe('Timezone parser', () => {
-  it.each(['UTC', 'America/New_York', 'Europe/Berlin'])('accepts %s', (value) => {
+  it.each(['UTC', 'America/New_York', 'Europe/Berlin', 'Asia/Kolkata', 'Europe/Kyiv', 'US/Eastern', 'Etc/GMT+5'])('accepts %s', (value) => {
     const parsed = expectOk(parseTimezone(value));
     expect(parsed).toBe(value);
   });
@@ -114,13 +114,12 @@ describe('Timezone parser', () => {
     'MST',
     'HST',
     'GMT',
-    'US/Eastern',
     'PST8PDT',
     'utc',
     'America/not_real',
     'america/new_york',
     '',
-  ])('rejects noncanonical or invalid timezone %s', (value) => {
+  ])('rejects ambiguous abbreviations or invalid timezone %s', (value) => {
     expect(parseTimezone(value).ok).toBe(false);
   });
 });
@@ -238,20 +237,14 @@ describe('occurrencesBetween boundaries and fixed anchors', () => {
     expectCanonicalMinuteInstants(values);
   });
 
-  it('preserves the fixed-anchor phase for filtered sub-day rules', () => {
-    const filtered = series('FREQ=MINUTELY;INTERVAL=37;BYHOUR=1,13');
-    const anchor = instant('2020-01-01T00:11:00Z');
-    const after = instant('2020-01-02T00:00:00Z');
-    const through = instant('2020-01-02T14:00:00Z');
-    const expected = [
-      '2020-01-02T01:16:00Z',
-      '2020-01-02T01:53:00Z',
-      '2020-01-02T13:30:00Z',
-    ];
-
-    expect(occurrencesBetween(filtered, anchor, null, after, through)).toEqual(expected);
-    expect(nextOccurrenceAfter(filtered, anchor, null, after)).toBe(expected[0]);
-    expect(latestOccurrenceAtOrBefore(filtered, anchor, null, through)).toBe(expected.at(-1));
+  it.each([
+    'FREQ=HOURLY;INTERVAL=2;BYHOUR=1',
+    'FREQ=MINUTELY;INTERVAL=2;BYMINUTE=1',
+    'FREQ=MINUTELY;INTERVAL=37;BYHOUR=1,13',
+    'FREQ=HOURLY;BYDAY=MO',
+    'FREQ=MINUTELY;WKST=SU',
+  ])('rejects filtered sub-day rule %s before expansion', source => {
+    expect(parseSeriesRrule(source).ok).toBe(false);
   });
 });
 
