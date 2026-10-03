@@ -283,3 +283,21 @@ describe('project and link tools', () => {
     expect(rows(w, 'projects')).toHaveLength(1);
   }));
 });
+
+describe('IDs that cannot name an entity', () => {
+  it('are "not found" for task and project verbs, not an internal validation error', async () => withWorld(async w => {
+    for (const [name, args] of [['complete_task', { task_id: 'nope' }], ['focus_task', { task_id: '' }], ['link_tasks', { from_task_id: 'a b', to_task_id: 'c' }],
+      ['create_project', { title: 'P', task_ids: ['zzz'] }], ['delete_project', { project_id: 'zzz' }]] as const)
+      await expect(call(w, name, args), name).rejects.toMatchObject({ detail: { code: 'not_found' } });
+    expect(rows(w, 'command_receipts')).toHaveLength(0);
+  }));
+
+  it('make unlink_tasks a no-op, as an absent link always was', async () => withWorld(async w => {
+    const result = await call(w, 'unlink_tasks', { from_task_id: 'a b', to_task_id: 'c' });
+    expect(result).toMatchObject({ unlinked: true, from_task_id: 'a b', to_task_id: 'c' });
+  }));
+
+  it('refuses a stale expectedRevision on unlink_tasks for a link that is already gone', async () => withWorld(async w => {
+    await expect(call(w, 'unlink_tasks', { from_task_id: 't_aaaaa', to_task_id: 't_bbbbb', expectedRevision: 5 })).rejects.toMatchObject({ detail: { code: 'revision_conflict' } });
+  }));
+});

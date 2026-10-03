@@ -10,7 +10,7 @@ import type { ReceiptTool } from '@shared/wire/receipts';
 import { CommandError, toolRequestHash } from '../domain/commands';
 import { invalidInput } from '../domain/temporalFoundation';
 import type { PreCheck } from '../domain/Op';
-import type { LinkSnapshot } from '@shared/wire/versions';
+import { parseEntityKey, type LinkSnapshot } from '@shared/wire/versions';
 import type { DB, ToolLogDraft } from '../db';
 
 export type Json = Record<string, unknown>;
@@ -76,6 +76,8 @@ export async function runTool(tool: ReceiptTool, rawArgs: unknown, db: DB, compi
       const ctx: Ctx = {
         db, tool, commandId, structural, expectedRevision: expectedRevision as number | null | undefined,
         async read(entity, id) {
+          // An ID that cannot name an entity is simply not found, as it was before the planner.
+          if (!parseEntityKey({ entity, id }).ok) throw notFound(`${entity === 'task' ? 'Task' : 'Project'} not found`);
           const snapshot = await db.getEntitySnapshot({ entity, id } as never);
           if (snapshot.structuralRevision !== structural) throw new StaleRead();
           return snapshot;

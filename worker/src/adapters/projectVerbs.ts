@@ -5,6 +5,7 @@
  */
 import { notFound, projectRowOf, refuse, derivedId, taskRowOf, type Compiler, type Ctx, type Json } from './runner';
 import { CommandError } from '../domain/commands';
+import { parseEntityKey } from '@shared/wire/versions';
 import type { ToolLogDraft } from '../db';
 
 const str = (args: Json, key: string): string => {
@@ -135,7 +136,11 @@ export const unlinkTasks: Compiler = async (ctx, args) => {
   const from = str(args, 'from_task_id'), to = str(args, 'to_task_id'), type = linkType(args);
   const log: ToolLogDraft = { tool_name: 'unlink_tasks', task_id: null, title: 'Unlinked', detail: `${from} → ${to}` };
   const response = { unlinked: true, from_task_id: from, to_task_id: to, action_log_entry: entry(log) };
-  // The exact stored orientation is removed; anything else is already absent.
+  // The exact stored orientation is removed; anything else is already absent, including IDs that
+  // cannot name a task (no such link can exist).
+  if (!parseEntityKey({ entity: 'task', id: from }).ok || !parseEntityKey({ entity: 'task', id: to }).ok) {
+    return { kind: 'noop', response, log, guards: [{ kind: 'workspace.structural_revision', expected: ctx.structural as never }] };
+  }
   const link = await ctx.readLink(from, to, type);
   if (link.row === null) {
     const actual = link.version?.revision ?? null;
