@@ -131,6 +131,8 @@ two-call preview and apply would be friction. Each one:
 - accepts an optional `commandId` (replay-safe retries) and an optional
   `expectedRevision` (refuse if stale). Without them it behaves like today:
   last writer wins, but through the planner;
+- makes retries with the same `commandId` replay, not conflict (see
+  [Quick-verb replay](#quick-verb-replay));
 - returns the command result (revisions, side effects) plus the existing
   `action_log_entry` for the widget.
 
@@ -143,6 +145,31 @@ project is given), because `task.create` is deliberately undated.
 
 Add a quick verb only when the logs show the model struggling with the
 `apply_changes` path for that action.
+
+### Quick-verb replay
+
+A quick verb builds its envelope from live state, so rebuilding it on a retry
+gives a different envelope. The minted task or successor ID changes, and the
+expected revisions have moved on if the first attempt committed. Receipts
+compare a hash of the payload, so a retry that hashed the rebuilt envelope
+would return `command_id_conflict` instead of the original result. Three
+rules prevent that:
+
+- **Look up the receipt before compiling.** With a `commandId`, the server
+  checks `command_receipts` first and returns the stored result if the
+  request matches. It reads state and builds commands only when no receipt
+  exists.
+- **Hash the request, not the compiled envelope.** The receipt's payload hash
+  covers the quick verb's name and its canonicalized arguments. A different
+  request reusing the ID is still a conflict.
+- **Derive minted IDs from the `commandId`.** Task and successor IDs come from
+  a deterministic function of the `commandId` and their position in the
+  batch. Two identical requests racing before either commits plan the same
+  identities, so the existing identity guard rejects the second, and its retry
+  then replays the receipt.
+
+Without a `commandId`, the server mints a fresh one and none of this
+applies: each call is a new command, as today.
 
 ## Reads
 
@@ -254,6 +281,17 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   keeps the retired `snooze_task` readable. Removed names must stay readable
   in history. New entries should record the command kind (or the quick verb
   that produced it) rather than introducing more tool names.
+- **Widen the action-log codec before writing new values.** The PWA parses
+  every synced `action_log` row through `SyncActionLogRowSchema`
+  (`shared/wire/sync.ts`), which accepts only `ToolNameSchema` or
+  `snooze_task`. A row whose `tool_name` is a command kind such as
+  `task.complete` fails that parse, so every snapshot or delta page containing
+  it is rejected at the response boundary and each pull fails the same way.
+  Sync stays stuck until the client is updated.
+  The 426 write gate doesn't help, because it only blocks writes and an old
+  PWA still reads. So the codec must accept a versioned action-name union
+  (current tool names, retired names and command kinds), with parser tests,
+  and that PWA build must be deployed before the worker emits a new value.
 - **External skills use tool names.** The `alongside-daily` skill and any
   saved prompts call today's names. Quick verbs keep their names. Removed tools
   need a deprecation window.
@@ -272,9 +310,13 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
 - **B: New reads and pinning preview.** Add `find` (task, project),
   `get_context`, `get_history`, `describe_commands`, and loose-intent
   `preview_changes`. Mark the tools they replace as deprecated in their
-  descriptions ("Deprecated: use `find`").
-- **C: One write path.** Rebuild the quick verbs on the command planner. Add
-  the `preference.set` command. Record command kinds in the action log. Switch
+  descriptions ("Deprecated: use `find`"). Widen the shared action-log codec
+  to the versioned action-name union (with tests), so deployed PWA clients
+  can parse command kinds before phase C writes any.
+- **C: One write path.** Rebuild the quick verbs on the command planner, with
+  receipt-first replay and command-derived IDs. Add the `preference.set`
+  command. Record command kinds in the action log only once the widened codec
+  from phase B is deployed. Switch
   the widget to `find` and `apply_changes`. After this phase, MCP no longer
   writes through the legacy path.
 - **D: Remove deprecated tools** once logs show no remaining callers, keeping
@@ -290,7 +332,11 @@ built once, on the command path, and not added to the legacy verbs as well.
 
 - The default `tools/list` stays at or below about 20 tools through slice 7.
 - Every MCP write produces a command receipt; retrying a quick verb with the
-  same `commandId` replays rather than duplicating.
+  same `commandId` replays rather than duplicating, including after the first
+  attempt committed and for verbs that mint IDs (`add_task`, recurring
+  `complete_task`).
+- A PWA snapshot or delta containing command-kind action-log rows parses and
+  syncs.
 - An LLM can complete a multi-step change (create a project, move three
   tasks, link two) with one `preview_changes` and one `apply_changes`, without
   reading revisions by hand.
