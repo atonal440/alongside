@@ -141,10 +141,15 @@ two-call preview and apply would be friction. Each one:
   revision, the adapter handles that internally: it checks for a receipt
   again, re-reads, recompiles (re-merging partial patches against the new
   values) and retries, up to a small fixed number of attempts (for example
-  three). Only if every attempt loses the race does it return the
-  `revision_conflict`. A caller-supplied `expectedRevision` is never retried
-  this way, because the caller asked to be refused if stale. Tests cover a
-  race won on retry and a race exhausting the attempts;
+  three). This covers every guard the adapter filled in itself: entity
+  revisions (`revision_conflict`) and the workspace structural revision
+  (`structural_conflict`). The structural one matters because completion,
+  creation, deletion, membership and link commands all pin it, and any
+  unrelated change to the workspace graph moves it. Only if every attempt
+  loses the race does the conflict reach the caller. A caller-supplied
+  `expectedRevision` is never retried this way, because the caller asked to be
+  refused if stale. Tests cover a race won on retry for each conflict kind,
+  and a race exhausting the attempts;
 - makes retries with the same `commandId` replay, not conflict (see
   [Quick-verb replay](#quick-verb-replay));
 - returns the command result (revisions, side effects) plus the existing
