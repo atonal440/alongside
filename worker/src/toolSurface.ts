@@ -12,7 +12,13 @@ export interface ToolAnnotations {
 }
 
 const READ: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
-/** Conversational write that can be undone by another call: it adds or edits, never erases. */
+/**
+ * Conversational write that can be undone by another call: it adds or edits, never erases. The MCP
+ * spec reads `destructiveHint: false` as additive-only, but marking every edit or unlink destructive
+ * would make hosts confirm routine changes. Each change is revisioned and readable through history,
+ * and `link_tasks` reverses an unlink, so "destructive" is reserved for deletes, bulk applies and
+ * restore. Revisit when `undo_changes` ships.
+ */
 const WRITE: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 const DESTRUCTIVE: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
 
