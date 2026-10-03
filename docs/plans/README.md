@@ -7,6 +7,9 @@
   contracts. Start here for the expanded backend work.
 - [Implementation checklist](power-user-todo-implementation-todo.md): ordered
   slices, acceptance criteria, verification, and cross-session handoff.
+- [MCP surface](mcp-surface.md): how operations are grouped into MCP tools,
+  risk tiers, and the migration of the current tools. Refines §10 of the
+  power-user plan.
 
 These are plans, not descriptions of implemented features. UI redesign is
 deferred. Existing API/reference docs describe shipped contracts.
