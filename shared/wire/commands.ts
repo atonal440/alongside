@@ -5,6 +5,8 @@ import { ProjectRowSchema, TaskRowSchema, TaskLinkRowSchema } from './rows';
 
 // Standalone and bounded mixed families share replay receipts. Offline command
 // storage joins this protocol in subsequent Slice 2 steps.
+/** Commands per envelope. The real ceiling is the 100-statement atomic plan, checked at plan time. */
+export const MAX_BATCH_COMMANDS = 100;
 export const PlanningValuesSchema = v.pipe(v.strictObject({
   timezone: PlanningSettingsSchema.entries.timezone,
   workingHours: PlanningSettingsSchema.entries.workingHours,
@@ -96,7 +98,7 @@ export const CommandEnvelopeSchema = v.pipe(v.strictObject({
   actor: v.picklist(['user', 'llm', 'import']),
   reason: v.optional(v.pipe(v.string(), v.maxLength(1_000))),
   expectedStructuralRevision: v.optional(RevisionSchema),
-  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(20)),
+  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(MAX_BATCH_COMMANDS)),
 }), v.check(value => value.commands.length === 1 ? value.expectedStructuralRevision === undefined
   : value.expectedStructuralRevision !== undefined && value.commands.every(command => command.kind !== 'planning.set'),
 'Mixed batches require an envelope structural revision; settings remain standalone.'),
@@ -182,7 +184,7 @@ function validDiffIdentity(value: { serverNow: string; batch?: true | undefined;
       // Receipts from the first mixed-batch release contain only simple images.
       if (value.changes.length > 20 || value.changes.some(change => (change.entity !== 'link' && 'deleted' in change.after) || (change.entity === 'task' && change.before?.row.status === 'pending' && 'row' in change.after && change.after.row.status === 'done'))) return false;
     } else {
-      if (value.changeGroups.length < 2 || value.changeGroups.length > 20 || value.changeGroups.reduce((a,b) => a+b,0) !== value.changes.length) return false;
+      if (value.changeGroups.length < 2 || value.changeGroups.length > MAX_BATCH_COMMANDS || value.changeGroups.reduce((a,b) => a+b,0) !== value.changes.length) return false;
       let offset=0;
       for (const count of value.changeGroups) {
         if (!Number.isSafeInteger(count) || count < 1 || !validDiffIdentity({serverNow:value.serverNow,changes:value.changes.slice(offset,offset+count),refs:{}})) return false;
@@ -235,7 +237,7 @@ function validDiffIdentity(value: { serverNow: string; batch?: true | undefined;
       return false;
     }
   }
-  return Object.keys(value.refs).length <= (value.batch ? 20 : 1) && Object.values(value.refs).every(id => createdIds.has(id));
+  return Object.keys(value.refs).length <= (value.batch ? MAX_BATCH_COMMANDS : 1) && Object.values(value.refs).every(id => createdIds.has(id));
 }
 const RefsSchema = v.pipe(v.custom<Record<string, string>>(input => input !== null && typeof input === 'object' && !Array.isArray(input)
   && Object.entries(input).every(([key, value]) => /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(key)
@@ -243,7 +245,7 @@ const RefsSchema = v.pipe(v.custom<Record<string, string>>(input => input !== nu
 v.record(ClientRefSchema, v.union([TaskIdSchema, ProjectIdSchema])));
 const resultEntries = {
   contractVersion: v.literal(2), commandId: CommandIdSchema, payloadHash: PayloadHashSchema,
-  serverNow: EventInstantSchema, batch: v.optional(v.literal(true)), changeGroups: v.optional(v.pipe(v.array(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100))), v.minLength(2), v.maxLength(20))), commandChanges: v.optional(v.pipe(v.array(v.pipe(v.array(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(99))), v.minLength(1), v.maxLength(100))), v.minLength(2), v.maxLength(20))), changes: v.pipe(v.array(ChangeDiffSchema), v.minLength(1), v.maxLength(100)),
+  serverNow: EventInstantSchema, batch: v.optional(v.literal(true)), changeGroups: v.optional(v.pipe(v.array(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100))), v.minLength(2), v.maxLength(MAX_BATCH_COMMANDS))), commandChanges: v.optional(v.pipe(v.array(v.pipe(v.array(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(99))), v.minLength(1), v.maxLength(100))), v.minLength(2), v.maxLength(MAX_BATCH_COMMANDS))), changes: v.pipe(v.array(ChangeDiffSchema), v.minLength(1), v.maxLength(100)),
   warnings: v.pipe(v.array(v.string()), v.maxLength(0)),
   refs: RefsSchema,
 };

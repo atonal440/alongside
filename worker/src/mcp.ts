@@ -7,6 +7,7 @@ import type { Env } from './index';
 import { getAppHtml, getActionLogHtml } from './app-ui';
 import { runTool } from './adapters/runner';
 import { addTask, completeTask, deferTask, focusTask, updateTask } from './adapters/taskVerbs';
+import { createProject, deleteProject, deleteTask, linkTasks, reopenTask, unlinkTasks, updateProject } from './adapters/projectVerbs';
 import { callReadTool, READ_TOOLS, READ_TOOL_NAMES } from './reads';
 import { ADMIN_TOOL_NAMES, annotate, asDeprecatedAlias, withReplacement } from './toolSurface';
 
@@ -213,6 +214,8 @@ const TOOL_DEFS = [
     inputSchema: {
       type: 'object',
       properties: {
+        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
+        expectedRevision: { type: 'integer', minimum: 0, description: 'Optional. Refuse the change if the entity is no longer at this revision (see get_context).' },
         task_id: { type: 'string' },
       },
       required: ['task_id'],
@@ -240,6 +243,8 @@ const TOOL_DEFS = [
     inputSchema: {
       type: 'object',
       properties: {
+        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
+        expectedRevision: { type: 'integer', minimum: 0, description: 'Optional. Refuse the change if the entity is no longer at this revision (see get_context).' },
         task_id: { type: 'string' },
       },
       required: ['task_id'],
@@ -252,6 +257,7 @@ const TOOL_DEFS = [
     inputSchema: {
       type: 'object',
       properties: {
+        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
         title: { type: 'string', description: 'Project name.' },
         notes: { type: 'string', description: 'General project notes.' },
         kickoff_note: { type: 'string', description: 'Where to start and why.' },
@@ -267,6 +273,8 @@ const TOOL_DEFS = [
     inputSchema: {
       type: 'object',
       properties: {
+        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
+        expectedRevision: { type: 'integer', minimum: 0, description: 'Optional. Refuse the change if the entity is no longer at this revision (see get_context).' },
         project_id: { type: 'string' },
         title: { type: 'string' },
         notes: { type: 'string', description: 'General project notes.' },
@@ -283,6 +291,8 @@ const TOOL_DEFS = [
     inputSchema: {
       type: 'object',
       properties: {
+        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
+        expectedRevision: { type: 'integer', minimum: 0, description: 'Optional. Refuse the change if the entity is no longer at this revision (see get_context).' },
         project_id: { type: 'string' },
       },
       required: ['project_id'],
@@ -306,6 +316,7 @@ const TOOL_DEFS = [
     inputSchema: {
       type: 'object',
       properties: {
+        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
         from_task_id: { type: 'string', description: 'The blocking or related task.' },
         to_task_id: { type: 'string', description: 'The blocked or related task.' },
         link_type: { type: 'string', enum: ['blocks', 'related'], description: 'Defaults to "blocks".' },
@@ -320,6 +331,8 @@ const TOOL_DEFS = [
     inputSchema: {
       type: 'object',
       properties: {
+        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
+        expectedRevision: { type: 'integer', minimum: 0, description: 'Optional. Refuse the change if the entity is no longer at this revision (see get_context).' },
         from_task_id: { type: 'string' },
         to_task_id: { type: 'string' },
         link_type: { type: 'string', enum: ['blocks', 'related'], description: 'Defaults to "blocks".' },
@@ -384,6 +397,13 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     case 'defer_task': return runTool('defer_task', args, db, deferTask);
     case 'update_task': return runTool('update_task', args, db, updateTask);
     case 'focus_task': return runTool('focus_task', args, db, focusTask);
+    case 'reopen_task': return runTool('reopen_task', args, db, reopenTask);
+    case 'delete_task': return runTool('delete_task', args, db, deleteTask);
+    case 'create_project': return runTool('create_project', args, db, createProject);
+    case 'update_project': return runTool('update_project', args, db, updateProject);
+    case 'delete_project': return runTool('delete_project', args, db, deleteProject);
+    case 'link_tasks': return runTool('link_tasks', args, db, linkTasks);
+    case 'unlink_tasks': return runTool('unlink_tasks', args, db, unlinkTasks);
     case 'show_tasks': {
       const taskIds = args.task_ids as string[];
       const tasks = (await Promise.all(taskIds.map(id => db.getTask(id)))).filter((t): t is NonNullable<typeof t> => t !== null);
@@ -454,95 +474,11 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       return { tasks };
     }
 
-    case 'reopen_task': {
-      const task = await db.reopenTask(args.task_id as string);
-      if (!task) throw new Error('Task not found');
-      const log = await db.logAction({ tool_name: 'reopen_task', task_id: task.id, title: task.title });
-      return { ...task, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
-    }
-
-    case 'delete_task': {
-      const toDelete = await db.getTask(args.task_id as string);
-      if (!toDelete) throw new Error('Task not found');
-      const log = await db.logAction({ tool_name: 'delete_task', task_id: toDelete.id, title: toDelete.title });
-      await db.deleteTask(toDelete.id);
-      return { deleted: true, task_id: toDelete.id, title: toDelete.title, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
-    }
-
-    case 'create_project': {
-      const taskIds = args.task_ids as string[] | undefined;
-      const linkedTaskCount = new Set(taskIds ?? []).size;
-      const project = await db.createProject({
-        title: args.title as string,
-        notes: args.notes as string | undefined,
-        kickoff_note: args.kickoff_note as string | undefined,
-      }, taskIds ?? []);
-
-      const log = await db.logAction({
-        tool_name: 'create_project',
-        title: project.title,
-        detail: linkedTaskCount > 0 ? `${linkedTaskCount} tasks` : undefined,
-      });
-      return {
-        project,
-        linked_task_count: linkedTaskCount,
-        action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail },
-      };
-    }
-
     case 'get_project_context': {
       const project = await db.getProject(args.project_id as string);
       if (!project) throw new Error('Project not found');
       const ready_tasks = await db.listReadyTasks(args.project_id as string);
       return { project, ready_tasks };
-    }
-
-    case 'update_project': {
-      const { project_id, ...updates } = args;
-      const project = await db.updateProject(project_id as string, updates as Parameters<DB['updateProject']>[1]);
-      if (!project) throw new Error('Project not found');
-      const log = await db.logAction({ tool_name: 'update_project', title: project.title });
-      return { ...project, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
-    }
-
-    case 'delete_project': {
-      const toDelete = await db.getProject(args.project_id as string);
-      if (!toDelete) throw new Error('Project not found');
-      const log = await db.logAction({ tool_name: 'delete_project', title: toDelete.title });
-      await db.deleteProject(toDelete.id);
-      return { deleted: true, project_id: toDelete.id, title: toDelete.title, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
-    }
-
-    case 'link_tasks': {
-      const linkType = (args.link_type as string) || 'blocks';
-      const [fromTask, toTask] = await Promise.all([
-        db.getTask(args.from_task_id as string),
-        db.getTask(args.to_task_id as string),
-      ]);
-      await db.linkTasks(
-        args.from_task_id as string,
-        args.to_task_id as string,
-        linkType as 'blocks' | 'related'
-      );
-      const fromTitle = fromTask?.title ?? args.from_task_id as string;
-      const toTitle = toTask?.title ?? args.to_task_id as string;
-      const log = await db.logAction({ tool_name: 'link_tasks', title: `${fromTitle} → ${toTitle}`, detail: linkType });
-      return {
-        linked: true,
-        from_task_id: args.from_task_id,
-        from_task_title: fromTask?.title,
-        to_task_id: args.to_task_id,
-        to_task_title: toTask?.title,
-        link_type: linkType,
-        action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail },
-      };
-    }
-
-    case 'unlink_tasks': {
-      const unlinkType = (args.link_type as string) || 'blocks';
-      await db.unlinkTasks(args.from_task_id as string, args.to_task_id as string, unlinkType as 'blocks' | 'related');
-      const log = await db.logAction({ tool_name: 'unlink_tasks', title: 'Unlinked', detail: `${args.from_task_id} → ${args.to_task_id}` });
-      return { unlinked: true, from_task_id: args.from_task_id, to_task_id: args.to_task_id, action_log_entry: { tool_name: log.tool_name, title: log.title, detail: log.detail } };
     }
 
     case 'update_preference': {

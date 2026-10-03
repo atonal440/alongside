@@ -140,7 +140,7 @@ describe('result contract', () => {
   it('accepts a composed result and rejects malformed commandChanges', async () => {
     const result = await composedResult();
     expect(v.safeParse(ChangesResultSchema, result).success).toBe(true);
-    const many = Array.from({ length: 21 }, () => [0]);
+    const many = Array.from({ length: 101 }, () => [0]);
     for (const commandChanges of [[[0], [1]], [[0], [0, 0]], [[1], [1]], [[0]], [[0], []], many]) {
       expect(v.safeParse(ChangesResultSchema, { ...result, commandChanges }).success, JSON.stringify(commandChanges)).toBe(false);
     }

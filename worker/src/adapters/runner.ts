@@ -10,6 +10,7 @@ import type { ReceiptTool } from '@shared/wire/receipts';
 import { CommandError, toolRequestHash } from '../domain/commands';
 import { invalidInput } from '../domain/temporalFoundation';
 import type { PreCheck } from '../domain/Op';
+import type { LinkSnapshot } from '@shared/wire/versions';
 import type { DB, ToolLogDraft } from '../db';
 
 export type Json = Record<string, unknown>;
@@ -29,6 +30,8 @@ export interface Ctx {
   expectedRevision: number | undefined;
   /** Read an entity snapshot, failing the attempt if the workspace moved since `structural` was read. */
   read(entity: 'task' | 'project', id: string): ReturnType<DB['getEntitySnapshot']>;
+  /** Read an exact link orientation, with the same staleness check. */
+  readLink(from: string, to: string, linkType: 'blocks' | 'related'): Promise<LinkSnapshot>;
 }
 export type Compiler = (ctx: Ctx, args: Json) => Promise<Draft>;
 
@@ -76,6 +79,11 @@ export async function runTool(tool: ReceiptTool, rawArgs: unknown, db: DB, compi
           if (snapshot.structuralRevision !== structural) throw new StaleRead();
           return snapshot;
         },
+        async readLink(from, to, linkType) {
+          const snapshot = await db.getLinkSnapshot({ entity: 'link', from, to, linkType } as never);
+          if (snapshot.structuralRevision !== structural) throw new StaleRead();
+          return snapshot;
+        },
       };
       const draft = await compile(ctx, args);
       if (draft.kind === 'noop') {
@@ -94,6 +102,13 @@ export async function runTool(tool: ReceiptTool, rawArgs: unknown, db: DB, compi
       if (raced) return raced.response;
     }
   }
+}
+
+/** The after-image of a project in a command result. */
+export function projectRowOf(result: ChangesResult, id: string) {
+  const change = result.changes.find(candidate => candidate.entity === 'project' && candidate.id === id);
+  if (!change || change.entity !== 'project' || !('row' in change.after)) throw new Error(`Result holds no row for project ${id}.`);
+  return change.after.row;
 }
 
 /** The after-image of a task in a command result. */

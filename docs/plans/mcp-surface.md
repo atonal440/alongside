@@ -573,7 +573,11 @@ never registered in `TOOLS`; that section was removed in phase A.
   command-derived IDs, the three-attempt re-read loop for unpinned writes,
   version 2 receipts, no-op receipts with commit-time guards, and an atomic
   action-log row. Refusals use the structured tool-error channel (parity
-  difference G1). The other eight mutating tools still run the legacy handlers.
+  difference G1). The other seven mutating tools except `update_preference` follow the same path
+  (`projectVerbs.ts`); no-ops for `link_tasks`, `unlink_tasks` and `update_project` store a
+  receipt guarded by the link or project revision plus the structural
+  revision. The command bound is raised from 20 to 100, with the 100-statement
+  plan check as the real ceiling (23 tasks for `create_project`).
 - **C: One write path.** First build the parity matrix (see
   [Adapter parity](#adapter-parity)) and the versioned receipt shape. Then add
   same-identity composition to the batch planner, with the revised result contract (see

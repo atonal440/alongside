@@ -175,3 +175,111 @@ describe('update_task field groups', () => {
     expect(await call(w, 'update_task', { task_id: task.id, status: 'pending' })).toMatchObject({ defer_kind: 'someday' });
   }));
 });
+
+describe('project and link tools', () => {
+  const task = (w: World, title: string, extra: Record<string, unknown> = {}) => call(w, 'add_task', { title, ...extra });
+  const links = (w: World) => rows(w, 'task_links');
+
+  it('creates a project with its tasks, replays with the same ID, and reports the unique count', async () => withWorld(async w => {
+    const [a, b] = [await task(w, 'A'), await task(w, 'B')];
+    const args = { title: 'P', task_ids: [a.id, b.id, a.id], commandId: 'c_proj0001' };
+    const first = await call(w, 'create_project', args);
+    expect(first.linked_task_count).toBe(2);
+    expect(first.project.id).toMatch(/^p_[0-9a-f]{12}$/);
+    expect(await call(w, 'create_project', args)).toEqual(first);
+    expect(rows(w, 'projects')).toHaveLength(1);
+    expect(rows(w, 'tasks').every(t => t.project_id === first.project.id)).toBe(true);
+    expect(rows(w, 'action_log').filter(r => r.tool_name === 'create_project')).toHaveLength(1);
+  }));
+
+  it('handles the capacity boundary atomically: 23 tasks fit, 24 are refused with nothing written', async () => withWorld(async w => {
+    const ids: string[] = [];
+    for (let i = 0; i < 24; i++) ids.push((await task(w, `T${i}`)).id);
+    await expect(call(w, 'create_project', { title: 'Too big', task_ids: ids })).rejects.toMatchObject({ detail: { code: 'capacity_exceeded' } });
+    expect(rows(w, 'projects')).toHaveLength(0);
+    expect(rows(w, 'tasks').every(t => t.project_id === null)).toBe(true);
+    const ok = await call(w, 'create_project', { title: 'Fits', task_ids: ids.slice(0, 23) });
+    expect(ok.linked_task_count).toBe(23);
+  }));
+
+  it('replays delete_task and delete_project after the entity is gone, logging once', async () => withWorld(async w => {
+    const t = await task(w, 'Doomed');
+    const first = await call(w, 'delete_task', { task_id: t.id, commandId: 'c_deltask1' });
+    expect(first).toMatchObject({ deleted: true, task_id: t.id, title: 'Doomed' });
+    expect(await call(w, 'delete_task', { task_id: t.id, commandId: 'c_deltask1' })).toEqual(first);
+    await expect(call(w, 'delete_task', { task_id: t.id })).rejects.toMatchObject({ detail: { code: 'not_found' } });
+    const p = await call(w, 'create_project', { title: 'Gone' });
+    const deleted = await call(w, 'delete_project', { project_id: p.project.id, commandId: 'c_delproj1' });
+    expect(await call(w, 'delete_project', { project_id: p.project.id, commandId: 'c_delproj1' })).toEqual(deleted);
+    expect(rows(w, 'action_log').filter(r => r.tool_name === 'delete_task')).toHaveLength(1);
+    expect(rows(w, 'action_log').filter(r => r.tool_name === 'delete_project')).toHaveLength(1);
+  }));
+
+  it('records link_tasks on an existing link as a no-op and replays it even after the link is removed', async () => withWorld(async w => {
+    const [a, b] = [await task(w, 'A'), await task(w, 'B')];
+    await call(w, 'link_tasks', { from_task_id: a.id, to_task_id: b.id });
+    const noop = await call(w, 'link_tasks', { from_task_id: a.id, to_task_id: b.id, commandId: 'c_linknoop' });
+    expect(noop).toMatchObject({ linked: true, from_task_title: 'A', to_task_title: 'B' });
+    expect(JSON.parse((w.sql.prepare("SELECT result_json FROM command_receipts WHERE command_id='c_linknoop'").get() as any).result_json)).toMatchObject({ receiptVersion: 2, tool: 'link_tasks', result: null });
+    await call(w, 'unlink_tasks', { from_task_id: a.id, to_task_id: b.id });
+    await call(w, 'update_task', { task_id: a.id, title: 'Renamed' });
+    expect(await call(w, 'link_tasks', { from_task_id: a.id, to_task_id: b.id, commandId: 'c_linknoop' })).toEqual(noop);   // original titles
+    expect(links(w)).toHaveLength(0);                                                          // the retry did not add it back
+    expect(rows(w, 'action_log').filter(r => r.tool_name === 'link_tasks')).toHaveLength(2);   // first real add + the no-op, none for the retry
+  }));
+
+  it('records unlink_tasks on an absent link as a no-op and replays it after the link appears', async () => withWorld(async w => {
+    const [a, b] = [await task(w, 'A'), await task(w, 'B')];
+    const noop = await call(w, 'unlink_tasks', { from_task_id: a.id, to_task_id: b.id, commandId: 'c_unlinkno' });
+    expect(noop).toMatchObject({ unlinked: true });
+    await call(w, 'link_tasks', { from_task_id: a.id, to_task_id: b.id });
+    expect(await call(w, 'unlink_tasks', { from_task_id: a.id, to_task_id: b.id, commandId: 'c_unlinkno' })).toEqual(noop);
+    expect(links(w)).toHaveLength(1);                                                           // the retry did not remove it
+    expect(rows(w, 'action_log').filter(r => r.tool_name === 'unlink_tasks')).toHaveLength(1);
+  }));
+
+  it('re-evaluates a link no-op when the link disappears between classification and commit', async () => withWorld(async w => {
+    const [a, b] = [await task(w, 'A'), await task(w, 'B')];
+    await call(w, 'link_tasks', { from_task_id: a.id, to_task_id: b.id });
+    w.hooks.beforeBatch = () => { w.sql.prepare('DELETE FROM task_links').run(); };
+    await call(w, 'link_tasks', { from_task_id: a.id, to_task_id: b.id });
+    expect(links(w)).toHaveLength(1);                                    // on retry it was a real add
+    expect(rows(w, 'action_log').filter(r => r.tool_name === 'link_tasks')).toHaveLength(2);
+  }));
+
+  it('re-evaluates an unlink no-op when the link appears between classification and commit', async () => withWorld(async w => {
+    const [a, b] = [await task(w, 'A'), await task(w, 'B')];
+    w.hooks.beforeBatch = () => { w.sql.prepare("INSERT INTO task_links(from_task_id,to_task_id,link_type) VALUES(?,?,'blocks')").run(a.id, b.id); };
+    await call(w, 'unlink_tasks', { from_task_id: a.id, to_task_id: b.id });
+    expect(links(w)).toHaveLength(0);                                    // on retry it was a real removal
+    expect(rows(w, 'action_log').filter(r => r.tool_name === 'unlink_tasks')).toHaveLength(1);
+  }));
+
+  it('re-evaluates an update_project no-op when the project changes first', async () => withWorld(async w => {
+    const p = (await call(w, 'create_project', { title: 'P' })).project;
+    w.hooks.beforeBatch = () => { w.sql.prepare("UPDATE projects SET status='archived' WHERE id=?").run(p.id); };
+    const result = await call(w, 'update_project', { project_id: p.id, status: 'active' });   // judged a no-op: already active
+    expect(result.status).toBe('active');                                  // on retry it was a real reopen
+    expect(rows(w, 'action_log').filter(r => r.tool_name === 'update_project')).toHaveLength(1);
+    expect((rows(w, 'projects')[0] as any).status).toBe('active');
+  }));
+
+  it('applies a multi-group update_project as one change and keeps the other fields', async () => withWorld(async w => {
+    const p = (await call(w, 'create_project', { title: 'P', notes: 'keep' })).project;
+    const result = await call(w, 'update_project', { project_id: p.id, title: 'Q', status: 'archived', commandId: 'c_projmult' });
+    expect(result).toMatchObject({ title: 'Q', notes: 'keep', status: 'archived' });
+    const stored = JSON.parse((w.sql.prepare("SELECT result_json FROM command_receipts WHERE command_id='c_projmult'").get() as any).result_json);
+    expect(stored.result.changes).toHaveLength(1);
+  }));
+
+  it('refuses a stale expectedRevision on every pinned tool without retrying', async () => withWorld(async w => {
+    const t = await task(w, 'T');
+    const p = (await call(w, 'create_project', { title: 'P' })).project;
+    for (const [name, args] of [['reopen_task', { task_id: t.id }], ['delete_task', { task_id: t.id }], ['update_project', { project_id: p.id, title: 'X' }], ['delete_project', { project_id: p.id }]] as const) {
+      await expect(call(w, name, { ...args, expectedRevision: 99 }), name).rejects.toMatchObject({ detail: { code: 'revision_conflict' } });
+    }
+    await expect(call(w, 'update_project', { project_id: p.id, expectedRevision: 99 })).rejects.toMatchObject({ detail: { code: 'revision_conflict' } });   // even an empty patch
+    expect(rows(w, 'tasks')).toHaveLength(1);
+    expect(rows(w, 'projects')).toHaveLength(1);
+  }));
+});

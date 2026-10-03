@@ -1,6 +1,6 @@
 # MCP adapter parity matrix
 
-Status: legacy side pinned; findings 1–10 approved (2026-10-03). Adapters built and passing for `add_task`, `update_task`, `complete_task`, `defer_task`, `focus_task`; the other eight tools still run the legacy handlers. Updated 2026-10-03.
+Status: legacy side pinned; findings 1–10 approved (2026-10-03). Adapters built and passing for all mutating tools except `update_preference`, which waits for the `preference.set` command. Updated 2026-10-03.
 
 This is the first deliverable of phase C in [the MCP surface plan](mcp-surface.md#adapter-parity). Every retained mutating tool (`add_task`, `complete_task`, `defer_task`, `update_task`, `reopen_task`, `focus_task`, `delete_task`, `create_project`, `update_project`, `delete_project`, `link_tasks`, `unlink_tasks`, `update_preference`) is run on a fixed fixture workspace for each class of input it accepts today: each field, combinations, and entity states (done, deferred, focused, missing).
 
@@ -20,7 +20,11 @@ This is the first deliverable of phase C in [the MCP surface plan](mcp-surface.m
 Per-row differences live in `worker/test/parity/approved.ts`, each with the adapter's outcome pinned in `approved-outcomes.json`:
 
 - `update_task.status-pending-on-pending`, `status-pending-on-deferred`, `focus-clear-on-done`: finding 2, approved. A call that compiles to no command writes no row, so `updated_at` no longer moves. The call still logs and returns the task.
-- `update_task.all-day-only-no-due`: **proposed, not yet approved.** Legacy stored `due_all_day: true` on a task with no due date, a state the commands cannot represent. The adapter refuses it.
+- `update_task.all-day-only-no-due`: approved 2026-10-03. Legacy stored `due_all_day: true` on a task with no due date, a state the commands cannot represent. The adapter refuses it.
+- `update_project.status-unchanged`, `update_project.archive-already-archived`: finding 2, approved. A status the project already has compiles to no command, so `updated_at` no longer moves. The call still logs.
+- `link_tasks.existing-related-reversed`: finding 3, approved. A related link that exists in the other orientation counts as present; no second row.
+- `link_tasks.related`: proposed. A related link is stored from the lower task ID to the higher regardless of argument order (the command requires ascending endpoints; the link is symmetric). The response still echoes the arguments as given.
+- `create_project.thirty-tasks`: finding 5, approved. The command bound is now 100, so the practical limit is the 100-statement atomic plan. Each assigned task costs more statements than before (diff, audit and feed rows), so the ceiling is 23 tasks where the legacy path reached 33. A larger call is refused with `capacity_exceeded` and writes nothing.
 
 ## Findings the plan did not list
 
@@ -198,8 +202,10 @@ The plan's table of known gaps holds up (see the rows). Recording the legacy beh
 | `moves-from-other-project` | `{"title":"New project","task_ids":["$member"]}` | Task already in another project | ok — tasks ~1: project_id (+updated_at); projects +1; logs `create_project` | must match |
 | `missing-task` | `{"title":"New project","task_ids":["$pend","$none"]}` | One task does not exist | refused (JSON-RPC error): task not found: $none | must match |
 | `done-task` | `{"title":"New project","task_ids":["$done"]}` | Done task | ok — tasks ~1: project_id (+updated_at); projects +1; logs `create_project` | must match |
-| `nineteen-tasks` | `{"title":"New project","task_ids":["$pend","$pend2","$notes","$plan","$dueonly","$timed","$weekly","$todone","$todefe…` | 19 tasks: the largest call that fits 20 commands | ok — tasks ~16: project_id (+updated_at); projects +1; logs `create_project` | must match |
-| `twenty-tasks` | `{"title":"New project","task_ids":["$pend","$pend2","$notes","$plan","$dueonly","$timed","$weekly","$todone","$todefe…` | 20 tasks: over the command bound | ok — tasks ~16: project_id (+updated_at); projects +1; logs `create_project` | must match |
+| `nineteen-tasks` | `{"title":"New project","task_ids":["$bulk0","$bulk1","$bulk2","$bulk3","$bulk4","$bulk5","$bulk6","$bulk7","$bulk8","…` | 19 tasks | ok — tasks ~19: project_id (+updated_at); projects +1; logs `create_project` | must match |
+| `twenty-tasks` | `{"title":"New project","task_ids":["$bulk0","$bulk1","$bulk2","$bulk3","$bulk4","$bulk5","$bulk6","$bulk7","$bulk8","…` | 20 tasks: more than the old 20-command bound allowed | ok — tasks ~20: project_id (+updated_at); projects +1; logs `create_project` | must match |
+| `thirty-tasks` | `{"title":"New project","task_ids":["$bulk0","$bulk1","$bulk2","$bulk3","$bulk4","$bulk5","$bulk6","$bulk7","$bulk8","…` | 30 tasks | ok — tasks ~30: project_id (+updated_at); projects +1; logs `create_project` | approved difference |
+| `forty-tasks` | `{"title":"New project","task_ids":["$bulk0","$bulk1","$bulk2","$bulk3","$bulk4","$bulk5","$bulk6","$bulk7","$bulk8","…` | 40 tasks | refused (tool error): Atomic plan requires 121 SQL statements; the limit is 100. | must match |
 | `empty-title` | `{"title":""}` | Empty title | refused (JSON-RPC error): Expected a non-empty string. | must match |
 | `non-array-task-ids` | `{"title":"New project","task_ids":"x"}` | task_ids is not an array | refused (JSON-RPC error): inputs.entries is not a function or its return value is not iterable | must match |
 
@@ -213,8 +219,8 @@ The plan's table of known gaps holds up (see the rows). Recording the legacy beh
 | `kickoff-note` | `{"project_id":"$proj","kickoff_note":"new"}` | Kickoff note only | ok — projects ~1: kickoff_note (+updated_at); logs `update_project` | must match |
 | `archive` | `{"project_id":"$proj","status":"archived"}` | Archive keeps members | ok — projects ~1: status (+updated_at); logs `update_project` | must match |
 | `reopen` | `{"project_id":"$archived","status":"active"}` | Reopen an archived project | ok — projects ~1: status (+updated_at); logs `update_project` | must match |
-| `status-unchanged` | `{"project_id":"$proj","status":"active"}` | Status already active | ok — projects ~1: updated_at only; logs `update_project` | must match |
-| `archive-already-archived` | `{"project_id":"$archived","status":"archived"}` | Status already archived | ok — projects ~1: updated_at only; logs `update_project` | must match |
+| `status-unchanged` | `{"project_id":"$proj","status":"active"}` | Status already active | ok — projects ~1: updated_at only; logs `update_project` | approved difference |
+| `archive-already-archived` | `{"project_id":"$archived","status":"archived"}` | Status already archived | ok — projects ~1: updated_at only; logs `update_project` | approved difference |
 | `title-and-status` | `{"project_id":"$proj","title":"Both","status":"archived"}` | Content and state together | ok — projects ~1: title, status (+updated_at); logs `update_project` | must match |
 | `bad-status` | `{"project_id":"$proj","status":"paused"}` | Unknown status | refused (JSON-RPC error): Invalid type: Expected ("active" \| "archived") but received "paused" | must match |
 | `empty-title` | `{"project_id":"$proj","title":""}` | Empty title | refused (JSON-RPC error): Expected a non-empty string. | must match |
@@ -236,11 +242,11 @@ The plan's table of known gaps holds up (see the rows). Recording the legacy beh
 | --- | --- | --- | --- | --- |
 | `blocks-default` | `{"from_task_id":"$pend","to_task_id":"$pend2"}` | Default type is blocks | ok — task_links +1; logs `link_tasks` | must match |
 | `blocks` | `{"from_task_id":"$pend","to_task_id":"$pend2","link_type":"blocks"}` | Explicit blocks | ok — task_links +1; logs `link_tasks` | must match |
-| `related` | `{"from_task_id":"$pend2","to_task_id":"$pend","link_type":"related"}` | Related with descending IDs | ok — task_links +1; logs `link_tasks` | must match |
+| `related` | `{"from_task_id":"$pend2","to_task_id":"$pend","link_type":"related"}` | Related with descending IDs | ok — task_links +1; logs `link_tasks` | approved difference |
 | `related-ascending` | `{"from_task_id":"$pend","to_task_id":"$pend2","link_type":"related"}` | Related with the other orientation | ok — task_links +1; logs `link_tasks` | must match |
 | `existing-blocks` | `{"from_task_id":"$blocker","to_task_id":"$blocked"}` | Link that already exists | ok — logs `link_tasks` | must match |
 | `existing-related` | `{"from_task_id":"$rel1","to_task_id":"$rel2","link_type":"related"}` | Related link that already exists | ok — logs `link_tasks` | must match |
-| `existing-related-reversed` | `{"from_task_id":"$rel2","to_task_id":"$rel1","link_type":"related"}` | Related link that exists in the other orientation | ok — task_links +1; logs `link_tasks` | must match |
+| `existing-related-reversed` | `{"from_task_id":"$rel2","to_task_id":"$rel1","link_type":"related"}` | Related link that exists in the other orientation | ok — task_links +1; logs `link_tasks` | approved difference |
 | `reverse-blocks` | `{"from_task_id":"$blocked","to_task_id":"$blocker"}` | Would create a two-task cycle | refused (JSON-RPC error): Adding a blocks link from $blocked to $blocker would create a cycle. | must match |
 | `self` | `{"from_task_id":"$pend","to_task_id":"$pend"}` | Task to itself | refused (JSON-RPC error): A task cannot be linked to itself. | must match |
 | `missing-from` | `{"from_task_id":"$none","to_task_id":"$pend"}` | Blocking task does not exist | refused (JSON-RPC error): task not found: $none | must match |

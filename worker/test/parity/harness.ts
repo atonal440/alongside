@@ -58,6 +58,7 @@ export async function buildFixture(db: DB): Promise<Aliases> {
   await add('blocked', { title: 'Blocked' });
   await add('rel1', { title: 'Related one' });
   await add('rel2', { title: 'Related two' });
+  for (let i = 0; i < 40; i++) await add(`bulk${i}`, { title: `Bulk ${i}` });
   const project = await db.createProject({ title: 'Fixture project', notes: 'p notes', kickoff_note: 'p kickoff' });
   a.proj = project.id;
   await add('member', { title: 'Member', project_id: project.id });

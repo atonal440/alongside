@@ -112,12 +112,12 @@ Each entry: `{ id, tool_name, task_id, title, detail, created_at }`
 
 ## Task CRUD
 
-**Quick verbs on the command path.** `add_task`, `update_task`, `complete_task`, `defer_task` and `focus_task` compile to the same commands `apply_changes` runs, so they share its guards, receipts and audit. Each accepts two optional arguments in addition to the ones listed below:
+**Mutating tools on the command path.** `add_task`, `update_task`, `complete_task`, `defer_task`, `focus_task`, `reopen_task`, `delete_task`, `create_project`, `update_project`, `delete_project`, `link_tasks` and `unlink_tasks` compile to the same commands `apply_changes` runs, so they share its guards, receipts and audit. Each accepts two optional arguments in addition to the ones listed below:
 
 | Name | Type | Description |
 |---|---|---|
 | `commandId` | `string` | A `c_…` ID. Retrying with the same ID and the same arguments returns the first call's response verbatim (same minted task ID, same `action_log_entry`) and writes nothing, even if the task has changed since. The same ID with different arguments returns `command_id_conflict`. Without it, every call is a new command. |
-| `expectedRevision` | `integer` | Not on `add_task`. Refuse with `revision_conflict` if the task is no longer at this revision (read it with `get_context`). A pinned revision is never retried. |
+| `expectedRevision` | `integer` | Not on `add_task`, `create_project` or `link_tasks`. Refuse with `revision_conflict` if the task is no longer at this revision (read it with `get_context`). A pinned revision is never retried. |
 
 Without `expectedRevision` a verb reads the current state itself. If another write lands between that read and the commit, it re-reads, rebuilds its commands (re-merging a partial `update_task` patch against the new values) and tries again, up to three attempts, before returning the conflict. IDs for tasks the call creates (`add_task`, a recurring `complete_task`'s successor) derive from the command ID, so two identical requests racing each other plan the same identities and the loser replays the winner.
 

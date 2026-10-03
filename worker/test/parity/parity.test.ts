@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runRow, type Outcome } from './harness';
 import { ROWS } from './rows';
 import { APPROVAL_REASONS, APPROVED_DIFFERENCES, APPROVED_OUTCOMES_FILE } from './approved';
 import { renderMatrix } from './render';
+
+// Deterministic, ascending IDs: orientation-sensitive rows (related links) must not depend on chance.
+vi.mock('nanoid', () => { let n = 0; return { nanoid: (size = 21) => String(++n).padStart(size, '0').slice(-size) }; });
 
 const file = fileURLToPath(new URL('./legacy-outcomes.json', import.meta.url));
 /**
