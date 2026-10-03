@@ -89,7 +89,7 @@ export const updateProject: Compiler = async (ctx, args) => {
 
   const logFor = (title: string): ToolLogDraft => ({ tool_name: 'update_project', task_id: null, title, detail: null });
   if (commands.length === 0) {
-    if (ctx.expectedRevision !== undefined && ctx.expectedRevision !== revision) throw staleRevision('Project', id, ctx.expectedRevision, revision);
+    if (typeof ctx.expectedRevision === 'number' && ctx.expectedRevision !== revision) throw staleRevision('Project', id, ctx.expectedRevision, revision);
     const log = logFor(row.title);
     return { kind: 'noop', guards: [{ kind: 'entity.revision', key: { entity: 'project', id } as never, expected: revision as never }], response: { ...row, action_log_entry: entry(log) }, log };
   }

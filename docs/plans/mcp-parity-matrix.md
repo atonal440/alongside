@@ -1,6 +1,6 @@
 # MCP adapter parity matrix
 
-Status: legacy side pinned; findings 1–10 approved (2026-10-03). Adapters built and passing for all mutating tools except `update_preference`, which waits for the `preference.set` command. Updated 2026-10-03.
+Status: legacy side pinned; findings 1–10 approved (2026-10-03). Adapters built and passing for all 13 mutating tools. `update_preference` matches the legacy outcome on every row, with no per-row difference. Updated 2026-10-03.
 
 This is the first deliverable of phase C in [the MCP surface plan](mcp-surface.md#adapter-parity). Every retained mutating tool (`add_task`, `complete_task`, `defer_task`, `update_task`, `reopen_task`, `focus_task`, `delete_task`, `create_project`, `update_project`, `delete_project`, `link_tasks`, `unlink_tasks`, `update_preference`) is run on a fixed fixture workspace for each class of input it accepts today: each field, combinations, and entity states (done, deferred, focused, missing).
 

@@ -19,6 +19,8 @@ export type PreCheck =
   | { kind: 'project.exists'; id: ProjectId }
   | { kind: 'link.blocks_acyclic'; from: TaskId; to: TaskId }
   | { kind: 'planning.revision'; expected: Revision | null }
+  /** The preference's sync revision; null means no live row. */
+  | { kind: 'preference.revision'; key: string; expected: Revision | null }
   | { kind: 'entity.revision'; key: EntityKey; expected: Revision | null }
   | { kind: 'workspace.structural_revision'; expected: Revision }
   | { kind: 'sync.cursor'; epoch: number; sequence: number }

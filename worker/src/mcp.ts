@@ -8,6 +8,7 @@ import { getAppHtml, getActionLogHtml } from './app-ui';
 import { runTool } from './adapters/runner';
 import { addTask, completeTask, deferTask, focusTask, updateTask } from './adapters/taskVerbs';
 import { createProject, deleteProject, deleteTask, linkTasks, reopenTask, unlinkTasks, updateProject } from './adapters/projectVerbs';
+import { updatePreference } from './adapters/prefVerbs';
 import { callReadTool, READ_TOOLS, READ_TOOL_NAMES } from './reads';
 import { ADMIN_TOOL_NAMES, annotate, asDeprecatedAlias, withReplacement } from './toolSurface';
 
@@ -347,6 +348,8 @@ const TOOL_DEFS = [
     inputSchema: {
       type: 'object',
       properties: {
+        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
+        expectedRevision: { type: ['integer', 'null'], minimum: 0, description: 'Optional. Refuse the change if the preference is no longer at this revision (null: it has never been set).' },
         key: { type: 'string', enum: ['sort_by', 'urgency_visibility', 'kickoff_nudge', 'session_log', 'interruption_style', 'planning_prompt'] },
         value: { type: 'string' },
       },
@@ -481,11 +484,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       return { project, ready_tasks };
     }
 
-    case 'update_preference': {
-      await db.setPreference(args.key as string, args.value as string);
-      return { updated: true, key: args.key, value: args.value };
-    }
-
+    case 'update_preference': return runTool('update_preference', args, db, updatePreference);
     case 'get_action_log': {
       const entries = await db.getActionLog();
       return { entries };

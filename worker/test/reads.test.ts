@@ -151,7 +151,7 @@ describe('describe_commands', () => {
     const { sql, db } = await seeded();
     try {
       const kinds = new Set<string>();
-      for (const family of ['task', 'project', 'link', 'planning']) for (const variant of (await callReadTool('describe_commands', { family }, db) as any).commands) kinds.add(variant.properties.kind.const);
+      for (const family of ['task', 'project', 'link', 'planning', 'preference']) for (const variant of (await callReadTool('describe_commands', { family }, db) as any).commands) kinds.add(variant.properties.kind.const);
       const applyTool = (await import('../src/commands')).COMMAND_TOOLS.find(tool => tool.name === 'apply_changes')!;
       expect(kinds.size).toBe((applyTool.inputSchema.properties.commands.items.oneOf as unknown[]).length);
       await expect(callReadTool('describe_commands', { family: 'series' }, db)).rejects.toMatchObject({ detail: { code: 'invalid_input' } });

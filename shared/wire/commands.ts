@@ -1,5 +1,5 @@
 import * as v from 'valibot';
-import { CommandIdSchema, EventInstantSchema, MinuteInstantSchema, DueDateTimeSchema, RruleSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, LinkTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema, parseIsoDate, parseRrule, nextOccurrence } from '../parse';
+import { PREFERENCE_KEYS, CommandIdSchema, EventInstantSchema, MinuteInstantSchema, DueDateTimeSchema, RruleSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, LinkTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema, parseIsoDate, parseRrule, nextOccurrence } from '../parse';
 import { PlanningSettingsSchema } from './planning';
 import { ProjectRowSchema, TaskRowSchema, TaskLinkRowSchema } from './rows';
 
@@ -27,6 +27,11 @@ export const TaskCreateValuesSchema = v.strictObject({
 });
 export const PlanningCommandSchema = v.strictObject({
   kind: v.literal('planning.set'), expectedRevision: v.nullable(RevisionSchema), values: PlanningValuesSchema,
+});
+/** Set one user preference. expectedRevision is the preference's sync revision; null when no row exists yet. */
+export const PreferenceSetCommandSchema = v.strictObject({
+  kind: v.literal('preference.set'), key: v.picklist(PREFERENCE_KEYS), value: v.pipe(v.string(), v.maxLength(2_000)),
+  expectedRevision: v.nullable(RevisionSchema),
 });
 export const ProjectCreateCommandSchema = v.strictObject({
   kind: v.literal('project.create'), id: ProjectIdSchema, clientRef: v.optional(ClientRefSchema),
@@ -98,9 +103,9 @@ export const CommandEnvelopeSchema = v.pipe(v.strictObject({
   actor: v.picklist(['user', 'llm', 'import']),
   reason: v.optional(v.pipe(v.string(), v.maxLength(1_000))),
   expectedStructuralRevision: v.optional(RevisionSchema),
-  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(MAX_BATCH_COMMANDS)),
+  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, PreferenceSetCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(MAX_BATCH_COMMANDS)),
 }), v.check(value => value.commands.length === 1 ? value.expectedStructuralRevision === undefined
-  : value.expectedStructuralRevision !== undefined && value.commands.every(command => command.kind !== 'planning.set'),
+  : value.expectedStructuralRevision !== undefined && value.commands.every(command => command.kind !== 'planning.set' && command.kind !== 'preference.set'),
 'Mixed batches require an envelope structural revision; settings remain standalone.'),
 v.check(value => { const refs=value.commands.flatMap(command => 'clientRef' in command && command.clientRef !== undefined ? [command.clientRef] : command.kind === 'task.complete' && command.successor?.clientRef !== undefined ? [command.successor.clientRef] : []); return new Set(refs).size === refs.length; }, 'Client references must be unique within a batch.'));
 export type CommandEnvelope = v.InferOutput<typeof CommandEnvelopeSchema>;
@@ -109,6 +114,11 @@ export const PayloadHashSchema = v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/));
 export const PlanningDiffSchema = v.strictObject({
   entity: v.literal('planning_settings'), id: v.literal('workspace'),
   before: v.nullable(PlanningSettingsSchema), after: PlanningSettingsSchema,
+});
+export const PreferenceDiffSchema = v.strictObject({
+  entity: v.literal('preference'), id: v.picklist(PREFERENCE_KEYS),
+  before: v.nullable(v.strictObject({ revision: RevisionSchema, value: v.string() })),
+  after: v.strictObject({ revision: RevisionSchema, value: v.string() }),
 });
 export const ProjectCreateDiffSchema = v.strictObject({
   entity: v.literal('project'), id: ProjectIdSchema, before: v.null(),
@@ -133,7 +143,7 @@ export const LinkChangeDiffSchema = v.strictObject({
   before: v.nullable(v.strictObject({ revision: RevisionSchema, row: v.nullable(TaskLinkRowSchema) })),
   after: v.union([v.strictObject({ revision: RevisionSchema, row: TaskLinkRowSchema }), v.strictObject({ revision: RevisionSchema, deleted: v.literal(true) })]),
 });
-export const ChangeDiffSchema = v.variant('entity', [PlanningDiffSchema, ProjectChangeDiffSchema, TaskChangeDiffSchema, LinkChangeDiffSchema]);
+export const ChangeDiffSchema = v.variant('entity', [PlanningDiffSchema, PreferenceDiffSchema, ProjectChangeDiffSchema, TaskChangeDiffSchema, LinkChangeDiffSchema]);
 type ChangeDiff = v.InferOutput<typeof ChangeDiffSchema>;
 
 // Group boundaries identify standalone completion effects. Check the entire
@@ -168,7 +178,7 @@ function validDiffIdentity(value: { serverNow: string; batch?: true | undefined;
   if (value.batch !== true && (value.changeGroups !== undefined || value.commandChanges !== undefined)) return false;
   if (value.changeGroups !== undefined && value.commandChanges !== undefined) return false;
   if (value.batch === true) {
-    if (value.changes.some(change => change.entity === 'planning_settings')) return false;
+    if (value.changes.some(change => change.entity === 'planning_settings' || change.entity === 'preference')) return false;
     // A composed batch (several commands writing one identity) may net down to a single change.
     if (value.commandChanges === undefined && value.changes.length < 2) return false;
     if (value.commandChanges !== undefined) {
@@ -198,6 +208,11 @@ function validDiffIdentity(value: { serverNow: string; batch?: true | undefined;
     if (identities.has(`${change.entity}:${change.id}`)) return false;
     identities.add(`${change.entity}:${change.id}`);
     if (change.entity === 'planning_settings') return value.changes.length === 1 && Object.keys(value.refs).length === 0;
+    if (change.entity === 'preference') {
+      // A new preference starts at 1, or one past a retained tombstone; an edit is exactly one step.
+      if (change.before !== null && change.after.revision !== change.before.revision + 1) return false;
+      return value.changes.length === 1 && Object.keys(value.refs).length === 0;
+    }
     if (change.entity === 'link') {
       const row = 'row' in change.after ? change.after.row : change.before?.row;
       if (!row || change.id !== JSON.stringify([row.from_task_id, row.to_task_id, row.link_type])) return false;

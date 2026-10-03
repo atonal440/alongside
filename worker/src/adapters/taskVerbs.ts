@@ -156,7 +156,7 @@ export const updateTask: Compiler = async (ctx, args) => {
   const titleOf = (title: string): ToolLogDraft => ({ tool_name: 'update_task', task_id: id, title, detail: null });
   if (commands.length === 0) {
     // Nothing to write, but the legacy handler still logs and answers with the current task.
-    if (ctx.expectedRevision !== undefined && ctx.expectedRevision !== revision) {
+    if (typeof ctx.expectedRevision === 'number' && ctx.expectedRevision !== revision) {
       throw await staleRevision(ctx, id, ctx.expectedRevision, revision);
     }
     const log = titleOf(row.title);

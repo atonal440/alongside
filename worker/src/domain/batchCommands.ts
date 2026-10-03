@@ -123,7 +123,7 @@ export async function planBatchCommand(input: CommandEnvelope, reader: CommandRe
     groups.push(planned.result.changes.length);
     const mine: number[] = [];
     for (const change of planned.result.changes) {
-      if (change.entity === 'planning_settings')
+      if (change.entity === 'planning_settings' || change.entity === 'preference')
         throw new Error('Settings cannot mix with graph commands.');
       const id = identity(change.entity, change.id);
       const earlier = writtenAt.get(id);
@@ -217,7 +217,7 @@ type Change = ChangesResult['changes'][number];
 function composeChange(first: Change, next: Change, index: number): Change {
   const refuse = (message: string) => new CommandError({ code: 'invalid_input', path: ['commands', String(index)], message, retryable: false,
     recoveryHint: 'Split the intent into separately reviewed sequential commands.' }, 400);
-  if (first.entity === 'link' || first.entity === 'planning_settings' || next.entity === 'link' || next.entity === 'planning_settings')
+  if (first.entity === 'link' || first.entity === 'planning_settings' || first.entity === 'preference' || next.entity === 'link' || next.entity === 'planning_settings' || next.entity === 'preference')
     throw refuse('A mixed batch may write each link only once.');
   if ('deleted' in first.after) throw refuse('A mixed batch cannot write an identity after deleting it.');
   if ('deleted' in next.after && first.before === null) throw refuse('A mixed batch cannot create and delete the same identity.');

@@ -1,3 +1,4 @@
+import { PREFERENCE_KEYS } from '@shared/parse';
 import { parseSchema } from '@shared/parse';
 import { CommandEnvelopeSchema, PlanningSettingsExportSchema } from '@shared/wire/commands';
 import { parseEntityKey, parseEntityReadKey, parseLinkKey } from '@shared/wire/versions';
@@ -104,8 +105,14 @@ const linkSchemas = ['link.add', 'link.remove'].map(kind => ({
   }, required: ['kind', 'from', 'to', 'linkType', 'expectedRevision', 'expectedStructuralRevision'],
 }));
 const deleteSchemas = ['task','project'].map(entity => ({type:'object',additionalProperties:false,properties:{kind:{const:`${entity}.delete`},id:{type:'string',pattern:entity === 'task' ? '^t_[0-9A-Za-z_-]{5,}$' : '^p_[0-9A-Za-z_-]{5,}$'},expectedRevision:{type:'integer',minimum:0,maximum:9007199254740991},expectedStructuralRevision:{type:'integer',minimum:0,maximum:9007199254740991}},required:['kind','id','expectedRevision','expectedStructuralRevision']}));
+const preferenceSchema = {
+  type: 'object', additionalProperties: false, properties: {
+    kind: { const: 'preference.set' }, key: { enum: [...PREFERENCE_KEYS] }, value: { type: 'string', maxLength: 2000, description: 'Validated against the key: sort_by readiness|due|project; urgency_visibility show|hide; kickoff_nudge always|missing|never; session_log ask_at_end|auto_generate|off; interruption_style proactive|quiet; planning_prompt auto|always|never.' },
+    expectedRevision: { type: ['integer', 'null'], minimum: 0, maximum: 9007199254740991, description: 'The preference sync revision; null when it has never been set. Standalone only.' },
+  }, required: ['kind', 'key', 'value', 'expectedRevision'],
+};
 const commandEnvelope = { ...envelope, properties: { ...envelope.properties,
-  commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema, ...taskFieldSchemas, ...linkSchemas, ...deleteSchemas] } },
+  commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, preferenceSchema, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema, ...taskFieldSchemas, ...linkSchemas, ...deleteSchemas] } },
 } };
 const looseIntentSchema = {
   type: 'object', additionalProperties: false,

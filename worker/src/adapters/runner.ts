@@ -27,7 +27,7 @@ export interface Ctx {
   /** Workspace structural revision all reads of this attempt are checked against. */
   structural: number;
   /** The caller pinned the first command's revision; a stale pin is refused, never retried. */
-  expectedRevision: number | undefined;
+  expectedRevision: number | null | undefined;
   /** Read an entity snapshot, failing the attempt if the workspace moved since `structural` was read. */
   read(entity: 'task' | 'project', id: string): ReturnType<DB['getEntitySnapshot']>;
   /** Read an exact link orientation, with the same staleness check. */
@@ -58,7 +58,8 @@ export async function runTool(tool: ReceiptTool, rawArgs: unknown, db: DB, compi
   if (rawArgs === null || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) throw refuse('Expected an input object.');
   const { commandId: suppliedId, expectedRevision, ...args } = rawArgs as Json;
   if (suppliedId !== undefined && (typeof suppliedId !== 'string' || !COMMAND_ID.test(suppliedId))) throw refuse('commandId must look like c_ followed by 5–64 letters, digits, _ or -.', ['commandId']);
-  if (expectedRevision !== undefined && (!Number.isSafeInteger(expectedRevision) || (expectedRevision as number) < 0)) throw refuse('expectedRevision must be a non-negative integer.', ['expectedRevision']);
+  // A preference that has never been set has no revision, so null is a valid pin for that one tool.
+  if (expectedRevision !== undefined && !(expectedRevision === null && tool === 'update_preference') && (!Number.isSafeInteger(expectedRevision) || (expectedRevision as number) < 0)) throw refuse('expectedRevision must be a non-negative integer.', ['expectedRevision']);
   // The request is what the caller asked for, not what it compiles to: tool, arguments, and the pin.
   const requestHash = await toolRequestHash(tool, { ...args, ...(expectedRevision === undefined ? {} : { expectedRevision }) });
   const commandId = (suppliedId as string | undefined) ?? `c_${nanoid(16)}`;
@@ -73,7 +74,7 @@ export async function runTool(tool: ReceiptTool, rawArgs: unknown, db: DB, compi
       const probe = await db.getEntitySnapshot({ entity: 'task', id: 't_probe00' } as never);
       const structural = probe.structuralRevision;
       const ctx: Ctx = {
-        db, tool, commandId, structural, expectedRevision: expectedRevision as number | undefined,
+        db, tool, commandId, structural, expectedRevision: expectedRevision as number | null | undefined,
         async read(entity, id) {
           const snapshot = await db.getEntitySnapshot({ entity, id } as never);
           if (snapshot.structuralRevision !== structural) throw new StaleRead();

@@ -19,7 +19,7 @@ import { parseStoredResult, type ReceiptTool, type StoredResult } from '@shared/
 import { StoredReceiptSchema, type CommandEnvelope, type ChangesResult, type ChangesPreview } from '@shared/wire/commands';
 import { parseSchema, parseEventInstant, type EventInstant, type CommandId } from '@shared/parse';
 import { invalidInput } from './domain/temporalFoundation';
-import { CommandError, commandHash, payloadConflict, planSettingsCommand, planCreateCommand, creationConflict, planContentCommand, entityCommandConflict, planStateCommand, commandEntityKey, planCompleteCommand, planTaskProjectCommand, revisionConflict } from './domain/commands';
+import { CommandError, commandHash, payloadConflict, planSettingsCommand, planPreferenceCommand, planCreateCommand, creationConflict, planContentCommand, entityCommandConflict, planStateCommand, commandEntityKey, planCompleteCommand, planTaskProjectCommand, revisionConflict, preferenceConflict } from './domain/commands';
 import { nanoid } from 'nanoid';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, ne, inArray, lte, or, asc, desc, gt, and, sql } from 'drizzle-orm';
@@ -36,6 +36,7 @@ import { readinessScore } from '@shared/readiness';
 import { unsafeBrand } from '@shared/brand';
 import type { ActiveDeferState, Plan, PendingTaskDomain, TaskDomain } from './domain';
 import type { Op, PreCheck } from './domain/Op';
+import type { PreferenceState } from './domain/commands';
 import type { IsoDateTime, MintedProjectId, MintedTaskId, TaskId, ValidationError } from './parse';
 import { parseDueDateParts, parseIsoDateTime, parseIsoDateTimeMinute, parseTaskId } from './parse';
 import { appErrorMessage, validationErrorResult, type AppError } from './domain/errors';
@@ -725,6 +726,7 @@ export class DB {
     if (command.kind === 'task.delete' || command.kind === 'project.delete') return planDeleteCommand(input, await reader.deletion(commandEntityKey(command)), hash, clock);
     if (command.kind === 'link.add' || command.kind === 'link.remove') return planLinkCommand(input, await reader.link(linkCommandKey(command)), hash, clock);
     if (command.kind === 'planning.set') return planSettingsCommand(input, await this.getPlanningSettings(), hash, clock);
+    if (command.kind === 'preference.set') return planPreferenceCommand(input, await this.readPreferenceState(command.key), hash, clock);
     if (command.kind === 'task.project.set') {
       const current = await reader.entity({ entity: 'task', id: command.id });
       const project = command.project === null ? null : await reader.entity({ entity: 'project', id: command.project.id });
@@ -764,6 +766,16 @@ export class DB {
 
   async getEntityVersion(key: EntityKey): Promise<EntityVersionResponse> {
     return readEntityVersion(this.d1, key);
+  }
+
+  /** A preference's value and sync revision. `nextRevision` is what a write will record (past any tombstone). */
+  async readPreferenceState(key: string): Promise<PreferenceState> {
+    const row = await this.d1.prepare(`SELECT p.value AS value, a.revision AS revision, a.deleted_at AS deleted_at
+      FROM (SELECT ? AS key) k LEFT JOIN user_preferences p ON p.key=k.key
+      LEFT JOIN sync_aux_versions a ON a.entity='preference' AND a.entity_key=k.key`).bind(key)
+      .first<{ value: string | null; revision: number | null; deleted_at: string | null }>();
+    const live = row?.value !== null && row?.value !== undefined && row.revision !== null && row.deleted_at === null;
+    return { value: live ? row!.value : null, revision: live ? row!.revision : null, nextRevision: (row?.revision ?? 0) + 1 };
   }
 
   async getPlanningSettings(): Promise<PlanningSettings | null> {
@@ -870,6 +882,9 @@ export class DB {
     if(input.commands.length>1){await this.planCommand(input,hash,clock.value);}
     else if (command.kind === 'link.add' || command.kind === 'link.remove') {
       planLinkCommand(input, await readLinkContext(this.d1, linkCommandKey(command)), hash, clock.value);
+    } else if (command.kind === 'preference.set') {
+      const current = await this.readPreferenceState(command.key);
+      if (current.revision !== command.expectedRevision) throw preferenceConflict(command, current);
     } else if (command.kind === 'planning.set') {
       const current = await this.getPlanningSettings();
       if ((current?.revision ?? null) !== command.expectedRevision) throw revisionConflict(command.expectedRevision, current);

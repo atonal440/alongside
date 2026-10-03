@@ -8,6 +8,7 @@ import { projectFromRow } from './project';
 import { completeTaskPlan } from './ops/task';
 import { parseIsoDateTime } from '@shared/parse';
 import { invalidInput } from './temporalFoundation';
+import { preferenceEntryFromParts } from './preference';
 
 export class CommandError extends Error {
   constructor(readonly detail: FoundationErrorDetail, readonly status: number = 409) { super(detail.message); }
@@ -54,6 +55,29 @@ export async function toolRequestHash(tool: string, args: unknown): Promise<stri
   const bytes = new TextEncoder().encode(canonicalJson({ request: { tool, args } }));
   const hash = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+/** What a preference currently holds: its value and sync revision, or nulls when no row exists. */
+export interface PreferenceState { value: string | null; revision: number | null; nextRevision: number }
+export function preferenceConflict(command: { key: string; expectedRevision: number | null }, current: PreferenceState): CommandError {
+  return new CommandError({ code: 'revision_conflict', path: ['commands', '0', 'expectedRevision'],
+    message: `Preference ${command.key} changed since the supplied revision.`, retryable: false, expectedRevision: command.expectedRevision as never,
+    recoveryHint: 'Read the preference with get_context or start_session and submit a new command ID after rebasing.',
+  });
+}
+export function planPreferenceCommand(input: CommandEnvelope, current: PreferenceState, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
+  const command = input.commands[0]!;
+  if (command.kind !== 'preference.set') throw new Error('Expected a preference.set command.');
+  const entry = preferenceEntryFromParts(command.key, command.value);
+  if (!entry.ok) throw new CommandError(invalidInput(entry.error.map(error => ({ ...error, path: ['commands', '0', ...error.path] }))), 400);
+  if (command.expectedRevision !== current.revision) throw preferenceConflict(command, current);
+  const next = parseRevision(current.nextRevision);
+  if (!next.ok) throw new CommandError({ code: 'revision_exhausted', path: ['commands', '0', 'expectedRevision'], message: 'Preference revision reached its supported limit.', retryable: false, recoveryHint: 'Contact the administrator; do not reset the revision.' });
+  const before = current.value === null || current.revision === null ? null : { revision: current.revision as never, value: current.value };
+  const result: ChangesResult = { contractVersion: 2, commandId: input.commandId, payloadHash: hash, serverNow: now, applied: true,
+    changes: [{ entity: 'preference', id: command.key, before, after: { revision: next.value, value: command.value } }], warnings: [], refs: {} };
+  return { result, plan: { assertions: [{ kind: 'preference.revision', key: command.key, expected: current.revision as never }],
+    ops: [{ kind: 'receipt.insert', result }, { kind: 'pref.upsert', entry: entry.value },
+      { kind: 'command.audit', commandId: input.commandId, actor: input.actor, reason: input.reason ?? null, result }, { kind: 'command.feed', result }] } };
 }
 export function planSettingsCommand(input: CommandEnvelope, before: PlanningSettings | null, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
   const command = normalizeCommand(input).commands[0]!;
@@ -134,7 +158,7 @@ export function planCreateCommand(input: CommandEnvelope, current: EntitySnapsho
   } };
 }
 
-export function commandEntityKey(command: Exclude<CommandEnvelope['commands'][number], { kind: 'planning.set' | 'link.add' | 'link.remove' }>): EntityReadKey {
+export function commandEntityKey(command: Exclude<CommandEnvelope['commands'][number], { kind: 'planning.set' | 'preference.set' | 'link.add' | 'link.remove' }>): EntityReadKey {
   switch (command.kind) {
     case 'task.delete': case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': case 'task.complete': case 'task.project.set': case 'task.type.set': case 'task.legacy-schedule.set': return { entity: 'task', id: command.id };
     case 'project.delete': case 'project.create': case 'project.content.set': case 'project.archive': case 'project.reopen': return { entity: 'project', id: command.id };
@@ -143,7 +167,7 @@ export function commandEntityKey(command: Exclude<CommandEnvelope['commands'][nu
 
 export function entityCommandConflict(input: CommandEnvelope, current: EntitySnapshot): CommandError | null {
   const command = input.commands[0]!;
-  if (command.kind === 'planning.set' || command.kind === 'link.add' || command.kind === 'link.remove' || command.kind === 'task.create' || command.kind === 'project.create') throw new Error('Expected an existing-entity command.');
+  if (command.kind === 'planning.set' || command.kind === 'preference.set' || command.kind === 'link.add' || command.kind === 'link.remove' || command.kind === 'task.create' || command.kind === 'project.create') throw new Error('Expected an existing-entity command.');
   return current.row !== null && current.version?.revision === command.expectedRevision ? null : new CommandError({
     code: 'revision_conflict', path: ['commands', '0', 'expectedRevision'], message: 'Entity changed or was deleted since planning.',
     retryable: false, currentEntity: current, expectedRevision: command.expectedRevision,
@@ -165,7 +189,7 @@ export function planContentCommand(input: CommandEnvelope, current: EntitySnapsh
 type EntityUpdate = { entity: 'task'; patch: TaskRowPatch } | { entity: 'project'; patch: ProjectRowPatch };
 function planEntityUpdate(input: CommandEnvelope, current: EntitySnapshot, update: EntityUpdate, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
   const command = input.commands[0]!;
-  if (command.kind === 'planning.set' || command.kind === 'link.add' || command.kind === 'link.remove' || command.kind === 'task.create' || command.kind === 'project.create') throw new Error('Expected an existing-entity command.');
+  if (command.kind === 'planning.set' || command.kind === 'preference.set' || command.kind === 'link.add' || command.kind === 'link.remove' || command.kind === 'task.create' || command.kind === 'project.create') throw new Error('Expected an existing-entity command.');
   if (current.id !== command.id || current.entity !== (command.kind.startsWith('task.') ? 'task' : 'project')) throw new Error('Update snapshot identity mismatch.');
   const conflict = entityCommandConflict(input, current);
   if (conflict) throw conflict;
@@ -203,7 +227,7 @@ function planEntityUpdate(input: CommandEnvelope, current: EntitySnapshot, updat
 
 export function planStateCommand(input: CommandEnvelope, current: EntitySnapshot, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
   const command = input.commands[0]!;
-  if (command.kind === 'planning.set' || command.kind === 'link.add' || command.kind === 'link.remove' || command.kind === 'task.create' || command.kind === 'project.create') throw new Error('Expected a state command.');
+  if (command.kind === 'planning.set' || command.kind === 'preference.set' || command.kind === 'link.add' || command.kind === 'link.remove' || command.kind === 'task.create' || command.kind === 'project.create') throw new Error('Expected a state command.');
   const conflict = entityCommandConflict(input, current);
   if (conflict) throw conflict;
   const reject = (message: string): never => { throw new CommandError({ code: 'invalid_transition', path: ['commands', '0'], message,

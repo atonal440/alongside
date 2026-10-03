@@ -230,6 +230,12 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
         commands.push({ kind: command.kind, from: from.id, to: to.id, linkType, expectedRevision, expectedStructuralRevision: structural });
         break;
       }
+      case 'preference.set': {
+        keys('key', 'value');
+        if (typeof command.key !== 'string') throw fail([...at, 'key'], 'key must be a string.');
+        commands.push({ kind: command.kind, key: command.key, value: command.value, expectedRevision: (await db.readPreferenceState(command.key)).revision });
+        break;
+      }
       case 'planning.set': {
         keys('values');
         commands.push({ kind: command.kind, expectedRevision: (await db.getPlanningSettings())?.revision ?? null, values: command.values });
