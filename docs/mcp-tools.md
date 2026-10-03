@@ -515,7 +515,7 @@ with exact `requiredStatements` and `limit: 100`; no split writes occur. See
 [reliable deletion](shared/reliable-deletion.md) for capacity, replay and conflicts.
 
 
-Mixed `preview_changes`/`apply_changes` accept 2–20 supported non-lifecycle
+Mixed `preview_changes`/`apply_changes` accept 2–100 supported non-lifecycle
 commands, including completion/deletion, with an envelope `expectedStructuralRevision`. Graph commands share
 that base revision; create referenced entities earlier. Several commands may write one task or project; they compose into one net change (see the bounded-batches note). Results add `batch: true` and all scoped refs. Final dependency graphs
 are validated atomically, allowing edge replacement in either add/remove order.

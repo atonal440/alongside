@@ -353,7 +353,7 @@ split a replacement into multiple imports: each import wipes existing data.
 All five reject query parameters. Link reads accept an exact
 `{entity: "link", from, to, linkType}` key. Preview/apply POST inputs are strict
 v2 command envelopes. Standalone commands accept one of the families below;
-2–20 task/project/link commands, including completion/deletion effects, can
+2–100 task/project/link commands, including completion/deletion effects, can
 also form a mixed batch.
 Mixed envelopes require `expectedStructuralRevision`, distinct written
 identities (including derived effects) and unique scoped refs; settings stay standalone.
