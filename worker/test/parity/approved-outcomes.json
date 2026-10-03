@@ -1,0 +1,149 @@
+{
+ "update_task.status-pending-on-pending": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "2026-10-01T09:00:00.000Z",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.status-pending-on-deferred": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$deferred",
+    "title": "To be deferred",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "2026-10-01T09:00:00.000Z",
+    "defer_until": "2026-12-01T09:00:00Z",
+    "defer_kind": "until",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "To be deferred",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$deferred",
+      "duty_id": null,
+      "title": "To be deferred",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.focus-clear-on-done": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$done",
+    "title": "To be done",
+    "notes": null,
+    "status": "done",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "2026-10-01T09:00:00.000Z",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "To be done",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$done",
+      "duty_id": null,
+      "title": "To be done",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.all-day-only-no-due": {
+  "result": {
+   "ok": false,
+   "channel": "tool_error",
+   "message": "Clearing dueDate requires dueAllDay and recurrence to be null.",
+   "code": "invalid_input"
+  },
+  "diff": {}
+ }
+}

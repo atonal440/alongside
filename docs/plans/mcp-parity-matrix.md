@@ -1,6 +1,6 @@
 # MCP adapter parity matrix
 
-Status: legacy side recorded and pinned; findings 1–10 approved with the recommendations below (2026-10-03); adapter side not built. Updated 2026-10-03.
+Status: legacy side pinned; findings 1–10 approved (2026-10-03). Adapters built and passing for `add_task`, `update_task`, `complete_task`, `defer_task`, `focus_task`; the other eight tools still run the legacy handlers. Updated 2026-10-03.
 
 This is the first deliverable of phase C in [the MCP surface plan](mcp-surface.md#adapter-parity). Every retained mutating tool (`add_task`, `complete_task`, `defer_task`, `update_task`, `reopen_task`, `focus_task`, `delete_task`, `create_project`, `update_project`, `delete_project`, `link_tasks`, `unlink_tasks`, `update_preference`) is run on a fixed fixture workspace for each class of input it accepts today: each field, combinations, and entity states (done, deferred, focused, missing).
 
@@ -12,6 +12,15 @@ This is the first deliverable of phase C in [the MCP surface plan](mcp-surface.m
 - A row may differ only if `worker/test/parity/approved.ts` lists it with a reason and the outcome the adapter produces. That list is empty today. Nothing is added to it until the difference is approved.
 - Error wording is informational. For a refused call the test compares the channel (JSON-RPC error or tool error) and the writes (none expected), not the message.
 - To re-record after an intended change to a legacy handler: `PARITY_RECORD=1 npx vitest run test/parity` from `worker/`. This rewrites the pinned file and the table below. A normal run fails if either is stale.
+
+## Differences in force
+
+**G1 (global).** A refused call now returns a structured tool error (`isError`, with a `code` and `recoveryHint`) instead of a bare JSON-RPC error. The parity test compares only "refused, with these writes" for these rows.
+
+Per-row differences live in `worker/test/parity/approved.ts`, each with the adapter's outcome pinned in `approved-outcomes.json`:
+
+- `update_task.status-pending-on-pending`, `status-pending-on-deferred`, `focus-clear-on-done`: finding 2, approved. A call that compiles to no command writes no row, so `updated_at` no longer moves. The call still logs and returns the task.
+- `update_task.all-day-only-no-due`: **proposed, not yet approved.** Legacy stored `due_all_day: true` on a task with no due date, a state the commands cannot represent. The adapter refuses it.
 
 ## Findings the plan did not list
 
@@ -107,17 +116,17 @@ The plan's table of known gaps holds up (see the rows). Recording the legacy beh
 | `due-null-and-recurrence-null` | `{"task_id":"$weekly","due_date":null,"recurrence":null}` | Clear both | ok — tasks ~1: due_date, due_all_day, recurrence (+updated_at); logs `update_task` | must match |
 | `recurrence-null` | `{"task_id":"$weekly","recurrence":null}` | Clear recurrence, keep due date | ok — tasks ~1: recurrence (+updated_at); logs `update_task` | must match |
 | `all-day-only` | `{"task_id":"$timed","due_all_day":true}` | Reclassify an existing due date | ok — tasks ~1: due_all_day (+updated_at); logs `update_task` | must match |
-| `all-day-only-no-due` | `{"task_id":"$pend","due_all_day":true}` | All-day flag on an undated task | ok — tasks ~1: due_all_day (+updated_at); logs `update_task` | must match |
+| `all-day-only-no-due` | `{"task_id":"$pend","due_all_day":true}` | All-day flag on an undated task | ok — tasks ~1: due_all_day (+updated_at); logs `update_task` | approved difference |
 | `all-day-null` | `{"task_id":"$dueonly","due_all_day":null}` | Back to ambiguous | ok — tasks ~1: due_all_day (+updated_at); logs `update_task` | must match |
 | `due-with-all-day` | `{"task_id":"$pend","due_date":"2026-11-01T15:00:00Z","due_all_day":true}` | Explicit all-day beats the parsed classification | ok — tasks ~1: due_date, due_all_day (+updated_at); logs `update_task` | must match |
 | `bad-due` | `{"task_id":"$pend","due_date":"soon"}` | Unparseable due date | refused (JSON-RPC error): Expected a valid ISO calendar date (YYYY-MM-DD) or date-time. | must match |
 | `title-and-due` | `{"task_id":"$notes","title":"Both","due_date":"2026-11-01"}` | Fields from two groups | ok — tasks ~1: title, due_date, due_all_day (+updated_at); logs `update_task` | must match |
 | `all-groups` | `{"task_id":"$notes","title":"All","task_type":"plan","due_date":"2026-11-01","project_id":"$proj","session_log":"s"}` | Several groups at once | ok — tasks ~1: title, due_date, due_all_day, task_type, project_id, session_log (+updated_at); logs `update_task` | must match |
 | `same-title` | `{"task_id":"$notes","title":"Has fields"}` | A field set to the value it already has | ok — tasks ~1: updated_at only; logs `update_task` | must match |
-| `status-pending-on-pending` | `{"task_id":"$pend","status":"pending"}` | No-op status on a pending task | ok — tasks ~1: updated_at only; logs `update_task` | must match |
+| `status-pending-on-pending` | `{"task_id":"$pend","status":"pending"}` | No-op status on a pending task | ok — tasks ~1: updated_at only; logs `update_task` | approved difference |
 | `status-pending-with-title` | `{"task_id":"$pend","status":"pending","title":"T"}` | No-op status alongside a real field | ok — tasks ~1: title (+updated_at); logs `update_task` | must match |
 | `status-pending-on-done` | `{"task_id":"$done","status":"pending"}` | Reopen via status | ok — tasks ~1: status (+updated_at); logs `update_task` | must match |
-| `status-pending-on-deferred` | `{"task_id":"$deferred","status":"pending"}` | Status on a deferred task does not clear the deferral | ok — tasks ~1: updated_at only; logs `update_task` | must match |
+| `status-pending-on-deferred` | `{"task_id":"$deferred","status":"pending"}` | Status on a deferred task does not clear the deferral | ok — tasks ~1: updated_at only; logs `update_task` | approved difference |
 | `status-done` | `{"task_id":"$pend","status":"done"}` | status done is refused | refused (JSON-RPC error): Use completeTask() to mark a task done. | must match |
 | `status-bogus` | `{"task_id":"$pend","status":"archived"}` | Unknown status value | refused (JSON-RPC error): Invalid type: Expected ("pending" \| "done") but received "archived" | must match |
 | `focus-set` | `{"task_id":"$pend","focused_until":"2026-10-03T18:00:00Z"}` | Focus until a future instant | ok — tasks ~1: focused_until (+updated_at); logs `update_task` | must match |
@@ -125,7 +134,7 @@ The plan's table of known gaps holds up (see the rows). Recording the legacy beh
 | `focus-set-on-done` | `{"task_id":"$done","focused_until":"2026-10-03T18:00:00Z"}` | Focus on a done task | refused (JSON-RPC error): Only pending tasks can use this transition. | must match |
 | `focus-clear` | `{"task_id":"$focused","focused_until":null}` | Clear focus | ok — tasks ~1: focused_until (+updated_at); logs `update_task` | must match |
 | `focus-clear-unfocused` | `{"task_id":"$pend","focused_until":null}` | Clear focus that is not set | ok — tasks ~1: updated_at only; logs `update_task` | must match |
-| `focus-clear-on-done` | `{"task_id":"$done","focused_until":null}` | Clear focus on a done task | ok — tasks ~1: updated_at only; logs `update_task` | must match |
+| `focus-clear-on-done` | `{"task_id":"$done","focused_until":null}` | Clear focus on a done task | ok — tasks ~1: updated_at only; logs `update_task` | approved difference |
 | `focus-bad` | `{"task_id":"$pend","focused_until":"later"}` | Unparseable focus instant | refused (JSON-RPC error): Expected a valid ISO date-time with Z or an offset. | must match |
 | `project-move` | `{"task_id":"$pend","project_id":"$proj"}` | Move into a project | ok — tasks ~1: project_id (+updated_at); logs `update_task` | must match |
 | `project-remove` | `{"task_id":"$member","project_id":null}` | null removes the project | ok — tasks ~1: project_id (+updated_at); logs `update_task` | must match |
@@ -187,7 +196,7 @@ The plan's table of known gaps holds up (see the rows). Recording the legacy beh
 | `with-tasks` | `{"title":"New project","task_ids":["$pend","$pend2"]}` | Assign existing tasks | ok — tasks ~2: project_id (+updated_at); projects +1; logs `create_project` | must match |
 | `duplicate-task-ids` | `{"title":"New project","task_ids":["$pend","$pend"]}` | Duplicate IDs count once | ok — tasks ~1: project_id (+updated_at); projects +1; logs `create_project` | must match |
 | `moves-from-other-project` | `{"title":"New project","task_ids":["$member"]}` | Task already in another project | ok — tasks ~1: project_id (+updated_at); projects +1; logs `create_project` | must match |
-| `missing-task` | `{"title":"New project","task_ids":["$pend","$none"]}` | One task does not exist | refused (JSON-RPC error): task not found: t_nonex1 | must match |
+| `missing-task` | `{"title":"New project","task_ids":["$pend","$none"]}` | One task does not exist | refused (JSON-RPC error): task not found: $none | must match |
 | `done-task` | `{"title":"New project","task_ids":["$done"]}` | Done task | ok — tasks ~1: project_id (+updated_at); projects +1; logs `create_project` | must match |
 | `nineteen-tasks` | `{"title":"New project","task_ids":["$pend","$pend2","$notes","$plan","$dueonly","$timed","$weekly","$todone","$todefe…` | 19 tasks: the largest call that fits 20 commands | ok — tasks ~16: project_id (+updated_at); projects +1; logs `create_project` | must match |
 | `twenty-tasks` | `{"title":"New project","task_ids":["$pend","$pend2","$notes","$plan","$dueonly","$timed","$weekly","$todone","$todefe…` | 20 tasks: over the command bound | ok — tasks ~16: project_id (+updated_at); projects +1; logs `create_project` | must match |
@@ -234,8 +243,8 @@ The plan's table of known gaps holds up (see the rows). Recording the legacy beh
 | `existing-related-reversed` | `{"from_task_id":"$rel2","to_task_id":"$rel1","link_type":"related"}` | Related link that exists in the other orientation | ok — task_links +1; logs `link_tasks` | must match |
 | `reverse-blocks` | `{"from_task_id":"$blocked","to_task_id":"$blocker"}` | Would create a two-task cycle | refused (JSON-RPC error): Adding a blocks link from $blocked to $blocker would create a cycle. | must match |
 | `self` | `{"from_task_id":"$pend","to_task_id":"$pend"}` | Task to itself | refused (JSON-RPC error): A task cannot be linked to itself. | must match |
-| `missing-from` | `{"from_task_id":"$none","to_task_id":"$pend"}` | Blocking task does not exist | refused (JSON-RPC error): task not found: t_nonex1 | must match |
-| `missing-to` | `{"from_task_id":"$pend","to_task_id":"$none"}` | Blocked task does not exist | refused (JSON-RPC error): task not found: t_nonex1 | must match |
+| `missing-from` | `{"from_task_id":"$none","to_task_id":"$pend"}` | Blocking task does not exist | refused (JSON-RPC error): task not found: $none | must match |
+| `missing-to` | `{"from_task_id":"$pend","to_task_id":"$none"}` | Blocked task does not exist | refused (JSON-RPC error): task not found: $none | must match |
 | `done-endpoint` | `{"from_task_id":"$done","to_task_id":"$pend"}` | Done task as an endpoint | ok — task_links +1; logs `link_tasks` | must match |
 | `bad-type` | `{"from_task_id":"$pend","to_task_id":"$pend2","link_type":"duplicates"}` | Unknown link type | refused (JSON-RPC error): Invalid type: Expected ("blocks" \| "related") but received "duplicates" | must match |
 

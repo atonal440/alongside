@@ -114,7 +114,7 @@ function normalize(value: unknown, aliases: Aliases): unknown {
   const byId = new Map(Object.entries(aliases).map(([alias, id]) => [id, alias]));
   const minted = new Map<string, string>();
   let text = JSON.stringify(value);
-  text = text.replace(/(?<![0-9A-Za-z_-])[tp]_[0-9A-Za-z_-]{5}(?![0-9A-Za-z_-])/g, id => {
+  text = text.replace(/(?<![0-9A-Za-z_-])[tp]_[0-9A-Za-z_-]{5,}(?![0-9A-Za-z_-])/g, id => {
     const alias = byId.get(id);
     if (alias) return `$${alias}`;
     if (!minted.has(id)) minted.set(id, `$new${minted.size + 1}`);

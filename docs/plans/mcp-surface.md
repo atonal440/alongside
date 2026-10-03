@@ -568,7 +568,12 @@ never registered in `TOOLS`; that section was removed in phase A.
   commands name the revision after the first write (existing: current + 1;
   created in the batch: 1), links and delete-lifecycle effects stay write-once,
   and create-then-delete is rejected. Loose-intent pinning predicts those
-  revisions. Receipt-first replay for the adapters is the next step.
+  revisions. The five quick verbs
+  (`worker/src/adapters/`) now run on this path with receipt-first replay,
+  command-derived IDs, the three-attempt re-read loop for unpinned writes,
+  version 2 receipts, no-op receipts with commit-time guards, and an atomic
+  action-log row. Refusals use the structured tool-error channel (parity
+  difference G1). The other eight mutating tools still run the legacy handlers.
 - **C: One write path.** First build the parity matrix (see
   [Adapter parity](#adapter-parity)) and the versioned receipt shape. Then add
   same-identity composition to the batch planner, with the revised result contract (see

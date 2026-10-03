@@ -35,6 +35,7 @@ import type { Task, Project, TaskLink, ActionLog, TaskCreate, TaskUpdate, Projec
 import { readinessScore } from '@shared/readiness';
 import { unsafeBrand } from '@shared/brand';
 import type { ActiveDeferState, Plan, PendingTaskDomain, TaskDomain } from './domain';
+import type { Op, PreCheck } from './domain/Op';
 import type { IsoDateTime, MintedProjectId, MintedTaskId, TaskId, ValidationError } from './parse';
 import { parseDueDateParts, parseIsoDateTime, parseIsoDateTimeMinute, parseTaskId } from './parse';
 import { appErrorMessage, validationErrorResult, type AppError } from './domain/errors';
@@ -234,6 +235,8 @@ function parseTaskIds(inputs: string[]): TaskId[] {
   return ids;
 }
 
+
+export interface ToolLogDraft { tool_name: string; task_id: string | null; title: string; detail: string | null }
 
 export class DB {
   private drizzle: DrizzleD1Database;
@@ -887,6 +890,55 @@ export class DB {
     if (applied.error.kind === 'capacity_exceeded') throwAppError(applied.error);
     throw new CommandError({ code: 'storage_unavailable', path: [], message: 'The command could not be committed.', retryable: true,
       recoveryHint: 'Keep this command ID and payload; retry after the service recovers. No partial command was committed.' }, 503);
+  }
+
+  /**
+   * Commit a tool call that compiled to a command envelope: the commands, the version 2 receipt
+   * (tool name and complete response) and the action-log row land in one atomic plan, so a
+   * failed command leaves no log entry and a replay returns the first response verbatim.
+   * `respond` runs after planning, so every field of the response is known before the batch runs.
+   */
+  async commitToolEnvelope(input: CommandEnvelope, hook: { tool: ReceiptTool; requestHash: string; respond: (result: ChangesResult) => { response: unknown; log: ToolLogDraft | null } }): Promise<unknown> {
+    const clock = parseEventInstant(new Date().toISOString());
+    if (!clock.ok) throw new Error('Invalid server clock.');
+    const planned = await this.planCommand(input, hook.requestHash, clock.value);
+    const { response, log } = hook.respond(planned.result);
+    const ops: Op[] = planned.plan.ops.map((op): Op => op.kind === 'receipt.insert' ? { ...op, stored: { tool: hook.tool, response } } : op);
+    if (log) ops.push(this.logOp(log, clock.value));
+    const plan = { ...planned.plan, ops };
+    const capacity = checkPlanCapacity(this.d1, plan);
+    if (!capacity.ok && capacity.error.kind === 'capacity_exceeded') throw new CommandError({ code: 'capacity_exceeded', path: ['commands'], message: `Atomic command requires ${capacity.error.requiredStatements} SQL statements; the limit is 100.`, retryable: false, requiredStatements: capacity.error.requiredStatements, limit: 100, recoveryHint: 'Reduce the atomic scope.' }, 413);
+    const applied = await applyPlan(this.d1, plan);
+    if (applied.ok) return response;
+    // A concurrent identical request may have committed first: replay it rather than conflict.
+    const replay = await this.findToolReceipt(input.commandId, hook.tool, hook.requestHash);
+    if (replay) return replay.response;
+    await this.planCommand(input, hook.requestHash, clock.value);       // throws the precise conflict if state moved
+    throw new CommandError({ code: 'storage_unavailable', path: [], message: 'The command could not be committed.', retryable: true,
+      recoveryHint: 'Keep this command ID and arguments; retry after the service recovers. No partial command was committed.' }, 503);
+  }
+
+  /**
+   * Record a call that changes no entity. The command ID, the response and (where the legacy
+   * handler logs) the action-log row commit together, guarded by the state the call was judged
+   * a no-op against, so a retry after a lost response returns this response whatever happens next.
+   */
+  async commitToolNoop(args: { commandId: CommandId; tool: ReceiptTool; requestHash: string; guards: PreCheck[]; response: unknown; log: ToolLogDraft | null }): Promise<unknown> {
+    const clock = parseEventInstant(new Date().toISOString());
+    if (!clock.ok) throw new Error('Invalid server clock.');
+    const ops: Op[] = [{ kind: 'receipt.insert_noop', commandId: args.commandId, payloadHash: args.requestHash, serverNow: clock.value, tool: args.tool, response: args.response }];
+    if (args.log) ops.push(this.logOp(args.log, clock.value));
+    const applied = await applyPlan(this.d1, { assertions: args.guards, ops });
+    if (applied.ok) return args.response;
+    const replay = await this.findToolReceipt(args.commandId, args.tool, args.requestHash);
+    if (replay) return replay.response;
+    // A guard failed: the state the no-op was judged against moved. The caller re-reads and recompiles.
+    throw new CommandError({ code: 'revision_conflict', path: [], message: 'State changed while the call was being classified.', retryable: true,
+      recoveryHint: 'Repeat the call; it is re-evaluated against current state.' });
+  }
+
+  private logOp(log: ToolLogDraft, at: EventInstant): Op {
+    return { kind: 'log.insert', entry: { id: 0, tool_name: log.tool_name, task_id: log.task_id, duty_id: null, title: log.title, detail: log.detail, created_at: at } };
   }
 
   async listLegacyDueDates(after: string | undefined, limit: number): Promise<LegacyDueRow[]> {
