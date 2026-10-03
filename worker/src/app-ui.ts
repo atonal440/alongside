@@ -229,14 +229,41 @@ export function getAppHtml(): string {
       refreshDisplayed();
     }
 
+    // Tool calls return a normal result with isError set when the server refuses; surface that as a failure.
+    async function callTool(name, args) {
+      const result = await rpcRequest('tools/call', { name, arguments: args });
+      if (result?.isError) throw new Error(result.content?.[0]?.text || (name + ' was refused'));
+      return result?.structuredContent;
+    }
+
+    // find pages by cursor; stop as soon as every displayed task has been seen.
+    async function findDisplayed() {
+      const found = [];
+      let cursor;
+      for (let page = 0; page < 25; page++) {
+        const sc = await callTool('find', {
+          entity: 'task', filter: { statuses: ['pending', 'done'] }, limit: 200,
+          ...(cursor ? { cursor } : {}),
+        });
+        found.push(...(sc?.items || []));
+        if (!sc?.nextCursor || displayedTaskIds.every(id => found.some(t => t.id === id))) break;
+        cursor = sc.nextCursor;
+      }
+      return found;
+    }
+
+    // One preview that pins every revision, then apply the pinned envelope unchanged.
+    async function reopenTask(id) {
+      const preview = await callTool('preview_changes', {
+        intent: true, contractVersion: 2, actor: 'user', commands: [{ kind: 'task.reopen', id }],
+      });
+      await callTool('apply_changes', preview.pinnedEnvelope);
+    }
+
     async function refreshDisplayed() {
       if (displayedTaskIds.length === 0) return;
       try {
-        const result = await rpcRequest('tools/call', {
-          name: 'list_tasks',
-          arguments: { statuses: ['pending', 'done'] },
-        });
-        const all = result?.structuredContent?.tasks || [];
+        const all = await findDisplayed();
         tasks = all.filter(t => displayedTaskIds.includes(t.id));
         render();
         reportSize();
@@ -292,28 +319,18 @@ export function getAppHtml(): string {
 
       try {
         if (completing) {
-          const result = await rpcRequest('tools/call', {
-            name: 'complete_task',
-            arguments: { task_id: id },
-          });
-          let resultData = result?.structuredContent;
-          if (!resultData && result?.content?.[0]?.text) {
-            try { resultData = JSON.parse(result.content[0].text); } catch {}
-          }
+          const resultData = await callTool('complete_task', { task_id: id });
           if (resultData?.next) {
             showToast('Done! Next: <span class="next">' + escapeHtml(dueDateLabel(resultData.next)) + '</span>');
           }
         } else {
-          await rpcRequest('tools/call', {
-            name: 'reopen_task',
-            arguments: { task_id: id },
-          });
+          await reopenTask(id);
         }
         await refreshDisplayed();
       } catch (err) {
         taskEl.classList.remove('completing');
         e.target.disabled = false;
-        e.target.checked = completing;
+        e.target.checked = !completing;
         console.error('Failed to update task:', err);
       }
     });
