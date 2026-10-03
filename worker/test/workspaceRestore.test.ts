@@ -84,7 +84,7 @@ describe.each(['fresh', 'upgrade'] as const)('version 2 workspace restore (%s)',
       const cursor = cursorOf(sql); const before = tables(sql);
       const unchanged = () => { expect(tables(sql)).toEqual(before); expect(batches).toEqual([]); };
 
-      await expect(db.restoreWorkspace(input(exported, { ...cursor, sequence: cursor.sequence + 1 }) as never)).rejects.toMatchObject({ status: 409, detail: { code: 'restore_cursor_conflict' } });
+      await expect(db.restoreWorkspace(input(exported, { ...cursor, sequence: cursor.sequence + 1 }) as never)).rejects.toMatchObject({ status: 409, detail: { code: 'restore_cursor_conflict', message: expect.stringContaining('earlier restore may already have committed') } });
       await expect(db.restoreWorkspace(input(exported, { ...cursor, epoch: cursor.epoch + 1 }, 'preflight') as never)).rejects.toMatchObject({ detail: { code: 'restore_cursor_conflict' } });
       unchanged();
 

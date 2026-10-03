@@ -15,10 +15,11 @@ import type { EntityKey, EntityVersionResponse, EntityReadKey, EntitySnapshot } 
 import { readEntitySnapshot } from './storage/entity';
 import { parsePlanningSettings, type PlanningSettings } from '@shared/wire/planning';
 import type { LegacyDueRow } from './domain/temporalFoundation';
-import { ChangesResultSchema, StoredReceiptSchema, type CommandEnvelope, type ChangesResult, type ChangesPreview } from '@shared/wire/commands';
+import { parseStoredResult, type ReceiptTool, type StoredResult } from '@shared/wire/receipts';
+import { StoredReceiptSchema, type CommandEnvelope, type ChangesResult, type ChangesPreview } from '@shared/wire/commands';
 import { parseSchema, parseEventInstant, type EventInstant, type CommandId } from '@shared/parse';
 import { invalidInput } from './domain/temporalFoundation';
-import { CommandError, commandHash, payloadConflict, planSettingsCommand, planCreateCommand, creationConflict, planContentCommand, entityCommandConflict, planStateCommand, commandEntityKey, planCompleteCommand, planTaskProjectCommand, revisionConflict } from './domain/commands';
+import { CommandError, commandHash, payloadConflict, planSettingsCommand, planPreferenceCommand, planCreateCommand, creationConflict, planContentCommand, entityCommandConflict, planStateCommand, commandEntityKey, planCompleteCommand, planTaskProjectCommand, revisionConflict, preferenceConflict } from './domain/commands';
 import { nanoid } from 'nanoid';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, ne, inArray, lte, or, asc, desc, gt, and, sql } from 'drizzle-orm';
@@ -34,6 +35,8 @@ import type { Task, Project, TaskLink, ActionLog, TaskCreate, TaskUpdate, Projec
 import { readinessScore } from '@shared/readiness';
 import { unsafeBrand } from '@shared/brand';
 import type { ActiveDeferState, Plan, PendingTaskDomain, TaskDomain } from './domain';
+import type { Op, PreCheck } from './domain/Op';
+import type { PreferenceState } from './domain/commands';
 import type { IsoDateTime, MintedProjectId, MintedTaskId, TaskId, ValidationError } from './parse';
 import { parseDueDateParts, parseIsoDateTime, parseIsoDateTimeMinute, parseTaskId } from './parse';
 import { appErrorMessage, validationErrorResult, type AppError } from './domain/errors';
@@ -233,6 +236,8 @@ function parseTaskIds(inputs: string[]): TaskId[] {
   return ids;
 }
 
+
+export interface ToolLogDraft { tool_name: string; task_id: string | null; title: string; detail: string | null }
 
 export class DB {
   private drizzle: DrizzleD1Database;
@@ -705,8 +710,8 @@ export class DB {
 
   private restoreCursorConflict(current: { epoch: number; sequence: number }): CommandError {
     return new CommandError({ code: 'restore_cursor_conflict', path: ['expectedCursor'], retryable: false,
-      message: `The workspace changed after the supplied cursor; it is now at epoch ${current.epoch}, sequence ${current.sequence}. Nothing was changed.`,
-      recoveryHint: 'Export again, review the new state, and rerun preflight with the current cursor before applying.' }, 409);
+      message: `The workspace changed after the supplied cursor; it is now at epoch ${current.epoch}, sequence ${current.sequence}. This request wrote nothing, but if you are retrying an apply, your earlier restore may already have committed.`,
+      recoveryHint: 'Read a current snapshot. An epoch above your expectedCursor.epoch means a restore committed, possibly yours; otherwise export again, review the new state, and rerun preflight with the current cursor before applying.' }, 409);
   }
 
   async getEntitySnapshot(key: EntityReadKey): Promise<EntitySnapshot> {
@@ -721,6 +726,7 @@ export class DB {
     if (command.kind === 'task.delete' || command.kind === 'project.delete') return planDeleteCommand(input, await reader.deletion(commandEntityKey(command)), hash, clock);
     if (command.kind === 'link.add' || command.kind === 'link.remove') return planLinkCommand(input, await reader.link(linkCommandKey(command)), hash, clock);
     if (command.kind === 'planning.set') return planSettingsCommand(input, await this.getPlanningSettings(), hash, clock);
+    if (command.kind === 'preference.set') return planPreferenceCommand(input, await this.readPreferenceState(command.key), hash, clock);
     if (command.kind === 'task.project.set') {
       const current = await reader.entity({ entity: 'task', id: command.id });
       const project = command.project === null ? null : await reader.entity({ entity: 'project', id: command.project.id });
@@ -762,6 +768,16 @@ export class DB {
     return readEntityVersion(this.d1, key);
   }
 
+  /** A preference's value and sync revision. `nextRevision` is what a write will record (past any tombstone). */
+  async readPreferenceState(key: string): Promise<PreferenceState> {
+    const row = await this.d1.prepare(`SELECT p.value AS value, a.revision AS revision, a.deleted_at AS deleted_at
+      FROM (SELECT ? AS key) k LEFT JOIN user_preferences p ON p.key=k.key
+      LEFT JOIN sync_aux_versions a ON a.entity='preference' AND a.entity_key=k.key`).bind(key)
+      .first<{ value: string | null; revision: number | null; deleted_at: string | null }>();
+    const live = row?.value !== null && row?.value !== undefined && row.revision !== null && row.deleted_at === null;
+    return { value: live ? row!.value : null, revision: live ? row!.revision : null, nextRevision: (row?.revision ?? 0) + 1 };
+  }
+
   async getPlanningSettings(): Promise<PlanningSettings | null> {
     // One SQL statement reads a coherent settings/working-hours snapshot.
     const row = await this.d1.prepare(`SELECT timezone, buffer_minutes, revision,
@@ -775,16 +791,40 @@ export class DB {
     return parsed.value;
   }
 
-  private async getCommandReceipt(id: CommandId): Promise<ChangesResult | null> {
+  /** The raw stored receipt, version 1 or 2, with the hash recorded in its row. */
+  private async readReceipt(id: CommandId): Promise<{ payloadHash: string; stored: StoredResult } | null> {
     const row: unknown = await this.d1.prepare('SELECT command_id,payload_hash,result_json,created_at FROM command_receipts WHERE command_id = ?').bind(id).first();
     if (!row) return null;
     const receipt = parseSchema(StoredReceiptSchema, row);
     if (!receipt.ok) throw new Error('Stored command receipt failed validation.');
-    const result = parseSchema(ChangesResultSchema, JSON.parse(receipt.value.result_json));
-    if (!result.ok || result.value.commandId !== receipt.value.command_id || result.value.payloadHash !== receipt.value.payload_hash || result.value.serverNow !== receipt.value.created_at) {
+    const stored = parseStoredResult(receipt.value.result_json);
+    const result = stored.ok ? stored.value.result : null;
+    if (!stored.ok || (result !== null && (result.commandId !== receipt.value.command_id || result.payloadHash !== receipt.value.payload_hash || result.serverNow !== receipt.value.created_at))) {
       throw new Error('Stored command result failed validation.');
     }
-    return result.value;
+    return { payloadHash: receipt.value.payload_hash, stored: stored.value };
+  }
+
+  /**
+   * Receipt for an envelope-based call. A version 2 receipt belongs to a tool request, whose hash
+   * can never equal an envelope hash, so the ID is in use with a different payload.
+   */
+  private async getCommandReceipt(id: CommandId): Promise<ChangesResult | null> {
+    const receipt = await this.readReceipt(id);
+    if (!receipt) return null;
+    if (receipt.stored.receiptVersion === 2 || receipt.stored.result === null) throw payloadConflict();
+    return receipt.stored.result;
+  }
+
+  /**
+   * Receipt-first lookup for a tool adapter: the stored response when this exact request already
+   * committed, null when the ID is unused. Another request (or an envelope) on the ID conflicts.
+   */
+  async findToolReceipt(id: CommandId, tool: ReceiptTool, requestHash: string): Promise<{ response: unknown; result: ChangesResult | null } | null> {
+    const receipt = await this.readReceipt(id);
+    if (!receipt) return null;
+    if (receipt.stored.receiptVersion !== 2 || receipt.stored.tool !== tool || receipt.payloadHash !== requestHash) throw payloadConflict();
+    return { response: receipt.stored.response, result: receipt.stored.result };
   }
 
   async previewChanges(input: CommandEnvelope): Promise<ChangesPreview> {
@@ -842,6 +882,9 @@ export class DB {
     if(input.commands.length>1){await this.planCommand(input,hash,clock.value);}
     else if (command.kind === 'link.add' || command.kind === 'link.remove') {
       planLinkCommand(input, await readLinkContext(this.d1, linkCommandKey(command)), hash, clock.value);
+    } else if (command.kind === 'preference.set') {
+      const current = await this.readPreferenceState(command.key);
+      if (current.revision !== command.expectedRevision) throw preferenceConflict(command, current);
     } else if (command.kind === 'planning.set') {
       const current = await this.getPlanningSettings();
       if ((current?.revision ?? null) !== command.expectedRevision) throw revisionConflict(command.expectedRevision, current);
@@ -862,6 +905,55 @@ export class DB {
     if (applied.error.kind === 'capacity_exceeded') throwAppError(applied.error);
     throw new CommandError({ code: 'storage_unavailable', path: [], message: 'The command could not be committed.', retryable: true,
       recoveryHint: 'Keep this command ID and payload; retry after the service recovers. No partial command was committed.' }, 503);
+  }
+
+  /**
+   * Commit a tool call that compiled to a command envelope: the commands, the version 2 receipt
+   * (tool name and complete response) and the action-log row land in one atomic plan, so a
+   * failed command leaves no log entry and a replay returns the first response verbatim.
+   * `respond` runs after planning, so every field of the response is known before the batch runs.
+   */
+  async commitToolEnvelope(input: CommandEnvelope, hook: { tool: ReceiptTool; requestHash: string; respond: (result: ChangesResult) => { response: unknown; log: ToolLogDraft | null } }): Promise<unknown> {
+    const clock = parseEventInstant(new Date().toISOString());
+    if (!clock.ok) throw new Error('Invalid server clock.');
+    const planned = await this.planCommand(input, hook.requestHash, clock.value);
+    const { response, log } = hook.respond(planned.result);
+    const ops: Op[] = planned.plan.ops.map((op): Op => op.kind === 'receipt.insert' ? { ...op, stored: { tool: hook.tool, response } } : op);
+    if (log) ops.push(this.logOp(log, clock.value));
+    const plan = { ...planned.plan, ops };
+    const capacity = checkPlanCapacity(this.d1, plan);
+    if (!capacity.ok && capacity.error.kind === 'capacity_exceeded') throw new CommandError({ code: 'capacity_exceeded', path: ['commands'], message: `Atomic command requires ${capacity.error.requiredStatements} SQL statements; the limit is 100.`, retryable: false, requiredStatements: capacity.error.requiredStatements, limit: 100, recoveryHint: 'Reduce the atomic scope.' }, 413);
+    const applied = await applyPlan(this.d1, plan);
+    if (applied.ok) return response;
+    // A concurrent identical request may have committed first: replay it rather than conflict.
+    const replay = await this.findToolReceipt(input.commandId, hook.tool, hook.requestHash);
+    if (replay) return replay.response;
+    await this.planCommand(input, hook.requestHash, clock.value);       // throws the precise conflict if state moved
+    throw new CommandError({ code: 'storage_unavailable', path: [], message: 'The command could not be committed.', retryable: true,
+      recoveryHint: 'Keep this command ID and arguments; retry after the service recovers. No partial command was committed.' }, 503);
+  }
+
+  /**
+   * Record a call that changes no entity. The command ID, the response and (where the legacy
+   * handler logs) the action-log row commit together, guarded by the state the call was judged
+   * a no-op against, so a retry after a lost response returns this response whatever happens next.
+   */
+  async commitToolNoop(args: { commandId: CommandId; tool: ReceiptTool; requestHash: string; guards: PreCheck[]; response: unknown; log: ToolLogDraft | null }): Promise<unknown> {
+    const clock = parseEventInstant(new Date().toISOString());
+    if (!clock.ok) throw new Error('Invalid server clock.');
+    const ops: Op[] = [{ kind: 'receipt.insert_noop', commandId: args.commandId, payloadHash: args.requestHash, serverNow: clock.value, tool: args.tool, response: args.response }];
+    if (args.log) ops.push(this.logOp(args.log, clock.value));
+    const applied = await applyPlan(this.d1, { assertions: args.guards, ops });
+    if (applied.ok) return args.response;
+    const replay = await this.findToolReceipt(args.commandId, args.tool, args.requestHash);
+    if (replay) return replay.response;
+    // A guard failed: the state the no-op was judged against moved. The caller re-reads and recompiles.
+    throw new CommandError({ code: 'revision_conflict', path: [], message: 'State changed while the call was being classified.', retryable: true,
+      recoveryHint: 'Repeat the call; it is re-evaluated against current state.' });
+  }
+
+  private logOp(log: ToolLogDraft, at: EventInstant): Op {
+    return { kind: 'log.insert', entry: { id: 0, tool_name: log.tool_name, task_id: log.task_id, duty_id: null, title: log.title, detail: log.detail, created_at: at } };
   }
 
   async listLegacyDueDates(after: string | undefined, limit: number): Promise<LegacyDueRow[]> {
@@ -929,6 +1021,15 @@ export class DB {
       .from(actionLogTable)
       .orderBy(desc(actionLogTable.id))
       .limit(limit);
+  }
+
+  /** Newest-first command audit rows (the receipt's actor, reason and diff list). */
+  async listCommandAudit(limit = 50): Promise<{ command_id: string; actor: string; reason: string | null; changes_json: string; created_at: string }[]> {
+    return this.d1
+      .prepare('SELECT command_id, actor, reason, changes_json, created_at FROM command_audit ORDER BY created_at DESC, command_id DESC LIMIT ?')
+      .bind(limit)
+      .all<{ command_id: string; actor: string; reason: string | null; changes_json: string; created_at: string }>()
+      .then(r => r.results);
   }
 
   // Seed missing default preferences (called by start_session)

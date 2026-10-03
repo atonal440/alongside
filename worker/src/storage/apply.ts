@@ -221,6 +221,13 @@ async function runPreCheck(d1: D1Database, check: PreCheck): Promise<Result<void
         return err(storageError('Failed to read planning revision.', cause));
       }
     }
+    case 'preference.revision': {
+      try {
+        const row = await d1.prepare(`SELECT a.revision FROM user_preferences p JOIN sync_aux_versions a ON a.entity='preference' AND a.entity_key=p.key AND a.deleted_at IS NULL WHERE p.key=?`)
+          .bind(check.key).first<{ revision: number }>();
+        return (row?.revision ?? null) === check.expected ? ok(undefined) : err({ kind: 'conflict', message: 'Preference revision changed.' });
+      } catch (cause) { return err(storageError('Failed to read preference revision.', cause)); }
+    }
     case 'sync.cursor': {
       try {
         const row = await d1.prepare('SELECT epoch, watermark FROM sync_metadata WHERE id=1').first<{ epoch: number; watermark: number }>();
@@ -269,6 +276,14 @@ function bindPreCheckGuard(d1: D1Database, check: PreCheck): PlannedStatement[] 
         : 'NOT EXISTS (SELECT 1 FROM planning_settings WHERE id = 1 AND revision = ?)';
       const statement = d1.prepare(`INSERT INTO planning_settings (id,timezone,created_at,updated_at) SELECT 1,NULL,'','' WHERE ${condition}`);
       return [guardedStatement(check.expected === null ? statement : statement.bind(check.expected))];
+    }
+    case 'preference.revision': {
+      // Same trick as planning.revision: a NOT NULL violation aborts the batch if the row moved after planning.
+      const condition = check.expected === null
+        ? 'EXISTS (SELECT 1 FROM user_preferences WHERE key = ?)'
+        : "NOT EXISTS (SELECT 1 FROM user_preferences p JOIN sync_aux_versions a ON a.entity='preference' AND a.entity_key=p.key AND a.deleted_at IS NULL WHERE p.key = ? AND a.revision = ?)";
+      const statement = d1.prepare(`INSERT INTO sync_aux_versions(entity,entity_key,revision) SELECT NULL,'',0 WHERE ${condition}`);
+      return [guardedStatement(check.expected === null ? statement.bind(check.key) : statement.bind(check.key, check.expected))];
     }
     case 'sync.cursor':
       // Violates the singleton CHECK (and trigger) inside the batch if any writer advanced the feed.
@@ -349,12 +364,16 @@ function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
       ];
     case 'receipt.insert':
       return [guardedStatement(d1.prepare('INSERT INTO command_receipts(command_id,payload_hash,result_json,created_at) VALUES(?,?,?,?)')
-        .bind(op.result.commandId, op.result.payloadHash, JSON.stringify(op.result), op.result.serverNow))];
+        .bind(op.result.commandId, op.result.payloadHash, JSON.stringify(op.stored ? { receiptVersion: 2, tool: op.stored.tool, result: op.result, response: op.stored.response } : op.result), op.result.serverNow))];
+    case 'receipt.insert_noop':
+      return [guardedStatement(d1.prepare('INSERT INTO command_receipts(command_id,payload_hash,result_json,created_at) VALUES(?,?,?,?)')
+        .bind(op.commandId, op.payloadHash, JSON.stringify({ receiptVersion: 2, tool: op.tool, result: null, response: op.response }), op.serverNow))];
     case 'command.audit':
       return [guardedStatement(d1.prepare('INSERT INTO command_audit(command_id,actor,reason,changes_json,created_at) VALUES(?,?,?,?,?)')
         .bind(op.commandId, op.actor, op.reason, JSON.stringify(op.result.changes), op.result.serverNow))];
     case 'command.feed':
-      return op.result.changes.map(change => guardedStatement(d1.prepare(`INSERT INTO change_feed(command_id,entity,entity_id,revision,operation,payload_json,created_at) VALUES(?,?,?,?,?,?,?)`)
+      // The legacy command feed predates preferences; their history is in the sync feed, written by trigger.
+      return op.result.changes.filter(change => change.entity !== 'preference').map(change => guardedStatement(d1.prepare(`INSERT INTO change_feed(command_id,entity,entity_id,revision,operation,payload_json,created_at) VALUES(?,?,?,?,?,?,?)`)
         .bind(op.result.commandId, change.entity, change.id, change.after.revision, 'deleted' in change.after ? 'delete' : 'upsert', JSON.stringify(change.after), op.result.serverNow)));
     case 'duty.update_cursor':
       return [guardedStatement(d1.prepare(`UPDATE duties

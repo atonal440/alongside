@@ -49,9 +49,9 @@ it('rolls back all entities and histories after a late final-graph guard failure
   const envelope=input([create('t_first1'),create('t_second'),link('t_first1','t_second')]);const preview=await db.previewChanges(envelope);hooks.failAfter=preview.requiredStatements-2;await expect(db.applyChanges(envelope)).rejects.toMatchObject({detail:{code:'storage_unavailable'}});for(const table of ['tasks','task_links','entity_versions','command_receipts','command_audit','change_feed'])expect(sql.prepare(`SELECT * FROM ${table}`).all()).toEqual([]);expect(sql.prepare('SELECT structural_revision FROM workspace_versions').get()).toMatchObject({structural_revision:0});
  }finally{sql.close();}
 });
-it('rejects duplicate written identities and reports the actual command index',async()=>{
+it('reports the actual command index when a later command in a batch is invalid',async()=>{
  const {sql,d1}=sqliteD1();const db=new DB(d1);try{
-  await expect(db.applyChanges(input([create('t_first1'),{kind:'task.type.set',id:'t_first1',expectedRevision:1,taskType:'plan'}]))).rejects.toMatchObject({detail:{code:'invalid_input',path:['commands','1']}});
+  // Two commands on one identity compose (see test/composition.test.ts); a link plus its endpoint's creation still fails by index.
   await expect(db.applyChanges(input([create('t_first1'),link('t_first1','t_second')]))).rejects.toMatchObject({detail:{code:'invalid_transition',path:['commands','1']}});expect(await db.listAllTasks()).toEqual([]);
  }finally{sql.close();}
 });
@@ -80,7 +80,7 @@ it('returns stored conflict values rather than uncommitted virtual images',async
 it.each([
  {expectedStructuralRevision:undefined}, {commands:[create('t_first1'),{kind:'planning.set',expectedRevision:null,values:{timezone:'UTC',workingHours:[],bufferMinutes:0}}]},
  {commands:[create('t_first1'),create('t_second',0,{clientRef:'same'}),create('t_third1',0,{clientRef:'same'})]},
- {commands:Array.from({length:21},(_,i)=>create(`t_child${i.toString().padStart(3,'0')}`))},
+ {commands:Array.from({length:101},(_,i)=>create(`t_child${i.toString().padStart(3,'0')}`))},
 ])('rejects missing aggregate guards, unsupported compound families and duplicate refs',patch=>{
  expect(parseCommandEnvelope({contractVersion:2,actor:'user',commandId:'c_batch01',expectedStructuralRevision:0,commands:[create('t_first1'),create('t_second')],...patch}).ok).toBe(false);
 });
@@ -90,7 +90,7 @@ it('shares batch schemas, preview and receipt replay across REST/MCP',async()=>{
   const envelope=input([create('t_first1'),create('t_second'),link('t_first1','t_second')]);
   const request=new Request('https://test/api/v2/changes',{method:'POST',body:JSON.stringify(envelope)});const response=await handleApiRequest(request,new URL(request.url),db);expect(response.status).toBe(200);const result=await response.json();expect(parseChangesResult(result).ok).toBe(true);
   const rpc=new Request('https://test/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'apply_changes',arguments:envelope}})});expect(await(await handleMcpRequest(rpc,db,{DB:d1,AUTH_TOKEN:'test'})).json()).toMatchObject({result:{structuredContent:result}});
-  const tool=COMMAND_TOOLS.find(tool=>tool.name==='apply_changes');expect(tool?.inputSchema.properties.commands.maxItems).toBe(20);expect(tool?.inputSchema.properties.expectedStructuralRevision.type).toBe('integer');
+  const tool=COMMAND_TOOLS.find(tool=>tool.name==='apply_changes');expect(tool?.inputSchema.properties.commands.maxItems).toBe(100);expect(tool?.inputSchema.properties.expectedStructuralRevision.type).toBe('integer');
  }finally{sql.close();}
 });
 it('enforces the final graph guard in SQL after all staged edge writes',async()=>{

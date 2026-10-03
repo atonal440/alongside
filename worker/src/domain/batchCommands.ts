@@ -1,7 +1,7 @@
 import { parseRevision, type Revision, type EventInstant } from '@shared/parse';
 import type { CommandEnvelope, ChangesResult } from '@shared/wire/commands';
 import { entityStorageKey, parseEntitySnapshot, parseLinkKey, type EntityReadKey, type EntitySnapshot, type LinkSnapshot, type LinkKey } from '@shared/wire/versions';
-import type { Plan } from './Op';
+import type { Op, Plan } from './Op';
 import type { DeleteContext } from '../storage/deletion';
 import type { LinkPlanningContext } from '../storage/link';
 import { CommandError } from './commands';
@@ -30,6 +30,14 @@ export async function planBatchCommand(input: CommandEnvelope, reader: CommandRe
   const storedEntities = new Map<string, EntitySnapshot>();
   const storedLinks = new Map<string, LinkSnapshot>();
   const touched = new Set<string>();
+  // Same-identity composition: commands on one task/project apply in declared order to the virtual
+  // state and leave one net change (original before image, final after image, one revision step).
+  const writtenAt = new Map<string, number>();
+  // Identities written as derived effects of a delete (detached members, cascaded links) cannot be composed:
+  // the effect is one blanket statement, so a second write would move the revision twice.
+  const sealed = new Set<string>();
+  const commandChanges: number[][] = [];
+  let composed = false;
   const groups:number[]=[];
   const identity = (entity: string, id: string) => `${entity}:${id}`;
   const removing = new Set(input.commands.flatMap(command => command.kind === 'link.remove' ? [entityStorageKey({ entity: 'link', from: command.from, to: command.to, linkType: command.linkType })] : []));
@@ -113,14 +121,28 @@ export async function planBatchCommand(input: CommandEnvelope, reader: CommandRe
       throw error;
     }
     groups.push(planned.result.changes.length);
+    const mine: number[] = [];
     for (const change of planned.result.changes) {
-      if (change.entity === 'planning_settings')
+      if (change.entity === 'planning_settings' || change.entity === 'preference')
         throw new Error('Settings cannot mix with graph commands.');
       const id = identity(change.entity, change.id);
-      if (touched.has(id))
-        throw new CommandError({ code: 'invalid_input', path: ['commands', String(index)], message: 'A mixed batch may write each identity only once.', retryable: false, recoveryHint: 'Combine field intent into one semantic command per identity, or use separately reviewed sequential commands.' }, 400);
+      const earlier = writtenAt.get(id);
+      const derived = (command.kind === 'task.delete' || command.kind === 'project.delete') && change !== planned.result.changes[0];
+      if (sealed.has(id) || (derived && earlier !== undefined))
+        throw new CommandError({ code: 'invalid_input', path: ['commands', String(index)], message: 'A lifecycle effect (detached member or removed link) cannot overlap another written identity in the same batch.', retryable: false, recoveryHint: 'Run the delete in its own envelope, or leave the affected identity out of this one.' }, 400);
+      if (derived) sealed.add(id);
+      let net = change;
+      if (earlier === undefined) {
+        writtenAt.set(id, changes.length);
+        mine.push(changes.length);
+        changes.push(change);
+      } else {
+        net = composeChange(changes[earlier]!, change, index) as typeof change;
+        changes[earlier] = net;
+        mine.push(earlier);
+        composed = true;
+      }
       touched.add(id);
-      changes.push(change);
       if (change.entity === 'link') {
         const row = 'row' in change.after ? change.after.row : change.before?.row;
         if (!row)
@@ -137,12 +159,13 @@ export async function planBatchCommand(input: CommandEnvelope, reader: CommandRe
         const prior = entities.get(id);
         if (!prior)
           throw new Error('Missing initial entity context.');
-        const current = parseEntitySnapshot({ ...prior, entity: change.entity, id: change.id, row: 'row' in change.after ? change.after.row : null, version: { revision: change.after.revision, deletedAt: 'deleted' in change.after ? now : null } });
+        const current = parseEntitySnapshot({ ...prior, entity: net.entity, id: net.id, row: 'row' in net.after ? net.after.row : null, version: { revision: net.after.revision, deletedAt: 'deleted' in net.after ? now : null } });
         if (!current.ok)
           throw new Error('Invalid virtual entity snapshot.');
         entities.set(id, current.value);
       }
     }
+    commandChanges.push([...new Set(mine)].sort((a, b) => a - b));
     for (const [ref, id] of Object.entries(planned.result.refs))
       refs[ref] = id;
     assertions.push(...planned.plan.assertions);
@@ -174,9 +197,10 @@ export async function planBatchCommand(input: CommandEnvelope, reader: CommandRe
     else
       throw new Error('Unsupported mixed-batch assertion.');
   }
-  const result: ChangesResult = { contractVersion: 2, commandId: input.commandId, payloadHash: hash, serverNow: now, batch: true, changeGroups:groups, applied: true, changes, refs, warnings: [] };
+  const result: ChangesResult = { contractVersion: 2, commandId: input.commandId, payloadHash: hash, serverNow: now, batch: true, ...(composed ? { commandChanges } : { changeGroups: groups }), applied: true, changes, refs, warnings: [] };
   // Edge removals run before additions; endpoint/project creation keeps declared order.
-  const ordered = [...mutations.filter(op => op.kind === 'link.delete'), ...mutations.filter(op => op.kind !== 'link.delete')];
+  const merged = composed ? composeOps(mutations) : mutations;
+  const ordered = [...merged.filter(op => op.kind === 'link.delete'), ...(composed ? dependencyOrder(merged.filter(op => op.kind !== 'link.delete')) : merged.filter(op => op.kind !== 'link.delete'))];
   for (const change of changes)
     if (change.entity === 'link' && 'row' in change.after && change.after.row.link_type === 'blocks') {
       const parsed = parseLinkKey({ entity: 'link', from: change.after.row.from_task_id, to: change.after.row.to_task_id, linkType: 'blocks' });
@@ -185,4 +209,62 @@ export async function planBatchCommand(input: CommandEnvelope, reader: CommandRe
       ordered.push({ kind: 'graph.assert_acyclic', from: parsed.value.from, to: parsed.value.to });
     }
   return { result, plan: { assertions: [{ kind: 'workspace.structural_revision', expected: expected }, ...guarded.values()], ops: [{ kind: 'receipt.insert', result }, ...ordered, { kind: 'command.audit', commandId: input.commandId, actor: input.actor, reason: input.reason ?? null, result }, { kind: 'command.feed', result }] } };
+}
+
+type Change = ChangesResult['changes'][number];
+
+/** Fold a later change to the same task or project into the first, keeping one revision step. */
+function composeChange(first: Change, next: Change, index: number): Change {
+  const refuse = (message: string) => new CommandError({ code: 'invalid_input', path: ['commands', String(index)], message, retryable: false,
+    recoveryHint: 'Split the intent into separately reviewed sequential commands.' }, 400);
+  if (first.entity === 'link' || first.entity === 'planning_settings' || first.entity === 'preference' || next.entity === 'link' || next.entity === 'planning_settings' || next.entity === 'preference')
+    throw refuse('A mixed batch may write each link only once.');
+  if ('deleted' in first.after) throw refuse('A mixed batch cannot write an identity after deleting it.');
+  if ('deleted' in next.after && first.before === null) throw refuse('A mixed batch cannot create and delete the same identity.');
+  const revision = first.after.revision;
+  return { ...first, after: 'deleted' in next.after ? { revision, deleted: true } : { revision, row: next.after.row } } as Change;
+}
+
+function opIdentity(op: Op): string | null {
+  switch (op.kind) {
+    case 'task.insert': return `task:${op.row.id}`;
+    case 'project.insert': return `project:${op.row.id}`;
+    case 'task.update': case 'task.delete': return `task:${op.id}`;
+    case 'project.update': case 'project.delete': case 'project.delete_empty': return `project:${op.id}`;
+    default: return null;
+  }
+}
+
+/** One statement per identity, so the revision trigger fires once: merge patches into the first op. */
+function composeOps(ops: Op[]): Op[] {
+  const out: (Op | null)[] = [];
+  const at = new Map<string, number>();
+  for (const op of ops) {
+    const key = opIdentity(op);
+    const i = key === null ? undefined : at.get(key);
+    if (key === null || i === undefined) {
+      if (key !== null) at.set(key, out.length);
+      out.push(op);
+      continue;
+    }
+    const prev = out[i]!;
+    if (op.kind === 'task.update' || op.kind === 'project.update') {
+      if (prev.kind === 'task.insert' && op.kind === 'task.update') out[i] = { ...prev, row: { ...prev.row, ...op.patch } as typeof prev.row };
+      else if (prev.kind === 'project.insert' && op.kind === 'project.update') out[i] = { ...prev, row: { ...prev.row, ...op.patch } as typeof prev.row };
+      else if (prev.kind === 'task.update' && op.kind === 'task.update') out[i] = { ...prev, patch: { ...prev.patch, ...op.patch } };
+      else if (prev.kind === 'project.update' && op.kind === 'project.update') out[i] = { ...prev, patch: { ...prev.patch, ...op.patch } };
+      else throw new Error('Unsupported same-identity operation pair.');
+    } else if (op.kind === 'task.delete' || op.kind === 'project.delete' || op.kind === 'project.delete_empty') {
+      out[i] = null;
+      at.set(key, out.length);
+      out.push(op);
+    } else throw new Error('Unsupported same-identity operation pair.');
+  }
+  return out.filter((op): op is Op => op !== null);
+}
+
+/** Projects exist before the tasks that name them, and both before every update or link. */
+function dependencyOrder(ops: Op[]): Op[] {
+  return [...ops.filter(op => op.kind === 'project.insert'), ...ops.filter(op => op.kind === 'task.insert'),
+    ...ops.filter(op => op.kind !== 'project.insert' && op.kind !== 'task.insert')];
 }
