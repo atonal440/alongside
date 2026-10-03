@@ -12,6 +12,10 @@ Tools that moved there (and the REST-only `get_workspace_delta` and `get_entity_
 
 ---
 
+## Action-log entries from `apply_changes`
+
+Through MCP, `apply_changes` also writes one action-log entry per command, in declared order, in the same atomic batch as the receipt: `tool_name` is the command kind (`task.create`, `link.add`, …), `task_id` is the task for task commands (a deleted task keeps its ID), `title` is the entity's final title (links read `A → B`), and `detail` carries the kind-specific value (the new type, due date, deferral, focus time, `→ recurs <date>` for a completion, the project title for an assignment, the link type). Settings commands (`planning.set`, `preference.set`) write no entry, matching `update_preference`. A replay writes nothing, a failed command leaves nothing, and the REST `POST /api/v2/changes` the PWA uses writes no entries. The rows reach clients through the sync feed, which is why the sync read gate (protocol 3) had to be in force first. The quick verbs and deprecated mutating tools keep recording their own tool names.
+
 ## The `preference.set` command
 
 `preference.set` is a standalone command (it cannot join a mixed batch, like `planning.set`): `{ kind: 'preference.set', key, value, expectedRevision }`. `key` is one of the preference keys (including the internal `last_session_at`, which stays accepted); `value` is validated against the key's allowed set. `expectedRevision` is the preference's sync revision, or `null` if it has never been set. The result holds one change, `{ entity: 'preference', id: key, before: { revision, value } | null, after: { revision, value } }`, with `after.revision` one past `before.revision`. The write is guarded in the same batch as the receipt and audit row, and lands in the sync feed through the existing triggers. The legacy command feed (`change_feed`) has no preference rows. `update_preference` is its adapter; `describe_commands({ family: 'preference' })` and loose-intent `preview_changes` support it.

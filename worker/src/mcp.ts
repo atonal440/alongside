@@ -394,7 +394,7 @@ const UI_RESOURCES = [
 
 async function handleToolCall(name: string, args: Record<string, unknown>, db: DB) {
   if (FOUNDATION_TOOLS.some(tool => tool.name === name)) return callFoundationTool(name, args, db);
-  if (COMMAND_TOOLS.some(tool => tool.name === name)) return callCommandTool(name, args, db);
+  if (COMMAND_TOOLS.some(tool => tool.name === name)) return callCommandTool(name, args, db, { source: 'mcp' });
   if (READ_TOOL_NAMES.includes(name)) return callReadTool(name, args, db);
   switch (name) {
     case 'add_task': return runTool('add_task', args, db, addTask);

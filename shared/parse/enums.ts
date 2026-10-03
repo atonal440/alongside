@@ -38,7 +38,7 @@ export const RETIRED_TOOL_NAMES = ['snooze_task'] as const;
 
 /** Command kinds that phase C of the MCP surface plan will record in `action_log.tool_name`. */
 export const COMMAND_KINDS = [
-  'planning.set',
+  'planning.set', 'preference.set',
   'project.create', 'project.content.set', 'project.archive', 'project.reopen', 'project.delete',
   'task.create', 'task.content.set', 'task.focus.set', 'task.defer.set', 'task.reopen', 'task.complete',
   'task.project.set', 'task.type.set', 'task.legacy-schedule.set', 'task.delete',

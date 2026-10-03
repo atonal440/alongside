@@ -36,6 +36,7 @@ import { readinessScore } from '@shared/readiness';
 import { unsafeBrand } from '@shared/brand';
 import type { ActiveDeferState, Plan, PendingTaskDomain, TaskDomain } from './domain';
 import type { Op, PreCheck } from './domain/Op';
+import { commandLogDrafts, linkEndpoints, titlesFrom } from './domain/commandLog';
 import type { PreferenceState } from './domain/commands';
 import type { IsoDateTime, MintedProjectId, MintedTaskId, TaskId, ValidationError } from './parse';
 import { parseDueDateParts, parseIsoDateTime, parseIsoDateTimeMinute, parseTaskId } from './parse';
@@ -844,7 +845,11 @@ export class DB {
     return { ...result, dryRun: true, requiredStatements: capacity.value.requiredStatements };
   }
 
-  async applyChanges(input: CommandEnvelope): Promise<ChangesResult> {
+  /**
+   * Apply an envelope. `actionLog` also writes one action-log entry per non-settings command
+   * (kind as the tool name) in the same atomic plan; the MCP tool turns it on, REST does not.
+   */
+  async applyChanges(input: CommandEnvelope, options: { actionLog?: boolean } = {}): Promise<ChangesResult> {
     const hash = await commandHash(input);
     const replay = await this.getCommandReceipt(input.commandId);
     if (replay) {
@@ -868,7 +873,13 @@ export class DB {
     }
     const capacity=checkPlanCapacity(this.d1,planned.plan);
     if(!capacity.ok && capacity.error.kind==='capacity_exceeded')throw new CommandError({code:'capacity_exceeded',path:['commands'],message:`Atomic command requires ${capacity.error.requiredStatements} SQL statements; the limit is 100.`,retryable:false,requiredStatements:capacity.error.requiredStatements,limit:100,recoveryHint:'Retain intent and explicitly reduce the complete atomic scope.'},413);
-    const applied = await applyPlan(this.d1, planned.plan);
+    let plan = planned.plan;
+    if (options.actionLog) {
+      const missing = linkEndpoints(input).filter(id => !titlesFrom(planned.result).task.has(id));
+      const extra = new Map((await Promise.all([...new Set(missing)].map(async id => [id, (await this.getTask(id))?.title] as const))).flatMap(([id, title]) => title ? [[id, title] as const] : []));
+      plan = { ...plan, ops: [...plan.ops, ...commandLogDrafts(input, planned.result, extra).map(log => this.logOp(log, clock.value))] };
+    }
+    const applied = await applyPlan(this.d1, plan);
     if (applied.ok) return planned.result;
     // Concurrent identical execution can fail either the SQL revision guard or
     // receipt uniqueness. Re-read the committed receipt before reporting a
