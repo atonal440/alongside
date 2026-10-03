@@ -138,9 +138,20 @@ two-call preview and apply would be friction. Each one:
   same atomic plan and stored in the receipt (see
   [Quick-verb replay](#quick-verb-replay)).
 
-`update_task` is a partial patch. `task.content.set` replaces title, notes,
-kickoff note and session log together, so the quick verb merges the patch into
-the current values before building the command. `status: "pending"` becomes
+`update_task` is a partial patch, but the commands replace whole field
+groups. `task.content.set` replaces title, notes, kickoff note and session log
+together. `task.legacy-schedule.set` requires `dueDate`, `dueAllDay` and
+`recurrence` together. So for every group a patch touches, the quick verb
+merges the patch into that group's current values before building the
+command. That keeps today's behavior: changing only `due_date` keeps the
+recurrence, and changing only `recurrence` keeps the due date and its all-day
+flag. A new `due_date` resolves `due_all_day` the same way the legacy path
+does (`resolveDueDate`). The merged values must also pass the command's
+cross-field checks: clearing the due date requires no recurrence, and a
+recurrence can't sit on a timed due date. Any patch the legacy path accepted
+but those checks reject is a behavior change; list it and test it.
+Regression tests cover due-only, recurrence-only and all-day-only patches.
+`status: "pending"` becomes
 `task.reopen` only when the task is done. On a task that is already pending
 it is omitted, as it is effectively a no-op today. `task.reopen` rejects
 pending tasks that aren't deferred, and on a deferred one it would also clear
@@ -433,6 +444,8 @@ built once, on the command path, and not added to the legacy verbs as well.
   original `action_log_entry`.
 - `update_task` with `status: "pending"` on an already-pending task still
   succeeds, alone or with other fields, and doesn't clear a deferral.
+- `update_task` with only `due_date`, only `recurrence` or only `due_all_day`
+  keeps the other schedule fields, as it does today.
 - A PWA snapshot or delta containing command-kind action-log rows parses and
   syncs, and a client announcing protocol 2 gets 426 from the sync endpoints
   instead of a page it can't parse, with or without an `Origin` header.
