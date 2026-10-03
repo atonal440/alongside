@@ -47,3 +47,7 @@ order inserts before its cursor update in the same batch. Older plans therefore
 cannot insert behind a newer committed cursor or regress either cursor field.
 Historical tasks retain identity and state. Duty planners and drivers are future
 work; later revision/ledger contracts must build on these guards.
+
+`task.restore` is an unconditional insert used by both legacy and v2 import.
+Restoring historical rows must bypass active-status and live-cursor predicates;
+it still enforces ordinary database constraints and transactional rollback.

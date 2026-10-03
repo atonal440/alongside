@@ -67,8 +67,10 @@ matches. It charges periods, inspected days, and candidate visits and throws
 A caller must report/retry or isolate this failure, never treat it as exhaustion
 and end a duty or advance a cursor.
 
-`seriesIterator.ts` owns traversal and reuses rrule's calendar masks and
-positional helpers. Both packages pin rrule to 2.8.1 because this small adapter
+`seriesIterator.ts` owns traversal and positional selection, reusing rrule's
+calendar masks and time-set builder. Positions outside the filtered day/time
+product are skipped; negative indexes never clamp into a phantom occurrence.
+Both packages pin rrule to 2.8.1 because this small adapter
 uses internal modules. Upgrade the pin and build aliases together, and run the
 calendar differential fixtures, DST tests, worker dry run, and PWA build.
 

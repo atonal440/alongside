@@ -12,7 +12,7 @@ Import planner for turning a parsed export payload into a typed storage `Plan`.
 
 ## Functions
 
-**`planImport(payload)`** — Validates cross-row integrity and returns one restore plan: `wipe`, then project inserts, task inserts, link upserts, preference upserts, and action-log inserts. It rejects duplicate project/task/link keys, task project references to missing projects, links to missing tasks, invalid task row/domain states, and unknown or invalid preference values before storage statements are built.
+**`planImport(payload)`** — Validates cross-row integrity and returns one restore plan: `wipe`, then project inserts, task restores, link upserts, preference upserts, and action-log inserts. Task restores bypass live duty materialization predicates so historical instances survive regardless of duty status or cursor. It rejects duplicate project/task/link keys, task project references to missing projects, links to missing tasks, invalid task row/domain states, and unknown or invalid preference values before storage statements are built.
 
 `DB.importAll` validates generated SQL capacity before both dry-run counts and
 apply. Restore uses one transactional batch, including wipe, and rejects plans

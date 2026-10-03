@@ -14,8 +14,10 @@ UNTIL searches stop at their boundary. Budget failure is a typed error, never
 proof of exhaustion. COUNT retains bounded replay to preserve its ordinal bound.
 See [the canonical contract](../../shared/parse/recurrence.md).
 
-We keep the tested rrule calendar masks for ordinal weekdays, week numbering,
-and positional selection. The tradeoff is four internal imports, pinned to
+We keep the tested rrule calendar masks for ordinal weekdays and week numbering.
+We select positions directly from the filtered day/time product, since the
+library clamps out-of-range negative indexes and can misorder valid candidates
+among invalid positive selections. The tradeoff is three internal imports, pinned to
 2.8.1 in both packages. Differential fixtures compare safe native queries with
 our indexed searches; bundling verifies those imports in Worker and PWA. Replacing
 the whole calendar library would add substantially more calendar code.
@@ -39,6 +41,11 @@ not detach them, defer them, or silently mark them done. This eliminates the
 previously planned stale-task mutation. An occurrence ledger, revisions, drivers,
 and planners still belong to later slices; the executor guards do not replace
 those future concurrency contracts.
+
+Legacy import uses the existing unguarded `task.restore` op, independently of
+the duty's live status or cursor. Historical rows must not pass through the
+materialization insert guard. Real SQLite import tests verify that history is
+restored for active, paused, and ended duties with advanced cursors.
 
 Real SQLite tests exercise newer-then-older apply, duplicate replay, pause/end
 between planning and apply, unrelated constraint rollback, and injected failure
