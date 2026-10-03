@@ -160,11 +160,11 @@ Regression tests cover due-only, recurrence-only and all-day-only patches.
 `task.reopen` only when the task is done. On a task that is already pending
 it is omitted, as it is effectively a no-op today. If omitting it leaves no
 command at all (a call carrying only `status: "pending"` on a pending task),
-the call changes nothing: the verb returns the current task with
-`action_log_entry: null` and writes no entity change, audit row or
-action-log entry. Command envelopes and results can't be empty, so this case
-never reaches the planner. It is still recorded when a `commandId` is given
-(see [no-op receipts](#no-op-receipts)). `task.reopen` rejects
+the call changes no entity. Command envelopes and results can't be empty, so
+this case never reaches the planner. It still writes what the legacy handler
+writes besides the entity: today `update_task` always logs, so the no-op
+writes its action-log entry and returns it (see
+[no-op receipts](#no-op-receipts)). `task.reopen` rejects
 pending tasks that aren't deferred, and on a deferred one it would also clear
 the deferral, which the legacy patch never did. `add_task` puts the project and task type into `task.create`
 itself. A due date or recurrence needs `task.legacy-schedule.set` on the same
@@ -295,15 +295,19 @@ places, so each adapter needs explicit rules. Review has found these so far:
 | Legacy input | Command behavior | Adapter rule |
 | --- | --- | --- |
 | Partial `update_task` / `update_project` patch | `task.content.set`, `project.content.set` and `task.legacy-schedule.set` replace whole field groups | Merge each touched group with current values (see above) |
-| `update_project` with only `project_id`, or any patch that compiles to nothing | Envelopes need at least one command | Read: return the current entity, write nothing |
+| `update_project` with only `project_id`, or any patch that compiles to nothing | Envelopes need at least one command | No-op: return the current entity, no entity change |
 | `update_task` with `status: "pending"` on a pending task | `task.reopen` rejects it | Omit the command (see above) |
 | `update_task` with `focused_until: null` on a done task | `task.focus.set` rejects non-pending tasks | Omit: completion already cleared focus. A non-null value already matches, because legacy uses `focusTaskPlan`, which also clears the deferral and rejects non-pending tasks |
-| `link_tasks` for a link that already exists | `link.add` rejects an existing link | Read: return the existing link, write nothing |
-| `unlink_tasks` for a link that doesn't exist | `link.remove` rejects an absent link | Read: return success, write nothing |
+| `link_tasks` for a link that already exists | `link.add` rejects an existing link | No-op: return the existing link, no entity change |
+| `unlink_tasks` for a link that doesn't exist | `link.remove` rejects an absent link | No-op: return success, no entity change |
 | `create_project` with more than 19 `task_ids` | Envelopes and batch results cap at 20 commands | Decide in phase C: raise the command bound as far as the 100-statement capacity check allows (recommended, because statements are the real limit), or reject with a clear error and record it as a behavior change |
 
-Any call that resolves to a no-op under these rules writes no entity
-change and no action-log entry.
+A no-op under these rules changes no entity, but it keeps the legacy
+handler's other effects. `update_task`, `update_project`, `link_tasks` and
+`unlink_tasks` all call `logAction` today whether or not anything changed,
+so their no-ops still write and return an action-log entry. Whether the
+legacy path also bumps `updated_at` on an unchanged row is a detail the
+parity matrix records and decides.
 
 #### No-op receipts
 
@@ -312,13 +316,15 @@ must still record its `commandId`. Otherwise a retry could do something new.
 For example, a lost `update_task({ status: "pending" })` response on a pending
 task, retried after another client completes the task, would reopen it.
 Likewise a lost `link_tasks` response on an existing link, retried after
-someone removes the link, would add it back. So when a `commandId` is given,
-a no-op writes one receipt in its own atomic batch:
+someone removes the link, would add it back. So a no-op commits one atomic
+batch holding its receipt and, where the legacy handler logs, its action-log
+insert:
 `{ "receiptVersion": 2, "tool": <name>, "result": null, "response": <the no-op response> }`,
-with the usual request hash. A retry finds the receipt first and returns the
-stored response, whatever has changed since. A `null` result is valid only in
-a version 2 receipt, and tests cover both examples above. Without a
-`commandId` nothing is recorded, as for any call without one.
+with the usual request hash. The server mints a `commandId` when the caller
+gives none, as for every quick-verb write. A retry with the same ID finds the
+receipt first and returns the stored response, whatever has changed since,
+without logging again. A `null` result is valid only in a version 2 receipt.
+Tests cover both examples above and the single log row per no-op.
 
 That table is a starting point, not a complete list. **Phase C's first
 deliverable is a full parity matrix**, built from the legacy handlers in
@@ -396,15 +402,15 @@ Phases refer to [Rollout](#rollout).
 | `complete_task` | Quick verb on `task.complete` | C | Server mints the successor ID; the widget calls this name |
 | `defer_task` | Quick verb on `task.defer.set` | C | |
 | `focus_task` | Quick verb on `task.focus.set` | C | `hours` converted to `focusedUntil` |
-| `reopen_task` | `apply_changes` `task.reopen` | C, removed D | The widget calls this name: keep it as an app-only tool if the host supports MCP Apps tool visibility, otherwise keep it listed |
-| `delete_task` | `apply_changes` `task.delete` | B, removed D | Destructive tier |
-| `create_project` | `apply_changes` `project.create` + `task.project.set` × N | B, removed D | |
-| `update_project` | `apply_changes` `project.content.set` / `.archive` / `.reopen` | B, removed D | |
-| `delete_project` | `apply_changes` `project.delete` | B, removed D | Destructive tier |
+| `reopen_task` | `apply_changes` `task.reopen` | adapter C, removed D | The widget calls this name: keep it as an app-only tool if the host supports MCP Apps tool visibility, otherwise keep it listed |
+| `delete_task` | `apply_changes` `task.delete` | deprecated B, adapter C, removed D | Destructive tier |
+| `create_project` | `apply_changes` `project.create` + `task.project.set` × N | deprecated B, adapter C, removed D | |
+| `update_project` | `apply_changes` `project.content.set` / `.archive` / `.reopen` | deprecated B, adapter C, removed D | |
+| `delete_project` | `apply_changes` `project.delete` | deprecated B, adapter C, removed D | Destructive tier |
 | `get_project_context` | `get_context({ project })` | B, removed D | |
-| `link_tasks` | `apply_changes` `link.add` | B, removed D | Candidate quick verb if planning sessions use it heavily |
-| `unlink_tasks` | `apply_changes` `link.remove` | B, removed D | |
-| `update_preference` | `apply_changes` `preference.set` (new kind) | C, removed D | Needs a reliable preference command first |
+| `link_tasks` | `apply_changes` `link.add` | deprecated B, adapter C, removed D | Candidate quick verb if planning sessions use it heavily |
+| `unlink_tasks` | `apply_changes` `link.remove` | deprecated B, adapter C, removed D | |
+| `update_preference` | `apply_changes` `preference.set` (new kind) | adapter C, removed D | Needs a reliable preference command first |
 | `get_action_log` | `get_history` | B, removed D | Keep the action-log widget `_meta` |
 | `get_capabilities` | `get_capabilities` | A | Adds the tool-surface and command catalog versions |
 | `resolve_time` | `resolve_time` | — | Unchanged |
@@ -567,8 +573,9 @@ built once, on the command path, and not added to the legacy verbs as well.
 - The default `tools/list` stays at or below about 20 tools through slice 7.
 - Every MCP write except `restore_workspace` produces a command receipt.
   Restore relies on its cursor guard and epoch advance instead.
-- A no-op call with a `commandId` stores a receipt, and its retry returns the
-  stored no-op response even if the state has since changed.
+- A no-op call stores a receipt and writes the same action-log entry as
+  today. Its retry returns the stored no-op response, even if the state has
+  since changed, and writes no second log row.
 - `update_preference` writes no action-log entry, as today.
   Retrying a quick verb with the
   same `commandId` replays rather than duplicating, including after the first
@@ -577,7 +584,8 @@ built once, on the command path, and not added to the legacy verbs as well.
   original `action_log_entry`.
 - `update_task` with `status: "pending"` on an already-pending task still
   succeeds, alone or with other fields, and doesn't clear a deferral. Alone,
-  it writes nothing and returns `action_log_entry: null`.
+  it changes no entity but still writes and returns its action-log entry, as
+  today.
 - After phase C, no MCP tool handler calls a legacy `db.*` mutation or
   `logAction` directly, apart from the documented `restore_workspace`
   exception.
