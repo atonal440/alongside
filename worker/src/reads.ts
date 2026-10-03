@@ -115,6 +115,8 @@ function page<T>(items: T[], limit: number, cursor: unknown, keyOf: (item: T) =>
   if (cursor !== undefined) {
     if (typeof cursor !== 'string') throw bad(['cursor'], 'cursor must be a string.');
     const after = decodeCursor(cursor);
+    const shape = items.length > 0 ? keyOf(items[0]!) : after;
+    if (after.length !== shape.length || after.some((part, i) => typeof part !== typeof shape[i])) throw bad(['cursor'], 'cursor does not belong to this search; repeat the search without a cursor.');
     start = items.findIndex(item => compareKeys(keyOf(item), after) > 0);
     if (start < 0) start = items.length;
   }
@@ -151,9 +153,12 @@ async function find(args: Record<string, unknown>, db: DB) {
     if (args.preset !== 'ready') throw bad(['preset'], 'preset must be "ready".');
     if ('statuses' in filter) throw bad(['filter', 'statuses'], 'The ready preset is pending-only; omit statuses.');
     tasks = await db.listReadyTasks(projectId);
-    // Same ordering as listReadyTasks: score descending, then creation, then ID.
+    // Re-sort with one timestamp so the order and the cursor keys agree exactly. Scores drift with
+    // edits and the clock, so a page boundary can still shift slightly between calls, but a cursor
+    // never errors and never loops.
     const at = new Date().toISOString();
     keyOf = task => [-readinessScore(task, at), task.created_at, task.id];
+    tasks = tasks.slice().sort((a, b) => compareKeys(keyOf(a), keyOf(b)));
   } else {
     const statuses = filter.statuses ?? ['pending'];
     if (!Array.isArray(statuses) || statuses.length === 0 || statuses.some(status => status !== 'pending' && status !== 'done')) throw bad(['filter', 'statuses'], 'statuses must be a non-empty list of "pending" or "done".');

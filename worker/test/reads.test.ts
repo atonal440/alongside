@@ -61,6 +61,17 @@ describe('find', () => {
     } finally { sql.close(); }
   });
 
+  it('rejects a cursor from a different search', async () => {
+    const { sql, db } = await seeded();
+    try {
+      const projects = await callReadTool('find', { entity: 'project', limit: 1 }, db) as { nextCursor: string | null };
+      const tasks = await callReadTool('find', { entity: 'task', limit: 1 }, db) as { nextCursor: string };
+      await expect(callReadTool('find', { entity: 'project', cursor: tasks.nextCursor }, db)).rejects.toMatchObject({ detail: { code: 'invalid_input' } });
+      await expect(callReadTool('find', { entity: 'task', cursor: btoa('[1]') }, db)).rejects.toMatchObject({ detail: { code: 'invalid_input' } });
+      expect(projects.nextCursor).toBeNull();
+    } finally { sql.close(); }
+  });
+
   it.each([{}, { preset: 'ready' }])('keeps paging after the cursor item leaves the results %j', async extra => {
     const { sql, d1 } = sqliteD1(); const db = new DB(d1);
     try {
