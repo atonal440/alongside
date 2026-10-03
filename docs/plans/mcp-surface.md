@@ -247,8 +247,48 @@ rules prevent that:
   and a failed command leaves no log entry behind. `apply_changes` follows the
   same rule if it writes action-log entries.
 
+  This changes what a receipt stores. `command_receipts.result_json` is
+  replayed through the strict `ChangesResultSchema`, which has no field for an
+  action-log row. So receipts get a versioned stored shape, for example
+  `{ "receiptVersion": 2, "result": <ChangesResult>, "actionLogEntry": <row or null> }`.
+  A receipt without `receiptVersion` parses as version 1: a bare
+  `ChangesResult` with no entry. Boundary tests cover replaying both versions
+  and rejecting a version 2 receipt whose entry doesn't match the action-log
+  row codec.
+
 Without a `commandId`, the server mints a fresh one and none of this
 applies: each call is a new command, as today.
+
+### Adapter parity
+
+Every retained tool that becomes a command adapter (the quick verbs and the
+deprecated mutating tools) must behave as it does today for every input it
+accepts today. Commands are stricter than the legacy handlers in several
+places, so each adapter needs explicit rules. Review has found these so far:
+
+| Legacy input | Command behavior | Adapter rule |
+| --- | --- | --- |
+| Partial `update_task` / `update_project` patch | `task.content.set`, `project.content.set` and `task.legacy-schedule.set` replace whole field groups | Merge each touched group with current values (see above) |
+| `update_project` with only `project_id`, or any patch that compiles to nothing | Envelopes need at least one command | Read: return the current entity, write nothing |
+| `update_task` with `status: "pending"` on a pending task | `task.reopen` rejects it | Omit the command (see above) |
+| `update_task` with `focused_until: null` on a done task | `task.focus.set` rejects non-pending tasks | Omit: completion already cleared focus. A non-null value already matches, because legacy uses `focusTaskPlan`, which also clears the deferral and rejects non-pending tasks |
+| `link_tasks` for a link that already exists | `link.add` rejects an existing link | Read: return the existing link, write nothing |
+| `unlink_tasks` for a link that doesn't exist | `link.remove` rejects an absent link | Read: return success, write nothing |
+| `create_project` with more than 19 `task_ids` | Envelopes and batch results cap at 20 commands | Decide in phase C: raise the command bound as far as the 100-statement capacity check allows (recommended, because statements are the real limit), or reject with a clear error and record it as a behavior change |
+
+Any call that resolves to a read under these rules writes nothing, so it
+creates no receipt and no action-log entry, and a `commandId` passed with it
+isn't recorded.
+
+That table is a starting point, not a complete list. **Phase C's first
+deliverable is a full parity matrix**, built from the legacy handlers in
+`worker/src/mcp.ts` and `worker/src/db.ts`. For every retained mutating tool,
+it covers each class of accepted input (each field, combination, and entity
+state such as done, deferred or missing), with the legacy result and the
+adapter result side by side. Each row gets a test that runs the same input
+through the legacy handler and the adapter and compares the outcome. Any row
+where they differ is an explicit, documented behavior change, approved
+before the adapter replaces the legacy handler.
 
 ## Reads
 
@@ -422,8 +462,9 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   descriptions ("Deprecated: use `find`"). Widen the shared action-log codec
   to the versioned action-name union (with tests), and raise the PWA's
   announced client protocol to 3 in the same build.
-- **C: One write path.** First add same-identity composition to the batch
-  planner, with the revised result contract (see
+- **C: One write path.** First build the parity matrix (see
+  [Adapter parity](#adapter-parity)) and the versioned receipt shape. Then add
+  same-identity composition to the batch planner, with the revised result contract (see
   [One write per identity](#one-write-per-identity)). Then rebuild the quick
   verbs on the command planner, with receipt-first replay and
   command-derived IDs. Also rebuild every other mutating tool that is still
@@ -459,6 +500,10 @@ built once, on the command path, and not added to the legacy verbs as well.
   it writes nothing and returns `action_log_entry: null`.
 - After phase C, no MCP tool handler calls a legacy `db.*` mutation or
   `logAction` directly.
+- The phase C parity matrix exists, every row has a passing test, and every
+  behavior difference in it is documented and approved.
+- Version 1 receipts (bare results) and version 2 receipts (with an
+  action-log entry) both replay.
 - `update_task` with only `due_date`, only `recurrence` or only `due_all_day`
   keeps the other schedule fields, as it does today.
 - A PWA snapshot or delta containing command-kind action-log rows parses and
