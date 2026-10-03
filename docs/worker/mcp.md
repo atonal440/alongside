@@ -4,10 +4,10 @@ Model Context Protocol (MCP) handler. Exposes Alongside task data and operations
 
 ## Functions
 
-**`handleMcpRequest(request, db, env)`** — Parses the incoming JSON-RPC envelope and dispatches to the appropriate MCP method:
+**`handleMcpRequest(request, db, env, surface = 'default')`** — Parses the incoming JSON-RPC envelope and dispatches to the appropriate MCP method:
 
 - `initialize` — Returns server info and capability declaration.
-- `tools/list` — Enumerates all available tools with JSON Schema input definitions.
+- `tools/list` — Enumerates the surface's tools with JSON Schema input definitions and annotations. `surface: 'admin'` (served at `/mcp/admin`) lists only the admin set from `toolSurface.ts`; the default list keeps moved tools as deprecated aliases.
 - `tools/call` — Executes a named tool (see below) and returns its result or a JSON-RPC error.
 - `resources/list` — Lists available MCP UI resources.
 - `resources/read` — Returns the HTML content of a named resource.
@@ -16,6 +16,7 @@ Model Context Protocol (MCP) handler. Exposes Alongside task data and operations
 
 | Tool | Purpose |
 |------|---------|
+| `find`, `get_context`, `get_history`, `describe_commands` | Phase B reads (`reads.ts`); see `docs/mcp-tools.md` |
 | `start_session` | Returns ready tasks, focused tasks, preferences, and session instructions |
 | `show_tasks` | Renders tasks in the inline widget |
 | `show_project` | Renders a project and its tasks in the inline widget |

@@ -6,6 +6,8 @@ import type { Task, Project } from '@shared/types';
 import type { Env } from './index';
 import { getAppHtml, getActionLogHtml } from './app-ui';
 import { parsePositiveFinite } from './parse';
+import { callReadTool, READ_TOOLS, READ_TOOL_NAMES } from './reads';
+import { ADMIN_TOOL_NAMES, annotate, asDeprecatedAlias, withReplacement } from './toolSurface';
 
 interface McpRequest {
   jsonrpc: '2.0';
@@ -82,9 +84,10 @@ SESSION CLOSE: If session_log is "ask_at_end", offer to write one. If "auto_gene
 PREFERENCES: When the user states a preference, call update_preference immediately — no confirmation needed.
 `.trim();
 
-export const TOOLS = [
+const TOOL_DEFS = [
   ...FOUNDATION_TOOLS,
   ...COMMAND_TOOLS,
+  ...READ_TOOLS,
   {
     name: 'start_session',
     description: 'Call at the start of every session. Returns ready tasks, preferences, and session instructions.',
@@ -353,6 +356,18 @@ export const TOOLS = [
   },
 ];
 
+/** Default `/mcp` list. Tools that moved to the admin endpoint or REST stay here as deprecated aliases until phase D. */
+export const TOOLS = TOOL_DEFS.map(tool => annotate(withReplacement(asDeprecatedAlias(tool))));
+
+/** Opt-in `/mcp/admin` list: export, restore, and the reads restore depends on. */
+export const ADMIN_TOOLS = ADMIN_TOOL_NAMES.map(name => {
+  const tool = TOOL_DEFS.find(candidate => candidate.name === name);
+  if (!tool) throw new Error(`Admin tool ${name} is not registered.`);
+  return annotate(tool);
+});
+
+export type McpSurface = 'default' | 'admin';
+
 const UI_RESOURCES = [
   {
     uri: TASK_DASHBOARD_URI,
@@ -371,6 +386,7 @@ const UI_RESOURCES = [
 async function handleToolCall(name: string, args: Record<string, unknown>, db: DB) {
   if (FOUNDATION_TOOLS.some(tool => tool.name === name)) return callFoundationTool(name, args, db);
   if (COMMAND_TOOLS.some(tool => tool.name === name)) return callCommandTool(name, args, db);
+  if (READ_TOOL_NAMES.includes(name)) return callReadTool(name, args, db);
   switch (name) {
     case 'show_tasks': {
       const taskIds = args.task_ids as string[];
@@ -603,10 +619,12 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
   }
 }
 
-export async function handleMcpRequest(request: Request, db: DB, env: Env): Promise<Response> {
+export async function handleMcpRequest(request: Request, db: DB, env: Env, surface: McpSurface = 'default'): Promise<Response> {
+  const admin = surface === 'admin';
+  const endpoint = admin ? '/mcp/admin' : '/mcp';
   if (request.method === 'GET') {
     // Streamable HTTP: GET opens an SSE stream for server-initiated messages.
-    return new Response('event: endpoint\ndata: /mcp\n\n', {
+    return new Response(`event: endpoint\ndata: ${endpoint}\n\n`, {
       headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
     });
   }
@@ -632,17 +650,20 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env): Prom
             },
           },
         },
-        serverInfo: { name: 'alongside', version: '1.0.0' },
+        serverInfo: { name: admin ? 'alongside-admin' : 'alongside', version: '1.0.0' },
+        // Hosts include this once per connection; start_session still returns it too until phase D.
+        ...(admin ? {} : { instructions: SESSION_INSTRUCTIONS }),
       });
 
     case 'tools/list':
-      return mcpResponse(body.id, { tools: TOOLS });
+      return mcpResponse(body.id, { tools: admin ? ADMIN_TOOLS : TOOLS });
 
     case 'resources/list':
-      return mcpResponse(body.id, { resources: UI_RESOURCES });
+      return mcpResponse(body.id, { resources: admin ? [] : UI_RESOURCES });
 
     case 'resources/read': {
       const params = body.params as { uri: string };
+      if (admin) return mcpError(body.id, -32602, `Unknown resource: ${params.uri}`);
       if (params.uri === TASK_DASHBOARD_URI) {
         return mcpResponse(body.id, {
           contents: [{
@@ -669,8 +690,10 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env): Prom
     case 'tools/call': {
       const params = body.params as { name: string; arguments?: Record<string, unknown> };
       try {
+        const listed = admin ? ADMIN_TOOLS : TOOLS;
+        if (!listed.some(tool => tool.name === params.name)) throw new Error(`Unknown tool: ${params.name}`);
         const result = await handleToolCall(params.name, params.arguments || {}, db);
-        const toolDef = TOOLS.find(t => t.name === params.name) as { _meta?: Record<string, unknown> } | undefined;
+        const toolDef = listed.find(t => t.name === params.name) as { _meta?: Record<string, unknown> } | undefined;
         const meta = toolDef?._meta ? { _meta: toolDef._meta } : {};
         return mcpResponse(body.id, {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],

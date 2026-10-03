@@ -1,6 +1,6 @@
 # MCP surface: organizing a growing set of verbs
 
-Status: proposal, not implemented. Updated 2026-10-03.
+Status: phases A (annotations, `/mcp/admin`, deprecated aliases, `initialize.instructions`, `toolSurface`) and B (reads, loose-intent preview, wider action-log codec) implemented; C–D proposed. Updated 2026-10-03.
 
 This plan refines §10 ("REST and MCP surface") of
 [the power-user plan](power-user-todo.md). That document still owns the
@@ -453,8 +453,8 @@ Phases refer to [Rollout](#rollout).
 | `export_workspace` | Admin endpoint | A, alias removed D | |
 | `restore_workspace` | Admin endpoint | A, alias removed D | Destructive tier while the alias remains |
 
-`docs/mcp-tools.md` also documents an `update_kickoff_note` tool that is not
-registered in `TOOLS`. Remove that section when the reference is next updated.
+`docs/mcp-tools.md` used to document an `update_kickoff_note` tool that was
+never registered in `TOOLS`; that section was removed in phase A.
 
 ## Where planned operations land
 
@@ -536,12 +536,30 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   removed in phase D with the other deprecated tools, once logs show no
   callers. Move static session instructions to `initialize`. Add
   `toolSurface` to capabilities.
+
+  Phase A as built: `start_session` is annotated as a non-read-only write
+  until phase C removes its preference writes. The admin endpoint serves
+  `export_planning_settings` under its current name; folding it into
+  `export_workspace({ scope: 'settings' })` is left for when that tool gains
+  the argument. `start_session` still returns `instructions` alongside
+  `initialize.instructions` so hosts that ignore the latter keep working.
 - **B: New reads and pinning preview.** Add `find` (task, project),
   `get_context`, `get_history`, `describe_commands`, and loose-intent
   `preview_changes`. Mark the tools they replace as deprecated in their
   descriptions ("Deprecated: use `find`"). Widen the shared action-log codec
   to the versioned action-name union (with tests), and raise the PWA's
   announced client protocol to 3 in the same build.
+  Phase B as built: `find`, `get_context`, `get_history` and `describe_commands`
+  are in `worker/src/reads.ts`; loose-intent pinning is in
+  `worker/src/pinning.ts` and is selected by `intent: true`. `find` pages by an
+  item-ID cursor, `get_context` depth 1 covers only what exists today (project,
+  prerequisites, dependents, related; ancestors, reminders and blocks arrive
+  with their slices), and `get_history` returns one merged, newest-first list.
+  `get_history` does not carry widget `_meta` because `get_action_log` never
+  had any. The announced client protocol is 3, and the sync codec's
+  `ActionNameSchema` accepts tool names, retired names and command kinds. The
+  sync read gate that rejects protocol < 3 is still phase C work, so the worker
+  must not write command-kind rows yet.
 - **C: One write path.** First build the parity matrix (see
   [Adapter parity](#adapter-parity)) and the versioned receipt shape. Then add
   same-identity composition to the batch planner, with the revised result contract (see
@@ -577,11 +595,10 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   higher, a restore committed, possibly the caller's own, and the snapshot
   shows what is live. The error's message also says "Nothing was changed",
   which is misleading in this case, because the caller's restore may already
-  have committed. Reword it when restore is next touched. `restore_outcome_unknown` is narrower: it is returned only when the
+  have committed. Reworded in phase A. `restore_outcome_unknown` is narrower: it is returned only when the
   apply step itself fails and the epoch moved during that same call.
-  [Workspace portability](../shared/workspace-portability.md) currently says a
-  retry returns `restore_outcome_unknown`, which is inaccurate; correct it
-  when that reference is next updated. The phase C claims exclude restore
+  [Workspace portability](../shared/workspace-portability.md) now
+  describes the cursor-conflict recovery path. The phase C claims exclude restore
   explicitly. Making restore receipted (a
   `commandId` and a stored result, so a retry replays) is a possible later
   improvement, but it's not needed for safety.

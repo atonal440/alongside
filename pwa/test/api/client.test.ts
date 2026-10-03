@@ -15,7 +15,7 @@ describe('apiRequest', () => {
     stub.respondWith({ method: 'POST', path: '/api/tasks' }, { type: 'json', status: 426, body: { error: 'upgrade_required' } });
     const result = await apiRequest('/api/tasks', { method: 'POST' }, config, parseTaskRow);
     stub.restore();
-    expect(stub.calls[0]?.headers).toMatchObject({ 'X-Alongside-Client': 'pwa/2' });
+    expect(stub.calls[0]?.headers).toMatchObject({ 'X-Alongside-Client': 'pwa/3' });
     expect(result).toMatchObject({ kind: 'http', status: 426 });
     expect(consumeUpgradeRequired()).toBe(true);
   });

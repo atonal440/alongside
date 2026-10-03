@@ -516,7 +516,7 @@ export class DB {
       .from(tasksTable)
       .where(and(...conditions));
 
-    return results.sort((a, b) => readinessScore(b, ts) - readinessScore(a, ts));
+    return results.sort((a, b) => readinessScore(b, ts) - readinessScore(a, ts) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
   }
 
   // Returns tasks whose focused_until is still in the future.
@@ -705,8 +705,8 @@ export class DB {
 
   private restoreCursorConflict(current: { epoch: number; sequence: number }): CommandError {
     return new CommandError({ code: 'restore_cursor_conflict', path: ['expectedCursor'], retryable: false,
-      message: `The workspace changed after the supplied cursor; it is now at epoch ${current.epoch}, sequence ${current.sequence}. Nothing was changed.`,
-      recoveryHint: 'Export again, review the new state, and rerun preflight with the current cursor before applying.' }, 409);
+      message: `The workspace changed after the supplied cursor; it is now at epoch ${current.epoch}, sequence ${current.sequence}. This request wrote nothing, but if you are retrying an apply, your earlier restore may already have committed.`,
+      recoveryHint: 'Read a current snapshot. An epoch above your expectedCursor.epoch means a restore committed, possibly yours; otherwise export again, review the new state, and rerun preflight with the current cursor before applying.' }, 409);
   }
 
   async getEntitySnapshot(key: EntityReadKey): Promise<EntitySnapshot> {
@@ -929,6 +929,15 @@ export class DB {
       .from(actionLogTable)
       .orderBy(desc(actionLogTable.id))
       .limit(limit);
+  }
+
+  /** Newest-first command audit rows (the receipt's actor, reason and diff list). */
+  async listCommandAudit(limit = 50): Promise<{ command_id: string; actor: string; reason: string | null; changes_json: string; created_at: string }[]> {
+    return this.d1
+      .prepare('SELECT command_id, actor, reason, changes_json, created_at FROM command_audit ORDER BY created_at DESC, command_id DESC LIMIT ?')
+      .bind(limit)
+      .all<{ command_id: string; actor: string; reason: string | null; changes_json: string; created_at: string }>()
+      .then(r => r.results);
   }
 
   // Seed missing default preferences (called by start_session)

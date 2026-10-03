@@ -33,6 +33,18 @@ export const TOOL_NAMES = [
   'get_action_log',
 ] as const;
 
+/** Tool names retired from `tools/list` whose action-log rows must stay readable. */
+export const RETIRED_TOOL_NAMES = ['snooze_task'] as const;
+
+/** Command kinds that phase C of the MCP surface plan will record in `action_log.tool_name`. */
+export const COMMAND_KINDS = [
+  'planning.set',
+  'project.create', 'project.content.set', 'project.archive', 'project.reopen', 'project.delete',
+  'task.create', 'task.content.set', 'task.focus.set', 'task.defer.set', 'task.reopen', 'task.complete',
+  'task.project.set', 'task.type.set', 'task.legacy-schedule.set', 'task.delete',
+  'link.add', 'link.remove',
+] as const;
+
 export const USER_PREFERENCE_KEYS = [
   'sort_by',
   'urgency_visibility',
@@ -96,6 +108,14 @@ export const ToolNameSchema = v.pipe(
   v.picklist(TOOL_NAMES),
   v.transform(value => value as ToolName),
 );
+
+/**
+ * Everything an `action_log.tool_name` may hold when read back: current tool names, retired names
+ * and command kinds. Readers (PWA sync, restore) accept the union before the worker writes the
+ * newer values; writers of legacy rows still use `ToolNameSchema`.
+ */
+export const ActionNameSchema = v.union([ToolNameSchema, v.picklist(RETIRED_TOOL_NAMES), v.picklist(COMMAND_KINDS)]);
+export type ActionName = v.InferOutput<typeof ActionNameSchema>;
 
 export const UserPreferenceKeySchema = v.pipe(
   v.picklist(USER_PREFERENCE_KEYS),

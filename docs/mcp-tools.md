@@ -1,8 +1,30 @@
 # MCP Tools Reference
 
-Alongside exposes 18 tools via the MCP endpoint at `/mcp` (JSON-RPC POST). All calls require an `Authorization: Bearer {AUTH_TOKEN}` header.
+Alongside exposes 39 tools (including deprecated aliases) via the MCP endpoint at `/mcp` (JSON-RPC POST). All calls require an `Authorization: Bearer {AUTH_TOKEN}` header.
+
+## Endpoints, tiers and annotations
+
+Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`, plus `idempotentHint` where true) so a host can approve per tier: reads are `readOnlyHint: true`; conversational writes are non-destructive; `delete_task`, `delete_project`, `apply_changes` and `restore_workspace` are `destructiveHint: true`. `start_session` is not yet read-only because it still seeds default preferences and stores `last_session_at`; that changes in phase C of [the MCP surface plan](plans/mcp-surface.md).
+
+`/mcp/admin` is an opt-in second endpoint with the same bearer token. Connect it only when needed. It lists `export_workspace`, `restore_workspace`, `get_workspace_snapshot` (the cursor read restore needs, and the way to check after a lost restore response whether it committed), `export_planning_settings` and `preview_legacy_dates`. It has no widget resources.
+
+Tools that moved there (and the REST-only `get_workspace_delta` and `get_entity_version`) stay listed on `/mcp` as deprecated aliases that behave exactly as before; their descriptions start with `Deprecated alias.` and name the new home. They are removed in phase D. `initialize` on `/mcp` now carries the session instructions in its `instructions` field; `start_session` still returns them too until then. `get_capabilities` reports `toolSurface` (`version`, `commandCatalog`, `adminEndpoint`).
 
 ---
+
+## Find, context and loose-intent changes (phase B)
+
+These tools replace the older list/get reads and the by-hand revision bookkeeping. The old tools keep working; their descriptions start with `Deprecated: use …`.
+
+**`find`** — `{ entity: 'task' | 'project', preset?: 'ready', filter?, limit?, cursor? }`. Task filters: `statuses` (default `["pending"]`, deferred tasks included, like `list_tasks`), `text` (title and notes, case-insensitive) and `project_id`. `preset: 'ready'` is `get_ready_tasks` (pending-only, so it rejects `statuses`). Project filter: `status` (default `"active"`). Returns `{ entity, items, nextCursor }`; pass `nextCursor` back as `cursor`. Order is deterministic: due date then creation then ID (readiness score for the preset). A cursor whose item has since left the results is rejected with `invalid_input`; repeat the search.
+
+**`get_context`** — `{ entity: 'task' | 'project' | 'link' | 'settings', … , depth?: 0 | 1 }`. `depth: 0` returns exactly what `get_entity`, `get_link` or `get_planning_settings` return. The default `depth: 1` adds a `context` object: for a task its `project`, `prerequisites`, `dependents` and `related` tasks; for a project its `ready_tasks` and `task_counts`. Missing or deleted entities come back unchanged (null row), with no context.
+
+**`get_history`** — `{ limit? }`. Action-log rows (`source: 'action_log'`) merged with command-audit rows (`source: 'command'`, with `command_id`, `actor`, `reason`, `changes`), newest first.
+
+**`describe_commands`** — `{ family: 'task' | 'project' | 'link' | 'planning' }`. Returns that family's command schemas, one valid example envelope and the error codes to expect.
+
+**Loose intent for `preview_changes`.** Instead of a strict envelope, send `{ intent: true, contractVersion: 2, commands: [...] }` where each command is its strict form without `expectedRevision`, `expectedStructuralRevision`, creation IDs or `successor`. `commandId` (minted if omitted), `actor` (default `"llm"`) and `reason` are optional. A creation command may carry a `clientRef`; later commands refer to it as `"@clientRef"` in `id`, `from`, `to` and `project`. The server reads current state, mints IDs, fills every guard and previews the result. The response is the usual preview plus `pinnedEnvelope`: the strict envelope to pass to `apply_changes` unchanged. Patches to `*.content.set` and `task.legacy-schedule.set` merge into current values because those commands replace whole field groups. A completion gets a minted `successor` only when the task has a recurrence. If anything changes between preview and apply, `apply_changes` returns `revision_conflict` as for any stale guard. Retrying a lost apply with the same envelope replays the receipt. Strict envelopes are still accepted and return no `pinnedEnvelope`.
 
 ## Session & Discovery
 
@@ -324,22 +346,6 @@ Update a user preference. Preferences are applied automatically on the next `sta
 | `planning_prompt` | Prompt style for plan-type tasks |
 
 **Returns:** `{ updated: true, key, value }`
-
----
-
-### `update_kickoff_note`
-
-Update the kickoff note on a task or project. A kickoff note is a forward-looking re-entry ramp: what to do *next*, not a summary of what happened.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|---|---|---|---|
-| `entity_type` | `'task'\|'project'` | yes | |
-| `entity_id` | `string` | yes | Task or project ID. |
-| `kickoff_note` | `string` | yes | |
-
-**Returns:** `{ updated: true, entity_type, entity_id }`
 
 ---
 

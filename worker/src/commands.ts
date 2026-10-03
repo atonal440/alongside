@@ -6,6 +6,7 @@ import { parseWorkspaceRestoreInput } from '@shared/wire/workspaceRestore';
 import { CommandError } from './domain/commands';
 import { invalidInput } from './domain/temporalFoundation';
 import { readJson } from './parse/request';
+import { isLooseIntent, pinIntent } from './pinning';
 import type { DB } from './db';
 
 const envelope = {
@@ -106,6 +107,19 @@ const deleteSchemas = ['task','project'].map(entity => ({type:'object',additiona
 const commandEnvelope = { ...envelope, properties: { ...envelope.properties,
   commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema, ...taskFieldSchemas, ...linkSchemas, ...deleteSchemas] } },
 } };
+const looseIntentSchema = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    intent: { const: true }, contractVersion: { const: 2 },
+    commandId: { type: 'string', pattern: '^c_[0-9A-Za-z_-]{5,64}$', description: 'Optional; minted when omitted.' },
+    actor: { enum: ['user', 'llm', 'import'], description: 'Defaults to "llm".' }, reason: { type: 'string', maxLength: 1000 },
+    commands: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'object', properties: { kind: { type: 'string' }, clientRef: { type: 'string' } }, required: ['kind'], additionalProperties: true,
+      description: 'A strict command minus expectedRevision, expectedStructuralRevision, creation IDs and successor. Reference entities created earlier in the array as "@clientRef".' } },
+  }, required: ['intent', 'contractVersion', 'commands'],
+};
+/** Every command variant `apply_changes` accepts, for `describe_commands`. */
+export const COMMAND_VARIANTS = commandEnvelope.properties.commands.items.oneOf as { properties: { kind: { const: string } } }[];
+export const COMMAND_ENVELOPE_PROPERTIES = { contractVersion: envelope.properties.contractVersion, commandId: envelope.properties.commandId, actor: envelope.properties.actor, reason: envelope.properties.reason, expectedStructuralRevision: envelope.properties.expectedStructuralRevision };
 export const COMMAND_TOOLS = [
   { name: 'export_workspace', description: 'Export version 2 portable data for all current user-owned families from one coherent snapshot, including duties, planning values and historical provenance. Excludes credentials, replay receipts, sync cursors, entity revisions and tombstones. Read-only; restore it with restore_workspace. Existing v1 exports/imports remain available.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'restore_workspace', description: 'Replace the whole workspace from a version 2 export document in one atomic batch, advancing the sync epoch so every client must re-bootstrap. Requires the expectedCursor from a current get_workspace_snapshot (an export carries none); any intervening write conflicts and changes nothing. mode "preflight" validates, counts and reports without writing; use it first, then repeat identical input with mode "apply". Restores tasks, projects, links, duties, preferences, planning settings and action log; incoming command_audit is validated but not restored, and receipts/credentials are untouched. Blocks cycles and duplicate duty occurrences are rejected; documents needing more than 100 SQL statements are rejected with capacity_exceeded, never split. Destructive: it deletes all current user data.', inputSchema: {
@@ -137,7 +151,7 @@ export const COMMAND_TOOLS = [
   } },
   { name: 'get_planning_settings', description: 'Read complete workspace planning settings and their revision, or null before setup.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'export_planning_settings', description: 'Export only planning preferences, without revision or credentials. Restore non-null values through planning.set with a fresh command ID and current expectedRevision. This is not a full-workspace backup.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
-  { name: 'preview_changes', description: 'Preview a reliable command without writes. One supported standalone command, or a bounded mixed batch of task/project/link commands including lifecycle effects with an envelope structural revision and distinct written identities; links require entity/structural revisions and existing endpoints, with atomic blocks-cycle validation; creation requires a stable ID, no prior identity history and the workspace structural revision. Use the current numeric revision for edits; initial settings and creation use null. A preview is not a lock.', inputSchema: commandEnvelope },
+  { name: 'preview_changes', description: 'Preview a reliable command without writes. Accepts either a strict envelope (below) or loose intent: set intent:true and give commands without revisions, minted IDs, structural revisions or successors; creation commands take a clientRef and later commands may use it as "@ref" as a project, link endpoint or other reference, but each task or project is written by one command per batch. The server reads current state, pins every guard and returns the strict envelope as pinnedEnvelope, plus the diff; pass pinnedEnvelope to apply_changes unchanged (any intervening change returns revision_conflict). Content and schedule patches merge into current values. See describe_commands for fields. Strict envelope:  One supported standalone command, or a bounded mixed batch of task/project/link commands including lifecycle effects with an envelope structural revision and distinct written identities; links require entity/structural revisions and existing endpoints, with atomic blocks-cycle validation; creation requires a stable ID, no prior identity history and the workspace structural revision. Use the current numeric revision for edits; initial settings and creation use null. A preview is not a lock.', inputSchema: { type: 'object', oneOf: [commandEnvelope, looseIntentSchema] } },
   { name: 'apply_changes', description: 'Atomically apply a supported standalone command or mixed batch of 2–20 task/project/link commands including lifecycle effects, with a caller-minted command ID and expected revision. Same ID/payload returns the original result; a different payload conflicts. Includes receipt, audit and command feed. Creation supports scoped clientRef/ID mapping. Content commands change only title/notes/kickoff and task session log; Focus/deferral follow existing pending-task transitions; reopening clears both. Project state preserves members/links. Completion uses structural guards and requires a stable successor ID for legacy recurrence, or successor:null otherwise. Membership uses structural and selected-project guards. Legacy schedule changes replace only existing due-date classification/recurrence, not future explicit date roles. Link add/remove are guarded; related additions use ascending IDs and prevent reversed duplicates, blocks additions reject cycles. Task deletion returns cascade link tombstones; project deletion detaches members and rejects duty ownership. Both require structural revisions and reject oversized atomic effects before writes. Mixed batches require an envelope structural revision, distinct written identities and unique scoped clientRefs. Create referenced entities earlier in the array. Final blocks graph validation allows atomic edge replacement; the complete generated SQL must fit 100 statements. Mixed results include changeGroups with one derived-image count per command. Lifecycle effects must be disjoint; settings stay standalone. Offline overlays follow later.', inputSchema: commandEnvelope },
 ];
 export async function callCommandTool(name: string, args: unknown, db: DB): Promise<unknown> {
@@ -179,6 +193,12 @@ export async function callCommandTool(name: string, args: unknown, db: DB): Prom
     });
     if (!exported.ok) throw new Error('Planning export failed validation.');
     return exported.value;
+  }
+  if (name === 'preview_changes' && isLooseIntent(args)) {
+    const pinnedEnvelope = await pinIntent(args, db);
+    const pinned = parseSchema(CommandEnvelopeSchema, pinnedEnvelope);
+    if (!pinned.ok) throw new CommandError(invalidInput(pinned.error), 400);
+    return { ...await db.previewChanges(pinned.value), pinnedEnvelope };
   }
   const input = parseSchema(CommandEnvelopeSchema, args);
   if (!input.ok) throw new CommandError(invalidInput(input.error), 400);
