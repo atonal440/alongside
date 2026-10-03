@@ -23,7 +23,7 @@ Per-row differences live in `worker/test/parity/approved.ts`, each with the adap
 - `update_task.all-day-only-no-due`: approved 2026-10-03. Legacy stored `due_all_day: true` on a task with no due date, a state the commands cannot represent. The adapter refuses it.
 - `update_project.status-unchanged`, `update_project.archive-already-archived`: finding 2, approved. A status the project already has compiles to no command, so `updated_at` no longer moves. The call still logs.
 - `link_tasks.existing-related-reversed`: finding 3, approved. A related link that exists in the other orientation counts as present; no second row.
-- `link_tasks.related`: proposed. A related link is stored from the lower task ID to the higher regardless of argument order (the command requires ascending endpoints; the link is symmetric). The response still echoes the arguments as given.
+- `link_tasks.related`: approved 2026-10-03. A related link is stored from the lower task ID to the higher regardless of argument order (the command requires ascending endpoints; the link is symmetric). The response still echoes the arguments as given.
 - `create_project.thirty-tasks`: finding 5, approved. The command bound is now 100, so the practical limit is the 100-statement atomic plan. Each assigned task costs more statements than before (diff, audit and feed rows), so the ceiling is 23 tasks where the legacy path reached 33. A larger call is refused with `capacity_exceeded` and writes nothing.
 
 ## Findings the plan did not list

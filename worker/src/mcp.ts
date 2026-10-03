@@ -31,6 +31,8 @@ function mcpError(id: string | number, code: number, message: string) {
   });
 }
 
+/** No recorded activity for this long means the user is returning after a gap. */
+const RETURNING_GAP_MS = 7 * 86_400_000;
 const TASK_DASHBOARD_URI = 'ui://alongside/task-dashboard';
 const ACTION_LOG_URI = 'ui://alongside/action-log';
 
@@ -428,29 +430,23 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'start_session': {
-      await db.seedDefaultPreferences();
-      const [readyTasks, focusedTasks, preferences, lastSessionAt] = await Promise.all([
+      // Read-only: defaults are merged in memory (no rows are seeded) and the gap is measured from
+      // the newest recorded activity, so nothing here needs a command ID or receipt.
+      const [readyTasks, focusedTasks, preferences, lastActivityAt] = await Promise.all([
         db.listReadyTasks(),
         db.listFocusedTasks(),
         db.getAllPreferences(),
-        db.getPreference('last_session_at'),
+        db.getLastActivityAt(),
       ]);
-
-      const returningAfterGap = lastSessionAt
-        ? (Date.now() - new Date(lastSessionAt).getTime()) > 7 * 86400000
-        : false;
-
-      await db.setPreference('last_session_at', new Date().toISOString());
 
       return {
         focused_tasks: focusedTasks,
         suggested_tasks: readyTasks.slice(0, 3),
         preferences,
-        returning_after_gap: returningAfterGap,
+        returning_after_gap: lastActivityAt !== null && Date.now() - new Date(lastActivityAt).getTime() > RETURNING_GAP_MS,
         instructions: SESSION_INSTRUCTIONS,
       };
     }
-
     case 'list_projects': {
       const status = ((args.status as string) || 'active') as Project['status'];
       const projects = await db.listProjects(status);

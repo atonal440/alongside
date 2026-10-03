@@ -1032,14 +1032,12 @@ export class DB {
       .then(r => r.results);
   }
 
-  // Seed missing default preferences (called by start_session)
-  async seedDefaultPreferences(): Promise<void> {
-    for (const [key, value] of Object.entries(DEFAULT_PREFERENCES)) {
-      await this.d1
-        .prepare('INSERT OR IGNORE INTO user_preferences (key, value) VALUES (?, ?)')
-        .bind(key, value)
-        .run();
-    }
+  /** The newest action-log or command-audit timestamp, or null on a workspace with no history. */
+  async getLastActivityAt(): Promise<string | null> {
+    const row = await this.d1
+      .prepare('SELECT MAX(at) AS at FROM (SELECT MAX(created_at) AS at FROM action_log UNION ALL SELECT MAX(created_at) FROM command_audit)')
+      .first<{ at: string | null }>();
+    return row?.at ?? null;
   }
 
   // ── Archive / Restore ──────────────────────────────────────────────────────

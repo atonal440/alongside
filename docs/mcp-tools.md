@@ -4,7 +4,7 @@ Alongside exposes 39 tools (including deprecated aliases) via the MCP endpoint a
 
 ## Endpoints, tiers and annotations
 
-Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`, plus `idempotentHint` where true) so a host can approve per tier: reads are `readOnlyHint: true`; conversational writes are non-destructive; `delete_task`, `delete_project`, `apply_changes` and `restore_workspace` are `destructiveHint: true`. `start_session` is not yet read-only because it still seeds default preferences and stores `last_session_at`; that changes in phase C of [the MCP surface plan](plans/mcp-surface.md).
+Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`, plus `idempotentHint` where true) so a host can approve per tier: reads are `readOnlyHint: true`; conversational writes are non-destructive; `delete_task`, `delete_project`, `apply_changes` and `restore_workspace` are `destructiveHint: true`. `start_session` is read-only (see its entry); it used to seed preferences and store `last_session_at`.
 
 `/mcp/admin` is an opt-in second endpoint with the same bearer token. Connect it only when needed. It lists `export_workspace`, `restore_workspace`, `get_workspace_snapshot` (the cursor read restore needs, and the way to check after a lost restore response whether it committed), `export_planning_settings` and `preview_legacy_dates`. It has no widget resources.
 
@@ -34,7 +34,7 @@ These tools replace the older list/get reads and the by-hand revision bookkeepin
 
 ### `start_session`
 
-Call this at the beginning of every work session. Seeds default preferences if this is the first session, detects gaps in usage, and returns behavioral instructions for Claude to follow.
+Call this at the beginning of every work session. Read-only: it writes nothing. Default preferences are merged into the returned `preferences` in memory (a row exists only once someone sets it), and `returning_after_gap` is true when the newest action-log or command-audit entry is more than 7 days old (false on a workspace with no history). The old `last_session_at` preference is no longer read or written; existing rows stay readable and exported. Returns behavioral instructions for Claude to follow.
 
 **Parameters:** none
 
@@ -43,7 +43,7 @@ Call this at the beginning of every work session. Seeds default preferences if t
 {
   suggested_tasks: Task[],          // top 3 ready tasks by readiness score
   preferences: Record<string, string>,
-  returning_after_gap: boolean,     // true if >7 days since last session
+  returning_after_gap: boolean,     // true if no recorded activity for >7 days
   instructions: string              // behavioral instructions for Claude
 }
 ```

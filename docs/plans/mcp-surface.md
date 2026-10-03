@@ -1,6 +1,6 @@
 # MCP surface: organizing a growing set of verbs
 
-Status: phases A (annotations, `/mcp/admin`, deprecated aliases, `initialize.instructions`, `toolSurface`) and B (reads, loose-intent preview, wider action-log codec) implemented; C in progress (parity matrix, version 2 receipts, composition, all 13 mutating adapters and `preference.set` built; read-only `start_session`, the sync read gate and the widget switch remain); D proposed. Updated 2026-10-03.
+Status: phases A (annotations, `/mcp/admin`, deprecated aliases, `initialize.instructions`, `toolSurface`) and B (reads, loose-intent preview, wider action-log codec) implemented; C in progress (parity matrix, version 2 receipts, composition, all 13 mutating adapters and `preference.set` built; `start_session` read-only; the sync read gate and the widget switch remain); D proposed. Updated 2026-10-03.
 
 This plan refines §10 ("REST and MCP surface") of
 [the power-user plan](power-user-todo.md). That document still owns the
@@ -537,8 +537,8 @@ never registered in `TOOLS`; that section was removed in phase A.
   callers. Move static session instructions to `initialize`. Add
   `toolSurface` to capabilities.
 
-  Phase A as built: `start_session` is annotated as a non-read-only write
-  until phase C removes its preference writes. The admin endpoint serves
+  Phase A as built: `start_session` was annotated as a non-read-only write
+  until phase C removed its preference writes (done). The admin endpoint serves
   `export_planning_settings` under its current name; folding it into
   `export_workspace({ scope: 'settings' })` is left for when that tool gains
   the argument. `start_session` still returns `instructions` alongside
@@ -578,8 +578,7 @@ never registered in `TOOLS`; that section was removed in phase A.
   receipt guarded by the link or project revision plus the structural
   revision. The command bound is raised from 20 to 100, with the 100-statement
   plan check as the real ceiling (23 tasks for `create_project`). `update_preference`
-  runs on the new standalone `preference.set` command. Remaining in C: read-only
-  `start_session`, the sync read gate for protocol < 3, and the widget switch.
+  runs on the new standalone `preference.set` command. `start_session` is now read-only (defaults merge in memory; the gap comes from history). Remaining in C: the sync read gate for protocol < 3, and the widget switch.
 - **C: One write path.** First build the parity matrix (see
   [Adapter parity](#adapter-parity)) and the versioned receipt shape. Then add
   same-identity composition to the batch planner, with the revised result contract (see
