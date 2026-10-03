@@ -248,19 +248,30 @@ rules prevent that:
   same rule if it writes action-log entries.
 
   This changes what a receipt stores. `command_receipts.result_json` is
-  replayed through the strict `ChangesResultSchema`, which has no field for an
-  action-log row. So receipts get a versioned stored shape, for example
-  `{ "receiptVersion": 2, "result": <ChangesResult>, "actionLogEntry": <entry or null> }`.
-  The entry is the projection the tool returns today,
-  `{ tool_name, title, detail }` (see `worker/src/mcp.ts`), not the full
-  `action_log` row. That matters because `action_log.id` is an autoincrement
-  value: it doesn't exist when `result_json` is serialized before the batch
-  runs, and reading the next ID in advance would race with concurrent
-  inserts. Every field of the projection is known at plan time, so the
-  receipt and the inserted row agree without the ID. A receipt without
-  `receiptVersion` parses as version 1: a bare `ChangesResult` with no entry.
-  Boundary tests cover replaying both versions and rejecting a version 2
-  receipt whose entry doesn't match the projection codec.
+  replayed through the strict `ChangesResultSchema`, which holds only the
+  generic command result. A retried tool must return exactly what the first
+  call returned, and each legacy tool has its own response shape. For
+  example, `link_tasks` returns both task titles, and `delete_task` returns
+  `{ deleted, task_id, title, action_log_entry }`. Re-reading entities on
+  replay would return current values, not the original ones. So receipts get
+  a versioned stored shape:
+  `{ "receiptVersion": 2, "tool": <name>, "result": <ChangesResult>, "response": <the tool's complete response> }`.
+  The response includes the `action_log_entry` projection
+  (`{ tool_name, title, detail }`), not the full `action_log` row.
+
+  Every field of the response must be known at plan time, so it can be
+  serialized into `result_json` before the batch runs. That rules out
+  autoincrement values such as `action_log.id`: it doesn't exist yet, and
+  reading the next ID in advance would race with concurrent inserts. Titles
+  and other entity fields come from the planning read, which the batch's
+  revision guards hold steady until commit. A replay returns `response`
+  verbatim. Each tool has a response codec, and a receipt without
+  `receiptVersion` parses as version 1: a bare `ChangesResult`, as
+  `apply_changes` stores today. Boundary tests cover replaying both versions,
+  a `link_tasks` replay after one endpoint is renamed (it still returns the
+  original titles), and rejecting a version 2 receipt whose response doesn't
+  match its tool's codec. The parity matrix checks each tool's stored response
+  against the legacy handler's.
 
 Without a `commandId`, the server mints a fresh one and none of this
 applies: each call is a new command, as today.
@@ -374,18 +385,18 @@ Phases refer to [Rollout](#rollout).
 | `get_action_log` | `get_history` | B, removed D | Keep the action-log widget `_meta` |
 | `get_capabilities` | `get_capabilities` | A | Adds the tool-surface and command catalog versions |
 | `resolve_time` | `resolve_time` | — | Unchanged |
-| `preview_legacy_dates` | Admin endpoint | A | Retire after the slice 3 backfill |
+| `preview_legacy_dates` | Admin endpoint | A, alias removed D | Retire after the slice 3 backfill |
 | `preview_changes` | `preview_changes` | B | Gains loose intent and returns a pinned envelope |
 | `apply_changes` | `apply_changes` | — | Compact schema; details via `describe_commands` |
 | `get_entity` | `get_context({ …, depth: 0 })` | B, removed D | |
 | `get_link` | `get_context({ link })` | B, removed D | |
-| `get_entity_version` | REST only (`/api/v2/entity-version`) | A | `get_context` returns revisions |
+| `get_entity_version` | REST only (`/api/v2/entity-version`) | A, alias removed D | `get_context` returns revisions |
 | `get_planning_settings` | `get_context({ settings })` | B, removed D | `get_capabilities` also summarizes the zone |
-| `export_planning_settings` | Admin `export_workspace({ scope: 'settings' })` | A | |
-| `get_workspace_snapshot` | REST only (`/api/v2/sync/snapshot`) | A | PWA sync protocol |
-| `get_workspace_delta` | REST only (`/api/v2/sync/delta`) | A | PWA sync protocol |
-| `export_workspace` | Admin endpoint | A | |
-| `restore_workspace` | Admin endpoint | A | |
+| `export_planning_settings` | Admin `export_workspace({ scope: 'settings' })` | A, alias removed D | |
+| `get_workspace_snapshot` | REST only (`/api/v2/sync/snapshot`) | A, alias removed D | PWA sync protocol |
+| `get_workspace_delta` | REST only (`/api/v2/sync/delta`) | A, alias removed D | PWA sync protocol |
+| `export_workspace` | Admin endpoint | A, alias removed D | |
+| `restore_workspace` | Admin endpoint | A, alias removed D | Destructive tier while the alias remains |
 
 `docs/mcp-tools.md` also documents an `update_kickoff_note` tool that is not
 registered in `TOOLS`. Remove that section when the reference is next updated.
@@ -458,10 +469,17 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
 ## Rollout
 
 - **A: Tiering and cleanup (no new semantics).** Add `readOnlyHint` and
-  `destructiveHint` to every tool. Move snapshot, delta and entity-version to
-  REST only. Stand up the admin endpoint for export, restore, settings export
-  and legacy-date preview. Move static session instructions to `initialize`.
-  Add `toolSurface` to capabilities.
+  `destructiveHint` to every tool. Stand up the admin endpoint for export,
+  restore, settings export and legacy-date preview, and confirm REST covers
+  snapshot, delta and entity-version. Removing names from the default
+  endpoint would break existing MCP callers immediately, so every moved tool
+  (`get_workspace_snapshot`, `get_workspace_delta`, `get_entity_version`,
+  `export_workspace`, `restore_workspace`, `export_planning_settings`,
+  `preview_legacy_dates`) stays listed there as a deprecated alias. Each alias
+  behaves exactly as before, with a description naming its new home. They are
+  removed in phase D with the other deprecated tools, once logs show no
+  callers. Move static session instructions to `initialize`. Add
+  `toolSurface` to capabilities.
 - **B: New reads and pinning preview.** Add `find` (task, project),
   `get_context`, `get_history`, `describe_commands`, and loose-intent
   `preview_changes`. Mark the tools they replace as deprecated in their
@@ -508,8 +526,11 @@ built once, on the command path, and not added to the legacy verbs as well.
   `logAction` directly.
 - The phase C parity matrix exists, every row has a passing test, and every
   behavior difference in it is documented and approved.
-- Version 1 receipts (bare results) and version 2 receipts (with an
-  action-log entry) both replay.
+- Version 1 receipts (bare results) and version 2 receipts (with the
+  tool's stored response) both replay, and a replayed response matches the
+  original exactly.
+- Every tool removed from the default endpoint was first listed there as a
+  deprecated alias for the whole deprecation window.
 - `update_task` with only `due_date`, only `recurrence` or only `due_all_day`
   keeps the other schedule fields, as it does today.
 - A PWA snapshot or delta containing command-kind action-log rows parses and
