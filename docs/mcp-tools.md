@@ -1,6 +1,14 @@
 # MCP Tools Reference
 
-Alongside exposes 18 tools via the MCP endpoint at `/mcp` (JSON-RPC POST). All calls require an `Authorization: Bearer {AUTH_TOKEN}` header.
+Alongside exposes 35 tools (including deprecated aliases) via the MCP endpoint at `/mcp` (JSON-RPC POST). All calls require an `Authorization: Bearer {AUTH_TOKEN}` header.
+
+## Endpoints, tiers and annotations
+
+Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`, plus `idempotentHint` where true) so a host can approve per tier: reads are `readOnlyHint: true`; conversational writes are non-destructive; `delete_task`, `delete_project`, `apply_changes` and `restore_workspace` are `destructiveHint: true`. `start_session` is not yet read-only because it still seeds default preferences and stores `last_session_at`; that changes in phase C of [the MCP surface plan](plans/mcp-surface.md).
+
+`/mcp/admin` is an opt-in second endpoint with the same bearer token. Connect it only when needed. It lists `export_workspace`, `restore_workspace`, `get_workspace_snapshot` (the cursor read restore needs, and the way to check after a lost restore response whether it committed), `export_planning_settings` and `preview_legacy_dates`. It has no widget resources.
+
+Tools that moved there (and the REST-only `get_workspace_delta` and `get_entity_version`) stay listed on `/mcp` as deprecated aliases that behave exactly as before; their descriptions start with `Deprecated alias.` and name the new home. They are removed in phase D. `initialize` on `/mcp` now carries the session instructions in its `instructions` field; `start_session` still returns them too until then. `get_capabilities` reports `toolSurface` (`version`, `commandCatalog`, `adminEndpoint`).
 
 ---
 
@@ -324,22 +332,6 @@ Update a user preference. Preferences are applied automatically on the next `sta
 | `planning_prompt` | Prompt style for plan-type tasks |
 
 **Returns:** `{ updated: true, key, value }`
-
----
-
-### `update_kickoff_note`
-
-Update the kickoff note on a task or project. A kickoff note is a forward-looking re-entry ramp: what to do *next*, not a summary of what happened.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|---|---|---|---|
-| `entity_type` | `'task'\|'project'` | yes | |
-| `entity_id` | `string` | yes | Task or project ID. |
-| `kickoff_note` | `string` | yes | |
-
-**Returns:** `{ updated: true, entity_type, entity_id }`
 
 ---
 

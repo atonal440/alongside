@@ -3,7 +3,7 @@ import { parseDueDateTime, parseEventInstant, parseLocalDate, parseMinuteInstant
 import { resolveDateBoundary, resolveOffset, resolveWallTime, type TemporalPoint, type TimeError } from '@shared/temporal';
 import { parseSchema } from '@shared/parse';
 import { CLIENT_PROTOCOL, MIN_WRITE_PROTOCOL } from '@shared/wire/clientVersion';
-import { CapabilitiesSchema, type Capabilities, type PlanningSettings, type ResolveTimeInput, type TimeResolution, type TimezoneSource } from '@shared/wire/planning';
+import { COMMAND_CATALOG_VERSION, TOOL_SURFACE_VERSION, CapabilitiesSchema, type Capabilities, type PlanningSettings, type ResolveTimeInput, type TimeResolution, type TimezoneSource } from '@shared/wire/planning';
 
 export interface FoundationError {
   code: string; path: string[]; message: string; retryable: false; recoveryHint: string;
@@ -28,6 +28,7 @@ export function getCapabilities(requestZone: Timezone | undefined, settings: Pla
     limits: { atomicStatements: 100, maxHierarchyDepth: 32, maxPreviewRows: 500, maxDurationMinutes: 525_600 },
     delivery: { inbox: 'unavailable', webPush: 'unconfigured', backgroundEnabled: false },
     recurrencePolicy: { gap: 'skip', fold: 'earlier' },
+    toolSurface: { version: TOOL_SURFACE_VERSION, commandCatalog: COMMAND_CATALOG_VERSION, adminEndpoint: '/mcp/admin' },
   });
   if (!parsed.ok) throw new Error('Invalid server capability configuration.');
   return parsed.value;

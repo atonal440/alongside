@@ -43,6 +43,10 @@ export type TimezoneSource = v.InferOutput<typeof TimezoneSourceSchema>;
 export const ContractErrorSchema = v.strictObject({
   code: v.string(), path: v.array(v.string()), message: v.string(), retryable: v.boolean(), recoveryHint: v.string(),
 });
+/** Bump when the set of default-endpoint tools changes shape (see docs/plans/mcp-surface.md). */
+export const TOOL_SURFACE_VERSION = 1;
+/** Bump when command kinds or their schemas change. */
+export const COMMAND_CATALOG_VERSION = 1;
 export const CapabilitiesSchema = v.strictObject({
   contractVersion: v.literal(2), serverNow: EventInstantSchema, timezone: TimezoneSchema,
   timezoneSource: TimezoneSourceSchema, setupRequired: v.boolean(),
@@ -51,6 +55,7 @@ export const CapabilitiesSchema = v.strictObject({
   limits: v.strictObject({ atomicStatements: v.literal(100), maxHierarchyDepth: v.literal(32), maxPreviewRows: v.literal(500), maxDurationMinutes: PositiveMinutesSchema }),
   delivery: v.strictObject({ inbox: v.literal('unavailable'), webPush: v.literal('unconfigured'), backgroundEnabled: v.literal(false) }),
   recurrencePolicy: v.strictObject({ gap: v.literal('skip'), fold: v.literal('earlier') }),
+  toolSurface: v.strictObject({ version: v.literal(TOOL_SURFACE_VERSION), commandCatalog: v.literal(COMMAND_CATALOG_VERSION), adminEndpoint: v.literal('/mcp/admin') }),
 });
 export type Capabilities = v.InferOutput<typeof CapabilitiesSchema>;
 export const parseCapabilities = (input: unknown) => parseSchema(CapabilitiesSchema, input);

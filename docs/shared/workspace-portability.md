@@ -88,8 +88,12 @@ epoch change forces clients to rebase before any retained revision could matter.
 Restore keeps every exported row as stored: it checks references, duty occurrence
 pairing and an acyclic `blocks` graph, but not per-task domain rules, and it keeps
 legacy `related` self-links, so any export round-trips. If an `apply` response is lost
-after the batch commits, a retry returns 409 `restore_outcome_unknown` (the epoch
-advanced) instead of a stale-cursor message; read a snapshot to see what is live.
+after the batch commits, a retry hits the cursor check first and returns 409
+`restore_cursor_conflict`; the message carries the current cursor but not as a structured field, so
+recover by reading a snapshot (`get_workspace_snapshot` on `/mcp/admin`, or `GET /api/v2/sync/snapshot`)
+and comparing its epoch with your `expectedCursor.epoch`. A higher epoch means a restore committed,
+possibly yours, and the snapshot shows what is live. `restore_outcome_unknown` is narrower: it is
+returned only when the apply step itself fails and the epoch moved during that same call.
 
 Staged restores for larger workspaces, archival storage of incoming audit and v1
 input with migration diagnostics remain separate increments; the legacy

@@ -1,6 +1,6 @@
 # MCP surface: organizing a growing set of verbs
 
-Status: proposal, not implemented. Updated 2026-10-03.
+Status: phase A implemented (annotations, `/mcp/admin`, deprecated aliases, `initialize.instructions`, `toolSurface`); B–D proposed. Updated 2026-10-03.
 
 This plan refines §10 ("REST and MCP surface") of
 [the power-user plan](power-user-todo.md). That document still owns the
@@ -453,8 +453,8 @@ Phases refer to [Rollout](#rollout).
 | `export_workspace` | Admin endpoint | A, alias removed D | |
 | `restore_workspace` | Admin endpoint | A, alias removed D | Destructive tier while the alias remains |
 
-`docs/mcp-tools.md` also documents an `update_kickoff_note` tool that is not
-registered in `TOOLS`. Remove that section when the reference is next updated.
+`docs/mcp-tools.md` used to document an `update_kickoff_note` tool that was
+never registered in `TOOLS`; that section was removed in phase A.
 
 ## Where planned operations land
 
@@ -536,6 +536,13 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   removed in phase D with the other deprecated tools, once logs show no
   callers. Move static session instructions to `initialize`. Add
   `toolSurface` to capabilities.
+
+  Phase A as built: `start_session` is annotated as a non-read-only write
+  until phase C removes its preference writes. The admin endpoint serves
+  `export_planning_settings` under its current name; folding it into
+  `export_workspace({ scope: 'settings' })` is left for when that tool gains
+  the argument. `start_session` still returns `instructions` alongside
+  `initialize.instructions` so hosts that ignore the latter keep working.
 - **B: New reads and pinning preview.** Add `find` (task, project),
   `get_context`, `get_history`, `describe_commands`, and loose-intent
   `preview_changes`. Mark the tools they replace as deprecated in their
@@ -577,11 +584,10 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   higher, a restore committed, possibly the caller's own, and the snapshot
   shows what is live. The error's message also says "Nothing was changed",
   which is misleading in this case, because the caller's restore may already
-  have committed. Reword it when restore is next touched. `restore_outcome_unknown` is narrower: it is returned only when the
+  have committed. Reworded in phase A. `restore_outcome_unknown` is narrower: it is returned only when the
   apply step itself fails and the epoch moved during that same call.
-  [Workspace portability](../shared/workspace-portability.md) currently says a
-  retry returns `restore_outcome_unknown`, which is inaccurate; correct it
-  when that reference is next updated. The phase C claims exclude restore
+  [Workspace portability](../shared/workspace-portability.md) now
+  describes the cursor-conflict recovery path. The phase C claims exclude restore
   explicitly. Making restore receipted (a
   `commandId` and a stored result, so a retry replays) is a possible later
   improvement, but it's not needed for safety.

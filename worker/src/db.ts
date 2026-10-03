@@ -705,8 +705,8 @@ export class DB {
 
   private restoreCursorConflict(current: { epoch: number; sequence: number }): CommandError {
     return new CommandError({ code: 'restore_cursor_conflict', path: ['expectedCursor'], retryable: false,
-      message: `The workspace changed after the supplied cursor; it is now at epoch ${current.epoch}, sequence ${current.sequence}. Nothing was changed.`,
-      recoveryHint: 'Export again, review the new state, and rerun preflight with the current cursor before applying.' }, 409);
+      message: `The workspace changed after the supplied cursor; it is now at epoch ${current.epoch}, sequence ${current.sequence}. This request wrote nothing, but if you are retrying an apply, your earlier restore may already have committed.`,
+      recoveryHint: 'Read a current snapshot. An epoch above your expectedCursor.epoch means a restore committed, possibly yours; otherwise export again, review the new state, and rerun preflight with the current cursor before applying.' }, 409);
   }
 
   async getEntitySnapshot(key: EntityReadKey): Promise<EntitySnapshot> {
