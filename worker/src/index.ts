@@ -80,7 +80,7 @@ export default {
     if (url.pathname.startsWith('/api/')) {
       response = checkClientGate(request) ?? checkSyncReadGate(request, url) ?? await handleApiRequest(request, url, db);
     } else if (url.pathname.startsWith('/mcp')) {
-      response = await handleMcpRequest(request, db, env, url.pathname === '/mcp/admin' ? 'admin' : 'default');
+      response = await handleMcpRequest(request, db, env, url.pathname.replace(/\/+$/, '') === '/mcp/admin' ? 'admin' : 'default');
     } else if (url.pathname.startsWith('/ui')) {
       response = await handleUiRequest(request, url, db);
     } else {

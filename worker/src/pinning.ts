@@ -45,7 +45,7 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
   const allowed = ['intent', 'contractVersion', 'commandId', 'actor', 'reason', 'commands'];
   for (const key of Object.keys(args)) if (!allowed.includes(key)) throw fail([key], `Unknown key "${key}".`);
   if (args.contractVersion !== 2) throw fail(['contractVersion'], 'contractVersion must be 2.');
-  if (!Array.isArray(args.commands) || args.commands.length < 1 || args.commands.length > 20) throw fail(['commands'], 'commands must hold 1–20 loose commands.');
+  if (!Array.isArray(args.commands) || args.commands.length < 1 || args.commands.length > 100) throw fail(['commands'], 'commands must hold 1–100 loose commands.');
   const commandId = args.commandId === undefined ? `c_${nanoid(12)}` : args.commandId;
   const actor = args.actor === undefined ? 'llm' : args.actor;
 
@@ -198,7 +198,11 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
         const recurring = row.recurrence !== null && row.recurrence !== undefined;
         commands.push({ kind: command.kind, id, expectedRevision: await edit('task', id), expectedStructuralRevision: structural,
           successor: recurring ? { id: successorId, ...clientRef() } : null });
-        if (recurring) register('task', successorId);
+        if (recurring) {
+          register('task', successorId);
+          remember('task', successorId, { title: row.title, notes: row.notes ?? null, kickoff_note: row.kickoff_note ?? null, session_log: null,
+            due_date: row.due_date ?? null, due_all_day: row.due_all_day ?? null, recurrence: row.recurrence });
+        }
         break;
       }
       case 'task.project.set': {

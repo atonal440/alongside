@@ -62,7 +62,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   update_project: WRITE,
   link_tasks: WRITE,
   unlink_tasks: WRITE,
-  update_preference: { ...WRITE, idempotentHint: true },
+  update_preference: WRITE,
   // Destructive tier
   delete_task: DESTRUCTIVE,
   delete_project: DESTRUCTIVE,

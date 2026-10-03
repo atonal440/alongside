@@ -522,7 +522,7 @@ export class DB {
       .from(tasksTable)
       .where(and(...conditions));
 
-    return results.sort((a, b) => readinessScore(b, ts) - readinessScore(a, ts));
+    return results.sort((a, b) => readinessScore(b, ts) - readinessScore(a, ts) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
   }
 
   // Returns tasks whose focused_until is still in the future.

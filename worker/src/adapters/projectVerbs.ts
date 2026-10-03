@@ -138,6 +138,8 @@ export const unlinkTasks: Compiler = async (ctx, args) => {
   // The exact stored orientation is removed; anything else is already absent.
   const link = await ctx.readLink(from, to, type);
   if (link.row === null) {
+    const actual = link.version?.revision ?? null;
+    if (typeof ctx.expectedRevision === 'number' && ctx.expectedRevision !== actual) throw staleRevision('Link', `${from} → ${to}`, ctx.expectedRevision, actual ?? 0);
     return { kind: 'noop', response, log, guards: [
       { kind: 'entity.revision', key: link.key as never, expected: (link.version?.revision ?? null) as never },
       { kind: 'workspace.structural_revision', expected: ctx.structural as never },
