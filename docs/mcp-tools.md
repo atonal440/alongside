@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-Alongside exposes 35 tools (including deprecated aliases) via the MCP endpoint at `/mcp` (JSON-RPC POST). All calls require an `Authorization: Bearer {AUTH_TOKEN}` header.
+Alongside exposes 39 tools (including deprecated aliases) via the MCP endpoint at `/mcp` (JSON-RPC POST). All calls require an `Authorization: Bearer {AUTH_TOKEN}` header.
 
 ## Endpoints, tiers and annotations
 
@@ -11,6 +11,20 @@ Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorl
 Tools that moved there (and the REST-only `get_workspace_delta` and `get_entity_version`) stay listed on `/mcp` as deprecated aliases that behave exactly as before; their descriptions start with `Deprecated alias.` and name the new home. They are removed in phase D. `initialize` on `/mcp` now carries the session instructions in its `instructions` field; `start_session` still returns them too until then. `get_capabilities` reports `toolSurface` (`version`, `commandCatalog`, `adminEndpoint`).
 
 ---
+
+## Find, context and loose-intent changes (phase B)
+
+These tools replace the older list/get reads and the by-hand revision bookkeeping. The old tools keep working; their descriptions start with `Deprecated: use …`.
+
+**`find`** — `{ entity: 'task' | 'project', preset?: 'ready', filter?, limit?, cursor? }`. Task filters: `statuses` (default `["pending"]`, deferred tasks included, like `list_tasks`), `text` (title and notes, case-insensitive) and `project_id`. `preset: 'ready'` is `get_ready_tasks` (pending-only, so it rejects `statuses`). Project filter: `status` (default `"active"`). Returns `{ entity, items, nextCursor }`; pass `nextCursor` back as `cursor`. Order is deterministic: due date then creation then ID (readiness score for the preset). A cursor whose item has since left the results is rejected with `invalid_input`; repeat the search.
+
+**`get_context`** — `{ entity: 'task' | 'project' | 'link' | 'settings', … , depth?: 0 | 1 }`. `depth: 0` returns exactly what `get_entity`, `get_link` or `get_planning_settings` return. The default `depth: 1` adds a `context` object: for a task its `project`, `prerequisites`, `dependents` and `related` tasks; for a project its `ready_tasks` and `task_counts`. Missing or deleted entities come back unchanged (null row), with no context.
+
+**`get_history`** — `{ limit? }`. Action-log rows (`source: 'action_log'`) merged with command-audit rows (`source: 'command'`, with `command_id`, `actor`, `reason`, `changes`), newest first.
+
+**`describe_commands`** — `{ family: 'task' | 'project' | 'link' | 'planning' }`. Returns that family's command schemas, one valid example envelope and the error codes to expect.
+
+**Loose intent for `preview_changes`.** Instead of a strict envelope, send `{ intent: true, contractVersion: 2, commands: [...] }` where each command is its strict form without `expectedRevision`, `expectedStructuralRevision`, creation IDs or `successor`. `commandId` (minted if omitted), `actor` (default `"llm"`) and `reason` are optional. A creation command may carry a `clientRef`; later commands refer to it as `"@clientRef"` in `id`, `from`, `to` and `project`. The server reads current state, mints IDs, fills every guard and previews the result. The response is the usual preview plus `pinnedEnvelope`: the strict envelope to pass to `apply_changes` unchanged. Patches to `*.content.set` and `task.legacy-schedule.set` merge into current values because those commands replace whole field groups. A completion gets a minted `successor` only when the task has a recurrence. If anything changes between preview and apply, `apply_changes` returns `revision_conflict` as for any stale guard. Retrying a lost apply with the same envelope replays the receipt. Strict envelopes are still accepted and return no `pinnedEnvelope`.
 
 ## Session & Discovery
 

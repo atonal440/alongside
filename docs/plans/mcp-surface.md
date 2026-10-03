@@ -1,6 +1,6 @@
 # MCP surface: organizing a growing set of verbs
 
-Status: phase A implemented (annotations, `/mcp/admin`, deprecated aliases, `initialize.instructions`, `toolSurface`); B–D proposed. Updated 2026-10-03.
+Status: phases A (annotations, `/mcp/admin`, deprecated aliases, `initialize.instructions`, `toolSurface`) and B (reads, loose-intent preview, wider action-log codec) implemented; C–D proposed. Updated 2026-10-03.
 
 This plan refines §10 ("REST and MCP surface") of
 [the power-user plan](power-user-todo.md). That document still owns the
@@ -549,6 +549,17 @@ never registered in `TOOLS`; that section was removed in phase A.
   descriptions ("Deprecated: use `find`"). Widen the shared action-log codec
   to the versioned action-name union (with tests), and raise the PWA's
   announced client protocol to 3 in the same build.
+  Phase B as built: `find`, `get_context`, `get_history` and `describe_commands`
+  are in `worker/src/reads.ts`; loose-intent pinning is in
+  `worker/src/pinning.ts` and is selected by `intent: true`. `find` pages by an
+  item-ID cursor, `get_context` depth 1 covers only what exists today (project,
+  prerequisites, dependents, related; ancestors, reminders and blocks arrive
+  with their slices), and `get_history` returns one merged, newest-first list.
+  `get_history` does not carry widget `_meta` because `get_action_log` never
+  had any. The announced client protocol is 3, and the sync codec's
+  `ActionNameSchema` accepts tool names, retired names and command kinds. The
+  sync read gate that rejects protocol < 3 is still phase C work, so the worker
+  must not write command-kind rows yet.
 - **C: One write path.** First build the parity matrix (see
   [Adapter parity](#adapter-parity)) and the versioned receipt shape. Then add
   same-identity composition to the batch planner, with the revised result contract (see
