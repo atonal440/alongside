@@ -690,6 +690,8 @@ Deliver each feature vertically through shared parse/domain/apply and both
 interfaces. Avoid a schema-only rollout that leaves the LLM unable to use it.
 Use a small set of discoverable semantic tools plus typed bulk commands; a
 general code-execution tool is not necessary for basic power-user support.
+How these operations are grouped into MCP tools, tiered by risk and migrated
+from the current tools is planned in [MCP surface](mcp-surface.md).
 
 | Tool family | Proposed operations |
 | --- | --- |
