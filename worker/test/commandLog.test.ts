@@ -49,14 +49,15 @@ describe('apply_changes records command kinds in the action log', () => {
 
   it('titles a link between existing tasks, and records completion, deferral, focus and deletion details', async () => withWorld(async (w, db) => {
     const [a, b] = [await db.addTask({ title: 'Alpha' }), await db.addTask({ title: 'Beta', due_date: '2026-10-05', recurrence: 'FREQ=WEEKLY' })];
+    const [lo, hi] = a.id < b.id ? [a, b] : [b, a];            // related links need ascending endpoints; IDs are random
     const rev = async (id: string) => (await db.getEntitySnapshot({ entity: 'task', id } as never)).version!.revision;
-    await applyViaMcp(w, db, await envelope(db, 'c_loglink1', [{ kind: 'link.add', from: a.id, to: b.id, linkType: 'related', expectedRevision: null, expectedStructuralRevision: 0 }]));
+    await applyViaMcp(w, db, await envelope(db, 'c_loglink1', [{ kind: 'link.add', from: lo.id, to: hi.id, linkType: 'related', expectedRevision: null, expectedStructuralRevision: 0 }]));
     await applyViaMcp(w, db, await envelope(db, 'c_logcomp2', [{ kind: 'task.complete', id: b.id, expectedRevision: await rev(b.id), expectedStructuralRevision: 0, successor: { id: 't_successor' } }]));
     await applyViaMcp(w, db, await envelope(db, 'c_logdefer1', [{ kind: 'task.defer.set', id: a.id, expectedRevision: await rev(a.id), defer: { kind: 'someday' } }]));
     await applyViaMcp(w, db, await envelope(db, 'c_logfocus1', [{ kind: 'task.focus.set', id: a.id, expectedRevision: await rev(a.id), focusedUntil: '2099-01-01T00:00:00Z' }]));
     await applyViaMcp(w, db, await envelope(db, 'c_logdel001', [{ kind: 'task.delete', id: a.id, expectedRevision: await rev(a.id), expectedStructuralRevision: 0 }]));
     expect(logRows(w).map(r => [r.tool_name, r.title, r.detail])).toEqual([
-      ['link.add', 'Alpha → Beta', 'related'],
+      ['link.add', `${lo.title} → ${hi.title}`, 'related'],
       ['task.complete', 'Beta', '→ recurs 2026-10-12T12:00:00Z'],
       ['task.defer.set', 'Alpha', 'someday'],
       ['task.focus.set', 'Alpha', '2099-01-01T00:00:00Z'],
