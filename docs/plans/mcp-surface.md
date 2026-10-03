@@ -513,7 +513,9 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   listed (`reopen_task`, `delete_task`, `create_project`, `update_project`,
   `delete_project`, `link_tasks`, `unlink_tasks`, `update_preference`) as a
   thin adapter that compiles to the same commands, with the same
-  receipt-first replay and receipted action-log entry. Deprecated tools
+  receipt-first replay. Each adapter writes a receipted action-log entry
+  only if its legacy handler logs today (`update_preference` doesn't).
+  Deprecated tools
   still count as MCP writes until phase D removes them. Add the
   `preference.set` command. Make
   `start_session` read-only. Turn on the sync read gate for browser clients
@@ -528,10 +530,15 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   it advances the sync epoch, so it can never apply twice. A retry after a
   commit whose response was lost hits the cursor check first
   (`worker/src/db.ts`, `restoreWorkspace`) and returns 409
-  `restore_cursor_conflict` with the current cursor. If that cursor's epoch
-  is one past the caller's `expectedCursor.epoch`, a restore committed,
-  possibly the caller's own, and the caller reads a snapshot to check what is
-  live. `restore_outcome_unknown` is narrower: it is returned only when the
+  `restore_cursor_conflict`. That error carries the current cursor only in its
+  human-readable message, not as a structured field. So the recovery path
+  doesn't parse the error: the caller fetches a snapshot
+  (`get_workspace_snapshot` or `GET /api/v2/sync/snapshot`) and compares the
+  snapshot cursor's epoch with its `expectedCursor.epoch`. If the epoch is
+  higher, a restore committed, possibly the caller's own, and the snapshot
+  shows what is live. The error's message also says "Nothing was changed",
+  which is misleading in this case, because the caller's restore may already
+  have committed. Reword it when restore is next touched. `restore_outcome_unknown` is narrower: it is returned only when the
   apply step itself fails and the epoch moved during that same call.
   [Workspace portability](../shared/workspace-portability.md) currently says a
   retry returns `restore_outcome_unknown`, which is inaccurate; correct it
