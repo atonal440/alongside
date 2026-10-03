@@ -349,7 +349,10 @@ function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
       ];
     case 'receipt.insert':
       return [guardedStatement(d1.prepare('INSERT INTO command_receipts(command_id,payload_hash,result_json,created_at) VALUES(?,?,?,?)')
-        .bind(op.result.commandId, op.result.payloadHash, JSON.stringify(op.result), op.result.serverNow))];
+        .bind(op.result.commandId, op.result.payloadHash, JSON.stringify(op.stored ? { receiptVersion: 2, tool: op.stored.tool, result: op.result, response: op.stored.response } : op.result), op.result.serverNow))];
+    case 'receipt.insert_noop':
+      return [guardedStatement(d1.prepare('INSERT INTO command_receipts(command_id,payload_hash,result_json,created_at) VALUES(?,?,?,?)')
+        .bind(op.commandId, op.payloadHash, JSON.stringify({ receiptVersion: 2, tool: op.tool, result: null, response: op.response }), op.serverNow))];
     case 'command.audit':
       return [guardedStatement(d1.prepare('INSERT INTO command_audit(command_id,actor,reason,changes_json,created_at) VALUES(?,?,?,?,?)')
         .bind(op.commandId, op.actor, op.reason, JSON.stringify(op.result.changes), op.result.serverNow))];

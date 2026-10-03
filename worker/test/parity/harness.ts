@@ -124,7 +124,7 @@ function normalize(value: unknown, aliases: Aliases): unknown {
   return JSON.parse(text);
 }
 
-export async function runRow(row: Row): Promise<Outcome> {
+export async function runRow(row: Row, options: { normalize?: boolean } = {}): Promise<Outcome> {
   const { sql, d1 } = sqliteD1();
   vi.useFakeTimers({ toFake: ['Date'] });
   try {
@@ -145,6 +145,6 @@ export async function runRow(row: Row): Promise<Outcome> {
       result = { ok: false, channel: 'tool_error', message: body.result.content[0]!.text, ...(detail?.code ? { code: detail.code } : {}) };
     } else result = { ok: true, response: body.result?.structuredContent };
     const outcome: Outcome = { result, diff: diff(before, snapshot(sql)) };
-    return normalize(outcome, aliases) as Outcome;
+    return options.normalize === false ? outcome : normalize(outcome, aliases) as Outcome;
   } finally { vi.useRealTimers(); sql.close(); }
 }

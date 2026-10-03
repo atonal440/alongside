@@ -45,6 +45,16 @@ export async function commandHash(input: CommandEnvelope): Promise<string> {
   const hash = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
 }
+/**
+ * Replay identity for a tool call that compiles to commands: the tool name and its canonicalized
+ * arguments, never the compiled envelope (which depends on live state). The `tool` key keeps these
+ * hashes disjoint from envelope hashes.
+ */
+export async function toolRequestHash(tool: string, args: unknown): Promise<string> {
+  const bytes = new TextEncoder().encode(canonicalJson({ request: { tool, args } }));
+  const hash = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
+}
 export function planSettingsCommand(input: CommandEnvelope, before: PlanningSettings | null, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
   const command = normalizeCommand(input).commands[0]!;
   if (command.kind !== 'planning.set') throw new Error('Expected a planning.set command.');

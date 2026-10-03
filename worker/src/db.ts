@@ -15,7 +15,8 @@ import type { EntityKey, EntityVersionResponse, EntityReadKey, EntitySnapshot } 
 import { readEntitySnapshot } from './storage/entity';
 import { parsePlanningSettings, type PlanningSettings } from '@shared/wire/planning';
 import type { LegacyDueRow } from './domain/temporalFoundation';
-import { ChangesResultSchema, StoredReceiptSchema, type CommandEnvelope, type ChangesResult, type ChangesPreview } from '@shared/wire/commands';
+import { parseStoredResult, type ReceiptTool, type StoredResult } from '@shared/wire/receipts';
+import { StoredReceiptSchema, type CommandEnvelope, type ChangesResult, type ChangesPreview } from '@shared/wire/commands';
 import { parseSchema, parseEventInstant, type EventInstant, type CommandId } from '@shared/parse';
 import { invalidInput } from './domain/temporalFoundation';
 import { CommandError, commandHash, payloadConflict, planSettingsCommand, planCreateCommand, creationConflict, planContentCommand, entityCommandConflict, planStateCommand, commandEntityKey, planCompleteCommand, planTaskProjectCommand, revisionConflict } from './domain/commands';
@@ -775,16 +776,40 @@ export class DB {
     return parsed.value;
   }
 
-  private async getCommandReceipt(id: CommandId): Promise<ChangesResult | null> {
+  /** The raw stored receipt, version 1 or 2, with the hash recorded in its row. */
+  private async readReceipt(id: CommandId): Promise<{ payloadHash: string; stored: StoredResult } | null> {
     const row: unknown = await this.d1.prepare('SELECT command_id,payload_hash,result_json,created_at FROM command_receipts WHERE command_id = ?').bind(id).first();
     if (!row) return null;
     const receipt = parseSchema(StoredReceiptSchema, row);
     if (!receipt.ok) throw new Error('Stored command receipt failed validation.');
-    const result = parseSchema(ChangesResultSchema, JSON.parse(receipt.value.result_json));
-    if (!result.ok || result.value.commandId !== receipt.value.command_id || result.value.payloadHash !== receipt.value.payload_hash || result.value.serverNow !== receipt.value.created_at) {
+    const stored = parseStoredResult(receipt.value.result_json);
+    const result = stored.ok ? stored.value.result : null;
+    if (!stored.ok || (result !== null && (result.commandId !== receipt.value.command_id || result.payloadHash !== receipt.value.payload_hash || result.serverNow !== receipt.value.created_at))) {
       throw new Error('Stored command result failed validation.');
     }
-    return result.value;
+    return { payloadHash: receipt.value.payload_hash, stored: stored.value };
+  }
+
+  /**
+   * Receipt for an envelope-based call. A version 2 receipt belongs to a tool request, whose hash
+   * can never equal an envelope hash, so the ID is in use with a different payload.
+   */
+  private async getCommandReceipt(id: CommandId): Promise<ChangesResult | null> {
+    const receipt = await this.readReceipt(id);
+    if (!receipt) return null;
+    if (receipt.stored.receiptVersion === 2 || receipt.stored.result === null) throw payloadConflict();
+    return receipt.stored.result;
+  }
+
+  /**
+   * Receipt-first lookup for a tool adapter: the stored response when this exact request already
+   * committed, null when the ID is unused. Another request (or an envelope) on the ID conflicts.
+   */
+  async findToolReceipt(id: CommandId, tool: ReceiptTool, requestHash: string): Promise<{ response: unknown; result: ChangesResult | null } | null> {
+    const receipt = await this.readReceipt(id);
+    if (!receipt) return null;
+    if (receipt.stored.receiptVersion !== 2 || receipt.stored.tool !== tool || receipt.payloadHash !== requestHash) throw payloadConflict();
+    return { response: receipt.stored.response, result: receipt.stored.result };
   }
 
   async previewChanges(input: CommandEnvelope): Promise<ChangesPreview> {

@@ -1,6 +1,6 @@
 # MCP adapter parity matrix
 
-Status: legacy side recorded and pinned; adapter side not built. Updated 2026-10-03.
+Status: legacy side recorded and pinned; findings 1–10 approved with the recommendations below (2026-10-03); adapter side not built. Updated 2026-10-03.
 
 This is the first deliverable of phase C in [the MCP surface plan](mcp-surface.md#adapter-parity). Every retained mutating tool (`add_task`, `complete_task`, `defer_task`, `update_task`, `reopen_task`, `focus_task`, `delete_task`, `create_project`, `update_project`, `delete_project`, `link_tasks`, `unlink_tasks`, `update_preference`) is run on a fixed fixture workspace for each class of input it accepts today: each field, combinations, and entity states (done, deferred, focused, missing).
 
@@ -15,7 +15,7 @@ This is the first deliverable of phase C in [the MCP surface plan](mcp-surface.m
 
 ## Findings the plan did not list
 
-The plan's table of known gaps holds up (see the rows). Recording the legacy behavior turned up these further cases. Each needs a decision before its adapter replaces the legacy handler; a recommendation is given, and none is approved yet.
+The plan's table of known gaps holds up (see the rows). Recording the legacy behavior turned up these further cases. The recommendation on each was approved on 2026-10-03, so an adapter may differ from the legacy outcome on exactly these points once the row is added to `approved.ts` with the adapter's real outcome. Findings 6–10 describe behavior the adapters must simply keep or tighten without needing a row.
 
 1. **`update_task` accepts undeclared fields.** `defer_kind` and `defer_until` are not in the tool schema but are applied (`undeclared-defer*` rows): `until` and `someday` go through the same deferral planner as `defer_task`, and `none` clears a deferral directly. Unknown keys such as `colour` are ignored but the call still logs. *Recommend:* keep ignoring unknown keys, and map `defer_kind`/`defer_until` to `task.defer.set` so results stay the same.
 2. **Unchanged values still move `updated_at`.** Any non-empty patch bumps `updated_at` even when every value is unchanged (`same-title`, `status-pending-on-pending`, `focus-clear-unfocused`, `update_project.status-unchanged`). Only a call whose patch is empty leaves the row alone. *Recommend:* accept no bump for true no-ops; `updated_at` feeds readiness scoring only through age, so the effect is nil. Needs approval because the PWA shows it.
