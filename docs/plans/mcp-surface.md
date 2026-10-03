@@ -1,6 +1,6 @@
 # MCP surface: organizing a growing set of verbs
 
-Status: phases A (annotations, `/mcp/admin`, deprecated aliases, `initialize.instructions`, `toolSurface`) and B (reads, loose-intent preview, wider action-log codec) implemented; C–D proposed. Updated 2026-10-03.
+Status: phases A (annotations, `/mcp/admin`, deprecated aliases, `initialize.instructions`, `toolSurface`) and B (reads, loose-intent preview, wider action-log codec) implemented; C started (legacy half of the [parity matrix](mcp-parity-matrix.md) pinned); rest of C and D proposed. Updated 2026-10-03.
 
 This plan refines §10 ("REST and MCP surface") of
 [the power-user plan](power-user-todo.md). That document still owns the
