@@ -828,7 +828,7 @@ export class DB {
     return { response: receipt.stored.response, result: receipt.stored.result };
   }
 
-  async previewChanges(input: CommandEnvelope): Promise<ChangesPreview> {
+  async previewChanges(input: CommandEnvelope, options: { actionLog?: boolean } = {}): Promise<ChangesPreview> {
     const hash = await commandHash(input);
     const receipt = await this.getCommandReceipt(input.commandId);
     if (receipt) {
@@ -839,7 +839,7 @@ export class DB {
     const clock = parseEventInstant(new Date().toISOString());
     if (!clock.ok) throw new Error('Invalid server clock.');
     const planned = await this.planCommand(input, hash, clock.value);
-    const capacity = checkPlanCapacity(this.d1, planned.plan);
+    const capacity = checkPlanCapacity(this.d1, options.actionLog ? await this.withActionLog(planned.plan, input, planned.result, clock.value) : planned.plan);
     if (!capacity.ok) { if(capacity.error.kind==='capacity_exceeded')throw new CommandError({code:'capacity_exceeded',path:['commands'],message:`Atomic command requires ${capacity.error.requiredStatements} SQL statements; the limit is 100.`,retryable:false,requiredStatements:capacity.error.requiredStatements,limit:100,recoveryHint:'Retain the complete intent and explicitly reduce the scope; never split atomic changes silently.'},413);throwAppError(capacity.error); }
     const { applied: _applied, ...result } = planned.result;
     return { ...result, dryRun: true, requiredStatements: capacity.value.requiredStatements };
@@ -871,14 +871,10 @@ export class DB {
       }
       throw error;
     }
-    const capacity=checkPlanCapacity(this.d1,planned.plan);
+    // The plan that is capacity-checked is the plan that commits, action-log rows included.
+    const plan = options.actionLog ? await this.withActionLog(planned.plan, input, planned.result, clock.value) : planned.plan;
+    const capacity=checkPlanCapacity(this.d1,plan);
     if(!capacity.ok && capacity.error.kind==='capacity_exceeded')throw new CommandError({code:'capacity_exceeded',path:['commands'],message:`Atomic command requires ${capacity.error.requiredStatements} SQL statements; the limit is 100.`,retryable:false,requiredStatements:capacity.error.requiredStatements,limit:100,recoveryHint:'Retain intent and explicitly reduce the complete atomic scope.'},413);
-    let plan = planned.plan;
-    if (options.actionLog) {
-      const missing = linkEndpoints(input).filter(id => !titlesFrom(planned.result).task.has(id));
-      const extra = new Map((await Promise.all([...new Set(missing)].map(async id => [id, (await this.getTask(id))?.title] as const))).flatMap(([id, title]) => title ? [[id, title] as const] : []));
-      plan = { ...plan, ops: [...plan.ops, ...commandLogDrafts(input, planned.result, extra).map(log => this.logOp(log, clock.value))] };
-    }
     const applied = await applyPlan(this.d1, plan);
     if (applied.ok) return planned.result;
     // Concurrent identical execution can fail either the SQL revision guard or
@@ -961,6 +957,13 @@ export class DB {
     // A guard failed: the state the no-op was judged against moved. The caller re-reads and recompiles.
     throw new CommandError({ code: 'revision_conflict', path: [], message: 'State changed while the call was being classified.', retryable: true,
       recoveryHint: 'Repeat the call; it is re-evaluated against current state.' });
+  }
+
+  /** Appends one action-log row per non-settings command (MCP only), so capacity sees the real plan. */
+  private async withActionLog(plan: Plan, input: CommandEnvelope, result: ChangesResult, at: EventInstant): Promise<Plan> {
+    const missing = linkEndpoints(input).filter(id => !titlesFrom(result).task.has(id));
+    const extra = new Map((await Promise.all([...new Set(missing)].map(async id => [id, (await this.getTask(id))?.title] as const))).flatMap(([id, title]) => title ? [[id, title] as const] : []));
+    return { ...plan, ops: [...plan.ops, ...commandLogDrafts(input, result, extra).map(log => this.logOp(log, at))] };
   }
 
   private logOp(log: ToolLogDraft, at: EventInstant): Op {

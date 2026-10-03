@@ -206,11 +206,11 @@ export async function callCommandTool(name: string, args: unknown, db: DB, optio
     const pinnedEnvelope = await pinIntent(args, db);
     const pinned = parseSchema(CommandEnvelopeSchema, pinnedEnvelope);
     if (!pinned.ok) throw new CommandError(invalidInput(pinned.error), 400);
-    return { ...await db.previewChanges(pinned.value), pinnedEnvelope };
+    return { ...await db.previewChanges(pinned.value, { actionLog: options.source === 'mcp' }), pinnedEnvelope };
   }
   const input = parseSchema(CommandEnvelopeSchema, args);
   if (!input.ok) throw new CommandError(invalidInput(input.error), 400);
-  if (name === 'preview_changes') return db.previewChanges(input.value);
+  if (name === 'preview_changes') return db.previewChanges(input.value, { actionLog: options.source === 'mcp' });
   if (name === 'apply_changes') return db.applyChanges(input.value, { actionLog: options.source === 'mcp' });
   throw new Error(`Unknown command tool: ${name}`);
 }

@@ -95,3 +95,18 @@ describe('apply_changes records command kinds in the action log', () => {
     expect(row.row.tool_name).toBe('task.create');
   }));
 });
+
+describe('capacity counts the action-log rows an MCP apply adds', () => {
+  const focusAll = async (db: DB, count: number) => {
+    const tasks = await Promise.all(Array.from({ length: count }, (_, i) => db.addTask({ title: `Task ${i}` })));
+    const commands = await Promise.all(tasks.map(async t => ({ kind: 'task.focus.set', id: t.id, expectedRevision: (await db.getEntitySnapshot({ entity: 'task', id: t.id } as never)).version!.revision, focusedUntil: '2099-01-01T00:00:00Z' })));
+    return envelope(db, 'c_logcap001', commands);
+  };
+  it('refuses at preview, not only at apply, a batch whose log rows push it past the limit', async () => withWorld(async (w, db) => {
+    const input = await focusAll(db, 20);
+    expect((await db.previewChanges(input as never)).requiredStatements).toBe(83);   // REST: no log rows
+    await expect(db.previewChanges(input as never, { actionLog: true })).rejects.toMatchObject({ status: 413, detail: { code: 'capacity_exceeded', requiredStatements: 103 } });
+    await expect(applyViaMcp(w, db, input)).rejects.toMatchObject({ detail: { code: 'capacity_exceeded' } });
+    expect(logRows(w)).toEqual([]);
+  }));
+});
