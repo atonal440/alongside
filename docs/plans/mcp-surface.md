@@ -134,12 +134,17 @@ two-call preview and apply would be friction. Each one:
 - makes retries with the same `commandId` replay, not conflict (see
   [Quick-verb replay](#quick-verb-replay));
 - returns the command result (revisions, side effects) plus the existing
-  `action_log_entry` for the widget.
+  `action_log_entry` for the widget. The action-log row is written inside the
+  same atomic plan and stored in the receipt (see
+  [Quick-verb replay](#quick-verb-replay)).
 
 `update_task` is a partial patch. `task.content.set` replaces title, notes,
 kickoff note and session log together, so the quick verb merges the patch into
 the current values before building the command. `status: "pending"` becomes
-`task.reopen`. `add_task` puts the project and task type into `task.create`
+`task.reopen` only when the task is done. On a task that is already pending
+it is omitted, as it is effectively a no-op today. `task.reopen` rejects
+pending tasks that aren't deferred, and on a deferred one it would also clear
+the deferral, which the legacy patch never did. `add_task` puts the project and task type into `task.create`
 itself. A due date or recurrence needs `task.legacy-schedule.set` on the same
 task, because `task.create` is deliberately undated.
 
@@ -202,7 +207,7 @@ A quick verb builds its envelope from live state, so rebuilding it on a retry
 gives a different envelope. The minted task or successor ID changes, and the
 expected revisions have moved on if the first attempt committed. Receipts
 compare a hash of the payload, so a retry that hashed the rebuilt envelope
-would return `command_id_conflict` instead of the original result. Three
+would return `command_id_conflict` instead of the original result. Four
 rules prevent that:
 
 - **Look up the receipt before compiling.** With a `commandId`, the server
@@ -217,6 +222,13 @@ rules prevent that:
   batch. Two identical requests racing before either commits plan the same
   identities, so the existing identity guard rejects the second, and its retry
   then replays the receipt.
+- **Make the action-log entry part of the command.** Today `logAction`
+  inserts the `action_log` row after the change, as a separate unreceipted
+  write. The quick verb instead adds the insert to the same atomic plan
+  (counted toward plan capacity) and stores the inserted row in the receipt.
+  A replay returns the same `action_log_entry` without writing a second row,
+  and a failed command leaves no log entry behind. `apply_changes` follows the
+  same rule if it writes action-log entries.
 
 Without a `commandId`, the server mints a fresh one and none of this
 applies: each call is a new command, as today.
@@ -361,9 +373,12 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   old parser until it reloads. So old readers must be stopped from reading,
   not just offered an update. The widened build announces a new client
   protocol (`pwa/3`). Before the worker emits the first command-kind row, the
-  snapshot and delta endpoints start returning 426 `upgrade_required` to
-  browser clients announcing less than 3. That is the same Origin-based check
-  as the existing write gate, applied to reads. `pwa/2` clients already treat
+  snapshot and delta endpoints start returning 426 `upgrade_required` to any
+  request whose `X-Alongside-Client` header announces a PWA protocol below 3,
+  whether or not it carries `Origin`. Browsers omit `Origin` on same-origin
+  GET requests, so the write gate's Origin check alone would let an old tab
+  through if the PWA and API ever share an origin. The Origin heuristic
+  remains only for browser builds that announce nothing. `pwa/2` clients already treat
   any 426 as "reload to update", keeping queued work, so they recover without
   data loss. The alternative is a backward-compatible projection: serve old
   readers a legacy tool name in place of each command kind. It avoids the
@@ -414,10 +429,13 @@ built once, on the command path, and not added to the legacy verbs as well.
 - Every MCP write produces a command receipt; retrying a quick verb with the
   same `commandId` replays rather than duplicating, including after the first
   attempt committed and for verbs that mint IDs (`add_task`, recurring
-  `complete_task`).
+  `complete_task`). A replay writes no second action-log row and returns the
+  original `action_log_entry`.
+- `update_task` with `status: "pending"` on an already-pending task still
+  succeeds, alone or with other fields, and doesn't clear a deferral.
 - A PWA snapshot or delta containing command-kind action-log rows parses and
-  syncs, and a browser announcing protocol 2 gets 426 from the sync endpoints
-  instead of a page it can't parse.
+  syncs, and a client announcing protocol 2 gets 426 from the sync endpoints
+  instead of a page it can't parse, with or without an `Origin` header.
 - `add_task` with a due date or recurrence, and `update_task` with fields from
   several groups, each commit as one atomic command with one diff per task.
 - An LLM can complete a multi-step change (create a project, move three
