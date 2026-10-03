@@ -73,16 +73,18 @@ export const TaskRowSchema = v.pipe(
   v.transform((row): Task => ({ ...row })),
 );
 
+export const projectRowEntries = {
+  id: ProjectIdSchema,
+  title: rowTitleSchema(PROJECT_TITLE_MAX),
+  notes: v.nullable(boundedStringSchema(PROJECT_NOTES_MAX)),
+  kickoff_note: v.nullable(boundedStringSchema(PROJECT_KICKOFF_MAX)),
+  status: ProjectStatusSchema,
+  created_at: IsoDateTimeSchema,
+  updated_at: IsoDateTimeSchema,
+};
+
 export const ProjectRowSchema = v.pipe(
-  v.object({
-    id: ProjectIdSchema,
-    title: rowTitleSchema(PROJECT_TITLE_MAX),
-    notes: v.nullable(boundedStringSchema(PROJECT_NOTES_MAX)),
-    kickoff_note: v.nullable(boundedStringSchema(PROJECT_KICKOFF_MAX)),
-    status: ProjectStatusSchema,
-    created_at: IsoDateTimeSchema,
-    updated_at: IsoDateTimeSchema,
-  }),
+  v.object(projectRowEntries),
   v.transform((row): Project => ({ ...row })),
 );
 

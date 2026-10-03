@@ -4,13 +4,21 @@ Alongside exposes 39 tools (including deprecated aliases) via the MCP endpoint a
 
 ## Endpoints, tiers and annotations
 
-Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`, plus `idempotentHint` where true) so a host can approve per tier: reads are `readOnlyHint: true`; conversational writes are non-destructive; `delete_task`, `delete_project`, `apply_changes` and `restore_workspace` are `destructiveHint: true`. `start_session` is not yet read-only because it still seeds default preferences and stores `last_session_at`; that changes in phase C of [the MCP surface plan](plans/mcp-surface.md).
+Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`, plus `idempotentHint` where true) so a host can approve per tier: reads are `readOnlyHint: true`; conversational writes are non-destructive; `delete_task`, `delete_project`, `apply_changes` and `restore_workspace` are `destructiveHint: true`. `start_session` is read-only (see its entry); it used to seed preferences and store `last_session_at`.
 
 `/mcp/admin` is an opt-in second endpoint with the same bearer token. Connect it only when needed. It lists `export_workspace`, `restore_workspace`, `get_workspace_snapshot` (the cursor read restore needs, and the way to check after a lost restore response whether it committed), `export_planning_settings` and `preview_legacy_dates`. It has no widget resources.
 
 Tools that moved there (and the REST-only `get_workspace_delta` and `get_entity_version`) stay listed on `/mcp` as deprecated aliases that behave exactly as before; their descriptions start with `Deprecated alias.` and name the new home. They are removed in phase D. `initialize` on `/mcp` now carries the session instructions in its `instructions` field; `start_session` still returns them too until then. `get_capabilities` reports `toolSurface` (`version`, `commandCatalog`, `adminEndpoint`).
 
 ---
+
+## Action-log entries from `apply_changes`
+
+Through MCP, `apply_changes` also writes one action-log entry per command, in declared order, in the same atomic batch as the receipt: `tool_name` is the command kind (`task.create`, `link.add`, …), `task_id` is the task for task commands (a deleted task keeps its ID), `title` is the entity's final title (links read `A → B`), and `detail` carries the kind-specific value (the new type, due date, deferral, focus time, `→ recurs <date>` for a completion, the project title for an assignment, the link type). Settings commands (`planning.set`, `preference.set`) write no entry, matching `update_preference`. A replay writes nothing, a failed command leaves nothing, and the REST `POST /api/v2/changes` the PWA uses writes no entries. The rows reach clients through the sync feed, which is why the sync read gate (protocol 3) had to be in force first. The quick verbs and deprecated mutating tools keep recording their own tool names.
+
+## The `preference.set` command
+
+`preference.set` is a standalone command (it cannot join a mixed batch, like `planning.set`): `{ kind: 'preference.set', key, value, expectedRevision }`. `key` is one of the preference keys (including the internal `last_session_at`, which stays accepted); `value` is validated against the key's allowed set. `expectedRevision` is the preference's sync revision, or `null` if it has never been set. The result holds one change, `{ entity: 'preference', id: key, before: { revision, value } | null, after: { revision, value } }`, with `after.revision` one past `before.revision`. The write is guarded in the same batch as the receipt and audit row, and lands in the sync feed through the existing triggers. The legacy command feed (`change_feed`) has no preference rows. `update_preference` is its adapter; `describe_commands({ family: 'preference' })` and loose-intent `preview_changes` support it.
 
 ## Find, context and loose-intent changes (phase B)
 
@@ -30,7 +38,7 @@ These tools replace the older list/get reads and the by-hand revision bookkeepin
 
 ### `start_session`
 
-Call this at the beginning of every work session. Seeds default preferences if this is the first session, detects gaps in usage, and returns behavioral instructions for Claude to follow.
+Call this at the beginning of every work session. Read-only: it writes nothing. Default preferences are merged into the returned `preferences` in memory (a row exists only once someone sets it), and `returning_after_gap` is true when the newest action-log or command-audit entry is more than 7 days old (false on a workspace with no history). The old `last_session_at` preference is no longer read or written; existing rows stay readable and exported. Returns behavioral instructions for Claude to follow.
 
 **Parameters:** none
 
@@ -39,7 +47,7 @@ Call this at the beginning of every work session. Seeds default preferences if t
 {
   suggested_tasks: Task[],          // top 3 ready tasks by readiness score
   preferences: Record<string, string>,
-  returning_after_gap: boolean,     // true if >7 days since last session
+  returning_after_gap: boolean,     // true if no recorded activity for >7 days
   instructions: string              // behavioral instructions for Claude
 }
 ```
@@ -111,6 +119,17 @@ Each entry: `{ id, tool_name, task_id, title, detail, created_at }`
 ---
 
 ## Task CRUD
+
+**Mutating tools on the command path.** `add_task`, `update_task`, `complete_task`, `defer_task`, `focus_task`, `reopen_task`, `delete_task`, `create_project`, `update_project`, `delete_project`, `link_tasks`, `unlink_tasks` and `update_preference` compile to the same commands `apply_changes` runs, so they share its guards, receipts and audit. Each accepts two optional arguments in addition to the ones listed below:
+
+| Name | Type | Description |
+|---|---|---|
+| `commandId` | `string` | A `c_…` ID. Retrying with the same ID and the same arguments returns the first call's response verbatim (same minted task ID, same `action_log_entry`) and writes nothing, even if the task has changed since. The same ID with different arguments returns `command_id_conflict`. Without it, every call is a new command. |
+| `expectedRevision` | `integer` | Not on `add_task`, `create_project` or `link_tasks`. For `update_preference` it is the preference's sync revision, and `null` means it has never been set. Refuse with `revision_conflict` if the task is no longer at this revision (read it with `get_context`). A pinned revision is never retried. |
+
+Without `expectedRevision` a verb reads the current state itself. If another write lands between that read and the commit, it re-reads, rebuilds its commands (re-merging a partial `update_task` patch against the new values) and tries again, up to three attempts, before returning the conflict. IDs for tasks the call creates (`add_task`, a recurring `complete_task`'s successor) derive from the command ID, so two identical requests racing each other plan the same identities and the loser replays the winner.
+
+The response and the action-log row are written in the same atomic batch as the change. A refused call writes neither. `update_preference` never logs, as before; its receipt still stores the response and the preference diff. A call that changes nothing (`update_task` with only `status: "pending"` on a pending task, or an empty patch) still records its command ID and writes its action-log entry once. Refusals are structured tool errors with a code and a recovery hint, not bare JSON-RPC errors. Where these verbs differ from the old handlers is listed in [the parity matrix](plans/mcp-parity-matrix.md).
 
 ### `add_task`
 
@@ -496,14 +515,13 @@ with exact `requiredStatements` and `limit: 100`; no split writes occur. See
 [reliable deletion](shared/reliable-deletion.md) for capacity, replay and conflicts.
 
 
-Mixed `preview_changes`/`apply_changes` accept 2–20 supported non-lifecycle
+Mixed `preview_changes`/`apply_changes` accept 2–100 supported non-lifecycle
 commands, including completion/deletion, with an envelope `expectedStructuralRevision`. Graph commands share
-that base revision; create referenced entities earlier and write each identity
-once. Results add `batch: true` and all scoped refs. Final dependency graphs
+that base revision; create referenced entities earlier. Several commands may write one task or project; they compose into one net change (see the bounded-batches note). Results add `batch: true` and all scoped refs. Final dependency graphs
 are validated atomically, allowing edge replacement in either add/remove order.
 The complete generated SQL must fit 100 statements; settings remain standalone.
 New mixed results include `changeGroups`, one image count per command, covering
-every successor/cascade/detachment image and enforcing each standalone contract. See [bounded mixed batches](shared/reliable-batches.md).
+every successor/cascade/detachment image and enforcing each standalone contract, or `commandChanges` when commands were composed. See [bounded mixed batches](shared/reliable-batches.md).
 
 ### `get_workspace_snapshot`
 

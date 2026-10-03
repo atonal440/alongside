@@ -1,0 +1,306 @@
+{
+ "update_task.status-pending-on-pending": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "2026-10-01T09:00:00.000Z",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.status-pending-on-deferred": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$deferred",
+    "title": "To be deferred",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "2026-10-01T09:00:00.000Z",
+    "defer_until": "2026-12-01T09:00:00Z",
+    "defer_kind": "until",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "To be deferred",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$deferred",
+      "duty_id": null,
+      "title": "To be deferred",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.focus-clear-on-done": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$done",
+    "title": "To be done",
+    "notes": null,
+    "status": "done",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "2026-10-01T09:00:00.000Z",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "To be done",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$done",
+      "duty_id": null,
+      "title": "To be done",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_project.status-unchanged": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$proj",
+    "title": "Fixture project",
+    "notes": "p notes",
+    "kickoff_note": "p kickoff",
+    "status": "active",
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "2026-10-01T09:00:00.000Z",
+    "action_log_entry": {
+     "tool_name": "update_project",
+     "title": "Fixture project",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Fixture project",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_project.archive-already-archived": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$archived",
+    "title": "Archived project",
+    "notes": null,
+    "kickoff_note": null,
+    "status": "archived",
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "2026-10-01T09:00:00.000Z",
+    "action_log_entry": {
+     "tool_name": "update_project",
+     "title": "Archived project",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Archived project",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "link_tasks.existing-related-reversed": {
+  "result": {
+   "ok": true,
+   "response": {
+    "linked": true,
+    "from_task_id": "$rel2",
+    "from_task_title": "Related two",
+    "to_task_id": "$rel1",
+    "to_task_title": "Related one",
+    "link_type": "related",
+    "action_log_entry": {
+     "tool_name": "link_tasks",
+     "title": "Related two → Related one",
+     "detail": "related"
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "link_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Related two → Related one",
+      "detail": "related",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "link_tasks.related": {
+  "result": {
+   "ok": true,
+   "response": {
+    "linked": true,
+    "from_task_id": "$pend2",
+    "from_task_title": "Second pending",
+    "to_task_id": "$pend",
+    "to_task_title": "Pending",
+    "link_type": "related",
+    "action_log_entry": {
+     "tool_name": "link_tasks",
+     "title": "Second pending → Pending",
+     "detail": "related"
+    }
+   }
+  },
+  "diff": {
+   "task_links": {
+    "added": [
+     {
+      "key": "$pend>$pend2:related",
+      "from_task_id": "$pend",
+      "to_task_id": "$pend2",
+      "link_type": "related"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "link_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Second pending → Pending",
+      "detail": "related",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "create_project.thirty-tasks": {
+  "result": {
+   "ok": false,
+   "channel": "tool_error",
+   "message": "Atomic command requires 127 SQL statements; the limit is 100.",
+   "code": "capacity_exceeded"
+  },
+  "diff": {}
+ },
+ "update_task.all-day-only-no-due": {
+  "result": {
+   "ok": false,
+   "channel": "tool_error",
+   "message": "Clearing dueDate requires dueAllDay and recurrence to be null.",
+   "code": "invalid_input"
+  },
+  "diff": {}
+ }
+}

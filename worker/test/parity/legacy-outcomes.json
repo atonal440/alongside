@@ -1,0 +1,7734 @@
+{
+ "add_task.title-only": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$new1",
+    "title": "New",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "<now>",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "add_task",
+     "title": "New",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New",
+      "notes": null,
+      "status": "pending",
+      "due_date": null,
+      "due_all_day": null,
+      "recurrence": null,
+      "created_at": "<now>",
+      "updated_at": "<now>",
+      "defer_until": null,
+      "defer_kind": "none",
+      "task_type": "action",
+      "project_id": null,
+      "kickoff_note": null,
+      "session_log": null,
+      "focused_until": null,
+      "duty_id": null,
+      "occurrence_at": null
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "add_task",
+      "task_id": "$new1",
+      "duty_id": null,
+      "title": "New",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "add_task.all-plain-fields": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$new1",
+    "title": "New",
+    "notes": "n",
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "<now>",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "plan",
+    "project_id": null,
+    "kickoff_note": "k",
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "add_task",
+     "title": "New",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New",
+      "notes": "n",
+      "status": "pending",
+      "due_date": null,
+      "due_all_day": null,
+      "recurrence": null,
+      "created_at": "<now>",
+      "updated_at": "<now>",
+      "defer_until": null,
+      "defer_kind": "none",
+      "task_type": "plan",
+      "project_id": null,
+      "kickoff_note": "k",
+      "session_log": null,
+      "focused_until": null,
+      "duty_id": null,
+      "occurrence_at": null
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "add_task",
+      "task_id": "$new1",
+      "duty_id": null,
+      "title": "New",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "add_task.project": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$new1",
+    "title": "New",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "<now>",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": "$proj",
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "add_task",
+     "title": "New",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New",
+      "notes": null,
+      "status": "pending",
+      "due_date": null,
+      "due_all_day": null,
+      "recurrence": null,
+      "created_at": "<now>",
+      "updated_at": "<now>",
+      "defer_until": null,
+      "defer_kind": "none",
+      "task_type": "action",
+      "project_id": "$proj",
+      "kickoff_note": null,
+      "session_log": null,
+      "focused_until": null,
+      "duty_id": null,
+      "occurrence_at": null
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "add_task",
+      "task_id": "$new1",
+      "duty_id": null,
+      "title": "New",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "add_task.project-missing": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "FOREIGN KEY constraint failed"
+  },
+  "diff": {}
+ },
+ "add_task.bare-date": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$new1",
+    "title": "New",
+    "notes": null,
+    "status": "pending",
+    "due_date": "2026-11-01T12:00:00Z",
+    "due_all_day": true,
+    "recurrence": null,
+    "created_at": "<now>",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "add_task",
+     "title": "New",
+     "detail": "2026-11-01T12:00:00Z"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New",
+      "notes": null,
+      "status": "pending",
+      "due_date": "2026-11-01T12:00:00Z",
+      "due_all_day": 1,
+      "recurrence": null,
+      "created_at": "<now>",
+      "updated_at": "<now>",
+      "defer_until": null,
+      "defer_kind": "none",
+      "task_type": "action",
+      "project_id": null,
+      "kickoff_note": null,
+      "session_log": null,
+      "focused_until": null,
+      "duty_id": null,
+      "occurrence_at": null
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "add_task",
+      "task_id": "$new1",
+      "duty_id": null,
+      "title": "New",
+      "detail": "2026-11-01T12:00:00Z",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "add_task.datetime": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$new1",
+    "title": "New",
+    "notes": null,
+    "status": "pending",
+    "due_date": "2026-11-01T15:30:00Z",
+    "due_all_day": false,
+    "recurrence": null,
+    "created_at": "<now>",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "add_task",
+     "title": "New",
+     "detail": "2026-11-01T15:30:00Z"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New",
+      "notes": null,
+      "status": "pending",
+      "due_date": "2026-11-01T15:30:00Z",
+      "due_all_day": 0,
+      "recurrence": null,
+      "created_at": "<now>",
+      "updated_at": "<now>",
+      "defer_until": null,
+      "defer_kind": "none",
+      "task_type": "action",
+      "project_id": null,
+      "kickoff_note": null,
+      "session_log": null,
+      "focused_until": null,
+      "duty_id": null,
+      "occurrence_at": null
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "add_task",
+      "task_id": "$new1",
+      "duty_id": null,
+      "title": "New",
+      "detail": "2026-11-01T15:30:00Z",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "add_task.offset-datetime": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$new1",
+    "title": "New",
+    "notes": null,
+    "status": "pending",
+    "due_date": "2026-11-01T15:30:00Z",
+    "due_all_day": false,
+    "recurrence": null,
+    "created_at": "<now>",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "add_task",
+     "title": "New",
+     "detail": "2026-11-01T15:30:00Z"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New",
+      "notes": null,
+      "status": "pending",
+      "due_date": "2026-11-01T15:30:00Z",
+      "due_all_day": 0,
+      "recurrence": null,
+      "created_at": "<now>",
+      "updated_at": "<now>",
+      "defer_until": null,
+      "defer_kind": "none",
+      "task_type": "action",
+      "project_id": null,
+      "kickoff_note": null,
+      "session_log": null,
+      "focused_until": null,
+      "duty_id": null,
+      "occurrence_at": null
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "add_task",
+      "task_id": "$new1",
+      "duty_id": null,
+      "title": "New",
+      "detail": "2026-11-01T15:30:00Z",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "add_task.date-and-recurrence": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$new1",
+    "title": "New",
+    "notes": null,
+    "status": "pending",
+    "due_date": "2026-11-01T12:00:00Z",
+    "due_all_day": true,
+    "recurrence": "FREQ=WEEKLY",
+    "created_at": "<now>",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "add_task",
+     "title": "New",
+     "detail": "2026-11-01T12:00:00Z"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New",
+      "notes": null,
+      "status": "pending",
+      "due_date": "2026-11-01T12:00:00Z",
+      "due_all_day": 1,
+      "recurrence": "FREQ=WEEKLY",
+      "created_at": "<now>",
+      "updated_at": "<now>",
+      "defer_until": null,
+      "defer_kind": "none",
+      "task_type": "action",
+      "project_id": null,
+      "kickoff_note": null,
+      "session_log": null,
+      "focused_until": null,
+      "duty_id": null,
+      "occurrence_at": null
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "add_task",
+      "task_id": "$new1",
+      "duty_id": null,
+      "title": "New",
+      "detail": "2026-11-01T12:00:00Z",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "add_task.recurrence-without-date": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "due_date is required when recurrence is set."
+  },
+  "diff": {}
+ },
+ "add_task.recurrence-on-timed": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Recurring tasks must have an all-day due date; timed recurrence is not supported yet."
+  },
+  "diff": {}
+ },
+ "add_task.bad-recurrence": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Expected an infinite date-only RRULE."
+  },
+  "diff": {}
+ },
+ "add_task.impossible-date": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Expected a valid ISO calendar date (YYYY-MM-DD) or date-time."
+  },
+  "diff": {}
+ },
+ "add_task.bad-date": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Expected a valid ISO calendar date (YYYY-MM-DD) or date-time."
+  },
+  "diff": {}
+ },
+ "add_task.undeclared-due-all-day": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$new1",
+    "title": "New",
+    "notes": null,
+    "status": "pending",
+    "due_date": "2026-11-01T15:30:00Z",
+    "due_all_day": false,
+    "recurrence": null,
+    "created_at": "<now>",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "add_task",
+     "title": "New",
+     "detail": "2026-11-01T15:30:00Z"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New",
+      "notes": null,
+      "status": "pending",
+      "due_date": "2026-11-01T15:30:00Z",
+      "due_all_day": 0,
+      "recurrence": null,
+      "created_at": "<now>",
+      "updated_at": "<now>",
+      "defer_until": null,
+      "defer_kind": "none",
+      "task_type": "action",
+      "project_id": null,
+      "kickoff_note": null,
+      "session_log": null,
+      "focused_until": null,
+      "duty_id": null,
+      "occurrence_at": null
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "add_task",
+      "task_id": "$new1",
+      "duty_id": null,
+      "title": "New",
+      "detail": "2026-11-01T15:30:00Z",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "add_task.empty-title": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Expected a non-empty string."
+  },
+  "diff": {}
+ },
+ "add_task.long-title": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Expected at most 200 characters."
+  },
+  "diff": {}
+ },
+ "add_task.missing-title": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Invalid type: Expected string but received undefined"
+  },
+  "diff": {}
+ },
+ "add_task.bad-type": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Invalid type: Expected (\"action\" | \"plan\") but received \"chore\""
+  },
+  "diff": {}
+ },
+ "add_task.long-notes": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Expected at most 10000 characters."
+  },
+  "diff": {}
+ },
+ "complete_task.pending": {
+  "result": {
+   "ok": true,
+   "response": {
+    "completed": {
+     "id": "$pend",
+     "title": "Pending",
+     "notes": null,
+     "status": "done",
+     "due_date": null,
+     "due_all_day": null,
+     "recurrence": null,
+     "created_at": "2026-10-01T09:00:00.000Z",
+     "updated_at": "<now>",
+     "defer_until": null,
+     "defer_kind": "none",
+     "task_type": "action",
+     "project_id": null,
+     "kickoff_note": null,
+     "session_log": null,
+     "focused_until": null,
+     "duty_id": null,
+     "occurrence_at": null
+    },
+    "action_log_entry": {
+     "tool_name": "complete_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "status": [
+        "pending",
+        "done"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "complete_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "complete_task.recurring": {
+  "result": {
+   "ok": true,
+   "response": {
+    "completed": {
+     "id": "$weekly",
+     "title": "Weekly",
+     "notes": null,
+     "status": "done",
+     "due_date": "2026-10-05T12:00:00Z",
+     "due_all_day": true,
+     "recurrence": "FREQ=WEEKLY",
+     "created_at": "2026-10-01T09:00:00.000Z",
+     "updated_at": "<now>",
+     "defer_until": null,
+     "defer_kind": "none",
+     "task_type": "action",
+     "project_id": null,
+     "kickoff_note": null,
+     "session_log": null,
+     "focused_until": null,
+     "duty_id": null,
+     "occurrence_at": null
+    },
+    "next": {
+     "id": "$new1",
+     "title": "Weekly",
+     "notes": null,
+     "status": "pending",
+     "due_date": "2026-10-12T12:00:00Z",
+     "due_all_day": true,
+     "recurrence": "FREQ=WEEKLY",
+     "created_at": "<now>",
+     "updated_at": "<now>",
+     "defer_until": null,
+     "defer_kind": "none",
+     "task_type": "action",
+     "project_id": null,
+     "kickoff_note": null,
+     "session_log": null,
+     "focused_until": null,
+     "duty_id": null,
+     "occurrence_at": null
+    },
+    "action_log_entry": {
+     "tool_name": "complete_task",
+     "title": "Weekly",
+     "detail": "→ recurs 2026-10-12T12:00:00Z"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "Weekly",
+      "notes": null,
+      "status": "pending",
+      "due_date": "2026-10-12T12:00:00Z",
+      "due_all_day": 1,
+      "recurrence": "FREQ=WEEKLY",
+      "created_at": "<now>",
+      "updated_at": "<now>",
+      "defer_until": null,
+      "defer_kind": "none",
+      "task_type": "action",
+      "project_id": null,
+      "kickoff_note": null,
+      "session_log": null,
+      "focused_until": null,
+      "duty_id": null,
+      "occurrence_at": null
+     }
+    ],
+    "changed": [
+     {
+      "key": "$weekly",
+      "fields": {
+       "status": [
+        "pending",
+        "done"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "complete_task",
+      "task_id": "$weekly",
+      "duty_id": null,
+      "title": "Weekly",
+      "detail": "→ recurs 2026-10-12T12:00:00Z",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "complete_task.already-done": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Only pending tasks can use this transition."
+  },
+  "diff": {}
+ },
+ "complete_task.deferred": {
+  "result": {
+   "ok": true,
+   "response": {
+    "completed": {
+     "id": "$deferred",
+     "title": "To be deferred",
+     "notes": null,
+     "status": "done",
+     "due_date": null,
+     "due_all_day": null,
+     "recurrence": null,
+     "created_at": "2026-10-01T09:00:00.000Z",
+     "updated_at": "<now>",
+     "defer_until": null,
+     "defer_kind": "none",
+     "task_type": "action",
+     "project_id": null,
+     "kickoff_note": null,
+     "session_log": null,
+     "focused_until": null,
+     "duty_id": null,
+     "occurrence_at": null
+    },
+    "action_log_entry": {
+     "tool_name": "complete_task",
+     "title": "To be deferred",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$deferred",
+      "fields": {
+       "status": [
+        "pending",
+        "done"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "defer_until": [
+        "2026-12-01T09:00:00Z",
+        null
+       ],
+       "defer_kind": [
+        "until",
+        "none"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "complete_task",
+      "task_id": "$deferred",
+      "duty_id": null,
+      "title": "To be deferred",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "complete_task.focused": {
+  "result": {
+   "ok": true,
+   "response": {
+    "completed": {
+     "id": "$focused",
+     "title": "To be focused",
+     "notes": null,
+     "status": "done",
+     "due_date": null,
+     "due_all_day": null,
+     "recurrence": null,
+     "created_at": "2026-10-01T09:00:00.000Z",
+     "updated_at": "<now>",
+     "defer_until": null,
+     "defer_kind": "none",
+     "task_type": "action",
+     "project_id": null,
+     "kickoff_note": null,
+     "session_log": null,
+     "focused_until": null,
+     "duty_id": null,
+     "occurrence_at": null
+    },
+    "action_log_entry": {
+     "tool_name": "complete_task",
+     "title": "To be focused",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$focused",
+      "fields": {
+       "status": [
+        "pending",
+        "done"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "focused_until": [
+        "2026-10-03T15:00:00Z",
+        null
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "complete_task",
+      "task_id": "$focused",
+      "duty_id": null,
+      "title": "To be focused",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "complete_task.blocked": {
+  "result": {
+   "ok": true,
+   "response": {
+    "completed": {
+     "id": "$blocked",
+     "title": "Blocked",
+     "notes": null,
+     "status": "done",
+     "due_date": null,
+     "due_all_day": null,
+     "recurrence": null,
+     "created_at": "2026-10-01T09:00:00.000Z",
+     "updated_at": "<now>",
+     "defer_until": null,
+     "defer_kind": "none",
+     "task_type": "action",
+     "project_id": null,
+     "kickoff_note": null,
+     "session_log": null,
+     "focused_until": null,
+     "duty_id": null,
+     "occurrence_at": null
+    },
+    "action_log_entry": {
+     "tool_name": "complete_task",
+     "title": "Blocked",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$blocked",
+      "fields": {
+       "status": [
+        "pending",
+        "done"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "complete_task",
+      "task_id": "$blocked",
+      "duty_id": null,
+      "title": "Blocked",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "complete_task.in-project": {
+  "result": {
+   "ok": true,
+   "response": {
+    "completed": {
+     "id": "$member",
+     "title": "Member",
+     "notes": null,
+     "status": "done",
+     "due_date": null,
+     "due_all_day": null,
+     "recurrence": null,
+     "created_at": "2026-10-01T09:00:00.000Z",
+     "updated_at": "<now>",
+     "defer_until": null,
+     "defer_kind": "none",
+     "task_type": "action",
+     "project_id": "$proj",
+     "kickoff_note": null,
+     "session_log": null,
+     "focused_until": null,
+     "duty_id": null,
+     "occurrence_at": null
+    },
+    "action_log_entry": {
+     "tool_name": "complete_task",
+     "title": "Member",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$member",
+      "fields": {
+       "status": [
+        "pending",
+        "done"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "complete_task",
+      "task_id": "$member",
+      "duty_id": null,
+      "title": "Member",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "complete_task.missing": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Task not found"
+  },
+  "diff": {}
+ },
+ "defer_task.until": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": "2026-12-01T09:00:00Z",
+    "defer_kind": "until",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "defer_task",
+     "title": "Pending",
+     "detail": "2026-12-01T09:00:00Z"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "defer_until": [
+        null,
+        "2026-12-01T09:00:00Z"
+       ],
+       "defer_kind": [
+        "none",
+        "until"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "defer_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": "2026-12-01T09:00:00Z",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "defer_task.until-past": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": "2020-01-01T00:00:00Z",
+    "defer_kind": "until",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "defer_task",
+     "title": "Pending",
+     "detail": "2020-01-01T00:00:00Z"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "defer_until": [
+        null,
+        "2020-01-01T00:00:00Z"
+       ],
+       "defer_kind": [
+        "none",
+        "until"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "defer_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": "2020-01-01T00:00:00Z",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "defer_task.until-offset": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": "2026-12-01T07:00:00Z",
+    "defer_kind": "until",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "defer_task",
+     "title": "Pending",
+     "detail": "2026-12-01T09:00:00+02:00"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "defer_until": [
+        null,
+        "2026-12-01T07:00:00Z"
+       ],
+       "defer_kind": [
+        "none",
+        "until"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "defer_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": "2026-12-01T09:00:00+02:00",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "defer_task.until-no-zone": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Expected a valid ISO date-time with Z or an offset."
+  },
+  "diff": {}
+ },
+ "defer_task.until-missing-value": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "until is required when kind=\"until\""
+  },
+  "diff": {}
+ },
+ "defer_task.someday": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "someday",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "defer_task",
+     "title": "Pending",
+     "detail": "someday"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "defer_kind": [
+        "none",
+        "someday"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "defer_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": "someday",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "defer_task.someday-with-until": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "until must be omitted when kind is someday."
+  },
+  "diff": {}
+ },
+ "defer_task.bad-kind": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "kind must be \"until\" or \"someday\""
+  },
+  "diff": {}
+ },
+ "defer_task.redefer": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$deferred",
+    "title": "To be deferred",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "someday",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "defer_task",
+     "title": "To be deferred",
+     "detail": "someday"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$deferred",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "defer_until": [
+        "2026-12-01T09:00:00Z",
+        null
+       ],
+       "defer_kind": [
+        "until",
+        "someday"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "defer_task",
+      "task_id": "$deferred",
+      "duty_id": null,
+      "title": "To be deferred",
+      "detail": "someday",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "defer_task.focused": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$focused",
+    "title": "To be focused",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "someday",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "defer_task",
+     "title": "To be focused",
+     "detail": "someday"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$focused",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "defer_kind": [
+        "none",
+        "someday"
+       ],
+       "focused_until": [
+        "2026-10-03T15:00:00Z",
+        null
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "defer_task",
+      "task_id": "$focused",
+      "duty_id": null,
+      "title": "To be focused",
+      "detail": "someday",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "defer_task.done": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Only pending tasks can use this transition."
+  },
+  "diff": {}
+ },
+ "defer_task.missing": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Task not found"
+  },
+  "diff": {}
+ },
+ "update_task.title": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$notes",
+    "title": "Renamed",
+    "notes": "old notes",
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": "old kickoff",
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Renamed",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$notes",
+      "fields": {
+       "title": [
+        "Has fields",
+        "Renamed"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$notes",
+      "duty_id": null,
+      "title": "Renamed",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.notes": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$notes",
+    "title": "Has fields",
+    "notes": "new notes",
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": "old kickoff",
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Has fields",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$notes",
+      "fields": {
+       "notes": [
+        "old notes",
+        "new notes"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$notes",
+      "duty_id": null,
+      "title": "Has fields",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.notes-null": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$notes",
+    "title": "Has fields",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": "old kickoff",
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Has fields",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$notes",
+      "fields": {
+       "notes": [
+        "old notes",
+        null
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$notes",
+      "duty_id": null,
+      "title": "Has fields",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.kickoff-note": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$notes",
+    "title": "Has fields",
+    "notes": "old notes",
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": "new kickoff",
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Has fields",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$notes",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "kickoff_note": [
+        "old kickoff",
+        "new kickoff"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$notes",
+      "duty_id": null,
+      "title": "Has fields",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.session-log": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$notes",
+    "title": "Has fields",
+    "notes": "old notes",
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": "old kickoff",
+    "session_log": "did things",
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Has fields",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$notes",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "session_log": [
+        null,
+        "did things"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$notes",
+      "duty_id": null,
+      "title": "Has fields",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.task-type": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "plan",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "task_type": [
+        "action",
+        "plan"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.empty-title": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Expected a non-empty string."
+  },
+  "diff": {}
+ },
+ "update_task.due-only-keeps-recurrence": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$weekly",
+    "title": "Weekly",
+    "notes": null,
+    "status": "pending",
+    "due_date": "2026-10-12T12:00:00Z",
+    "due_all_day": true,
+    "recurrence": "FREQ=WEEKLY",
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Weekly",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$weekly",
+      "fields": {
+       "due_date": [
+        "2026-10-05T12:00:00Z",
+        "2026-10-12T12:00:00Z"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$weekly",
+      "duty_id": null,
+      "title": "Weekly",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.recurrence-only-keeps-due": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$weekly",
+    "title": "Weekly",
+    "notes": null,
+    "status": "pending",
+    "due_date": "2026-10-05T12:00:00Z",
+    "due_all_day": true,
+    "recurrence": "FREQ=MONTHLY",
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Weekly",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$weekly",
+      "fields": {
+       "recurrence": [
+        "FREQ=WEEKLY",
+        "FREQ=MONTHLY"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$weekly",
+      "duty_id": null,
+      "title": "Weekly",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.recurrence-only-no-due": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "due_date is required when recurrence is set."
+  },
+  "diff": {}
+ },
+ "update_task.recurrence-onto-timed": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Recurring tasks must have an all-day due date; timed recurrence is not supported yet."
+  },
+  "diff": {}
+ },
+ "update_task.due-timed-with-recurrence": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Recurring tasks must have an all-day due date; timed recurrence is not supported yet."
+  },
+  "diff": {}
+ },
+ "update_task.due-null": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$dueonly",
+    "title": "Due only",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Due only",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$dueonly",
+      "fields": {
+       "due_date": [
+        "2026-10-10T12:00:00Z",
+        null
+       ],
+       "due_all_day": [
+        1,
+        null
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$dueonly",
+      "duty_id": null,
+      "title": "Due only",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.due-null-with-recurrence": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "due_date is required when recurrence is set."
+  },
+  "diff": {}
+ },
+ "update_task.due-null-and-recurrence-null": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$weekly",
+    "title": "Weekly",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Weekly",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$weekly",
+      "fields": {
+       "due_date": [
+        "2026-10-05T12:00:00Z",
+        null
+       ],
+       "due_all_day": [
+        1,
+        null
+       ],
+       "recurrence": [
+        "FREQ=WEEKLY",
+        null
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$weekly",
+      "duty_id": null,
+      "title": "Weekly",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.recurrence-null": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$weekly",
+    "title": "Weekly",
+    "notes": null,
+    "status": "pending",
+    "due_date": "2026-10-05T12:00:00Z",
+    "due_all_day": true,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Weekly",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$weekly",
+      "fields": {
+       "recurrence": [
+        "FREQ=WEEKLY",
+        null
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$weekly",
+      "duty_id": null,
+      "title": "Weekly",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.all-day-only": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$timed",
+    "title": "Timed",
+    "notes": null,
+    "status": "pending",
+    "due_date": "2026-10-10T15:00:00Z",
+    "due_all_day": true,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Timed",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$timed",
+      "fields": {
+       "due_all_day": [
+        0,
+        1
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$timed",
+      "duty_id": null,
+      "title": "Timed",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.all-day-only-no-due": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": true,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "due_all_day": [
+        null,
+        1
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.all-day-null": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$dueonly",
+    "title": "Due only",
+    "notes": null,
+    "status": "pending",
+    "due_date": "2026-10-10T12:00:00Z",
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Due only",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$dueonly",
+      "fields": {
+       "due_all_day": [
+        1,
+        null
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$dueonly",
+      "duty_id": null,
+      "title": "Due only",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.due-with-all-day": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": "2026-11-01T15:00:00Z",
+    "due_all_day": true,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "due_date": [
+        null,
+        "2026-11-01T15:00:00Z"
+       ],
+       "due_all_day": [
+        null,
+        1
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.bad-due": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Expected a valid ISO calendar date (YYYY-MM-DD) or date-time."
+  },
+  "diff": {}
+ },
+ "update_task.title-and-due": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$notes",
+    "title": "Both",
+    "notes": "old notes",
+    "status": "pending",
+    "due_date": "2026-11-01T12:00:00Z",
+    "due_all_day": true,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": "old kickoff",
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Both",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$notes",
+      "fields": {
+       "title": [
+        "Has fields",
+        "Both"
+       ],
+       "due_date": [
+        null,
+        "2026-11-01T12:00:00Z"
+       ],
+       "due_all_day": [
+        null,
+        1
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$notes",
+      "duty_id": null,
+      "title": "Both",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.all-groups": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$notes",
+    "title": "All",
+    "notes": "old notes",
+    "status": "pending",
+    "due_date": "2026-11-01T12:00:00Z",
+    "due_all_day": true,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "plan",
+    "project_id": "$proj",
+    "kickoff_note": "old kickoff",
+    "session_log": "s",
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "All",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$notes",
+      "fields": {
+       "title": [
+        "Has fields",
+        "All"
+       ],
+       "due_date": [
+        null,
+        "2026-11-01T12:00:00Z"
+       ],
+       "due_all_day": [
+        null,
+        1
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "task_type": [
+        "action",
+        "plan"
+       ],
+       "project_id": [
+        null,
+        "$proj"
+       ],
+       "session_log": [
+        null,
+        "s"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$notes",
+      "duty_id": null,
+      "title": "All",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.same-title": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$notes",
+    "title": "Has fields",
+    "notes": "old notes",
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": "old kickoff",
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Has fields",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$notes",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$notes",
+      "duty_id": null,
+      "title": "Has fields",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.status-pending-on-pending": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.status-pending-with-title": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "T",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "T",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "title": [
+        "Pending",
+        "T"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "T",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.status-pending-on-done": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$done",
+    "title": "To be done",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "To be done",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$done",
+      "fields": {
+       "status": [
+        "done",
+        "pending"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$done",
+      "duty_id": null,
+      "title": "To be done",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.status-pending-on-deferred": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$deferred",
+    "title": "To be deferred",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": "2026-12-01T09:00:00Z",
+    "defer_kind": "until",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "To be deferred",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$deferred",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$deferred",
+      "duty_id": null,
+      "title": "To be deferred",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.status-done": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Use completeTask() to mark a task done."
+  },
+  "diff": {}
+ },
+ "update_task.status-bogus": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Invalid type: Expected (\"pending\" | \"done\") but received \"archived\""
+  },
+  "diff": {}
+ },
+ "update_task.focus-set": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": "2026-10-03T18:00:00Z",
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "focused_until": [
+        null,
+        "2026-10-03T18:00:00Z"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.focus-set-on-deferred": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$deferred",
+    "title": "To be deferred",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": "2026-10-03T18:00:00Z",
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "To be deferred",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$deferred",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "defer_until": [
+        "2026-12-01T09:00:00Z",
+        null
+       ],
+       "defer_kind": [
+        "until",
+        "none"
+       ],
+       "focused_until": [
+        null,
+        "2026-10-03T18:00:00Z"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$deferred",
+      "duty_id": null,
+      "title": "To be deferred",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.focus-set-on-done": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Only pending tasks can use this transition."
+  },
+  "diff": {}
+ },
+ "update_task.focus-clear": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$focused",
+    "title": "To be focused",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "To be focused",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$focused",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "focused_until": [
+        "2026-10-03T15:00:00Z",
+        null
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$focused",
+      "duty_id": null,
+      "title": "To be focused",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.focus-clear-unfocused": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.focus-clear-on-done": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$done",
+    "title": "To be done",
+    "notes": null,
+    "status": "done",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "To be done",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$done",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$done",
+      "duty_id": null,
+      "title": "To be done",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.focus-bad": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Expected a valid ISO date-time with Z or an offset."
+  },
+  "diff": {}
+ },
+ "update_task.project-move": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": "$proj",
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$proj"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.project-remove": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$member",
+    "title": "Member",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Member",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$member",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        "$proj",
+        null
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$member",
+      "duty_id": null,
+      "title": "Member",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.project-missing": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "FOREIGN KEY constraint failed"
+  },
+  "diff": {}
+ },
+ "update_task.project-archived": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": "$archived",
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$archived"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.undeclared-defer": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "someday",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "defer_kind": [
+        "none",
+        "someday"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.undeclared-defer-until": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": "2026-12-01T09:00:00Z",
+    "defer_kind": "until",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "defer_until": [
+        null,
+        "2026-12-01T09:00:00Z"
+       ],
+       "defer_kind": [
+        "none",
+        "until"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.undeclared-defer-none": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$deferred",
+    "title": "To be deferred",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "To be deferred",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$deferred",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "defer_until": [
+        "2026-12-01T09:00:00Z",
+        null
+       ],
+       "defer_kind": [
+        "until",
+        "none"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$deferred",
+      "duty_id": null,
+      "title": "To be deferred",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.undeclared-unknown-key": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "2026-10-01T09:00:00.000Z",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.empty-patch": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "2026-10-01T09:00:00.000Z",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.empty-patch-missing": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Task not found"
+  },
+  "diff": {}
+ },
+ "update_task.missing": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Task not found"
+  },
+  "diff": {}
+ },
+ "update_task.done-title": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$done",
+    "title": "Edited after done",
+    "notes": null,
+    "status": "done",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "Edited after done",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$done",
+      "fields": {
+       "title": [
+        "To be done",
+        "Edited after done"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$done",
+      "duty_id": null,
+      "title": "Edited after done",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_task.done-due": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$done",
+    "title": "To be done",
+    "notes": null,
+    "status": "done",
+    "due_date": "2026-11-01T12:00:00Z",
+    "due_all_day": true,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "update_task",
+     "title": "To be done",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$done",
+      "fields": {
+       "due_date": [
+        null,
+        "2026-11-01T12:00:00Z"
+       ],
+       "due_all_day": [
+        null,
+        1
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_task",
+      "task_id": "$done",
+      "duty_id": null,
+      "title": "To be done",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "reopen_task.done": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$done",
+    "title": "To be done",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "reopen_task",
+     "title": "To be done",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$done",
+      "fields": {
+       "status": [
+        "done",
+        "pending"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "reopen_task",
+      "task_id": "$done",
+      "duty_id": null,
+      "title": "To be done",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "reopen_task.deferred": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$deferred",
+    "title": "To be deferred",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "reopen_task",
+     "title": "To be deferred",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$deferred",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "defer_until": [
+        "2026-12-01T09:00:00Z",
+        null
+       ],
+       "defer_kind": [
+        "until",
+        "none"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "reopen_task",
+      "task_id": "$deferred",
+      "duty_id": null,
+      "title": "To be deferred",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "reopen_task.someday": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$someday",
+    "title": "To be someday",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": null,
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "reopen_task",
+     "title": "To be someday",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$someday",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "defer_kind": [
+        "someday",
+        "none"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "reopen_task",
+      "task_id": "$someday",
+      "duty_id": null,
+      "title": "To be someday",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "reopen_task.pending": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Only done or deferred pending tasks can be reopened."
+  },
+  "diff": {}
+ },
+ "reopen_task.missing": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Task not found"
+  },
+  "diff": {}
+ },
+ "focus_task.default-hours": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": "2026-10-03T15:00:00Z",
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "focus_task",
+     "title": "Pending",
+     "detail": "3h"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "focused_until": [
+        null,
+        "2026-10-03T15:00:00Z"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "focus_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": "3h",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "focus_task.hours": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": "2026-10-03T13:30:00Z",
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "focus_task",
+     "title": "Pending",
+     "detail": "1.5h"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "focused_until": [
+        null,
+        "2026-10-03T13:30:00Z"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "focus_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": "1.5h",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "focus_task.max-hours": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$pend",
+    "title": "Pending",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": "2026-10-04T12:00:00Z",
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "focus_task",
+     "title": "Pending",
+     "detail": "24h"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "focused_until": [
+        null,
+        "2026-10-04T12:00:00Z"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "focus_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": "24h",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "focus_task.null-hours": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "hours must be a finite positive number no greater than 24: Invalid type: Expected number but received null"
+  },
+  "diff": {}
+ },
+ "focus_task.negative-hours": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "hours must be a finite positive number no greater than 24: Expected a positive number.; Expected a positive number."
+  },
+  "diff": {}
+ },
+ "focus_task.zero-hours": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "hours must be a finite positive number no greater than 24: Expected a positive number."
+  },
+  "diff": {}
+ },
+ "focus_task.too-many-hours": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "hours must be a finite positive number no greater than 24: Expected a value no greater than 24."
+  },
+  "diff": {}
+ },
+ "focus_task.string-hours": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "hours must be a finite positive number no greater than 24: Invalid type: Expected number but received \"2\""
+  },
+  "diff": {}
+ },
+ "focus_task.refocus": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$focused",
+    "title": "To be focused",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": "2026-10-03T13:00:00Z",
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "focus_task",
+     "title": "To be focused",
+     "detail": "1h"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$focused",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "focused_until": [
+        "2026-10-03T15:00:00Z",
+        "2026-10-03T13:00:00Z"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "focus_task",
+      "task_id": "$focused",
+      "duty_id": null,
+      "title": "To be focused",
+      "detail": "1h",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "focus_task.deferred": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$deferred",
+    "title": "To be deferred",
+    "notes": null,
+    "status": "pending",
+    "due_date": null,
+    "due_all_day": null,
+    "recurrence": null,
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "defer_until": null,
+    "defer_kind": "none",
+    "task_type": "action",
+    "project_id": null,
+    "kickoff_note": null,
+    "session_log": null,
+    "focused_until": "2026-10-03T15:00:00Z",
+    "duty_id": null,
+    "occurrence_at": null,
+    "action_log_entry": {
+     "tool_name": "focus_task",
+     "title": "To be deferred",
+     "detail": "3h"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$deferred",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "defer_until": [
+        "2026-12-01T09:00:00Z",
+        null
+       ],
+       "defer_kind": [
+        "until",
+        "none"
+       ],
+       "focused_until": [
+        null,
+        "2026-10-03T15:00:00Z"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "focus_task",
+      "task_id": "$deferred",
+      "duty_id": null,
+      "title": "To be deferred",
+      "detail": "3h",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "focus_task.done": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Only pending tasks can use this transition."
+  },
+  "diff": {}
+ },
+ "focus_task.missing": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Task not found"
+  },
+  "diff": {}
+ },
+ "delete_task.plain": {
+  "result": {
+   "ok": true,
+   "response": {
+    "deleted": true,
+    "task_id": "$pend",
+    "title": "Pending",
+    "action_log_entry": {
+     "tool_name": "delete_task",
+     "title": "Pending",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "removed": [
+     {
+      "key": "$pend",
+      "id": "$pend",
+      "title": "Pending",
+      "notes": null,
+      "status": "pending",
+      "due_date": null,
+      "due_all_day": null,
+      "recurrence": null,
+      "created_at": "2026-10-01T09:00:00.000Z",
+      "updated_at": "2026-10-01T09:00:00.000Z",
+      "defer_until": null,
+      "defer_kind": "none",
+      "task_type": "action",
+      "project_id": null,
+      "kickoff_note": null,
+      "session_log": null,
+      "focused_until": null,
+      "duty_id": null,
+      "occurrence_at": null
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "delete_task",
+      "task_id": "$pend",
+      "duty_id": null,
+      "title": "Pending",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "delete_task.with-links": {
+  "result": {
+   "ok": true,
+   "response": {
+    "deleted": true,
+    "task_id": "$blocker",
+    "title": "Blocker",
+    "action_log_entry": {
+     "tool_name": "delete_task",
+     "title": "Blocker",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "removed": [
+     {
+      "key": "$blocker",
+      "id": "$blocker",
+      "title": "Blocker",
+      "notes": null,
+      "status": "pending",
+      "due_date": null,
+      "due_all_day": null,
+      "recurrence": null,
+      "created_at": "2026-10-01T09:00:00.000Z",
+      "updated_at": "2026-10-01T09:00:00.000Z",
+      "defer_until": null,
+      "defer_kind": "none",
+      "task_type": "action",
+      "project_id": null,
+      "kickoff_note": null,
+      "session_log": null,
+      "focused_until": null,
+      "duty_id": null,
+      "occurrence_at": null
+     }
+    ]
+   },
+   "task_links": {
+    "removed": [
+     {
+      "key": "$blocker>$blocked:blocks",
+      "from_task_id": "$blocker",
+      "to_task_id": "$blocked",
+      "link_type": "blocks"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "delete_task",
+      "task_id": "$blocker",
+      "duty_id": null,
+      "title": "Blocker",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "delete_task.in-project": {
+  "result": {
+   "ok": true,
+   "response": {
+    "deleted": true,
+    "task_id": "$member",
+    "title": "Member",
+    "action_log_entry": {
+     "tool_name": "delete_task",
+     "title": "Member",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "removed": [
+     {
+      "key": "$member",
+      "id": "$member",
+      "title": "Member",
+      "notes": null,
+      "status": "pending",
+      "due_date": null,
+      "due_all_day": null,
+      "recurrence": null,
+      "created_at": "2026-10-01T09:00:00.000Z",
+      "updated_at": "2026-10-01T09:00:00.000Z",
+      "defer_until": null,
+      "defer_kind": "none",
+      "task_type": "action",
+      "project_id": "$proj",
+      "kickoff_note": null,
+      "session_log": null,
+      "focused_until": null,
+      "duty_id": null,
+      "occurrence_at": null
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "delete_task",
+      "task_id": "$member",
+      "duty_id": null,
+      "title": "Member",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "delete_task.done": {
+  "result": {
+   "ok": true,
+   "response": {
+    "deleted": true,
+    "task_id": "$done",
+    "title": "To be done",
+    "action_log_entry": {
+     "tool_name": "delete_task",
+     "title": "To be done",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "removed": [
+     {
+      "key": "$done",
+      "id": "$done",
+      "title": "To be done",
+      "notes": null,
+      "status": "done",
+      "due_date": null,
+      "due_all_day": null,
+      "recurrence": null,
+      "created_at": "2026-10-01T09:00:00.000Z",
+      "updated_at": "2026-10-01T09:00:00.000Z",
+      "defer_until": null,
+      "defer_kind": "none",
+      "task_type": "action",
+      "project_id": null,
+      "kickoff_note": null,
+      "session_log": null,
+      "focused_until": null,
+      "duty_id": null,
+      "occurrence_at": null
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "delete_task",
+      "task_id": "$done",
+      "duty_id": null,
+      "title": "To be done",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "delete_task.missing": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Task not found"
+  },
+  "diff": {}
+ },
+ "create_project.title-only": {
+  "result": {
+   "ok": true,
+   "response": {
+    "project": {
+     "id": "$new1",
+     "title": "New project",
+     "notes": null,
+     "kickoff_note": null,
+     "status": "active",
+     "created_at": "<now>",
+     "updated_at": "<now>"
+    },
+    "linked_task_count": 0,
+    "action_log_entry": {
+     "tool_name": "create_project",
+     "title": "New project",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "projects": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New project",
+      "notes": null,
+      "kickoff_note": null,
+      "status": "active",
+      "created_at": "<now>",
+      "updated_at": "<now>"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "create_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "New project",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "create_project.all-fields": {
+  "result": {
+   "ok": true,
+   "response": {
+    "project": {
+     "id": "$new1",
+     "title": "New project",
+     "notes": "n",
+     "kickoff_note": "k",
+     "status": "active",
+     "created_at": "<now>",
+     "updated_at": "<now>"
+    },
+    "linked_task_count": 0,
+    "action_log_entry": {
+     "tool_name": "create_project",
+     "title": "New project",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "projects": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New project",
+      "notes": "n",
+      "kickoff_note": "k",
+      "status": "active",
+      "created_at": "<now>",
+      "updated_at": "<now>"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "create_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "New project",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "create_project.with-tasks": {
+  "result": {
+   "ok": true,
+   "response": {
+    "project": {
+     "id": "$new1",
+     "title": "New project",
+     "notes": null,
+     "kickoff_note": null,
+     "status": "active",
+     "created_at": "<now>",
+     "updated_at": "<now>"
+    },
+    "linked_task_count": 2,
+    "action_log_entry": {
+     "tool_name": "create_project",
+     "title": "New project",
+     "detail": "2 tasks"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$pend2",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     }
+    ]
+   },
+   "projects": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New project",
+      "notes": null,
+      "kickoff_note": null,
+      "status": "active",
+      "created_at": "<now>",
+      "updated_at": "<now>"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "create_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "New project",
+      "detail": "2 tasks",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "create_project.duplicate-task-ids": {
+  "result": {
+   "ok": true,
+   "response": {
+    "project": {
+     "id": "$new1",
+     "title": "New project",
+     "notes": null,
+     "kickoff_note": null,
+     "status": "active",
+     "created_at": "<now>",
+     "updated_at": "<now>"
+    },
+    "linked_task_count": 1,
+    "action_log_entry": {
+     "tool_name": "create_project",
+     "title": "New project",
+     "detail": "1 tasks"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$pend",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     }
+    ]
+   },
+   "projects": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New project",
+      "notes": null,
+      "kickoff_note": null,
+      "status": "active",
+      "created_at": "<now>",
+      "updated_at": "<now>"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "create_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "New project",
+      "detail": "1 tasks",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "create_project.moves-from-other-project": {
+  "result": {
+   "ok": true,
+   "response": {
+    "project": {
+     "id": "$new1",
+     "title": "New project",
+     "notes": null,
+     "kickoff_note": null,
+     "status": "active",
+     "created_at": "<now>",
+     "updated_at": "<now>"
+    },
+    "linked_task_count": 1,
+    "action_log_entry": {
+     "tool_name": "create_project",
+     "title": "New project",
+     "detail": "1 tasks"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$member",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        "$proj",
+        "$new1"
+       ]
+      }
+     }
+    ]
+   },
+   "projects": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New project",
+      "notes": null,
+      "kickoff_note": null,
+      "status": "active",
+      "created_at": "<now>",
+      "updated_at": "<now>"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "create_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "New project",
+      "detail": "1 tasks",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "create_project.missing-task": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "task not found: $none"
+  },
+  "diff": {}
+ },
+ "create_project.done-task": {
+  "result": {
+   "ok": true,
+   "response": {
+    "project": {
+     "id": "$new1",
+     "title": "New project",
+     "notes": null,
+     "kickoff_note": null,
+     "status": "active",
+     "created_at": "<now>",
+     "updated_at": "<now>"
+    },
+    "linked_task_count": 1,
+    "action_log_entry": {
+     "tool_name": "create_project",
+     "title": "New project",
+     "detail": "1 tasks"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$done",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     }
+    ]
+   },
+   "projects": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New project",
+      "notes": null,
+      "kickoff_note": null,
+      "status": "active",
+      "created_at": "<now>",
+      "updated_at": "<now>"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "create_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "New project",
+      "detail": "1 tasks",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "create_project.nineteen-tasks": {
+  "result": {
+   "ok": true,
+   "response": {
+    "project": {
+     "id": "$new1",
+     "title": "New project",
+     "notes": null,
+     "kickoff_note": null,
+     "status": "active",
+     "created_at": "<now>",
+     "updated_at": "<now>"
+    },
+    "linked_task_count": 19,
+    "action_log_entry": {
+     "tool_name": "create_project",
+     "title": "New project",
+     "detail": "19 tasks"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$bulk0",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk1",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk2",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk3",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk4",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk5",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk6",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk7",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk8",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk9",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk10",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk11",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk12",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk13",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk14",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk15",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk16",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk17",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk18",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     }
+    ]
+   },
+   "projects": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New project",
+      "notes": null,
+      "kickoff_note": null,
+      "status": "active",
+      "created_at": "<now>",
+      "updated_at": "<now>"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "create_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "New project",
+      "detail": "19 tasks",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "create_project.twenty-tasks": {
+  "result": {
+   "ok": true,
+   "response": {
+    "project": {
+     "id": "$new1",
+     "title": "New project",
+     "notes": null,
+     "kickoff_note": null,
+     "status": "active",
+     "created_at": "<now>",
+     "updated_at": "<now>"
+    },
+    "linked_task_count": 20,
+    "action_log_entry": {
+     "tool_name": "create_project",
+     "title": "New project",
+     "detail": "20 tasks"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$bulk0",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk1",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk2",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk3",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk4",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk5",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk6",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk7",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk8",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk9",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk10",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk11",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk12",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk13",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk14",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk15",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk16",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk17",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk18",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk19",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     }
+    ]
+   },
+   "projects": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New project",
+      "notes": null,
+      "kickoff_note": null,
+      "status": "active",
+      "created_at": "<now>",
+      "updated_at": "<now>"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "create_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "New project",
+      "detail": "20 tasks",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "create_project.thirty-tasks": {
+  "result": {
+   "ok": true,
+   "response": {
+    "project": {
+     "id": "$new1",
+     "title": "New project",
+     "notes": null,
+     "kickoff_note": null,
+     "status": "active",
+     "created_at": "<now>",
+     "updated_at": "<now>"
+    },
+    "linked_task_count": 30,
+    "action_log_entry": {
+     "tool_name": "create_project",
+     "title": "New project",
+     "detail": "30 tasks"
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$bulk0",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk1",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk2",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk3",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk4",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk5",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk6",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk7",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk8",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk9",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk10",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk11",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk12",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk13",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk14",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk15",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk16",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk17",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk18",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk19",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk20",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk21",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk22",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk23",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk24",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk25",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk26",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk27",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk28",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     },
+     {
+      "key": "$bulk29",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        null,
+        "$new1"
+       ]
+      }
+     }
+    ]
+   },
+   "projects": {
+    "added": [
+     {
+      "key": "$new1",
+      "id": "$new1",
+      "title": "New project",
+      "notes": null,
+      "kickoff_note": null,
+      "status": "active",
+      "created_at": "<now>",
+      "updated_at": "<now>"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "create_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "New project",
+      "detail": "30 tasks",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "create_project.forty-tasks": {
+  "result": {
+   "ok": false,
+   "channel": "tool_error",
+   "message": "Atomic plan requires 121 SQL statements; the limit is 100.",
+   "code": "capacity_exceeded"
+  },
+  "diff": {}
+ },
+ "create_project.empty-title": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Expected a non-empty string."
+  },
+  "diff": {}
+ },
+ "create_project.non-array-task-ids": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "inputs.entries is not a function or its return value is not iterable"
+  },
+  "diff": {}
+ },
+ "update_project.title": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$proj",
+    "title": "Renamed",
+    "notes": "p notes",
+    "kickoff_note": "p kickoff",
+    "status": "active",
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "action_log_entry": {
+     "tool_name": "update_project",
+     "title": "Renamed",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "projects": {
+    "changed": [
+     {
+      "key": "$proj",
+      "fields": {
+       "title": [
+        "Fixture project",
+        "Renamed"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Renamed",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_project.notes": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$proj",
+    "title": "Fixture project",
+    "notes": "new",
+    "kickoff_note": "p kickoff",
+    "status": "active",
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "action_log_entry": {
+     "tool_name": "update_project",
+     "title": "Fixture project",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "projects": {
+    "changed": [
+     {
+      "key": "$proj",
+      "fields": {
+       "notes": [
+        "p notes",
+        "new"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Fixture project",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_project.notes-null": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$proj",
+    "title": "Fixture project",
+    "notes": null,
+    "kickoff_note": "p kickoff",
+    "status": "active",
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "action_log_entry": {
+     "tool_name": "update_project",
+     "title": "Fixture project",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "projects": {
+    "changed": [
+     {
+      "key": "$proj",
+      "fields": {
+       "notes": [
+        "p notes",
+        null
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Fixture project",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_project.kickoff-note": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$proj",
+    "title": "Fixture project",
+    "notes": "p notes",
+    "kickoff_note": "new",
+    "status": "active",
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "action_log_entry": {
+     "tool_name": "update_project",
+     "title": "Fixture project",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "projects": {
+    "changed": [
+     {
+      "key": "$proj",
+      "fields": {
+       "kickoff_note": [
+        "p kickoff",
+        "new"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Fixture project",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_project.archive": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$proj",
+    "title": "Fixture project",
+    "notes": "p notes",
+    "kickoff_note": "p kickoff",
+    "status": "archived",
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "action_log_entry": {
+     "tool_name": "update_project",
+     "title": "Fixture project",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "projects": {
+    "changed": [
+     {
+      "key": "$proj",
+      "fields": {
+       "status": [
+        "active",
+        "archived"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Fixture project",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_project.reopen": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$archived",
+    "title": "Archived project",
+    "notes": null,
+    "kickoff_note": null,
+    "status": "active",
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "action_log_entry": {
+     "tool_name": "update_project",
+     "title": "Archived project",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "projects": {
+    "changed": [
+     {
+      "key": "$archived",
+      "fields": {
+       "status": [
+        "archived",
+        "active"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Archived project",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_project.status-unchanged": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$proj",
+    "title": "Fixture project",
+    "notes": "p notes",
+    "kickoff_note": "p kickoff",
+    "status": "active",
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "action_log_entry": {
+     "tool_name": "update_project",
+     "title": "Fixture project",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "projects": {
+    "changed": [
+     {
+      "key": "$proj",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Fixture project",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_project.archive-already-archived": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$archived",
+    "title": "Archived project",
+    "notes": null,
+    "kickoff_note": null,
+    "status": "archived",
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "action_log_entry": {
+     "tool_name": "update_project",
+     "title": "Archived project",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "projects": {
+    "changed": [
+     {
+      "key": "$archived",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Archived project",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_project.title-and-status": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$proj",
+    "title": "Both",
+    "notes": "p notes",
+    "kickoff_note": "p kickoff",
+    "status": "archived",
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "<now>",
+    "action_log_entry": {
+     "tool_name": "update_project",
+     "title": "Both",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "projects": {
+    "changed": [
+     {
+      "key": "$proj",
+      "fields": {
+       "title": [
+        "Fixture project",
+        "Both"
+       ],
+       "status": [
+        "active",
+        "archived"
+       ],
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ]
+      }
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Both",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_project.bad-status": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Invalid type: Expected (\"active\" | \"archived\") but received \"paused\""
+  },
+  "diff": {}
+ },
+ "update_project.empty-title": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Expected a non-empty string."
+  },
+  "diff": {}
+ },
+ "update_project.empty-patch": {
+  "result": {
+   "ok": true,
+   "response": {
+    "id": "$proj",
+    "title": "Fixture project",
+    "notes": "p notes",
+    "kickoff_note": "p kickoff",
+    "status": "active",
+    "created_at": "2026-10-01T09:00:00.000Z",
+    "updated_at": "2026-10-01T09:00:00.000Z",
+    "action_log_entry": {
+     "tool_name": "update_project",
+     "title": "Fixture project",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "update_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Fixture project",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "update_project.empty-patch-missing": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Project not found"
+  },
+  "diff": {}
+ },
+ "update_project.missing": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Project not found"
+  },
+  "diff": {}
+ },
+ "delete_project.with-members": {
+  "result": {
+   "ok": true,
+   "response": {
+    "deleted": true,
+    "project_id": "$proj",
+    "title": "Fixture project",
+    "action_log_entry": {
+     "tool_name": "delete_project",
+     "title": "Fixture project",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "tasks": {
+    "changed": [
+     {
+      "key": "$member",
+      "fields": {
+       "updated_at": [
+        "2026-10-01T09:00:00.000Z",
+        "<now>"
+       ],
+       "project_id": [
+        "$proj",
+        null
+       ]
+      }
+     }
+    ]
+   },
+   "projects": {
+    "removed": [
+     {
+      "key": "$proj",
+      "id": "$proj",
+      "title": "Fixture project",
+      "notes": "p notes",
+      "kickoff_note": "p kickoff",
+      "status": "active",
+      "created_at": "2026-10-01T09:00:00.000Z",
+      "updated_at": "2026-10-01T09:00:00.000Z"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "delete_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Fixture project",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "delete_project.empty": {
+  "result": {
+   "ok": true,
+   "response": {
+    "deleted": true,
+    "project_id": "$archived",
+    "title": "Archived project",
+    "action_log_entry": {
+     "tool_name": "delete_project",
+     "title": "Archived project",
+     "detail": null
+    }
+   }
+  },
+  "diff": {
+   "projects": {
+    "removed": [
+     {
+      "key": "$archived",
+      "id": "$archived",
+      "title": "Archived project",
+      "notes": null,
+      "kickoff_note": null,
+      "status": "archived",
+      "created_at": "2026-10-01T09:00:00.000Z",
+      "updated_at": "2026-10-01T09:00:00.000Z"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "delete_project",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Archived project",
+      "detail": null,
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "delete_project.missing": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Project not found"
+  },
+  "diff": {}
+ },
+ "link_tasks.blocks-default": {
+  "result": {
+   "ok": true,
+   "response": {
+    "linked": true,
+    "from_task_id": "$pend",
+    "from_task_title": "Pending",
+    "to_task_id": "$pend2",
+    "to_task_title": "Second pending",
+    "link_type": "blocks",
+    "action_log_entry": {
+     "tool_name": "link_tasks",
+     "title": "Pending → Second pending",
+     "detail": "blocks"
+    }
+   }
+  },
+  "diff": {
+   "task_links": {
+    "added": [
+     {
+      "key": "$pend>$pend2:blocks",
+      "from_task_id": "$pend",
+      "to_task_id": "$pend2",
+      "link_type": "blocks"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "link_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Pending → Second pending",
+      "detail": "blocks",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "link_tasks.blocks": {
+  "result": {
+   "ok": true,
+   "response": {
+    "linked": true,
+    "from_task_id": "$pend",
+    "from_task_title": "Pending",
+    "to_task_id": "$pend2",
+    "to_task_title": "Second pending",
+    "link_type": "blocks",
+    "action_log_entry": {
+     "tool_name": "link_tasks",
+     "title": "Pending → Second pending",
+     "detail": "blocks"
+    }
+   }
+  },
+  "diff": {
+   "task_links": {
+    "added": [
+     {
+      "key": "$pend>$pend2:blocks",
+      "from_task_id": "$pend",
+      "to_task_id": "$pend2",
+      "link_type": "blocks"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "link_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Pending → Second pending",
+      "detail": "blocks",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "link_tasks.related": {
+  "result": {
+   "ok": true,
+   "response": {
+    "linked": true,
+    "from_task_id": "$pend2",
+    "from_task_title": "Second pending",
+    "to_task_id": "$pend",
+    "to_task_title": "Pending",
+    "link_type": "related",
+    "action_log_entry": {
+     "tool_name": "link_tasks",
+     "title": "Second pending → Pending",
+     "detail": "related"
+    }
+   }
+  },
+  "diff": {
+   "task_links": {
+    "added": [
+     {
+      "key": "$pend2>$pend:related",
+      "from_task_id": "$pend2",
+      "to_task_id": "$pend",
+      "link_type": "related"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "link_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Second pending → Pending",
+      "detail": "related",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "link_tasks.related-ascending": {
+  "result": {
+   "ok": true,
+   "response": {
+    "linked": true,
+    "from_task_id": "$pend",
+    "from_task_title": "Pending",
+    "to_task_id": "$pend2",
+    "to_task_title": "Second pending",
+    "link_type": "related",
+    "action_log_entry": {
+     "tool_name": "link_tasks",
+     "title": "Pending → Second pending",
+     "detail": "related"
+    }
+   }
+  },
+  "diff": {
+   "task_links": {
+    "added": [
+     {
+      "key": "$pend>$pend2:related",
+      "from_task_id": "$pend",
+      "to_task_id": "$pend2",
+      "link_type": "related"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "link_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Pending → Second pending",
+      "detail": "related",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "link_tasks.existing-blocks": {
+  "result": {
+   "ok": true,
+   "response": {
+    "linked": true,
+    "from_task_id": "$blocker",
+    "from_task_title": "Blocker",
+    "to_task_id": "$blocked",
+    "to_task_title": "Blocked",
+    "link_type": "blocks",
+    "action_log_entry": {
+     "tool_name": "link_tasks",
+     "title": "Blocker → Blocked",
+     "detail": "blocks"
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "link_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Blocker → Blocked",
+      "detail": "blocks",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "link_tasks.existing-related": {
+  "result": {
+   "ok": true,
+   "response": {
+    "linked": true,
+    "from_task_id": "$rel1",
+    "from_task_title": "Related one",
+    "to_task_id": "$rel2",
+    "to_task_title": "Related two",
+    "link_type": "related",
+    "action_log_entry": {
+     "tool_name": "link_tasks",
+     "title": "Related one → Related two",
+     "detail": "related"
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "link_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Related one → Related two",
+      "detail": "related",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "link_tasks.existing-related-reversed": {
+  "result": {
+   "ok": true,
+   "response": {
+    "linked": true,
+    "from_task_id": "$rel2",
+    "from_task_title": "Related two",
+    "to_task_id": "$rel1",
+    "to_task_title": "Related one",
+    "link_type": "related",
+    "action_log_entry": {
+     "tool_name": "link_tasks",
+     "title": "Related two → Related one",
+     "detail": "related"
+    }
+   }
+  },
+  "diff": {
+   "task_links": {
+    "added": [
+     {
+      "key": "$rel2>$rel1:related",
+      "from_task_id": "$rel2",
+      "to_task_id": "$rel1",
+      "link_type": "related"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "link_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Related two → Related one",
+      "detail": "related",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "link_tasks.reverse-blocks": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Adding a blocks link from $blocked to $blocker would create a cycle."
+  },
+  "diff": {}
+ },
+ "link_tasks.self": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "A task cannot be linked to itself."
+  },
+  "diff": {}
+ },
+ "link_tasks.missing-from": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "task not found: $none"
+  },
+  "diff": {}
+ },
+ "link_tasks.missing-to": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "task not found: $none"
+  },
+  "diff": {}
+ },
+ "link_tasks.done-endpoint": {
+  "result": {
+   "ok": true,
+   "response": {
+    "linked": true,
+    "from_task_id": "$done",
+    "from_task_title": "To be done",
+    "to_task_id": "$pend",
+    "to_task_title": "Pending",
+    "link_type": "blocks",
+    "action_log_entry": {
+     "tool_name": "link_tasks",
+     "title": "To be done → Pending",
+     "detail": "blocks"
+    }
+   }
+  },
+  "diff": {
+   "task_links": {
+    "added": [
+     {
+      "key": "$done>$pend:blocks",
+      "from_task_id": "$done",
+      "to_task_id": "$pend",
+      "link_type": "blocks"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "link_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "To be done → Pending",
+      "detail": "blocks",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "link_tasks.bad-type": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Invalid type: Expected (\"blocks\" | \"related\") but received \"duplicates\""
+  },
+  "diff": {}
+ },
+ "unlink_tasks.blocks-default": {
+  "result": {
+   "ok": true,
+   "response": {
+    "unlinked": true,
+    "from_task_id": "$blocker",
+    "to_task_id": "$blocked",
+    "action_log_entry": {
+     "tool_name": "unlink_tasks",
+     "title": "Unlinked",
+     "detail": "$blocker → $blocked"
+    }
+   }
+  },
+  "diff": {
+   "task_links": {
+    "removed": [
+     {
+      "key": "$blocker>$blocked:blocks",
+      "from_task_id": "$blocker",
+      "to_task_id": "$blocked",
+      "link_type": "blocks"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "unlink_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Unlinked",
+      "detail": "$blocker → $blocked",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "unlink_tasks.related": {
+  "result": {
+   "ok": true,
+   "response": {
+    "unlinked": true,
+    "from_task_id": "$rel1",
+    "to_task_id": "$rel2",
+    "action_log_entry": {
+     "tool_name": "unlink_tasks",
+     "title": "Unlinked",
+     "detail": "$rel1 → $rel2"
+    }
+   }
+  },
+  "diff": {
+   "task_links": {
+    "removed": [
+     {
+      "key": "$rel1>$rel2:related",
+      "from_task_id": "$rel1",
+      "to_task_id": "$rel2",
+      "link_type": "related"
+     }
+    ]
+   },
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "unlink_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Unlinked",
+      "detail": "$rel1 → $rel2",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "unlink_tasks.related-reversed": {
+  "result": {
+   "ok": true,
+   "response": {
+    "unlinked": true,
+    "from_task_id": "$rel2",
+    "to_task_id": "$rel1",
+    "action_log_entry": {
+     "tool_name": "unlink_tasks",
+     "title": "Unlinked",
+     "detail": "$rel2 → $rel1"
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "unlink_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Unlinked",
+      "detail": "$rel2 → $rel1",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "unlink_tasks.absent": {
+  "result": {
+   "ok": true,
+   "response": {
+    "unlinked": true,
+    "from_task_id": "$pend",
+    "to_task_id": "$pend2",
+    "action_log_entry": {
+     "tool_name": "unlink_tasks",
+     "title": "Unlinked",
+     "detail": "$pend → $pend2"
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "unlink_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Unlinked",
+      "detail": "$pend → $pend2",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "unlink_tasks.wrong-type": {
+  "result": {
+   "ok": true,
+   "response": {
+    "unlinked": true,
+    "from_task_id": "$blocker",
+    "to_task_id": "$blocked",
+    "action_log_entry": {
+     "tool_name": "unlink_tasks",
+     "title": "Unlinked",
+     "detail": "$blocker → $blocked"
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "unlink_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Unlinked",
+      "detail": "$blocker → $blocked",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "unlink_tasks.wrong-orientation": {
+  "result": {
+   "ok": true,
+   "response": {
+    "unlinked": true,
+    "from_task_id": "$blocked",
+    "to_task_id": "$blocker",
+    "action_log_entry": {
+     "tool_name": "unlink_tasks",
+     "title": "Unlinked",
+     "detail": "$blocked → $blocker"
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "unlink_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Unlinked",
+      "detail": "$blocked → $blocker",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "unlink_tasks.missing-tasks": {
+  "result": {
+   "ok": true,
+   "response": {
+    "unlinked": true,
+    "from_task_id": "$none",
+    "to_task_id": "$none",
+    "action_log_entry": {
+     "tool_name": "unlink_tasks",
+     "title": "Unlinked",
+     "detail": "$none → $none"
+    }
+   }
+  },
+  "diff": {
+   "action_log": {
+    "added": [
+     {
+      "key": "1",
+      "id": 1,
+      "tool_name": "unlink_tasks",
+      "task_id": null,
+      "duty_id": null,
+      "title": "Unlinked",
+      "detail": "$none → $none",
+      "created_at": "<now>"
+     }
+    ]
+   }
+  }
+ },
+ "unlink_tasks.bad-type": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Invalid type: Expected (\"blocks\" | \"related\") but received \"duplicates\""
+  },
+  "diff": {}
+ },
+ "update_preference.sort-by": {
+  "result": {
+   "ok": true,
+   "response": {
+    "updated": true,
+    "key": "sort_by",
+    "value": "due"
+   }
+  },
+  "diff": {
+   "user_preferences": {
+    "added": [
+     {
+      "key": "sort_by",
+      "value": "due"
+     }
+    ]
+   }
+  }
+ },
+ "update_preference.overwrite-existing": {
+  "result": {
+   "ok": true,
+   "response": {
+    "updated": true,
+    "key": "planning_prompt",
+    "value": "auto"
+   }
+  },
+  "diff": {
+   "user_preferences": {
+    "changed": [
+     {
+      "key": "planning_prompt",
+      "fields": {
+       "value": [
+        "never",
+        "auto"
+       ]
+      }
+     }
+    ]
+   }
+  }
+ },
+ "update_preference.same-value": {
+  "result": {
+   "ok": true,
+   "response": {
+    "updated": true,
+    "key": "planning_prompt",
+    "value": "never"
+   }
+  },
+  "diff": {}
+ },
+ "update_preference.each-key-kickoff": {
+  "result": {
+   "ok": true,
+   "response": {
+    "updated": true,
+    "key": "kickoff_nudge",
+    "value": "never"
+   }
+  },
+  "diff": {
+   "user_preferences": {
+    "added": [
+     {
+      "key": "kickoff_nudge",
+      "value": "never"
+     }
+    ]
+   }
+  }
+ },
+ "update_preference.overwrite": {
+  "result": {
+   "ok": true,
+   "response": {
+    "updated": true,
+    "key": "urgency_visibility",
+    "value": "hide"
+   }
+  },
+  "diff": {
+   "user_preferences": {
+    "added": [
+     {
+      "key": "urgency_visibility",
+      "value": "hide"
+     }
+    ]
+   }
+  }
+ },
+ "update_preference.bad-value": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "sort_by must be one of: readiness, due, project."
+  },
+  "diff": {}
+ },
+ "update_preference.bad-key": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "Invalid type: Expected (\"sort_by\" | \"urgency_visibility\" | \"kickoff_nudge\" | \"session_log\" | \"interruption_style\" | \"planning_prompt\" | \"last_session_at\") but received \"favourite_food\""
+  },
+  "diff": {}
+ },
+ "update_preference.internal-key": {
+  "result": {
+   "ok": true,
+   "response": {
+    "updated": true,
+    "key": "last_session_at",
+    "value": "2026-10-01T00:00:00.000Z"
+   }
+  },
+  "diff": {
+   "user_preferences": {
+    "added": [
+     {
+      "key": "last_session_at",
+      "value": "2026-10-01T00:00:00.000Z"
+     }
+    ]
+   }
+  }
+ },
+ "update_preference.missing-value": {
+  "result": {
+   "ok": false,
+   "channel": "rpc_error",
+   "message": "sort_by must be one of: readiness, due, project."
+  },
+  "diff": {}
+ }
+}

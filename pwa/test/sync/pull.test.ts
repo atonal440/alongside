@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 import { resetIdb } from '../helpers/idb';
 import { closeDb } from '../../src/idb/db';
+import { consumeUpgradeRequired } from '../../src/api/client';
 import { idbReadCanonical, idbReplaceCanonical } from '../../src/idb/canonical';
 import { pullWorkspace, resetPullCache } from '../../src/sync/pull';
 import { api } from '../../src/api/endpoints';
@@ -179,5 +180,17 @@ describe('pullWorkspace', () => {
     stub.networkError({ method: 'GET', path: '/api/v2/sync/snapshot' });
     expect((await pullWorkspace(config)).kind).toBe('failed');
     expect(await read()).toBeNull();
+  });
+
+  it('keeps stored state and flags an upgrade when the server refuses the feed with 426', async () => {
+    await seed();
+    consumeUpgradeRequired();
+    delta({ error: 'upgrade_required', minimumProtocol: 3, clientProtocol: 2 }, 426);
+    const outcome = await pullWorkspace(config);
+    expect(outcome.kind).toBe('failed');
+    expect(consumeUpgradeRequired()).toBe(true);
+    const stored = await read();
+    expect(stored?.cursor).toEqual({ epoch: 1, sequence: 10 });
+    expect(stored?.entities.get('task:t_first1')?.revision).toBe(1);
   });
 });

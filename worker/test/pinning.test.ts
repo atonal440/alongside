@@ -105,15 +105,32 @@ describe('loose-intent preview_changes', () => {
       expect(body.result.structuredContent.pinnedEnvelope.commands[0]).toMatchObject({ kind: 'task.create', expectedRevision: null });
     } finally { sql.close(); }
   });
+});
 
-  it('says up front that a batch writes each identity once', async () => {
+describe('loose intent with several commands on one identity', () => {
+  it('pins a dated task creation (create + schedule) and a multi-group edit, each as one change', async () => {
     const { sql, d1 } = sqliteD1(); const db = new DB(d1);
     try {
-      const task = await db.addTask({ title: 'A' });
-      const twice = [{ kind: 'task.focus.set', id: task.id, focusedUntil: '2099-01-01T00:00:00Z' }, { kind: 'task.type.set', id: task.id, taskType: 'action' }];
-      await expect(preview(db, { ...base, commands: twice })).rejects.toMatchObject({ detail: { code: 'invalid_input' } });
-      const created = [{ kind: 'task.create', clientRef: 'n', values: { title: 'N' } }, { kind: 'task.focus.set', id: '@n', focusedUntil: '2099-01-01T00:00:00Z' }];
-      await expect(preview(db, { ...base, commands: created })).rejects.toThrow(/writes each identity once/);
+      const created = await preview(db, { ...base, commands: [
+        { kind: 'task.create', clientRef: 'it', values: { title: 'Dated' } },
+        { kind: 'task.legacy-schedule.set', id: '@it', values: { dueDate: '2026-11-02', dueAllDay: true, recurrence: 'FREQ=WEEKLY' } },
+      ] });
+      expect(created.changes).toHaveLength(1);
+      expect(created.pinnedEnvelope.commands[1].expectedRevision).toBe(1);
+      const applied = await apply(db, created.pinnedEnvelope);
+      expect(await db.getTask(applied.refs.it)).toMatchObject({ title: 'Dated', recurrence: 'FREQ=WEEKLY' });
+
+      const task = await db.addTask({ title: 'Old', notes: 'keep' });
+      const edit = await preview(db, { ...base, commands: [
+        { kind: 'task.content.set', id: task.id, values: { title: 'New' } },
+        { kind: 'task.legacy-schedule.set', id: task.id, values: { dueDate: '2026-11-03', dueAllDay: true, recurrence: null } },
+        { kind: 'task.type.set', id: task.id, taskType: 'plan' },
+      ] });
+      const [first, second, third] = edit.pinnedEnvelope.commands;
+      expect([first.expectedRevision, second.expectedRevision, third.expectedRevision]).toEqual([first.expectedRevision, first.expectedRevision + 1, first.expectedRevision + 1]);
+      expect(edit.changes).toHaveLength(1);
+      await apply(db, edit.pinnedEnvelope);
+      expect(await db.getTask(task.id)).toMatchObject({ title: 'New', notes: 'keep', task_type: 'plan', due_date: '2026-11-03T12:00:00Z' });
     } finally { sql.close(); }
   });
 });

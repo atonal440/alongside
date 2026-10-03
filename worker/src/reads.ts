@@ -59,10 +59,10 @@ export const READ_TOOLS = [
   },
   {
     name: 'describe_commands',
-    description: 'Schema, an example and the error codes for one command family accepted by preview_changes / apply_changes. Call it before building a command you have not used. Families: task, project, link, planning.',
+    description: 'Schema, an example and the error codes for one command family accepted by preview_changes / apply_changes. Call it before building a command you have not used. Families: task, project, link, planning, preference.',
     inputSchema: {
       type: 'object', additionalProperties: false,
-      properties: { family: { enum: ['task', 'project', 'link', 'planning'] } },
+      properties: { family: { enum: ['task', 'project', 'link', 'planning', 'preference'] } },
       required: ['family'],
     },
   },
@@ -189,6 +189,7 @@ const EXAMPLES: Record<string, unknown> = {
   task: { contractVersion: 2, commandId: 'c_example01', actor: 'llm', commands: [{ kind: 'task.focus.set', id: 't_example1', expectedRevision: 3, focusedUntil: '2026-10-03T18:00:00Z' }] },
   project: { contractVersion: 2, commandId: 'c_example02', actor: 'llm', commands: [{ kind: 'project.archive', id: 'p_example1', expectedRevision: 2 }] },
   link: { contractVersion: 2, commandId: 'c_example03', actor: 'llm', commands: [{ kind: 'link.add', from: 't_example1', to: 't_example2', linkType: 'blocks', expectedRevision: null, expectedStructuralRevision: 7 }] },
+  preference: { contractVersion: 2, commandId: 'c_example05', actor: 'user', commands: [{ kind: 'preference.set', key: 'sort_by', value: 'due', expectedRevision: null }] },
   planning: { contractVersion: 2, commandId: 'c_example04', actor: 'user', commands: [{ kind: 'planning.set', expectedRevision: null, values: { timezone: 'America/Chicago', bufferMinutes: 10, workingHours: [{ weekday: 1, start: '09:00', end: '17:00' }] } }] },
 };
 const FAMILY_ERRORS = {
@@ -197,12 +198,13 @@ const FAMILY_ERRORS = {
   project: ['invalid_state', 'invalid_transition'],
   link: ['graph_cycle', 'invalid_state', 'already_applied'],
   planning: ['revision_conflict'],
+  preference: ['revision_conflict', 'revision_exhausted'],
 } as const;
 
 function describeCommands(args: Record<string, unknown>) {
   only(args, ['family']);
   const family = args.family;
-  if (typeof family !== 'string' || !(family in EXAMPLES)) throw bad(['family'], 'family must be one of task, project, link, planning.');
+  if (typeof family !== 'string' || !(family in EXAMPLES)) throw bad(['family'], 'family must be one of task, project, link, planning, preference.');
   return {
     contractVersion: 2,
     family,

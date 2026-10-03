@@ -52,8 +52,8 @@ migration or background delivery occurs through these endpoints.
 ## Client protocol and the write gate
 
 Browser clients announce themselves with `X-Alongside-Client: <name>/<protocol>` (the PWA sends
-`pwa/2`; the protocol constants live in `shared/wire/clientVersion.ts`). `GET /api/v2/capabilities`
-reports `clientProtocol: {current, minimumWrite}` and `features.deltaSync` / `features.reliableCommands: true`.
+`pwa/3`; the protocol constants live in `shared/wire/clientVersion.ts`). `GET /api/v2/capabilities`
+reports `clientProtocol: {current, minimumWrite, minimumSyncRead}` and `features.deltaSync` / `features.reliableCommands: true`.
 
 A **write** (any non-`GET/HEAD/OPTIONS` request under `/api/`) that carries an `Origin` header but
 no announcement, a malformed one, or a protocol below `minimumWrite` is refused before it reaches
@@ -64,10 +64,23 @@ a handler with HTTP **426**:
 ```
 
 `Origin` is how an older PWA build is recognised (browsers send it on cross-origin writes; those
-builds predate the header). Scripts, curl and other tools send no `Origin` and are not gated, reads
-are never gated, and `/mcp` is unaffected. The PWA treats 426 as transient: queued writes stay
+builds predate the header). Scripts, curl and other tools send no `Origin` and are not gated, other
+reads are never gated, and `/mcp` is unaffected. The PWA treats 426 as transient: queued writes stay
 queued and the user is told to reload. Raise `MIN_WRITE_PROTOCOL` to lock out builds that cannot
 safely write after a future contract change. CORS preflight allows the header.
+
+### Sync read gate
+
+`GET /api/v2/sync/snapshot` and `POST /api/v2/sync/delta` have their own, stricter gate because a
+feed page the client cannot parse fails every pull, and stays stuck until the client is replaced. Protocol 3
+is the first to parse command-kind names in `action_log.tool_name`, so a request announcing
+`pwa/<n>` with `n` below `minimumSyncRead` (3) gets the same 426 body, **whether or not it carries
+`Origin`** (browsers omit `Origin` on same-origin GETs, so an Origin check alone would let an old
+tab through if the PWA and API ever share an origin). A browser that announces nothing is treated as an
+old build only when it sends `Origin`. Scripts that announce nothing and send no `Origin`, and clients
+announcing another name, are not gated. A `pwa/2` tab already treats any 426 as "reload to update"
+and keeps its stored workspace and queued writes, so it recovers without data loss. This gate has to be in
+force before the worker writes the first command-kind action-log row.
 
 ## Task Endpoints
 
@@ -340,7 +353,7 @@ split a replacement into multiple imports: each import wipes existing data.
 All five reject query parameters. Link reads accept an exact
 `{entity: "link", from, to, linkType}` key. Preview/apply POST inputs are strict
 v2 command envelopes. Standalone commands accept one of the families below;
-2–20 task/project/link commands, including completion/deletion effects, can
+2–100 task/project/link commands, including completion/deletion effects, can
 also form a mixed batch.
 Mixed envelopes require `expectedStructuralRevision`, distinct written
 identities (including derived effects) and unique scoped refs; settings stay standalone.

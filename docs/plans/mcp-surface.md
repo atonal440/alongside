@@ -1,6 +1,6 @@
 # MCP surface: organizing a growing set of verbs
 
-Status: phases A (annotations, `/mcp/admin`, deprecated aliases, `initialize.instructions`, `toolSurface`) and B (reads, loose-intent preview, wider action-log codec) implemented; C–D proposed. Updated 2026-10-03.
+Status: phases A (annotations, `/mcp/admin`, deprecated aliases, `initialize.instructions`, `toolSurface`) and B (reads, loose-intent preview, wider action-log codec) implemented; C complete (parity matrix, version 2 receipts, composition, all 13 mutating adapters and `preference.set` built; `start_session` read-only and the sync read gate built; command kinds are recorded in the action log; phase C is complete); D proposed. Updated 2026-10-03.
 
 This plan refines §10 ("REST and MCP surface") of
 [the power-user plan](power-user-todo.md). That document still owns the
@@ -479,9 +479,10 @@ never registered in `TOOLS`; that section was removed in phase A.
 
 ## Compatibility constraints
 
-- **The widget calls tools by name.** `worker/src/app-ui.ts` calls
-  `complete_task`, `reopen_task` and `list_tasks`. Switch the widget before
-  removing any of those names.
+- **The widget calls tools by name.** `worker/src/app-ui.ts` now calls
+  `find`, `complete_task`, `preview_changes` and `apply_changes` (switched in
+  phase C; `test/appWidget.test.ts` pins it). Keep `complete_task`; `reopen_task`
+  and `list_tasks` can be removed in phase D.
 - **The action log records tool names.** `action_log.tool_name` is validated
   against `TOOL_NAMES` in `shared/parse/enums.ts`, and the sync codec already
   keeps the retired `snooze_task` readable. Removed names must stay readable
@@ -537,8 +538,8 @@ never registered in `TOOLS`; that section was removed in phase A.
   callers. Move static session instructions to `initialize`. Add
   `toolSurface` to capabilities.
 
-  Phase A as built: `start_session` is annotated as a non-read-only write
-  until phase C removes its preference writes. The admin endpoint serves
+  Phase A as built: `start_session` was annotated as a non-read-only write
+  until phase C removed its preference writes (done). The admin endpoint serves
   `export_planning_settings` under its current name; folding it into
   `export_workspace({ scope: 'settings' })` is left for when that tool gains
   the argument. `start_session` still returns `instructions` alongside
@@ -560,6 +561,25 @@ never registered in `TOOLS`; that section was removed in phase A.
   `ActionNameSchema` accepts tool names, retired names and command kinds. The
   sync read gate that rejects protocol < 3 is still phase C work, so the worker
   must not write command-kind rows yet.
+  Phase C as built so far: the legacy half of the [parity
+  matrix](mcp-parity-matrix.md); version 2 receipts (`shared/wire/receipts.ts`,
+  `Db.findToolReceipt`, `toolRequestHash`, a response codec per tool checked
+  against every legacy response); and same-identity composition in the batch
+  planner with `commandChanges` in the result. Composition rules: later
+  commands name the revision after the first write (existing: current + 1;
+  created in the batch: 1), links and delete-lifecycle effects stay write-once,
+  and create-then-delete is rejected. Loose-intent pinning predicts those
+  revisions. The five quick verbs
+  (`worker/src/adapters/`) now run on this path with receipt-first replay,
+  command-derived IDs, the three-attempt re-read loop for unpinned writes,
+  version 2 receipts, no-op receipts with commit-time guards, and an atomic
+  action-log row. Refusals use the structured tool-error channel (parity
+  difference G1). The other eight mutating tools follow the same path
+  (`projectVerbs.ts`); no-ops for `link_tasks`, `unlink_tasks` and `update_project` store a
+  receipt guarded by the link or project revision plus the structural
+  revision. The command bound is raised from 20 to 100, with the 100-statement
+  plan check as the real ceiling (23 tasks for `create_project`). `update_preference`
+  runs on the new standalone `preference.set` command. `start_session` is now read-only (defaults merge in memory; the gap comes from history). The sync read gate is in force (`checkSyncReadGate`: snapshot and delta return 426 to `pwa/<3`, with or without `Origin`; `minimumSyncRead` in capabilities). The task widget now refreshes with `find` and reopens with `preview_changes` + `apply_changes` (it keeps `complete_task`, a quick verb); `list_tasks` and `reopen_task` have no remaining in-repo callers. `apply_changes` over MCP now records command kinds in the action log (`worker/src/domain/commandLog.ts`; one entry per non-settings command, same atomic plan as the receipt). Phase C is complete.
 - **C: One write path.** First build the parity matrix (see
   [Adapter parity](#adapter-parity)) and the versioned receipt shape. Then add
   same-identity composition to the batch planner, with the revised result contract (see

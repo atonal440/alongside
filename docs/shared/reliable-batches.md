@@ -16,11 +16,25 @@ as implicit substitutions in other input fields. Selected-project revisions
 refer to its state after preceding commands: a newly created project has
 revision 1; an existing project edited earlier has its next revision.
 
-Each identity may be written once per mixed batch. For example, create a task
-with its intended content/type/project instead of creating and then updating
-the same task in one envelope. Read-only references may refer to an entity that
-another command changes. Duplicate writes, duplicate clientRefs, missing guards
-and unsupported compound families are explicit validation errors.
+Several commands may write one task or project (same-identity composition).
+They apply in declared order to the planner's virtual state and commit as one
+net change: the identity's original before image, its final after image, a
+single SQL guard on the first command's expected revision, and a single revision
+step. A later command on that identity names the revision after the first write:
+current + 1 for an existing entity, 1 for one created in the batch, however many
+commands precede it. So a dated task is `task.create` followed by
+`task.legacy-schedule.set` with `expectedRevision: 1`, and a title-and-due-date
+edit of an existing task at revision 4 is `task.content.set` at 4 followed by
+`task.legacy-schedule.set` at 5. Their SQL merges into one statement per
+identity, with projects inserted before tasks that name them whatever the
+declared order.
+
+Not composable, and rejected before any write: a link written twice; deleting
+an identity that the same batch created; any write after a delete; and an
+identity that a delete's lifecycle effect also writes (a detached member or
+cascaded link). Read-only references may refer to an entity that another
+command changes. Duplicate clientRefs, missing guards and unsupported compound
+families are explicit validation errors.
 
 Two tasks and an edge can be created together:
 
@@ -99,9 +113,10 @@ retained offline overlays and capability negotiation follow.
 Completion and task/project deletion now also compose in mixed batches.
 Settings remain standalone. Existing transition rules, stable recurrence
 successor IDs, deletion identity and duty-ownership rejection still apply.
-Derived identities participate in the write-once rule: completing a task and
-then editing it, or editing a project member and then detaching it through
-project deletion, is rejected before writing.
+Identities written by a delete's lifecycle effect stay write-once: editing a
+project member and then detaching it through project deletion is rejected
+before writing. Completing a task and then editing it composes like any other
+pair.
 
 New mixed results include `changeGroups`, one positive image count per command
 in declared order. Counts cover the flat `changes` array exactly. For example,
@@ -112,6 +127,15 @@ field preservation for project-detached members and completed tasks. Completion
 also checks successor inheritance, the next legacy recurrence date, cleared
 session state and server timestamps. Groups retain boundaries even
 when the whole result has more images than input commands.
+
+A composed result has no `changeGroups`. It carries `commandChanges` instead: for
+each command in declared order, the ascending indexes into `changes` it
+contributed to. Some change must be shared by two commands (otherwise the batch
+was not composed and uses `changeGroups`), every change must be named, and a
+composed result may hold a single change. Per-command standalone checks do not
+apply to a composed result; the flat identity and revision rules do. The worker
+and the shared codec deploy together, and the PWA needs the new codec only
+before it sends composed commands.
 
 Receipts from the first mixed-batch release, which lack `changeGroups`, remain
 readable for simple non-lifecycle images. New lifecycle results require grouped

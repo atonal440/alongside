@@ -45,7 +45,7 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
   const allowed = ['intent', 'contractVersion', 'commandId', 'actor', 'reason', 'commands'];
   for (const key of Object.keys(args)) if (!allowed.includes(key)) throw fail([key], `Unknown key "${key}".`);
   if (args.contractVersion !== 2) throw fail(['contractVersion'], 'contractVersion must be 2.');
-  if (!Array.isArray(args.commands) || args.commands.length < 1 || args.commands.length > 20) throw fail(['commands'], 'commands must hold 1–20 loose commands.');
+  if (!Array.isArray(args.commands) || args.commands.length < 1 || args.commands.length > 100) throw fail(['commands'], 'commands must hold 1–100 loose commands.');
   const commandId = args.commandId === undefined ? `c_${nanoid(12)}` : args.commandId;
   const actor = args.actor === undefined ? 'llm' : args.actor;
 
@@ -86,11 +86,18 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
     if (snapshot.row === null || snapshot.version === null) throw fail(path, `${entity} ${id} does not exist.`);
     return snapshot.version.revision;
   };
+  // Field values earlier commands in this batch have already set or will create, which later
+  // patches must merge into rather than the stored row.
+  const overlay = new Map<string, Json>();
   const liveRow = async (entity: Kind['entity'], id: string, path: string[]) => {
+    const key = `${entity}:${id}`;
+    const pending = overlay.get(key);
+    if (predicted.get(key)?.revision === 1 && pending && !snapshots.has(key)) return pending;   // created in this batch
     const snapshot = await read(entity, id, path);
     if (snapshot.row === null) throw fail(path, `${entity} ${id} does not exist.`);
-    return snapshot.row as Json;
+    return { ...(snapshot.row as Json), ...(pending ?? {}) };
   };
+  const remember = (entity: Kind['entity'], id: string, fields: Json) => overlay.set(`${entity}:${id}`, { ...(overlay.get(`${entity}:${id}`) ?? {}), ...fields });
   const project = async (value: unknown, path: string[]) => {
     if (value === null) return null;
     const { id } = resolve(value, 'project', path);
@@ -115,18 +122,18 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
       if (command.values === null || typeof command.values !== 'object' || Array.isArray(command.values)) throw fail([...at, 'values'], 'values must be an object.');
       return command.values as Json;
     };
-    const remember = (entity: Kind['entity'], id: string) => {
+    const register = (entity: Kind['entity'], id: string) => {
       if (typeof command.clientRef === 'string') {
         if (refs.has(command.clientRef)) throw fail([...at, 'clientRef'], `clientRef "${command.clientRef}" is used twice.`);
         refs.set(command.clientRef, { id, entity });
       }
       written(entity, id, 1);
     };
+    // Commands on one identity compose into one revision step, so the revision a later command
+    // names is the one after the first write, however many commands precede it.
     const edit = async (entity: Kind['entity'], id: string) => {
-      // The planner writes each identity once per batch, so say so here, before it rejects the pinned envelope.
-      if (predicted.has(`${entity}:${id}`)) throw fail([...at, 'id'], `${entity} ${id} is already written by an earlier command in this batch; a batch writes each identity once. Fold the changes into one command or apply them in separate calls.`);
       const revision = await revisionOf(entity, id, [...at, 'id']);
-      written(entity, id, revision + 1);
+      if (!predicted.has(`${entity}:${id}`)) written(entity, id, revision + 1);
       return revision;
     };
     const only = (input: Json, allowedKeys: string[], path: string[]) => {
@@ -140,7 +147,7 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
         const id = `t_${nanoid(5)}`;
         const out = { kind: 'task.create', id, ...clientRef(), expectedRevision: null, expectedStructuralRevision: structural,
           values: { title: input.title, notes: input.notes ?? null, kickoffNote: input.kickoffNote ?? null, taskType: input.taskType ?? 'action', project: await project(input.project ?? null, [...at, 'values', 'project']) } };
-        remember('task', id); commands.push(out); break;
+        register('task', id); remember('task', id, { title: input.title, notes: input.notes ?? null, kickoff_note: input.kickoffNote ?? null, session_log: null, due_date: null, due_all_day: null, recurrence: null }); commands.push(out); break;
       }
       case 'project.create': {
         keys('clientRef', 'values');
@@ -148,7 +155,7 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
         const id = `p_${nanoid(5)}`;
         commands.push({ kind: 'project.create', id, ...clientRef(), expectedRevision: null, expectedStructuralRevision: structural,
           values: { title: input.title, notes: input.notes ?? null, kickoffNote: input.kickoffNote ?? null } });
-        remember('project', id); break;
+        register('project', id); remember('project', id, { title: input.title, notes: input.notes ?? null, kickoff_note: input.kickoffNote ?? null }); break;
       }
       case 'task.content.set':
       case 'project.content.set': {
@@ -161,7 +168,9 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
         // The command replaces the whole field group, so patches merge into current values.
         const row = await liveRow(entity, id, [...at, 'id']);
         const current: Json = { title: row.title, notes: row.notes, kickoffNote: row.kickoff_note, ...(entity === 'task' ? { sessionLog: row.session_log } : {}) };
-        commands.push({ kind: command.kind, id, expectedRevision: await edit(entity, id), values: { ...current, ...input } });
+        const merged = { ...current, ...input };
+        commands.push({ kind: command.kind, id, expectedRevision: await edit(entity, id), values: merged });
+        remember(entity, id, { title: merged.title, notes: merged.notes, kickoff_note: merged.kickoffNote, ...(entity === 'task' ? { session_log: merged.sessionLog } : {}) });
         break;
       }
       case 'task.focus.set': { keys('id', 'focusedUntil'); const id = idOf('task'); commands.push({ kind: command.kind, id, expectedRevision: await edit('task', id), focusedUntil: command.focusedUntil }); break; }
@@ -176,7 +185,9 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
         const input = values(); only(input, ['dueDate', 'dueAllDay', 'recurrence'], [...at, 'values']);
         const row = await liveRow('task', id, [...at, 'id']);
         const current = { dueDate: row.due_date, dueAllDay: row.due_all_day, recurrence: row.recurrence };
-        commands.push({ kind: command.kind, id, expectedRevision: await edit('task', id), values: { ...current, ...input } });
+        const merged = { ...current, ...input };
+        commands.push({ kind: command.kind, id, expectedRevision: await edit('task', id), values: merged });
+        remember('task', id, { due_date: merged.dueDate, due_all_day: merged.dueAllDay, recurrence: merged.recurrence });
         break;
       }
       case 'task.complete': {
@@ -187,7 +198,11 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
         const recurring = row.recurrence !== null && row.recurrence !== undefined;
         commands.push({ kind: command.kind, id, expectedRevision: await edit('task', id), expectedStructuralRevision: structural,
           successor: recurring ? { id: successorId, ...clientRef() } : null });
-        if (recurring) remember('task', successorId);
+        if (recurring) {
+          register('task', successorId);
+          remember('task', successorId, { title: row.title, notes: row.notes ?? null, kickoff_note: row.kickoff_note ?? null, session_log: null,
+            due_date: row.due_date ?? null, due_all_day: row.due_all_day ?? null, recurrence: row.recurrence });
+        }
         break;
       }
       case 'task.project.set': {
@@ -217,6 +232,12 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
         }
         if (command.kind === 'link.remove' && expectedRevision === null) throw fail(at, 'That link does not exist.');
         commands.push({ kind: command.kind, from: from.id, to: to.id, linkType, expectedRevision, expectedStructuralRevision: structural });
+        break;
+      }
+      case 'preference.set': {
+        keys('key', 'value');
+        if (typeof command.key !== 'string') throw fail([...at, 'key'], 'key must be a string.');
+        commands.push({ kind: command.kind, key: command.key, value: command.value, expectedRevision: (await db.readPreferenceState(command.key)).revision });
         break;
       }
       case 'planning.set': {

@@ -2,7 +2,7 @@ import { err, ok, type Result } from '@shared/result';
 import { parseDueDateTime, parseEventInstant, parseLocalDate, parseMinuteInstant, parseTimezone, type Timezone, type ValidationError } from '@shared/parse';
 import { resolveDateBoundary, resolveOffset, resolveWallTime, type TemporalPoint, type TimeError } from '@shared/temporal';
 import { parseSchema } from '@shared/parse';
-import { CLIENT_PROTOCOL, MIN_WRITE_PROTOCOL } from '@shared/wire/clientVersion';
+import { CLIENT_PROTOCOL, MIN_SYNC_READ_PROTOCOL, MIN_WRITE_PROTOCOL } from '@shared/wire/clientVersion';
 import { COMMAND_CATALOG_VERSION, TOOL_SURFACE_VERSION, CapabilitiesSchema, type Capabilities, type PlanningSettings, type ResolveTimeInput, type TimeResolution, type TimezoneSource } from '@shared/wire/planning';
 
 export interface FoundationError {
@@ -24,7 +24,7 @@ export function getCapabilities(requestZone: Timezone | undefined, settings: Pla
   const parsed = parseSchema(CapabilitiesSchema, {
     contractVersion: 2, serverNow: now, ...interpretedZone(requestZone, settings), setupRequired: settings === null,
     features: { temporalResolution: true, legacyDatePreview: true, reliableCommands: true, hierarchy: false, taskDates: false, timeblocks: false, reminders: false, seriesMaterialization: false, deltaSync: true },
-    clientProtocol: { current: CLIENT_PROTOCOL, minimumWrite: MIN_WRITE_PROTOCOL },
+    clientProtocol: { current: CLIENT_PROTOCOL, minimumWrite: MIN_WRITE_PROTOCOL, minimumSyncRead: MIN_SYNC_READ_PROTOCOL },
     limits: { atomicStatements: 100, maxHierarchyDepth: 32, maxPreviewRows: 500, maxDurationMinutes: 525_600 },
     delivery: { inbox: 'unavailable', webPush: 'unconfigured', backgroundEnabled: false },
     recurrencePolicy: { gap: 'skip', fold: 'earlier' },

@@ -49,9 +49,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   describe_commands: READ,
   // Preview never writes.
   preview_changes: READ,
-  // start_session still seeds default preferences and stores last_session_at, so it is not
-  // read-only until phase C removes those writes. It adds or refreshes rows, and a retry changes returning_after_gap, so it is not marked idempotent.
-  start_session: WRITE,
+  // Read-only since phase C: defaults merge in memory and the gap comes from history.
+  start_session: READ,
   // Conversational writes (the future quick verbs and their legacy siblings)
   add_task: WRITE,
   complete_task: WRITE,

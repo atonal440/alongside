@@ -1,3 +1,4 @@
+import { PREFERENCE_KEYS } from '@shared/parse';
 import { parseSchema } from '@shared/parse';
 import { CommandEnvelopeSchema, PlanningSettingsExportSchema } from '@shared/wire/commands';
 import { parseEntityKey, parseEntityReadKey, parseLinkKey } from '@shared/wire/versions';
@@ -14,8 +15,8 @@ const envelope = {
   properties: {
     contractVersion: { const: 2 }, commandId: { type: 'string', pattern: '^c_[0-9A-Za-z_-]{5,64}$' },
     actor: { enum: ['user', 'llm', 'import'] }, reason: { type: 'string', maxLength: 1000 },
-    expectedStructuralRevision: { type: 'integer', minimum: 0, maximum: 9007199254740991, description: 'Required for mixed batches of 2–20 distinct-identity commands. Graph commands share this base revision. Forbidden for standalone commands. Settings remain standalone. Lifecycle commands include their successor/cascade/detachment effects and may not overlap other written identities.' },
-    commands: { type: 'array', minItems: 1, maxItems: 20, items: {
+    expectedStructuralRevision: { type: 'integer', minimum: 0, maximum: 9007199254740991, description: 'Required for mixed batches of 2–100 commands. Graph commands share this base revision. Forbidden for standalone commands. Settings remain standalone. Lifecycle commands include their successor/cascade/detachment effects and may not overlap other written identities.' },
+    commands: { type: 'array', minItems: 1, maxItems: 100, items: {
       type: 'object', additionalProperties: false,
       properties: {
         kind: { const: 'planning.set' }, expectedRevision: { type: ['integer', 'null'], minimum: 0, maximum: 9007199254740991 },
@@ -104,8 +105,14 @@ const linkSchemas = ['link.add', 'link.remove'].map(kind => ({
   }, required: ['kind', 'from', 'to', 'linkType', 'expectedRevision', 'expectedStructuralRevision'],
 }));
 const deleteSchemas = ['task','project'].map(entity => ({type:'object',additionalProperties:false,properties:{kind:{const:`${entity}.delete`},id:{type:'string',pattern:entity === 'task' ? '^t_[0-9A-Za-z_-]{5,}$' : '^p_[0-9A-Za-z_-]{5,}$'},expectedRevision:{type:'integer',minimum:0,maximum:9007199254740991},expectedStructuralRevision:{type:'integer',minimum:0,maximum:9007199254740991}},required:['kind','id','expectedRevision','expectedStructuralRevision']}));
+const preferenceSchema = {
+  type: 'object', additionalProperties: false, properties: {
+    kind: { const: 'preference.set' }, key: { enum: [...PREFERENCE_KEYS] }, value: { type: 'string', maxLength: 2000, description: 'Validated against the key: sort_by readiness|due|project; urgency_visibility show|hide; kickoff_nudge always|missing|never; session_log ask_at_end|auto_generate|off; interruption_style proactive|quiet; planning_prompt auto|always|never.' },
+    expectedRevision: { type: ['integer', 'null'], minimum: 0, maximum: 9007199254740991, description: 'The preference sync revision; null when it has never been set. Standalone only.' },
+  }, required: ['kind', 'key', 'value', 'expectedRevision'],
+};
 const commandEnvelope = { ...envelope, properties: { ...envelope.properties,
-  commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema, ...taskFieldSchemas, ...linkSchemas, ...deleteSchemas] } },
+  commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, preferenceSchema, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema, ...taskFieldSchemas, ...linkSchemas, ...deleteSchemas] } },
 } };
 const looseIntentSchema = {
   type: 'object', additionalProperties: false,
@@ -113,7 +120,7 @@ const looseIntentSchema = {
     intent: { const: true }, contractVersion: { const: 2 },
     commandId: { type: 'string', pattern: '^c_[0-9A-Za-z_-]{5,64}$', description: 'Optional; minted when omitted.' },
     actor: { enum: ['user', 'llm', 'import'], description: 'Defaults to "llm".' }, reason: { type: 'string', maxLength: 1000 },
-    commands: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'object', properties: { kind: { type: 'string' }, clientRef: { type: 'string' } }, required: ['kind'], additionalProperties: true,
+    commands: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'object', properties: { kind: { type: 'string' }, clientRef: { type: 'string' } }, required: ['kind'], additionalProperties: true,
       description: 'A strict command minus expectedRevision, expectedStructuralRevision, creation IDs and successor. Reference entities created earlier in the array as "@clientRef".' } },
   }, required: ['intent', 'contractVersion', 'commands'],
 };
@@ -151,10 +158,11 @@ export const COMMAND_TOOLS = [
   } },
   { name: 'get_planning_settings', description: 'Read complete workspace planning settings and their revision, or null before setup.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'export_planning_settings', description: 'Export only planning preferences, without revision or credentials. Restore non-null values through planning.set with a fresh command ID and current expectedRevision. This is not a full-workspace backup.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
-  { name: 'preview_changes', description: 'Preview a reliable command without writes. Accepts either a strict envelope (below) or loose intent: set intent:true and give commands without revisions, minted IDs, structural revisions or successors; creation commands take a clientRef and later commands may use it as "@ref" as a project, link endpoint or other reference, but each task or project is written by one command per batch. The server reads current state, pins every guard and returns the strict envelope as pinnedEnvelope, plus the diff; pass pinnedEnvelope to apply_changes unchanged (any intervening change returns revision_conflict). Content and schedule patches merge into current values. See describe_commands for fields. Strict envelope:  One supported standalone command, or a bounded mixed batch of task/project/link commands including lifecycle effects with an envelope structural revision and distinct written identities; links require entity/structural revisions and existing endpoints, with atomic blocks-cycle validation; creation requires a stable ID, no prior identity history and the workspace structural revision. Use the current numeric revision for edits; initial settings and creation use null. A preview is not a lock.', inputSchema: { type: 'object', oneOf: [commandEnvelope, looseIntentSchema] } },
-  { name: 'apply_changes', description: 'Atomically apply a supported standalone command or mixed batch of 2–20 task/project/link commands including lifecycle effects, with a caller-minted command ID and expected revision. Same ID/payload returns the original result; a different payload conflicts. Includes receipt, audit and command feed. Creation supports scoped clientRef/ID mapping. Content commands change only title/notes/kickoff and task session log; Focus/deferral follow existing pending-task transitions; reopening clears both. Project state preserves members/links. Completion uses structural guards and requires a stable successor ID for legacy recurrence, or successor:null otherwise. Membership uses structural and selected-project guards. Legacy schedule changes replace only existing due-date classification/recurrence, not future explicit date roles. Link add/remove are guarded; related additions use ascending IDs and prevent reversed duplicates, blocks additions reject cycles. Task deletion returns cascade link tombstones; project deletion detaches members and rejects duty ownership. Both require structural revisions and reject oversized atomic effects before writes. Mixed batches require an envelope structural revision, distinct written identities and unique scoped clientRefs. Create referenced entities earlier in the array. Final blocks graph validation allows atomic edge replacement; the complete generated SQL must fit 100 statements. Mixed results include changeGroups with one derived-image count per command. Lifecycle effects must be disjoint; settings stay standalone. Offline overlays follow later.', inputSchema: commandEnvelope },
+  { name: 'preview_changes', description: 'Preview a reliable command without writes. Accepts either a strict envelope (below) or loose intent: set intent:true and give commands without revisions, minted IDs, structural revisions or successors; creation commands take a clientRef and later commands refer to it as "@ref". The server reads current state, pins every guard and returns the strict envelope as pinnedEnvelope, plus the diff; pass pinnedEnvelope to apply_changes unchanged (any intervening change returns revision_conflict). Content and schedule patches merge into current values. See describe_commands for fields. Strict envelope:  One supported standalone command, or a bounded mixed batch of task/project/link commands including lifecycle effects with an envelope structural revision; links require entity/structural revisions and existing endpoints, with atomic blocks-cycle validation; creation requires a stable ID, no prior identity history and the workspace structural revision. Use the current numeric revision for edits; initial settings and creation use null. A preview is not a lock.', inputSchema: { type: 'object', oneOf: [commandEnvelope, looseIntentSchema] } },
+  { name: 'apply_changes', description: 'Atomically apply a supported standalone command or mixed batch of 2–100 task/project/link commands (the 100-statement atomic limit is the practical ceiling) including lifecycle effects, with a caller-minted command ID and expected revision. Same ID/payload returns the original result; a different payload conflicts. Includes receipt, audit and command feed. Creation supports scoped clientRef/ID mapping. Content commands change only title/notes/kickoff and task session log; Focus/deferral follow existing pending-task transitions; reopening clears both. Project state preserves members/links. Completion uses structural guards and requires a stable successor ID for legacy recurrence, or successor:null otherwise. Membership uses structural and selected-project guards. Legacy schedule changes replace only existing due-date classification/recurrence, not future explicit date roles. Link add/remove are guarded; related additions use ascending IDs and prevent reversed duplicates, blocks additions reject cycles. Task deletion returns cascade link tombstones; project deletion detaches members and rejects duty ownership. Both require structural revisions and reject oversized atomic effects before writes. Mixed batches require an envelope structural revision and unique scoped clientRefs. Several commands may write one task or project: they apply in order and commit as one net change with one revision step, and each later command names the revision after the first write (existing: current+1; created in the batch: 1). A link, or an identity written by a delete lifecycle effect, may be written only once. Create referenced entities earlier in the array. Final blocks graph validation allows atomic edge replacement; the complete generated SQL must fit 100 statements. Mixed results include changeGroups with one derived-image count per command, or commandChanges (the change indexes each command contributed to) when commands were composed. Lifecycle effects must not overlap other written identities; settings stay standalone. Offline overlays follow later.', inputSchema: commandEnvelope },
 ];
-export async function callCommandTool(name: string, args: unknown, db: DB): Promise<unknown> {
+/** `source: 'mcp'` makes apply_changes also record its commands in the action log. */
+export async function callCommandTool(name: string, args: unknown, db: DB, options: { source?: 'mcp' | 'rest' } = {}): Promise<unknown> {
   if (name === 'get_workspace_delta') {
     const input = parseWorkspaceDeltaInput(args);
     if (!input.ok) throw new CommandError(invalidInput(input.error), 400);
@@ -198,12 +206,12 @@ export async function callCommandTool(name: string, args: unknown, db: DB): Prom
     const pinnedEnvelope = await pinIntent(args, db);
     const pinned = parseSchema(CommandEnvelopeSchema, pinnedEnvelope);
     if (!pinned.ok) throw new CommandError(invalidInput(pinned.error), 400);
-    return { ...await db.previewChanges(pinned.value), pinnedEnvelope };
+    return { ...await db.previewChanges(pinned.value, { actionLog: options.source === 'mcp' }), pinnedEnvelope };
   }
   const input = parseSchema(CommandEnvelopeSchema, args);
   if (!input.ok) throw new CommandError(invalidInput(input.error), 400);
-  if (name === 'preview_changes') return db.previewChanges(input.value);
-  if (name === 'apply_changes') return db.applyChanges(input.value);
+  if (name === 'preview_changes') return db.previewChanges(input.value, { actionLog: options.source === 'mcp' });
+  if (name === 'apply_changes') return db.applyChanges(input.value, { actionLog: options.source === 'mcp' });
   throw new Error(`Unknown command tool: ${name}`);
 }
 export async function handleCommandRequest(request: Request, url: URL, db: DB): Promise<Response | null> {

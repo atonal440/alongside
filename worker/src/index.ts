@@ -1,6 +1,6 @@
 import { DB } from './db';
 import { handleApiRequest } from './api';
-import { checkClientGate } from './clientGate';
+import { checkClientGate, checkSyncReadGate } from './clientGate';
 import { handleMcpRequest } from './mcp';
 import { handleUiRequest } from './ui';
 import { verifySignature } from './sign';
@@ -78,7 +78,7 @@ export default {
     let response: Response;
 
     if (url.pathname.startsWith('/api/')) {
-      response = checkClientGate(request) ?? await handleApiRequest(request, url, db);
+      response = checkClientGate(request) ?? checkSyncReadGate(request, url) ?? await handleApiRequest(request, url, db);
     } else if (url.pathname.startsWith('/mcp')) {
       response = await handleMcpRequest(request, db, env, url.pathname.replace(/\/+$/, '') === '/mcp/admin' ? 'admin' : 'default');
     } else if (url.pathname.startsWith('/ui')) {

@@ -30,8 +30,7 @@ describe('MCP tool tiers (phase A)', () => {
     }
     expect(TOOLS.filter(tool => tool.annotations.destructiveHint).map(tool => tool.name).sort())
       .toEqual(['apply_changes', 'delete_project', 'delete_task', 'restore_workspace']);
-    // Honest until phase C: start_session still writes preferences.
-    expect(byName.start_session).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+    expect(byName.start_session).toMatchObject({ readOnlyHint: true, destructiveHint: false });
     for (const tool of TOOLS) expect(tool.annotations.openWorldHint).toBe(false);
   });
 
