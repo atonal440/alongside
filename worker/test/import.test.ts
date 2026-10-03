@@ -102,6 +102,12 @@ function fakeD1(): {
 }
 
 describe('import payload parsing', () => {
+  it('normalizes legacy exports missing both duty identity fields', () => {
+    const { duty_id: _dutyId, occurrence_at: _occurrence, ...legacyTask } = taskRow();
+    const parsed = expectOk(parseImport(exportPayload({ projects: [], tasks: [legacyTask] })));
+    expect(parsed.tasks[0]).toMatchObject({ duty_id: null, occurrence_at: null });
+  });
+
   it('preserves title whitespace while still requiring non-blank titles', () => {
     const paddedTaskTitle = `${'x'.repeat(200)}  `;
     const paddedProjectTitle = `  ${'y'.repeat(200)}`;
@@ -266,6 +272,19 @@ describe('planImport', () => {
 });
 
 describe('DB.importAll', () => {
+  it.each([
+    { duty_id: 'd_abc12', occurrence_at: null },
+    { duty_id: null, occurrence_at: '2026-05-15T09:00:00Z' },
+  ])('rejects unpaired imported duty identity %j before dry-run or wipe', async patch => {
+    const { d1, batches } = fakeD1();
+    const payload = exportPayload({ projects: [], tasks: [taskRow(patch)] });
+    expect(parseImport(payload).ok).toBe(false);
+    for (const dryRun of [true, false]) {
+      await expect(new DB(d1).importAll(payload, dryRun)).rejects.toMatchObject({ appError: { kind: 'validation' } });
+    }
+    expect(batches).toHaveLength(0);
+  });
+
   it.each(['active', 'paused', 'ended'])('restores duty history regardless of its live %s status and advanced cursor', async status => {
     const { d1, sql } = sqliteD1();
     try {

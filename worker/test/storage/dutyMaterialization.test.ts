@@ -129,7 +129,9 @@ describe('atomic duty materialization execution', () => {
   it.each([{ duty_id: null }, { occurrence_at: null }])('rejects an unpaired duty instance identity %j', async patch => {
     const { d1, sql } = setup();
     try {
-      expect((await applyPlan(d1, { assertions: [], ops: [{ kind: 'task.insert', row: { ...task('t_invalid', first), ...patch } }] })).ok).toBe(false);
+      for (const kind of ['task.insert', 'task.restore'] as const) {
+        expect((await applyPlan(d1, { assertions: [], ops: [{ kind, row: { ...task('t_invalid', first), ...patch } }] })).ok).toBe(false);
+      }
       expect(sql.prepare('SELECT COUNT(*) AS n FROM tasks').get()).toMatchObject({ n: 0 });
     } finally { sql.close(); }
   });

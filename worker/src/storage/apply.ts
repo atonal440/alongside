@@ -1,7 +1,7 @@
 import type { Result } from '@shared/result';
 import { err, ok } from '@shared/result';
 import type { AppError } from '../domain/errors';
-import type { Op, Plan, PreCheck, ProjectRowPatch, TaskRowPatch } from '../domain/Op';
+import type { Op, Plan, PreCheck, ProjectRowPatch, TaskRow, TaskRowPatch } from '../domain/Op';
 import { entityStorageKey, parseEntityVersionResponse, type EntityKey, type EntityVersionResponse } from '@shared/wire/versions';
 
 /** One statement returns a coherent entity/aggregate revision pair. */
@@ -331,6 +331,12 @@ function guardedStatement(statement: D1PreparedStatement, guard?: ExistingRowGua
   return guard ? { statement, guard } : { statement };
 }
 
+function assertTaskDutyIdentity(row: TaskRow): void {
+  if ((row.duty_id === null) !== (row.occurrence_at === null)) {
+    throw new Error('Duty identity and occurrence must be supplied together.');
+  }
+}
+
 function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
   switch (op.kind) {
     case 'planning.replace':
@@ -356,9 +362,7 @@ function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
         WHERE id=? AND status='active' AND (last_spawned_at IS NULL OR last_spawned_at<?)`)
         .bind(op.lastSpawnedAt, op.nextOccurrenceAt, op.updatedAt, op.id, op.lastSpawnedAt))];
     case 'task.insert': {
-      if ((op.row.duty_id === null) !== (op.row.occurrence_at === null)) {
-        throw new Error('Duty identity and occurrence must be supplied together.');
-      }
+      assertTaskDutyIdentity(op.row);
       if (op.row.duty_id !== null) {
         const values = TASK_INSERT_COLUMNS.map(column => toBindable(op.row[column]));
         return [guardedStatement(d1.prepare(`INSERT INTO tasks (${TASK_INSERT_COLUMNS.join(',')})
@@ -443,6 +447,7 @@ function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
     case 'duty.restore':
       return [guardedStatement(bindInsert(d1, 'duties', DUTY_RESTORE_COLUMNS, op.row))];
     case 'task.restore':
+      assertTaskDutyIdentity(op.row);
       return [guardedStatement(bindInsert(d1, 'tasks', TASK_RESTORE_COLUMNS, op.row))];
     case 'pref.restore':
       return [guardedStatement(d1.prepare('INSERT INTO user_preferences (key,value) VALUES (?,?)').bind(op.key, op.value))];

@@ -18,3 +18,6 @@ Import planner for turning a parsed export payload into a typed storage `Plan`.
 apply. Restore uses one transactional batch, including wipe, and rejects plans
 over 100 statements without modifying live data. This retains bounded v1 input;
 staged large restore and versioned export/epoch work remain separate follow-ups.
+
+The v1 wire parser defaults legacy missing duty identity fields to null and
+rejects unpaired duty_id/occurrence_at before dry-run counts or the wipe batch.

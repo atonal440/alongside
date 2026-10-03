@@ -51,3 +51,5 @@ work; later revision/ledger contracts must build on these guards.
 `task.restore` is an unconditional insert used by both legacy and v2 import.
 Restoring historical rows must bypass active-status and live-cursor predicates;
 it still enforces ordinary database constraints and transactional rollback.
+Both insert paths reject unpaired duty_id/occurrence_at during preparation,
+before any wipe or other mutation executes.

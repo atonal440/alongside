@@ -86,6 +86,8 @@ const ImportTaskRowSchema = v.pipe(
       occurrence_at: row.occurrence_at,
     };
   }),
+  v.check(row => (row.duty_id === null) === (row.occurrence_at === null),
+    'Duty identity and occurrence must be supplied together.'),
 );
 
 // Tolerates pre-Stage-1 exports that predate duty_id.
