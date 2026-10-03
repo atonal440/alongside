@@ -91,25 +91,13 @@ to the wider key.
 
 ### 4. Catch-up with graphs
 
-`catch_up: 'all'` spawns the full graph per missed occurrence; `next` collapses
-to one graph at the latest occurrence. The orphan rule (`00` §3) carries over
-directly: the single bulk `duty.orphan_stale { id, before: latest }` op
-(`WHERE duty_id=:id AND status='pending' AND occurrence_at < :latest`) detaches
-**every task of every prior open occurrence** in one statement — while the
-`< latest` bound excludes the current occurrence's just-spawned graph — so orphaned
-graphs keep their inter-task links. No new per-occurrence orphan machinery is
-needed; it stays bounded regardless of how many occurrences or nodes are open.
-(`deleteDutyPlan` uses `duty.orphan_all` — every instance, any status.)
-
-**Both orphan ops must also null `template_node_key` in the Phase 2 schema.** A
-duty instance carries a non-null key, and `NULL` is reserved for one-off tasks
-(§2); an orphaned task *is* a one-off, so the orphan `UPDATE` must set
-`duty_id = NULL, occurrence_at = NULL, template_node_key = NULL` — otherwise the
-orphan keeps a non-null template key, breaking that invariant and making
-decoders/UI still treat it as a duty-template node. (`duty_id`/`occurrence_at` are
-what get nulled in Phase 1; Phase 2 adds `template_node_key` to the same set.) The
-inter-task `blocks` links are left intact. Test that an orphaned graph occurrence
-retains its internal `blocks` links **and** has null `template_node_key`.
+Catch-up policies for graph instances are canonical in
+[power-user-todo.md §7](../power-user-todo.md#7-recurrence-retain-duties-add-occurrence-identity).
+Keep prior unfinished graphs and all provenance/node identity intact. The old
+catch-up orphan operation is retired. Extend targeted unique-conflict handling
+to the occurrence/node key and keep the live-cursor guard when wiring generation.
+Archival/purge rules belong to the current product plan; do not clear template
+node keys during catch-up.
 
 ### 5. Surfaces
 

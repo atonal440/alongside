@@ -3,7 +3,7 @@
 Part of `docs/plans/duties.md`. Prerequisites: Stages 1–3. Read
 `00-recurrence-and-triggering.md` §2–§4 and §7 first — this stage implements that
 algorithm, including the revised idempotency (three layers) and `catch_up: next`
-(orphan) rules.
+provenance rules.
 
 > **Canonical invariants & matrix:** `04-invariants-and-contracts.md` §3 (INV-A…L)
 > and §6 (operations × invariants) are authoritative — the materializer must
@@ -71,8 +71,7 @@ Algorithm (from `00` §2–§4):
 
 1. `duty.status !== 'active'` → `ok(emptyPlan())`.
 2. `latest = latestOccurrenceAtOrBefore(parts, dtstart, timezone, now)` — the last
-   occurrence with instant `<= now` (Stage 2; backed by the rule's `.before(now,
-   inclusive)`, so it is O(1)-ish and needs no enumeration). If `latest` is null or
+   occurrence with instant `<= now` (Stage 2; period-indexed reverse search with a separate work budget). If `latest` is null or
    `latest <= cursor`, **nothing new is due:**
    - `isSeriesExhausted(parts, dtstart, timezone, cursor)` → emit
      `duty.update { status: 'ended', next_occurrence_at: null, updated_at: now }`.
@@ -81,17 +80,9 @@ Algorithm (from `00` §2–§4):
    - else `ok(emptyPlan())`.
 3. **Branch on `catch_up` (the per-run cap applies to `all` only):**
    - **`next`** → spawn exactly one at `latest` (the *true* latest due occurrence,
-     never a cap boundary). **Orphan rule (`00` §3):** emit **one bulk op**
-     `duty.orphan_stale { id, before: latest }` — a single `UPDATE … WHERE
-     duty_id=:id AND status='pending' AND occurrence_at < :latest` — then the
-     `task.insert` at `latest`. This detaches every stale open instance in one
-     statement (not one `task.update` each, which could blow `apply`'s 100-statement
-     limit for a big backlog and deadlock). The `occurrence_at < latest` bound is
-     load-bearing: it **excludes the current occurrence**, so a *stale replay* that
-     runs after a concurrent driver already inserted the `latest` instance cannot
-     detach that valid current task (which would leave a duplicate/orphan). The
-     replay's orphan then matches nothing new and its insert hits the unique index
-     → benign no-op. `newCursor = latest`. Bounded ~3 statements however far behind.
+     never a cap boundary). Emit `task.insert` at `latest` and advance
+     the cursor. Keep existing pending instances attached as historical backlog.
+     Catch-up must not detach, defer, complete, or re-date them (`04` INV-G).
    - **`all`** → `missed = occurrencesBetween(parts, dtstart, timezone, cursor,
      now, /*limit*/ ctx.maxPerRun)` — **pass `maxPerRun` as the expansion limit**,
      don't expand-all-then-slice. A minutely duty months behind has millions of
@@ -107,38 +98,24 @@ Algorithm (from `00` §2–§4):
    emit `duty.update { status: 'ended' }`.
 6. `ok({ ops, assertions: [duty.exists(duty.id)] })`.
 
-**Guard the plan on live status (INV-L).** `duty.exists` is *not* sufficient: a
-`pause_duty`/`end_duty` can commit between the moment this plan was built (against
-an `active` row) and the moment it applies. A stale plan would then spawn an
-instance for a stopped duty, and its `duty.update_cursor` could write a non-null
-`next_occurrence_at` onto an `ended` row (violating INV-D). So **every write the
-materializer emits** — the instance `task.insert`, `duty.orphan_stale`,
-`duty.update_cursor`, and the exhaustion/ended `duty.update` — must be
-**conditional on `status='active'`** at apply time, via predicates on the write
-statements themselves (silent no-op = success; the batch-aborting precheck trick
-is the wrong semantics here). Mechanism per op (`04` §5): `duty.update_cursor`
-and `duty.orphan_stale` carry the status condition unconditionally (Stage 3
-executor); the exhaustion `duty.update` ops in Steps 2 and 5 set
-`ifStatus: 'active'`; and the duty-instance `task.insert` is emitted as
-`INSERT INTO tasks (…) SELECT … WHERE EXISTS (SELECT 1 FROM duties WHERE
-id = :duty_id AND status = 'active')` — extend the same `apply` special case that
-Step 3 adds for the benign unique-conflict (both key off the row's non-null
-`duty_id`). A no-op under this guard is success (the duty was stopped).
+**Reuse the executor guards (`04` INV-K/L).** Duty-instance inserts and
+`duty.update_cursor` are already guarded on live active status and forward
+cursor progress. Inserts use a targeted occurrence-conflict no-op. Build all
+inserts before the cursor update in one atomic plan; never catch a general
+constraint error and pretend the batch committed. See the
+[executor reference](../../worker/storage/apply.md). The later exhaustion
+transition still needs its active-status condition.
 
 Clock-free: everything from `ctx`. For `next`, `newCursor` is the true latest due
 occurrence — so a duty 200 days behind spawns *today's* task and jumps the cursor
 to today, rather than crawling forward `maxPerRun` at a time and repeatedly
-orphaning a stale instance.
+generating stale replacements.
 
 ### 3. Idempotent instance insert in `apply`
 
-Make a `task.insert` whose row has a non-null `duty_id` tolerate the
-`tasks_duty_occurrence` unique-constraint violation as a **benign no-op** (detect
-that specific SQLite constraint error; treat the op as already-applied). One-off
-tasks (`duty_id IS NULL`) are unaffected. Combined with the monotonic
-`duty.update_cursor` (Stage 3), this is the full three-layer idempotency (`00`
-§4). Test: apply the same materialize plan twice → exactly one instance and no
-cursor regression.
+Already implemented and covered by real SQLite tests. Reuse it, including
+newer-plan-before-older-plan, duplicate replay, paused/ended-at-apply, and batch
+rollback cases. A unique index without the live-cursor predicate is insufficient.
 
 ### 4. `materializeDueDuties` (DB driver)
 
@@ -155,10 +132,9 @@ async materializeDueDuties(now: IsoDateTime): Promise<{ spawned: number; ended: 
   month (`00` §4).
 - Otherwise load matching active duties **ordered by `next_occurrence_at` ascending**
   (most-overdue first, so nothing is starved under Stage 5's cap). For each:
-  `dutyFromRow` (skip-and-log parse failures so one corrupt duty can't stall the
-  batch); fetch `priorSessionLog` (latest completed instance's `session_log`);
+  `dutyFromRow` (skip-and-log parse/search-budget failures so one pathological duty cannot stall the batch or be falsely marked exhausted); fetch `priorSessionLog` (latest completed instance's `session_log`);
   build the plan with `maxPerRun`; `apply` it. (No need to enumerate open instances
-  — the `next` orphan is a single bulk `duty.orphan_stale` op.) Aggregate counts;
+  — catch-up retains historical work.) Aggregate counts;
   isolate per-duty failures.
 
 ### 5. Duty backfill (moved here from Stage 1)
@@ -264,12 +240,8 @@ import wipe FK-fails or leaves stale/colliding duty rows (`03` State C). Extend
 - `materializeDutyPlan`: brand-new duty (`cursor=null`) at `now=dtstart` spawns
   one; a week past a daily duty under `all` spawns 7 (or `maxPerRun`), under `next`
   spawns 1 at the latest + advances cursor; `next` with an existing open instance
-  **orphans it** (duty_id+occurrence_at nulled) and spawns one fresh; **`next` with
-  ~150 open instances** (e.g. after an `all`→`next` switch) produces a bounded plan
-  (one bulk `duty.orphan_stale` + insert + cursor, not 150 updates) that applies in
-  one batch instead of deadlocking; **a stale `next` replay after a concurrent run
-  already inserted `latest` does NOT orphan that current instance** (the
-  `occurrence_at < latest` bound excludes it) and produces no duplicate; a finite rule
+  **retains it with its original identity and user state** and spawns one fresh;
+  a stale older plan after a newer one commits inserts nothing. A finite rule
   whose last occurrence ≤ now spawns the remainder then `status: 'ended'` +
   `next_occurrence_at: null`; **`COUNT=1` with `now < dtstart` does NOT end**;
   paused/ended spawn nothing; a zoned duty across a DST boundary keeps wall-clock
@@ -295,7 +267,7 @@ import wipe FK-fails or leaves stale/colliding duty rows (`03` State C). Extend
   duty keeps a populated `next_occurrence_at` (never nulled while merely not due).
 - INV-L: a materialize plan built against an `active` duty, applied **after** the
   duty was paused/ended, is a complete no-op — no instance inserted, no cursor or
-  `next_occurrence_at` write, no orphaning, no status write.
+  `next_occurrence_at` write, no historical task mutation, no status write.
 - Carry-forward: a completed prior instance's `session_log` → new
   instance's `kickoff_note`.
 - Backfill: mixed recurring/plain tasks → validated duties; a duty row that would

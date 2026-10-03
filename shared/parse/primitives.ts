@@ -103,7 +103,7 @@ function getTimezoneSet(): Set<string> {
 }
 
 function hasTimezoneIdentifierCase(input: string): boolean {
-  return !input.includes('/') || input !== input.toLowerCase();
+  return /^(?:[A-Z][A-Za-z_]*\/)+[A-Z][A-Za-z0-9_+\-]*$/.test(input);
 }
 
 export function isIanaTimezoneString(input: string): boolean {

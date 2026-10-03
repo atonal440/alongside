@@ -34,9 +34,9 @@ orders must never drift from each other or from the code.
 - **Series anchor immutable:** `rrule` + `dtstart` + `timezone` are fixed at
   creation (all define the occurrence calendar); reschedule/re-zone = `end_duty` +
   `create_duty`. `updateDutyPlan` edits template fields + `catch_up` only.
-- **`catch_up: next`:** spawn the latest occurrence; **orphan** any still-open
-  prior instance (null `duty_id` + `occurrence_at`); advance cursor; drop
-  intermediates. Orphans may accumulate — the deliberate cost of `next`.
+- **Catch-up:** latest/next creates the newest occurrence and retains historical
+  unfinished instances with their identity and state; all/skip follow the current
+  [product contract](power-user-todo.md#7-recurrence-retain-duties-add-occurrence-identity).
 - **Delete-duty:** orphans instances (keep tasks, null `duty_id` + `occurrence_at`),
   stops future spawns. Decided, not deferred.
 - **Timestamps (Decision 4):** minute-resolution UTC on every scheduling field
@@ -109,23 +109,21 @@ orders must never drift from each other or from the code.
 - [ ] `DutyDomain` (series incl. `timezone`, `nextOccurrenceAt`) + `dutyFromRow`
   invariants (cursor ≥ dtstart; `null`-cursor never `ended`; next_occurrence_at
   consistency).
-- [ ] `duty.insert/update/update_cursor/orphan_stale/orphan_all/delete` ops +
-  `duty.exists` precheck (`orphan_stale`/`orphan_all` = bulk UPDATEs so `next`
-  orphaning and delete stay bounded; `orphan_stale` bounds `occurrence_at < latest`
-  to exclude the current instance on a stale replay).
+- [ ] Remaining duty lifecycle ops and prechecks, reconciled with the current
+  archive/delete contract. Catch-up needs no stale-task mutation.
 - [ ] `dutyFromRow` `ended` invariant is only `next_occurrence_at IS NULL` (not
   exhaustion) — so `end_duty` / reschedule-by-end works for infinite duties.
-- [ ] **Monotonic** `duty.update_cursor` in `apply.ts` (compare-and-set; stale =
+- [x] **Monotonic** `duty.update_cursor` in `apply.ts` (compare-and-set; stale =
   no-op).
 - [ ] Tests: codec invariants, monotonic cursor, apply, brand parsers.
 
 ### Stage 4 — Spawn / materialize engine + backfill (`stage-4-spawn-and-materialize.md`)
 - [ ] `instanceFromTemplate` + kickoff carry-forward.
-- [ ] `materializeDutyPlan` (catch-up `all`/`next`-with-orphan, `next_occurrence_at`
+- [ ] `materializeDutyPlan` (catch-up `all`/`next`-with-retained-backlog, `next_occurrence_at`
   maintenance, `maxPerRun` **passed as `occurrencesBetween` limit**, exhaustion→
   ended, `COUNT=1` not-premature, **live-status guard INV-L** — no spawn/cursor
   write if paused/ended between plan-build and apply).
-- [ ] Unique-index benign-conflict no-op in `apply` (idempotency layer 3).
+- [x] Unique-index benign-conflict no-op in `apply` (idempotency layer 3).
 - [ ] `materializeDueDuties` driver: gate on `next_occurrence_at <= now`, order by
   it, isolate per-duty failures.
 - [ ] **Duty backfill** (validated through `dutyFromRow`; transactional abort),
@@ -137,7 +135,7 @@ orders must never drift from each other or from the code.
   projects→duties→tasks (`03` State C).
 - [ ] `createDutyPlan(now)` / `updateDutyPlan` (no rrule/dtstart) /
   `setDutyStatusPlan` / `deleteDutyPlan` (orphan both).
-- [ ] Tests: engine matrix, orphan-on-next, cursor no-regression, `COUNT=1`,
+- [ ] Tests: engine matrix, retained-backlog catch-up, cursor no-regression, `COUNT=1`,
   zoned-DST, cap, backfill abort, no-spawn-on-complete.
 
 ### Stage 5 — Triggering (`stage-5-trigger-scheduled-and-lazy.md`)
@@ -524,3 +522,12 @@ retains `nowUtc`; the obsolete global date resolvers `todayInTz` and `nowInTz`
 were removed. The duty contract is explicitly always timed: no bare-date
 `dtstart`, duty `due_all_day`, or noon inference. The legacy noon-UTC backfill is
 unchanged.
+
+### Slice 2 hardening (2026-10-02)
+
+Implemented bounded period traversal, unfiltered subday validation, direct cursor
+membership, one timezone codec, and active/live-cursor SQL guards for task insert
+and cursor update. Historical tasks retain provenance and state. See
+[the grouped design note](duties/slice-2-hardening.md) and
+[canonical recurrence contract](../shared/parse/recurrence.md). Planners, triggers,
+revision integration, and the occurrence ledger remain future work.

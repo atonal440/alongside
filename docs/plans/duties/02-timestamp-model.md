@@ -1,5 +1,7 @@
 # Foundation 02 — The Timestamp Model: Minute-Resolution UTC Everywhere
 
+The implemented series profile is documented in [the recurrence reference](../../shared/parse/recurrence.md). HOURLY/MINUTELY allow only INTERVAL and COUNT/UNTIL; calendar and time filters require DAILY or coarser frequency.
+
 Part of `docs/plans/duties.md`. Read alongside `00-recurrence-and-triggering.md`.
 This document records a substrate decision that predates duties conceptually but
 lands *with* them, because duties are the first feature willing to change

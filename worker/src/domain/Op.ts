@@ -1,7 +1,7 @@
 import type { ActionLog, Duty, Project, Task, TaskLink } from '@shared/types';
 import type { LinkType, ProjectId, TaskId } from '../parse';
 import type { PreferenceEntry } from './preference';
-import type { CommandId, EventInstant, Revision } from '@shared/parse';
+import type { CommandId, EventInstant, IsoDateTime, Revision } from '@shared/parse';
 import type { ChangesResult } from '@shared/wire/commands';
 import type { PlanningSettings } from '@shared/wire/planning';
 import type { EntityKey } from '@shared/wire/versions';
@@ -27,6 +27,8 @@ export type Op =
   | { kind: 'task.insert'; row: TaskRow }
   | { kind: 'task.update'; id: TaskId; patch: TaskRowPatch }
   | { kind: 'task.delete'; id: TaskId }
+  // Calendar execution guards land before the duty planners/drivers.
+  | { kind: 'duty.update_cursor'; id: Duty['id']; lastSpawnedAt: IsoDateTime; nextOccurrenceAt: IsoDateTime | null; updatedAt: IsoDateTime }
   | { kind: 'project.insert'; row: ProjectRow }
   | { kind: 'project.update'; id: ProjectId; patch: ProjectRowPatch }
   | { kind: 'project.delete'; id: ProjectId }

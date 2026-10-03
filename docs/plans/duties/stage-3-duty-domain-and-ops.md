@@ -72,14 +72,13 @@ Define `DutyTemplate`, `DutySeries`, `DutyBase`, the three status variants, the
   - `parts.until` present ⇒ `until >= dtstart`.
   - `cursor` (last_spawned_at) present ⇒ `cursor >= dtstart` (a cursor *before*
     the anchor is impossible) **and** `cursor` is an actual occurrence of the rule
-    (verify via `occurrencesBetween(parts, dtstart, timezone, null, cursor)`
-    ending exactly at `cursor`, or an `isOccurrence` helper).
+    (verify via `isSeriesOccurrence(parts, dtstart, timezone, cursor)`; never enumerate history).
   - `next_occurrence_at` present ⇒ it is a real occurrence of the rule that is
     strictly after `cursor` **when the cursor is set**, or **at or after
     `dtstart`** when the cursor is null (a brand-new/backfilled duty stores the
     first actual occurrence at or after the anchor, which can be later than
     `dtstart` when filters exclude it — do not require strictly-after here),
-    consistent with the rule + zone.
+    and equals `nextOccurrenceAfter(parts, dtstart, timezone, cursor)`. Membership alone would accept a later occurrence that skips unprocessed work.
   - `status === 'ended'` ⇒ `next_occurrence_at IS NULL`. That is the **only**
     invariant on `ended` — do **not** also require `isSeriesExhausted`. `ended` is a
     terminal state reachable two ways: a finite series ran out (exhaustion), *or*
@@ -106,17 +105,16 @@ export type DutyRowPatch = Partial<Omit<DutyRow, 'id' | 'created_at'>>;
 ```
 
 Add to `Op`: `duty.insert` / `duty.update` / `duty.update_cursor` /
-`duty.orphan_stale` / `duty.orphan_all` / `duty.delete`. Add to `PreCheck`:
+`duty.orphan_all` / `duty.delete`. Add to `PreCheck`:
 `duty.exists`. Ensure `Duty` is re-exported from `shared/types.ts` alongside
 `Task`/`Project`/`TaskLink`. `duty.update` carries an optional
 `ifStatus?: 'active'` field — set **only** by the materializer's exhaustion
-transition (Stage 4, `04` INV-L); status-transition plans never set it. Three ops
+transition (Stage 4, `04` INV-L); status-transition plans never set it. Two ops
 need a dedicated form (not a generic
 patch), each so it's **one bulk statement** regardless of row count:
-`duty.update_cursor` (monotonic cursor advance); `duty.orphan_stale { id, before }`
-(the `catch_up: next` orphan — pending instances *older than* the current
-occurrence); and `duty.orphan_all { id }` (the pre-delete orphan — every instance,
-any status).
+`duty.update_cursor` (monotonic cursor advance, already implemented) and
+`duty.orphan_all` for the historical deletion path. Current archival/provenance
+policy is owned by `power-user-todo.md`; catch-up never orphans existing tasks.
 
 ### 4. Executor (`worker/src/storage/apply.ts`)
 
@@ -125,32 +123,10 @@ any status).
   `INSERT` / `UPDATE … WHERE id = ?` / `DELETE` statements the same way tasks do.
   When `duty.update` carries `ifStatus: 'active'`, append `AND status = 'active'`
   to the UPDATE's WHERE clause (INV-L; a no-op is success).
-- `case 'duty.update_cursor'`: emit **monotonic**, **status-guarded**
-  compare-and-set SQL so a stale driver cannot regress the cursor (`00` §4) and a
-  plan applying after a pause/end cannot write onto a stopped duty (`04` INV-L):
-  ```sql
-  UPDATE duties
-     SET last_spawned_at = :new,
-         next_occurrence_at = :next,
-         updated_at = :updatedAt
-   WHERE id = :id
-     AND status = 'active'
-     AND (last_spawned_at IS NULL OR last_spawned_at < :new);
-  ```
-  A no-op update (a slower driver whose `:new` is ≤ the stored cursor, or a duty
-  paused/ended since the plan was built) is success, not an error.
-- `case 'duty.orphan_stale'`: one bulk statement — detach the duty's *stale open*
-  instances (pending **and** older than the occurrence being materialized). The
-  `occurrence_at < :before` bound is essential: it **excludes the current
-  occurrence**, so a stale replay that runs after another driver already inserted
-  the current instance cannot detach it (`00` §3). Materialize-only op, so the
-  INV-L status guard is baked in via the `EXISTS`. Idempotent — a second run
-  matches nothing.
-  ```sql
-  UPDATE tasks SET duty_id = NULL, occurrence_at = NULL, updated_at = :updatedAt
-   WHERE duty_id = :id AND status = 'pending' AND occurrence_at < :before
-     AND EXISTS (SELECT 1 FROM duties WHERE id = :id AND status = 'active');
-  ```
+- Reuse the already implemented `duty.update_cursor` and duty-instance
+  insert guards. Their SQL and atomic ordering are canonical in
+  [the executor reference](../../worker/storage/apply.md); do not duplicate
+  the implementation or add a catch-up orphan operation.
 - `case 'duty.orphan_all'`: one bulk statement — detach **every** instance of the
   duty (any status), used before `duty.delete` so no `tasks.duty_id` FK dangles.
   ```sql
@@ -165,8 +141,7 @@ any status).
   (Stage 1), it must **also** null `duties.project_id` (`UPDATE duties SET
   project_id = NULL WHERE project_id = :id`) in the same batch, or deleting a
   project that any duty references FK-fails. Mirror exactly what it does for tasks.
-- The `UNIQUE(duty_id, occurrence_at)` benign-conflict handling is **Stage 4's**
-  concern (it's specific to duty-instance `task.insert`), not here.
+- The targeted occurrence-conflict handling and live-cursor insert predicate already exist in `apply`; preserve them when wiring the planners.
 
 ### 5. Tests (`worker/test/`)
 
@@ -184,7 +159,7 @@ any status).
 - `apply`: a `Plan` of `duty.insert` then `duty.update` commits both;
   `duty.update_cursor` advances forward but a **stale** `duty.update_cursor`
   (`:new` ≤ stored) is a no-op (monotonic — the cursor never regresses);
-  `duty.update_cursor` and `duty.orphan_stale` against a **paused/ended** duty are
+  `duty.update_cursor` and duty-instance inserts against a **paused/ended** duty are
   no-ops (INV-L status guard); `duty.update` with `ifStatus: 'active'` skips a
   non-active row while a plain `duty.update` (e.g. resume) still applies;
   `duty.exists` precheck fails a plan whose duty is missing (`not_found`);

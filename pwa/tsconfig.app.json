@@ -25,6 +25,7 @@
       "drizzle-orm/*": ["../worker/node_modules/drizzle-orm/*"],
       "rrule": ["./node_modules/rrule"],
       "rrule/*": ["./node_modules/rrule/*"],
+      "rrule-internals/*": ["./node_modules/rrule/dist/esm/*"],
       "valibot": ["./node_modules/valibot"]
     }
   },

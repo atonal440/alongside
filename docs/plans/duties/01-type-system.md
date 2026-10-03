@@ -1,5 +1,7 @@
 # Foundation 01 — What Duties Add to the Type System
 
+The implemented series profile is documented in [the recurrence reference](../../shared/parse/recurrence.md). HOURLY/MINUTELY allow only INTERVAL and COUNT/UNTIL; calendar and time filters require DAILY or coarser frequency.
+
 Part of `docs/plans/duties.md`. Read `00-recurrence-and-triggering.md` first.
 This document is the complete inventory of new types duties introduce and where
 each lives. It follows the four-layer discipline from
@@ -88,23 +90,11 @@ export function parseSeriesRrule(input: unknown):
   Result<{ rrule: SeriesRrule; parts: SeriesRruleParts }, ValidationError[]>;
 ```
 
-`parseSeriesRrule` uses a separate supported profile without weakening legacy
-`parseRrule`. Series frequencies are
-`DAILY|WEEKLY|MONTHLY|YEARLY|HOURLY|MINUTELY`; its keys are the legacy date-level
-filters plus `COUNT`, `UNTIL`, `BYHOUR`, and `BYMINUTE`. `SECONDLY`, `BYSECOND`,
-recurrence sets, and exceptions are rejected. The series parser drops the
-`isNonEmptyInfiniteRule` requirement (finite is legal) and the legacy date-only
-restriction — duties expand from a timed `DTSTART`. It adds:
-
-- `COUNT` must be a positive integer ≤ `SERIES_OCCURRENCE_CAP` (10 000).
-- `UNTIL` must use basic UTC datetime syntax `YYYYMMDDTHHMMSSZ`; it is normalized
-  to `YYYY-MM-DDTHH:MM:00Z` in `parts.until` and must be ≥ `dtstart` (validated
-  where `dtstart` is known — the domain codec, since the parser sees the rule
-  string alone). Bare-date, extended-ISO, offset, and local forms reject.
-- `COUNT` and `UNTIL` are mutually exclusive.
-- At duty creation (not in this parser), the anchored rule must produce **at
-  least one** occurrence from `dtstart`; an empty series is a user error, not a
-  valid duty.
+`parseSeriesRrule` uses a separate profile without weakening legacy recurrence.
+The [recurrence reference](../../shared/parse/recurrence.md) is authoritative for
+accepted fields, COUNT/UNTIL semantics, and work/output limits. Anchor-dependent
+nonempty checks belong at duty creation; a search-budget error must not be
+interpreted as an empty/exhausted series.
 
 The calendar primitives, working in instants and **anchor-zone-aware** — every one
 takes the duty's `timezone` (null = expand in UTC) so zoned duties stay
@@ -136,11 +126,10 @@ legacy migration path.
 
 ### Timezone — a per-duty rule-expansion input (Phase 1, Decision 4)
 
-`Timezone` is a real Phase-1 brand (exact `UTC` or membership in the runtime's
-`Intl.supportedValuesOf('timeZone')` list), added in Stage 2:
+`Timezone` is the shared IANA timezone brand; its parser and alias policy are canonical in [the time reference](../../shared/parse/time.md):
 
 ```ts
-export type Timezone = Brand<string, 'Timezone'>;
+export type Timezone = IanaTimezone;
 export function parseTimezone(input: unknown): Result<Timezone, ValidationError[]>;
 ```
 
@@ -234,7 +223,6 @@ export type DutyRowPatch = Partial<Omit<DutyRow, 'id' | 'created_at'>>;
   | { kind: 'duty.insert'; row: DutyRow }
   | { kind: 'duty.update'; id: DutyId; patch: DutyRowPatch; ifStatus?: 'active' }   // ifStatus set only by the materializer (INV-L)
   | { kind: 'duty.update_cursor'; id: DutyId; lastSpawnedAt: IsoDateTime; nextOccurrenceAt: IsoDateTime | null; updatedAt: IsoDateTime }
-  | { kind: 'duty.orphan_stale'; id: DutyId; before: IsoDateTime; updatedAt: IsoDateTime }   // detach PENDING instances older than `before` (catch_up:next); excludes the current occurrence
   | { kind: 'duty.orphan_all'; id: DutyId; updatedAt: IsoDateTime }                          // detach ALL instances (any status); used before duty.delete so the FK can't dangle
   | { kind: 'duty.delete'; id: DutyId }
 
@@ -396,7 +384,7 @@ carry `null` and every parser must accept `null`.
 | INPUT | `shared/parse/recurrence.ts` | `SeriesRrule`, `SeriesRruleParts`, `parseSeriesRrule`, anchor-zone-aware `occurrencesBetween`/`nextOccurrenceAfter`/`latestOccurrenceAtOrBefore`, `isSeriesExhausted` |
 | INPUT | `shared/parse/time.ts` | `Timezone` brand — per-duty rule-expansion input **and** PWA display (Phase 1, Decision 4) |
 | DOMAIN | `worker/src/domain/duty.ts` | `DutyTemplate`, `DutySeries` (incl. `timezone`, `nextOccurrenceAt`), `DutyDomain` union, `dutyFromRow` |
-| DOMAIN | `worker/src/domain/Op.ts` | `duty.insert/update/update_cursor/orphan_stale/orphan_all/delete` ops, `duty.exists` precheck, `DutyRow`/`DutyRowPatch` |
+| DOMAIN | `worker/src/domain/Op.ts` | `duty.insert/update/update_cursor/orphan_all/delete` ops, `duty.exists` precheck, `DutyRow`/`DutyRowPatch` |
 | DOMAIN | `worker/src/domain/ops/duty.ts` | `createDutyPlan`, `updateDutyPlan`, `setDutyStatusPlan`, `deleteDutyPlan`, `materializeDutyPlan` |
 | ROW | `shared/schema.ts` | `duties` table (incl. `timezone`, `next_occurrence_at`), `tasks.duty_id`/`occurrence_at`, `action_log.duty_id`, unique index, `Duty` type |
 | ROW/WIRE | `shared/wire/rows.ts` | `DutyRowSchema`, `TaskRowSchema` += duty fields |

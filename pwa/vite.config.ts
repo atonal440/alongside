@@ -8,6 +8,7 @@ export default defineConfig({
     alias: {
       '@shared': path.resolve(__dirname, '../shared'),
       rrule: path.resolve(__dirname, 'node_modules/rrule/dist/esm/index.js'),
+      'rrule-internals': path.resolve(__dirname, 'node_modules/rrule/dist/esm'),
       // valibot lives in pwa/node_modules; Rollup resolves bare imports from the
       // importing file's directory, so shared/ code can't find it without this alias.
       valibot: path.resolve(__dirname, 'node_modules/valibot'),

@@ -1,5 +1,7 @@
 # Stage 6 — REST and MCP Duty Surfaces
 
+The implemented series profile is documented in [the recurrence reference](../../shared/parse/recurrence.md). HOURLY/MINUTELY allow only INTERVAL and COUNT/UNTIL; calendar and time filters require DAILY or coarser frequency.
+
 Part of `docs/plans/duties.md`. Prerequisites: Stages 1–5. Read
 `01-type-system.md`'s WIRE layer first.
 
