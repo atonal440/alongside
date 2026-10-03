@@ -8,6 +8,7 @@ import { CommandError } from './domain/commands';
 import { invalidInput } from './domain/temporalFoundation';
 import { COMMAND_ENVELOPE_PROPERTIES, COMMAND_VARIANTS } from './commands';
 import type { DB } from './db';
+import { readinessScore } from '@shared/readiness';
 import type { Task } from '@shared/types';
 
 const DEFAULT_LIMIT = 50;
@@ -85,17 +86,44 @@ function limitOf(value: unknown): number {
   return value;
 }
 
-/** Cursor = id of the last item returned; the next page starts after it in the same ordering. */
-function page<T extends { id: string }>(items: T[], limit: number, cursor: unknown): { items: T[]; nextCursor: string | null } {
+type SortKey = (string | number)[];
+
+function compareKeys(a: SortKey, b: SortKey): number {
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!; const y = b[i]!;
+    const order = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y));
+    if (order !== 0) return order;
+  }
+  return 0;
+}
+
+function decodeCursor(cursor: string): SortKey {
+  try {
+    const key: unknown = JSON.parse(atob(cursor.replace(/-/g, '+').replace(/_/g, '/')));
+    if (Array.isArray(key) && key.length > 0 && key.every(part => typeof part === 'string' || typeof part === 'number')) return key as SortKey;
+  } catch { /* fall through to the error below */ }
+  throw bad(['cursor'], 'cursor is not a nextCursor from a previous page; repeat the search without a cursor.');
+}
+
+/**
+ * Keyset paging over a list already sorted ascending by `keyOf`. The cursor is the sort key of the
+ * last item returned, so the next page is whatever sorts after that key even if the item itself was
+ * completed, deleted or edited between pages.
+ */
+function page<T>(items: T[], limit: number, cursor: unknown, keyOf: (item: T) => SortKey): { items: T[]; nextCursor: string | null } {
   let start = 0;
   if (cursor !== undefined) {
     if (typeof cursor !== 'string') throw bad(['cursor'], 'cursor must be a string.');
-    const index = items.findIndex(item => item.id === cursor);
-    if (index < 0) throw bad(['cursor'], 'The cursor no longer matches a result; repeat the search without a cursor.');
-    start = index + 1;
+    const after = decodeCursor(cursor);
+    start = items.findIndex(item => compareKeys(keyOf(item), after) > 0);
+    if (start < 0) start = items.length;
   }
   const slice = items.slice(start, start + limit);
-  return { items: slice, nextCursor: start + limit < items.length ? slice[slice.length - 1]!.id : null };
+  const last = slice[slice.length - 1];
+  const nextCursor = last !== undefined && start + limit < items.length
+    ? btoa(JSON.stringify(keyOf(last))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    : null;
+  return { items: slice, nextCursor };
 }
 
 async function find(args: Record<string, unknown>, db: DB) {
@@ -109,7 +137,7 @@ async function find(args: Record<string, unknown>, db: DB) {
     const status = filter.status ?? 'active';
     if (status !== 'active' && status !== 'archived') throw bad(['filter', 'status'], 'status must be "active" or "archived".');
     const projects = (await db.listProjects(status)).slice().sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
-    return { entity: 'project', ...(({ items, nextCursor }) => ({ items, nextCursor }))(page(projects, limit, args.cursor)) };
+    return { entity: 'project', ...(({ items, nextCursor }) => ({ items, nextCursor }))(page(projects, limit, args.cursor, project => [project.created_at, project.id])) };
   }
   if (args.entity !== 'task') throw bad(['entity'], 'entity must be "task" or "project".');
   if ('status' in filter) throw bad(['filter', 'status'], 'status applies to projects only; use statuses for tasks.');
@@ -118,10 +146,14 @@ async function find(args: Record<string, unknown>, db: DB) {
   const text = filter.text;
   if (text !== undefined && typeof text !== 'string') throw bad(['filter', 'text'], 'text must be a string.');
   let tasks: Task[];
+  let keyOf: (task: Task) => SortKey = task => [task.due_date ?? '', task.created_at, task.id];
   if (args.preset !== undefined) {
     if (args.preset !== 'ready') throw bad(['preset'], 'preset must be "ready".');
     if ('statuses' in filter) throw bad(['filter', 'statuses'], 'The ready preset is pending-only; omit statuses.');
     tasks = await db.listReadyTasks(projectId);
+    // Same ordering as listReadyTasks: score descending, then creation, then ID.
+    const at = new Date().toISOString();
+    keyOf = task => [-readinessScore(task, at), task.created_at, task.id];
   } else {
     const statuses = filter.statuses ?? ['pending'];
     if (!Array.isArray(statuses) || statuses.length === 0 || statuses.some(status => status !== 'pending' && status !== 'done')) throw bad(['filter', 'statuses'], 'statuses must be a non-empty list of "pending" or "done".');
@@ -133,7 +165,7 @@ async function find(args: Record<string, unknown>, db: DB) {
     const q = text.toLowerCase();
     tasks = tasks.filter(task => task.title.toLowerCase().includes(q) || (task.notes?.toLowerCase().includes(q) ?? false));
   }
-  const { items, nextCursor } = page(tasks, limit, args.cursor);
+  const { items, nextCursor } = page(tasks, limit, args.cursor, keyOf);
   return { entity: 'task', items, nextCursor };
 }
 

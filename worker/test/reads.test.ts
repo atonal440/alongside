@@ -48,7 +48,7 @@ describe('find', () => {
     } finally { sql.close(); }
   });
 
-  it('pages deterministically with a cursor and rejects a stale one', async () => {
+  it('pages deterministically with a cursor and rejects a malformed one', async () => {
     const { sql, db } = await seeded();
     try {
       const first = await callReadTool('find', { entity: 'task', limit: 2 }, db) as { items: { id: string }[]; nextCursor: string };
@@ -58,6 +58,18 @@ describe('find', () => {
       expect(second.nextCursor).toBeNull();
       expect(new Set([...first.items, ...second.items].map(t => t.id)).size).toBe(3);
       await expect(callReadTool('find', { entity: 'task', cursor: 't_gone' }, db)).rejects.toMatchObject({ detail: { code: 'invalid_input' } });
+    } finally { sql.close(); }
+  });
+
+  it.each([{}, { preset: 'ready' }])('keeps paging after the cursor item leaves the results %j', async extra => {
+    const { sql, d1 } = sqliteD1(); const db = new DB(d1);
+    try {
+      for (const title of ['One', 'Two', 'Three']) await db.addTask({ title });
+      const all = await callReadTool('find', { entity: 'task', ...extra }, db) as { items: { id: string }[] };
+      const first = await callReadTool('find', { entity: 'task', ...extra, limit: 1 }, db) as { items: { id: string }[]; nextCursor: string };
+      await db.deleteTask(first.items[0]!.id);
+      const rest = await callReadTool('find', { entity: 'task', ...extra, cursor: first.nextCursor }, db) as { items: { id: string }[] };
+      expect(rest.items.map(t => t.id)).toEqual(all.items.slice(1).map(t => t.id));
     } finally { sql.close(); }
   });
 
