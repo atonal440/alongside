@@ -85,8 +85,13 @@ grows from today's 18 kinds to roughly 60.
 | Display | `show_tasks` | read-only | Renders the task widget for task IDs or a project |
 
 **Admin set (opt-in, not in the default list):** `export_workspace`,
-`restore_workspace`, and, until the slice 3 date backfill ships,
-`preview_legacy_dates`. Serve these from a separate MCP endpoint (for example
+`restore_workspace`, `get_workspace_snapshot`, and, until the slice 3 date
+backfill ships, `preview_legacy_dates`. The snapshot read stays here because
+restore depends on it. Restore needs an `expectedCursor` from a current
+snapshot before it can run (an export carries no cursor), and recovering
+from a lost restore response means comparing a snapshot's epoch. An MCP host
+may not let the model make REST calls, so the admin endpoint must carry a
+cursor read of its own. Serve these from a separate MCP endpoint (for example
 `/mcp/admin`) that the user connects only when they need it. MCP has no
 built-in tool groups, so a second endpoint is the portable way to keep
 restore out of everyday sessions.
@@ -411,7 +416,7 @@ Phases refer to [Rollout](#rollout).
 | `get_entity_version` | REST only (`/api/v2/entity-version`) | A, alias removed D | `get_context` returns revisions |
 | `get_planning_settings` | `get_context({ settings })` | B, removed D | `get_capabilities` also summarizes the zone |
 | `export_planning_settings` | Admin `export_workspace({ scope: 'settings' })` | A, alias removed D | |
-| `get_workspace_snapshot` | REST only (`/api/v2/sync/snapshot`) | A, alias removed D | PWA sync protocol |
+| `get_workspace_snapshot` | REST (`/api/v2/sync/snapshot`) and admin endpoint | A, default alias removed D | PWA sync protocol; kept on the admin endpoint for restore's cursor |
 | `get_workspace_delta` | REST only (`/api/v2/sync/delta`) | A, alias removed D | PWA sync protocol |
 | `export_workspace` | Admin endpoint | A, alias removed D | |
 | `restore_workspace` | Admin endpoint | A, alias removed D | Destructive tier while the alias remains |
@@ -488,7 +493,8 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
 
 - **A: Tiering and cleanup (no new semantics).** Add `readOnlyHint` and
   `destructiveHint` to every tool. Stand up the admin endpoint for export,
-  restore, settings export and legacy-date preview, and confirm REST covers
+  restore, the snapshot read restore depends on, settings export and
+  legacy-date preview, and confirm REST covers
   snapshot, delta and entity-version. Removing names from the default
   endpoint would break existing MCP callers immediately, so every moved tool
   (`get_workspace_snapshot`, `get_workspace_delta`, `get_entity_version`,
@@ -533,7 +539,8 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   `restore_cursor_conflict`. That error carries the current cursor only in its
   human-readable message, not as a structured field. So the recovery path
   doesn't parse the error: the caller fetches a snapshot
-  (`get_workspace_snapshot` or `GET /api/v2/sync/snapshot`) and compares the
+  (`get_workspace_snapshot` on the admin endpoint, or
+  `GET /api/v2/sync/snapshot`) and compares the
   snapshot cursor's epoch with its `expectedCursor.epoch`. If the epoch is
   higher, a restore committed, possibly the caller's own, and the snapshot
   shows what is live. The error's message also says "Nothing was changed",
@@ -581,6 +588,8 @@ built once, on the command path, and not added to the legacy verbs as well.
   original exactly.
 - Every tool removed from the default endpoint was first listed there as a
   deprecated alias for the whole deprecation window.
+- An MCP caller using only the admin endpoint can get a current cursor, run
+  `restore_workspace`, and check after a lost response whether it committed.
 - `update_task` with only `due_date`, only `recurrence` or only `due_all_day`
   keeps the other schedule fields, as it does today.
 - A PWA snapshot or delta containing command-kind action-log rows parses and
