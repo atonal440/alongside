@@ -135,7 +135,16 @@ two-call preview and apply would be friction. Each one:
   `apply_changes` would run, so the guards, receipts and audit are identical;
 - accepts an optional `commandId` (replay-safe retries) and an optional
   `expectedRevision` (refuse if stale). Without them it behaves like today:
-  last writer wins, but through the planner;
+  last writer wins, but through the planner. The commands still carry the
+  revisions read during compilation, so another write landing between that
+  read and the commit fails the guard. When the caller didn't pin a
+  revision, the adapter handles that internally: it checks for a receipt
+  again, re-reads, recompiles (re-merging partial patches against the new
+  values) and retries, up to a small fixed number of attempts (for example
+  three). Only if every attempt loses the race does it return the
+  `revision_conflict`. A caller-supplied `expectedRevision` is never retried
+  this way, because the caller asked to be refused if stale. Tests cover a
+  race won on retry and a race exhausting the attempts;
 - makes retries with the same `commandId` replay, not conflict (see
   [Quick-verb replay](#quick-verb-replay));
 - returns the command result (revisions, side effects) plus the existing
