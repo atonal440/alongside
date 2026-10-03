@@ -123,6 +123,8 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
       written(entity, id, 1);
     };
     const edit = async (entity: Kind['entity'], id: string) => {
+      // The planner writes each identity once per batch, so say so here, before it rejects the pinned envelope.
+      if (predicted.has(`${entity}:${id}`)) throw fail([...at, 'id'], `${entity} ${id} is already written by an earlier command in this batch; a batch writes each identity once. Fold the changes into one command or apply them in separate calls.`);
       const revision = await revisionOf(entity, id, [...at, 'id']);
       written(entity, id, revision + 1);
       return revision;

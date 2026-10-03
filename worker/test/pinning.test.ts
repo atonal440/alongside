@@ -105,4 +105,15 @@ describe('loose-intent preview_changes', () => {
       expect(body.result.structuredContent.pinnedEnvelope.commands[0]).toMatchObject({ kind: 'task.create', expectedRevision: null });
     } finally { sql.close(); }
   });
+
+  it('says up front that a batch writes each identity once', async () => {
+    const { sql, d1 } = sqliteD1(); const db = new DB(d1);
+    try {
+      const task = await db.addTask({ title: 'A' });
+      const twice = [{ kind: 'task.focus.set', id: task.id, focusedUntil: '2099-01-01T00:00:00Z' }, { kind: 'task.type.set', id: task.id, taskType: 'action' }];
+      await expect(preview(db, { ...base, commands: twice })).rejects.toMatchObject({ detail: { code: 'invalid_input' } });
+      const created = [{ kind: 'task.create', clientRef: 'n', values: { title: 'N' } }, { kind: 'task.focus.set', id: '@n', focusedUntil: '2099-01-01T00:00:00Z' }];
+      await expect(preview(db, { ...base, commands: created })).rejects.toThrow(/writes each identity once/);
+    } finally { sql.close(); }
+  });
 });

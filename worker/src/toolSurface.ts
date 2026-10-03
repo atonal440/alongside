@@ -50,8 +50,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // Preview never writes.
   preview_changes: READ,
   // start_session still seeds default preferences and stores last_session_at, so it is not
-  // read-only until phase C removes those writes. It only ever adds or refreshes rows.
-  start_session: { ...WRITE, idempotentHint: true },
+  // read-only until phase C removes those writes. It adds or refreshes rows, and a retry changes returning_after_gap, so it is not marked idempotent.
+  start_session: WRITE,
   // Conversational writes (the future quick verbs and their legacy siblings)
   add_task: WRITE,
   complete_task: WRITE,
@@ -63,7 +63,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   update_project: WRITE,
   link_tasks: WRITE,
   unlink_tasks: WRITE,
-  update_preference: { ...WRITE, idempotentHint: true },
+  update_preference: WRITE,
   // Destructive tier
   delete_task: DESTRUCTIVE,
   delete_project: DESTRUCTIVE,
