@@ -139,9 +139,37 @@ two-call preview and apply would be friction. Each one:
 `update_task` is a partial patch. `task.content.set` replaces title, notes,
 kickoff note and session log together, so the quick verb merges the patch into
 the current values before building the command. `status: "pending"` becomes
-`task.reopen`. `add_task` with a due date or recurrence becomes a batch of
-`task.create` plus `task.legacy-schedule.set` (and `task.project.set` when a
-project is given), because `task.create` is deliberately undated.
+`task.reopen`. `add_task` puts the project and task type into `task.create`
+itself. A due date or recurrence needs `task.legacy-schedule.set` on the same
+task, because `task.create` is deliberately undated.
+
+### One write per identity
+
+Both verbs can therefore need several commands on one task: `add_task` with a
+due date (`task.create` + `task.legacy-schedule.set`), and `update_task` with
+fields from more than one group (for example title and due date:
+`task.content.set` + `task.legacy-schedule.set`). Today's batch planner
+rejects that. It allows each identity to be written only once per mixed batch
+(`worker/src/domain/batchCommands.ts`, documented in
+[bounded mixed batches](../shared/reliable-batches.md)). So phase C needs one
+of these first:
+
+- **Same-identity composition in the planner (recommended).** Commands on one
+  identity apply in declared order to the planner's virtual state. They
+  produce one net change for that identity: the original before image, the
+  final after image, one SQL entity guard on the first command's expected
+  revision, and one revision increment. Later commands on that identity give
+  the predicted revision after the earlier ones, as batches already do for a
+  selected project edited earlier in the same envelope. This fixes both verbs,
+  and future multi-field intents, with one planner change.
+- **Wider create command.** Let `task.create` accept the legacy schedule
+  values. This fixes `add_task` only. `update_task` would still need
+  composition or a different split.
+
+Whichever is chosen, it lands with tests before the quick verbs move: a
+created task with a due date and recurrence, a multi-group `update_task`, the
+single receipt and diff per identity, and rejection when the first command's
+revision guard is stale.
 
 Add a quick verb only when the logs show the model struggling with the
 `apply_changes` path for that action.
@@ -217,8 +245,8 @@ Phases refer to [Rollout](#rollout).
 | `list_projects` | `find({ entity: 'project', filter: { status } })` | B, removed D | |
 | `list_tasks` | `find({ entity: 'task', filter: { statuses, text } })` | B, removed D | The widget calls `list_tasks`; switch it before removal |
 | `get_ready_tasks` | `find({ entity: 'task', preset: 'ready', filter: { project } })` | B, removed D | |
-| `add_task` | Quick verb on `task.create` (+ schedule, project) | C | Argument shape unchanged |
-| `update_task` | Quick verb on `task.*.set` / `task.reopen` | C | Partial patch merged before `task.content.set` |
+| `add_task` | Quick verb on `task.create` (+ `task.legacy-schedule.set`) | C | Argument shape unchanged; needs same-identity composition |
+| `update_task` | Quick verb on `task.*.set` / `task.reopen` | C | Partial patch merged before `task.content.set`; needs same-identity composition |
 | `complete_task` | Quick verb on `task.complete` | C | Server mints the successor ID; the widget calls this name |
 | `defer_task` | Quick verb on `task.defer.set` | C | |
 | `focus_task` | Quick verb on `task.focus.set` | C | `hours` converted to `focusedUntil` |
@@ -313,8 +341,10 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   descriptions ("Deprecated: use `find`"). Widen the shared action-log codec
   to the versioned action-name union (with tests), so deployed PWA clients
   can parse command kinds before phase C writes any.
-- **C: One write path.** Rebuild the quick verbs on the command planner, with
-  receipt-first replay and command-derived IDs. Add the `preference.set`
+- **C: One write path.** First add same-identity composition to the batch
+  planner (see [One write per identity](#one-write-per-identity)). Then
+  rebuild the quick verbs on the command planner, with receipt-first replay
+  and command-derived IDs. Add the `preference.set`
   command. Record command kinds in the action log only once the widened codec
   from phase B is deployed. Switch
   the widget to `find` and `apply_changes`. After this phase, MCP no longer
@@ -337,6 +367,8 @@ built once, on the command path, and not added to the legacy verbs as well.
   `complete_task`).
 - A PWA snapshot or delta containing command-kind action-log rows parses and
   syncs.
+- `add_task` with a due date or recurrence, and `update_task` with fields from
+  several groups, each commit as one atomic command with one diff per task.
 - An LLM can complete a multi-step change (create a project, move three
   tasks, link two) with one `preview_changes` and one `apply_changes`, without
   reading revisions by hand.
