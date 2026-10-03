@@ -67,7 +67,7 @@ grows from today's 18 kinds to roughly 60.
 | --- | --- | --- | --- |
 | Read | `get_capabilities` | read-only | Contracts, limits, server time, zone, settings summary, command catalog version |
 | Read | `resolve_time` | read-only | Unchanged |
-| Read | `start_session` | — (records `last_session_at`) | Orientation: focused and suggested tasks, preferences, returning-after-gap |
+| Read | `start_session` | read-only | Orientation: focused and suggested tasks, preferences, returning-after-gap |
 | Read | `find` | read-only | Entity-typed search with filters, presets, sorting and cursor paging |
 | Read | `get_context` | read-only | Any entity plus a bounded neighborhood and current revisions |
 | Read | `get_agenda` (slice 4) | read-only | A time window: blocks, targets and deadlines, reminders, free slots |
@@ -166,9 +166,31 @@ of these first:
   values. This fixes `add_task` only. `update_task` would still need
   composition or a different split.
 
-Whichever is chosen, it lands with tests before the quick verbs move: a
-created task with a due date and recurrence, a multi-group `update_task`, the
-single receipt and diff per identity, and rejection when the first command's
+Composition also changes the result shape, and the shared result codec
+rejects it today. `validDiffIdentity` in `shared/wire/commands.ts` requires a
+batch result to hold at least two distinct changes, and one positive
+`changeGroups` count per command summing to `changes.length`. A scheduled
+`add_task` is two commands with one net change, so its preview, its result and
+its stored receipt would all fail that check. The worker parses stored
+receipts with the same codec on replay, so retries would fail too. Composition
+therefore ships together with a revised result contract:
+
+- a composed result may hold a single change;
+- each command records which change carries its effect (for example a
+  per-command index into `changes`), replacing the rule that every command
+  owns at least one change of its own;
+- receipts written before the revision still parse under the old rules.
+
+The worker and the shared codec deploy together, so MCP retries are covered
+by one deploy. The PWA only parses results of commands it sent itself, so it
+needs the new codec only before it starts sending composed commands. Synced
+command-audit rows are unaffected: their codec validates each change on its
+own, not the batch grouping.
+
+Whichever option is chosen, it lands with tests before the quick verbs move:
+a created task with a due date and recurrence, a multi-group `update_task`,
+the single receipt and diff per identity, replay of a composed receipt,
+parsing of pre-revision receipts, and rejection when the first command's
 revision guard is stale.
 
 Add a quick verb only when the logs show the model struggling with the
@@ -233,13 +255,28 @@ prompts. Its static guidance (`SESSION_INSTRUCTIONS`) moves to the
 connection instead of per call. The tool keeps the dynamic part: focused and
 suggested tasks, preferences and the returning-after-gap flag.
 
+Today `start_session` also writes. It seeds missing default preferences with
+`INSERT OR IGNORE`, and it stores `last_session_at`. Those writes have no
+command ID or receipt, so they would break the rule that every MCP write goes
+through the command path. Make it genuinely read-only instead:
+
+- **Defaults at read time.** Merge `DEFAULT_PREFERENCES` into the returned
+  preferences in memory rather than inserting rows. A preference row exists
+  only once someone sets it.
+- **Gap from history.** Compute `returning_after_gap` from the newest
+  action-log or command-audit entry, not a stored timestamp. "No activity for
+  seven days" is the signal the flag is meant to capture anyway.
+
+Retire the `last_session_at` key once nothing reads it, keeping it readable in
+existing preference rows and exports.
+
 ## Mapping from current tools
 
 Phases refer to [Rollout](#rollout).
 
 | Current tool | Becomes | Phase | Notes |
 | --- | --- | --- | --- |
-| `start_session` | `start_session` | A | Static instructions move to `initialize.instructions` |
+| `start_session` | `start_session` | A, read-only by C | Static instructions move to `initialize.instructions`; preference seeding and `last_session_at` writes removed |
 | `show_tasks` | `show_tasks` | — | Unchanged |
 | `show_project` | `show_tasks({ project_id })` | D | Same widget resource; keep the old name until D |
 | `list_projects` | `find({ entity: 'project', filter: { status } })` | B, removed D | |
@@ -318,8 +355,20 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   Sync stays stuck until the client is updated.
   The 426 write gate doesn't help, because it only blocks writes and an old
   PWA still reads. So the codec must accept a versioned action-name union
-  (current tool names, retired names and command kinds), with parser tests,
-  and that PWA build must be deployed before the worker emits a new value.
+  (current tool names, retired names and command kinds), with parser tests.
+- **Deploying the new PWA isn't enough on its own.** A tab that is already
+  open, or an offline-first install still running a cached build, keeps the
+  old parser until it reloads. So old readers must be stopped from reading,
+  not just offered an update. The widened build announces a new client
+  protocol (`pwa/3`). Before the worker emits the first command-kind row, the
+  snapshot and delta endpoints start returning 426 `upgrade_required` to
+  browser clients announcing less than 3. That is the same Origin-based check
+  as the existing write gate, applied to reads. `pwa/2` clients already treat
+  any 426 as "reload to update", keeping queued work, so they recover without
+  data loss. The alternative is a backward-compatible projection: serve old
+  readers a legacy tool name in place of each command kind. It avoids the
+  reload, but it means maintaining a lossy name mapping inside the sync
+  feed.
 - **External skills use tool names.** The `alongside-daily` skill and any
   saved prompts call today's names. Quick verbs keep their names. Removed tools
   need a deprecation window.
@@ -339,16 +388,17 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   `get_context`, `get_history`, `describe_commands`, and loose-intent
   `preview_changes`. Mark the tools they replace as deprecated in their
   descriptions ("Deprecated: use `find`"). Widen the shared action-log codec
-  to the versioned action-name union (with tests), so deployed PWA clients
-  can parse command kinds before phase C writes any.
+  to the versioned action-name union (with tests), and raise the PWA's
+  announced client protocol to 3 in the same build.
 - **C: One write path.** First add same-identity composition to the batch
-  planner (see [One write per identity](#one-write-per-identity)). Then
-  rebuild the quick verbs on the command planner, with receipt-first replay
-  and command-derived IDs. Add the `preference.set`
-  command. Record command kinds in the action log only once the widened codec
-  from phase B is deployed. Switch
-  the widget to `find` and `apply_changes`. After this phase, MCP no longer
-  writes through the legacy path.
+  planner, with the revised result contract (see
+  [One write per identity](#one-write-per-identity)). Then rebuild the quick
+  verbs on the command planner, with receipt-first replay and
+  command-derived IDs. Add the `preference.set` command. Make
+  `start_session` read-only. Turn on the sync read gate for browser clients
+  below protocol 3, and only then record command kinds in the action log.
+  Switch the widget to `find` and `apply_changes`. After this phase, MCP no
+  longer writes through the legacy path.
 - **D: Remove deprecated tools** once logs show no remaining callers, keeping
   the action-log history readable.
 - **Slices 3–7** then add command kinds, `get_agenda`, `preview_schedule` and
@@ -366,7 +416,8 @@ built once, on the command path, and not added to the legacy verbs as well.
   attempt committed and for verbs that mint IDs (`add_task`, recurring
   `complete_task`).
 - A PWA snapshot or delta containing command-kind action-log rows parses and
-  syncs.
+  syncs, and a browser announcing protocol 2 gets 426 from the sync endpoints
+  instead of a page it can't parse.
 - `add_task` with a due date or recurrence, and `update_task` with fields from
   several groups, each commit as one atomic command with one diff per task.
 - An LLM can complete a multi-step change (create a project, move three
