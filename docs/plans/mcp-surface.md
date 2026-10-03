@@ -153,7 +153,13 @@ but those checks reject is a behavior change; list it and test it.
 Regression tests cover due-only, recurrence-only and all-day-only patches.
 `status: "pending"` becomes
 `task.reopen` only when the task is done. On a task that is already pending
-it is omitted, as it is effectively a no-op today. `task.reopen` rejects
+it is omitted, as it is effectively a no-op today. If omitting it leaves no
+command at all (a call carrying only `status: "pending"` on a pending task),
+the call is a read: the verb returns the current task with
+`action_log_entry: null`. It writes nothing, so it creates no receipt, no
+audit row and no action-log entry. A `commandId` passed with it isn't
+recorded, and reusing that ID later starts a new command. Command envelopes
+and results can't be empty, so this case never reaches the planner. `task.reopen` rejects
 pending tasks that aren't deferred, and on a deferred one it would also clear
 the deferral, which the legacy patch never did. `add_task` puts the project and task type into `task.create`
 itself. A due date or recurrence needs `task.legacy-schedule.set` on the same
@@ -420,7 +426,13 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   planner, with the revised result contract (see
   [One write per identity](#one-write-per-identity)). Then rebuild the quick
   verbs on the command planner, with receipt-first replay and
-  command-derived IDs. Add the `preference.set` command. Make
+  command-derived IDs. Also rebuild every other mutating tool that is still
+  listed (`reopen_task`, `delete_task`, `create_project`, `update_project`,
+  `delete_project`, `link_tasks`, `unlink_tasks`, `update_preference`) as a
+  thin adapter that compiles to the same commands, with the same
+  receipt-first replay and receipted action-log entry. Deprecated tools
+  still count as MCP writes until phase D removes them. Add the
+  `preference.set` command. Make
   `start_session` read-only. Turn on the sync read gate for browser clients
   below protocol 3, and only then record command kinds in the action log.
   Switch the widget to `find` and `apply_changes`. After this phase, MCP no
@@ -443,7 +455,10 @@ built once, on the command path, and not added to the legacy verbs as well.
   `complete_task`). A replay writes no second action-log row and returns the
   original `action_log_entry`.
 - `update_task` with `status: "pending"` on an already-pending task still
-  succeeds, alone or with other fields, and doesn't clear a deferral.
+  succeeds, alone or with other fields, and doesn't clear a deferral. Alone,
+  it writes nothing and returns `action_log_entry: null`.
+- After phase C, no MCP tool handler calls a legacy `db.*` mutation or
+  `logAction` directly.
 - `update_task` with only `due_date`, only `recurrence` or only `due_all_day`
   keeps the other schedule fields, as it does today.
 - A PWA snapshot or delta containing command-kind action-log rows parses and
