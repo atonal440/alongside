@@ -242,7 +242,7 @@ rules prevent that:
 - **Make the action-log entry part of the command.** Today `logAction`
   inserts the `action_log` row after the change, as a separate unreceipted
   write. The quick verb instead adds the insert to the same atomic plan
-  (counted toward plan capacity) and stores the inserted row in the receipt.
+  (counted toward plan capacity) and stores the entry it returns in the receipt.
   A replay returns the same `action_log_entry` without writing a second row,
   and a failed command leaves no log entry behind. `apply_changes` follows the
   same rule if it writes action-log entries.
@@ -250,11 +250,17 @@ rules prevent that:
   This changes what a receipt stores. `command_receipts.result_json` is
   replayed through the strict `ChangesResultSchema`, which has no field for an
   action-log row. So receipts get a versioned stored shape, for example
-  `{ "receiptVersion": 2, "result": <ChangesResult>, "actionLogEntry": <row or null> }`.
-  A receipt without `receiptVersion` parses as version 1: a bare
-  `ChangesResult` with no entry. Boundary tests cover replaying both versions
-  and rejecting a version 2 receipt whose entry doesn't match the action-log
-  row codec.
+  `{ "receiptVersion": 2, "result": <ChangesResult>, "actionLogEntry": <entry or null> }`.
+  The entry is the projection the tool returns today,
+  `{ tool_name, title, detail }` (see `worker/src/mcp.ts`), not the full
+  `action_log` row. That matters because `action_log.id` is an autoincrement
+  value: it doesn't exist when `result_json` is serialized before the batch
+  runs, and reading the next ID in advance would race with concurrent
+  inserts. Every field of the projection is known at plan time, so the
+  receipt and the inserted row agree without the ID. A receipt without
+  `receiptVersion` parses as version 1: a bare `ChangesResult` with no entry.
+  Boundary tests cover replaying both versions and rejecting a version 2
+  receipt whose entry doesn't match the projection codec.
 
 Without a `commandId`, the server mints a fresh one and none of this
 applies: each call is a new command, as today.
