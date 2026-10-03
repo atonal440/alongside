@@ -3,6 +3,7 @@ import type { Project, Task } from '@shared/types';
 import { DB } from '../src/db';
 import { planImport } from '../src/domain/ops/import';
 import { parseImport } from '../src/wire/importPayload';
+import { sqliteD1 } from './helpers/sqliteD1';
 
 interface FakeStatement {
   sql: string;
@@ -184,8 +185,8 @@ describe('planImport', () => {
     expect(plan.ops.map(op => op.kind)).toEqual([
       'wipe',
       'project.insert',
-      'task.insert',
-      'task.insert',
+      'task.restore',
+      'task.restore',
       'link.upsert',
       'pref.upsert',
       'log.insert',
@@ -265,6 +266,22 @@ describe('planImport', () => {
 });
 
 describe('DB.importAll', () => {
+  it.each(['active', 'paused', 'ended'])('restores duty history regardless of its live %s status and advanced cursor', async status => {
+    const { d1, sql } = sqliteD1();
+    try {
+      const occurrence = '2026-05-15T09:00:00Z';
+      const cursor = '2026-05-16T09:00:00Z';
+      sql.prepare(`INSERT INTO duties(id,title,rrule,dtstart,status,last_spawned_at,created_at,updated_at)
+        VALUES('d_abc12','Water plants','FREQ=DAILY',?,?,?,?,?)`)
+        .run(occurrence, status, cursor, occurrence, cursor);
+      const history = taskRow({ duty_id: 'd_abc12', occurrence_at: occurrence, due_date: occurrence, due_all_day: false });
+      const result = await new DB(d1).importAll(exportPayload({ projects: [], tasks: [history] }));
+      expect(result).toMatchObject({ inserted: { tasks: 1 } });
+      expect(sql.prepare('SELECT * FROM tasks').get()).toMatchObject({ ...history, due_all_day: 0 });
+      expect(sql.prepare('SELECT status,last_spawned_at FROM duties').get()).toMatchObject({ status, last_spawned_at: cursor });
+    } finally { sql.close(); }
+  });
+
   it('rejects invalid small payloads before the wipe batch is built', async () => {
     const { d1, batches } = fakeD1();
     const db = new DB(d1);

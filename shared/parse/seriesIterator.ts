@@ -1,11 +1,10 @@
 import { RRule } from 'rrule';
 import Iterinfo from 'rrule-internals/iterinfo/index.js';
 import { buildTimeset } from 'rrule-internals/parseoptions.js';
-import { buildPoslist } from 'rrule-internals/iter/poslist.js';
 import { combine, fromOrdinal } from 'rrule-internals/dateutil.js';
 
-// Keep the library's calendar masks (week numbering, ordinal weekdays and
-// positional selection), but own traversal. Its public queries cannot bound
+// Keep the library's calendar masks (week numbering and ordinal weekdays),
+// but own traversal and positional selection. Its public queries cannot bound
 // empty periods and before() retains every historical match. The dependency is
 // pinned; differential tests protect this small adapter on upgrades.
 export const SERIES_SEARCH_WORK_CAP = 100_000;
@@ -121,12 +120,22 @@ export function* floatingCandidates(
       && (direction === 1 ? date >= near : date <= near)
       && (!boundary || (direction === 1 ? date <= boundary : date >= boundary));
     if (rule.options.bysetpos?.length) {
-      const positions = buildPoslist(rule.options.bysetpos, times, first, end, info, days);
-      // Out-of-range positive positions produce Invalid Date in rrule. Its
-      // comparator then cannot guarantee ordering of the remaining dates.
-      const unique = [...new Map(positions
-        .filter(date => Number.isFinite(date.getTime()))
-        .map(date => [date.getTime(), date])).values()]
+      // Select by index into the filtered day/time product. The library's
+      // positional helper clamps negative indexes outside that product and
+      // can include Invalid Date for positive ones, so it is not safe here.
+      const selectedDays = days.slice(first, end)
+        .filter((day): day is number => day !== null && day !== undefined);
+      const candidateCount = selectedDays.length * times.length;
+      const positions = new Map<number, Date>();
+      for (const position of rule.options.bysetpos) {
+        budget.spend();
+        if (Math.abs(position) > candidateCount) continue;
+        const index = position < 0 ? candidateCount + position : position - 1;
+        const date = fromOrdinal(info.yearordinal + selectedDays[Math.floor(index / times.length)]!);
+        const candidate = combine(date, times[index % times.length]!);
+        positions.set(candidate.getTime(), candidate);
+      }
+      const unique = [...positions.values()]
         .sort((a, b) => a.getTime() - b.getTime());
       if (direction === -1) unique.reverse();
       for (const date of unique) {

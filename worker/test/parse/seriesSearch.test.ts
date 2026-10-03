@@ -74,6 +74,21 @@ describe('bounded series searches', () => {
     expect(occurrencesBetween(counted, start, null, null, through)).toEqual([start]);
   });
 
+  it('skips negative positions outside the entire filtered day/time product', () => {
+    const start = instant('2026-01-01T09:00:00Z');
+    const through = instant('2026-01-31T23:59:00Z');
+    const empty = series('FREQ=MONTHLY;BYMONTHDAY=1,15;BYSETPOS=-3;UNTIL=20260131T235900Z');
+    expect(occurrencesBetween(empty, start, null, null, through)).toEqual([]);
+    expect(nextOccurrenceAfter(empty, start, null, null)).toBeNull();
+    expect(latestOccurrenceAtOrBefore(empty, start, null, through)).toBeNull();
+    expect(isSeriesOccurrence(empty, start, null, start)).toBe(false);
+    expect(isSeriesExhausted(empty, start, null, null)).toBe(true);
+    const counted = series('FREQ=MONTHLY;BYMONTHDAY=1,15;BYSETPOS=-3;COUNT=1');
+    expect(() => nextOccurrenceAfter(counted, start, null, null)).toThrow(SeriesSearchLimitError);
+    const expanded = series('FREQ=MONTHLY;BYMONTHDAY=1,15;BYHOUR=9,10;BYSETPOS=-3;COUNT=1');
+    expect(occurrencesBetween(expanded, start, null, null, through)).toEqual(['2026-01-01T10:00:00Z']);
+  });
+
   it('rejects unbounded rule text before allocating filter combinations', () => {
     expect(parseSeriesRrule(`FREQ=DAILY;BYMINUTE=${'0,'.repeat(3000)}0`).ok).toBe(false);
   });

@@ -176,7 +176,8 @@ export function planImport(payload: ImportPayload): ImportPlanResult {
     ops: [
       { kind: 'wipe' },
       ...payload.projects.map(row => ({ kind: 'project.insert' as const, row })),
-      ...payload.tasks.map(row => ({ kind: 'task.insert' as const, row })),
+      // Restoring history must bypass live duty materialization predicates.
+      ...payload.tasks.map(row => ({ kind: 'task.restore' as const, row })),
       ...payload.links.map(row => ({ kind: 'link.upsert' as const, row })),
       ...parsedEntries.value.map(entry => ({ kind: 'pref.upsert' as const, entry })),
       ...(payload.action_log ?? []).map(entry => ({ kind: 'log.insert' as const, entry })),
