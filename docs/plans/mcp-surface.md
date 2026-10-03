@@ -501,7 +501,19 @@ registered in `TOOLS`. Remove that section when the reference is next updated.
   `start_session` read-only. Turn on the sync read gate for browser clients
   below protocol 3, and only then record command kinds in the action log.
   Switch the widget to `find` and `apply_changes`. After this phase, MCP no
-  longer writes through the legacy path.
+  longer writes through the legacy path. The one deliberate exception is
+  `restore_workspace` (see below).
+- **Restore stays outside the receipt guarantee.** `restore_workspace` in
+  `apply` mode writes without a command ID or receipt, on both the admin
+  endpoint and its default-endpoint alias. It is already safe against lost
+  responses another way. It is guarded by the caller's `expectedCursor`, and
+  it advances the sync epoch. A retry after a commit whose response was lost
+  returns 409 `restore_outcome_unknown` rather than applying twice, and the
+  caller reads a snapshot to see what is live
+  ([workspace portability](../shared/workspace-portability.md)). The phase C
+  claims therefore exclude it explicitly. Making restore receipted (a
+  `commandId` and a stored result, so a retry replays) is a possible later
+  improvement, but it's not needed for safety.
 - **D: Remove deprecated tools** once logs show no remaining callers, keeping
   the action-log history readable.
 - **Slices 3–7** then add command kinds, `get_agenda`, `preview_schedule` and
@@ -514,7 +526,9 @@ built once, on the command path, and not added to the legacy verbs as well.
 ## Acceptance
 
 - The default `tools/list` stays at or below about 20 tools through slice 7.
-- Every MCP write produces a command receipt; retrying a quick verb with the
+- Every MCP write except `restore_workspace` produces a command receipt.
+  Restore relies on its cursor guard and `restore_outcome_unknown` instead.
+  Retrying a quick verb with the
   same `commandId` replays rather than duplicating, including after the first
   attempt committed and for verbs that mint IDs (`add_task`, recurring
   `complete_task`). A replay writes no second action-log row and returns the
@@ -523,7 +537,8 @@ built once, on the command path, and not added to the legacy verbs as well.
   succeeds, alone or with other fields, and doesn't clear a deferral. Alone,
   it writes nothing and returns `action_log_entry: null`.
 - After phase C, no MCP tool handler calls a legacy `db.*` mutation or
-  `logAction` directly.
+  `logAction` directly, apart from the documented `restore_workspace`
+  exception.
 - The phase C parity matrix exists, every row has a passing test, and every
   behavior difference in it is documented and approved.
 - Version 1 receipts (bare results) and version 2 receipts (with the
