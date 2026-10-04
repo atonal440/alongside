@@ -20,7 +20,7 @@ const DEFAULT_ORDER: Record<Sort, 1 | -1> = { created: -1, updated: -1, due: 1, 
 export const READ_TOOLS = [
   {
     name: 'find',
-    description: 'Search tasks or projects. entity "task" filters by statuses (default ["pending"], deferred tasks included), text (case-insensitive over title and notes), project_id and focused (true: only tasks whose focus has not expired; false: only the rest); preset "ready" restricts to unblocked, non-deferred pending tasks. entity "project" filters by status (default "active"). Order is sort (created, updated, due or readiness; default created) in the given order (asc or desc; default desc for created, updated and readiness, asc for due; undated tasks count as latest). Readiness is a heuristic score (order applies to the score only; ties break oldest first) that favors tasks with a kickoff note or session log, recent edits and near due dates; ask for it only if you want it. Results are deterministic and page with nextCursor. Replaces list_tasks, get_ready_tasks and list_projects.',
+    description: 'Search tasks or projects. entity "task" filters by statuses (default ["pending"], deferred tasks included), text (case-insensitive over title and notes), project_id and focused (true: only tasks whose focus has not expired; false: only the rest); preset "ready" restricts to unblocked, non-deferred pending tasks. entity "project" filters by status (default "active"). Order is sort (created, updated, due or readiness; default created) in the given order (asc or desc; default desc for created, updated and readiness, asc for due; undated tasks count as latest). Readiness is a heuristic score (order applies to the score only; ties break oldest first) that favors tasks with a kickoff note or session log, recent edits and near due dates; ask for it only if you want it. Results are deterministic and page with nextCursor.',
     inputSchema: {
       type: 'object', additionalProperties: false,
       properties: {
@@ -46,7 +46,7 @@ export const READ_TOOLS = [
   },
   {
     name: 'get_context',
-    description: 'Read one entity. depth 0 returns exactly what get_entity / get_link / get_planning_settings return: the row plus entity and structural revisions. The default depth 1 adds the neighborhood for a task (project, prerequisites, dependents, related tasks) or a project (ready tasks, task counts); links, settings and preferences have no neighborhood. entity "preferences" returns the stored user preferences (key to value, defaults merged in), which the server never acts on. Replaces get_entity, get_link, get_planning_settings and get_project_context.',
+    description: 'Read one entity. depth 0 returns the row plus entity and structural revisions. The default depth 1 adds the neighborhood for a task (project, prerequisites, dependents, related tasks) or a project (ready tasks, task counts); links, settings and preferences have no neighborhood. entity "preferences" returns the stored user preferences (key to value, defaults merged in), which the server never acts on.',
     inputSchema: {
       type: 'object',
       oneOf: [
@@ -59,7 +59,7 @@ export const READ_TOOLS = [
   },
   {
     name: 'get_history',
-    description: 'Recent changes, newest first: action-log entries (what the assistant and the app did, with titles) merged with the command audit (actor, reason and diffs of reliable commands). Each entry has source "action_log" or "command". Replaces get_action_log.',
+    description: 'Recent changes, newest first: action-log entries (what the assistant and the app did, with titles) merged with the command audit (actor, reason and diffs of reliable commands). Each entry has source "action_log" or "command".',
     inputSchema: {
       type: 'object', additionalProperties: false,
       properties: { limit: { type: 'integer', minimum: 1, maximum: MAX_LIMIT, description: `Per source. Defaults to ${DEFAULT_LIMIT}.` } },
@@ -201,7 +201,7 @@ async function find(args: Record<string, unknown>, db: DB) {
     }
   };
   // Readiness folds the direction into the score, so ties break oldest first either way (as
-  // get_ready_tasks did); the other sorts flip the whole key.
+  // the old get_ready_tasks did); the other sorts flip the whole key.
   const keyDir = sort === 'readiness' ? 1 : dir;
   tasks = tasks.slice().sort((a, b) => keyDir * compareKeys(keyOf(a), keyOf(b)));
   if (text) {

@@ -201,6 +201,8 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       const projectId = args.project_id as string | undefined;
       const taskIds = args.task_ids as string[] | undefined;
       if ((projectId === undefined) === (taskIds === undefined)) throw new Error('Give exactly one of task_ids or project_id.');
+      if (projectId !== undefined && typeof projectId !== 'string') throw new Error('project_id must be a string.');
+      if (taskIds !== undefined && (!Array.isArray(taskIds) || taskIds.some(id => typeof id !== 'string'))) throw new Error('task_ids must be an array of strings.');
       if (projectId !== undefined) {
         const project = await db.getProject(projectId);
         if (!project) throw new Error('Project not found');
