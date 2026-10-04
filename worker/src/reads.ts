@@ -8,16 +8,19 @@ import { CommandError } from './domain/commands';
 import { invalidInput } from './domain/temporalFoundation';
 import { COMMAND_ENVELOPE_PROPERTIES, COMMAND_VARIANTS } from './commands';
 import type { DB } from './db';
-import { readinessScore } from '@shared/readiness';
+import { isFocused, readinessScore } from '@shared/readiness';
 import type { Task } from '@shared/types';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
+const SORTS = ['created', 'updated', 'due', 'readiness'] as const;
+type Sort = (typeof SORTS)[number];
+const DEFAULT_ORDER: Record<Sort, 1 | -1> = { created: -1, updated: -1, due: 1, readiness: -1 };
 
 export const READ_TOOLS = [
   {
     name: 'find',
-    description: 'Search tasks or projects. entity "task" filters by statuses (default ["pending"], deferred tasks included), text (case-insensitive over title and notes) and project_id; preset "ready" returns unblocked, non-deferred pending tasks by readiness score. entity "project" filters by status (default "active"). Results are deterministic and page with nextCursor. Replaces list_tasks, get_ready_tasks and list_projects.',
+    description: 'Search tasks or projects. entity "task" filters by statuses (default ["pending"], deferred tasks included), text (case-insensitive over title and notes), project_id and focused (true: only tasks whose focus has not expired; false: only the rest); preset "ready" restricts to unblocked, non-deferred pending tasks. entity "project" filters by status (default "active"). Order is sort (created, updated, due or readiness; default created) in the given order (asc or desc; default desc for created, updated and readiness, asc for due; undated tasks count as latest). Readiness is a heuristic score that favors tasks with a kickoff note or session log, recent edits and near due dates; ask for it only if you want it. Results are deterministic and page with nextCursor. Replaces list_tasks, get_ready_tasks and list_projects.',
     inputSchema: {
       type: 'object', additionalProperties: false,
       properties: {
@@ -29,9 +32,12 @@ export const READ_TOOLS = [
             statuses: { type: 'array', items: { enum: ['pending', 'done'] }, description: 'Task only. Defaults to ["pending"].' },
             text: { type: 'string', description: 'Task only. Matches title and notes.' },
             project_id: { type: 'string', description: 'Task only. Restrict to one project.' },
+            focused: { type: 'boolean', description: 'Task only. true keeps tasks whose focus has not expired; false keeps the others.' },
             status: { enum: ['active', 'archived'], description: 'Project only. Defaults to "active".' },
           },
         },
+        sort: { enum: [...SORTS], description: 'Task only. Defaults to created.' },
+        order: { enum: ['asc', 'desc'], description: 'Defaults to desc for created, updated and readiness, asc for due. Applies to projects too (by creation).' },
         limit: { type: 'integer', minimum: 1, maximum: MAX_LIMIT, description: `Defaults to ${DEFAULT_LIMIT}.` },
         cursor: { type: 'string', description: 'The nextCursor from the previous page.' },
       },
@@ -40,13 +46,14 @@ export const READ_TOOLS = [
   },
   {
     name: 'get_context',
-    description: 'Read one entity. depth 0 returns exactly what get_entity / get_link / get_planning_settings return: the row plus entity and structural revisions. The default depth 1 adds the neighborhood for a task (project, prerequisites, dependents, related tasks) or a project (ready tasks, task counts); links and settings have no neighborhood. Replaces get_entity, get_link, get_planning_settings and get_project_context.',
+    description: 'Read one entity. depth 0 returns exactly what get_entity / get_link / get_planning_settings return: the row plus entity and structural revisions. The default depth 1 adds the neighborhood for a task (project, prerequisites, dependents, related tasks) or a project (ready tasks, task counts); links, settings and preferences have no neighborhood. entity "preferences" returns the stored user preferences (key to value, defaults merged in), which the server never acts on. Replaces get_entity, get_link, get_planning_settings and get_project_context.',
     inputSchema: {
       type: 'object',
       oneOf: [
         ...['task', 'project'].map(entity => ({ type: 'object', additionalProperties: false, properties: { entity: { const: entity }, id: { type: 'string' }, depth: { enum: [0, 1] } }, required: ['entity', 'id'] })),
         { type: 'object', additionalProperties: false, properties: { entity: { const: 'link' }, from: { type: 'string' }, to: { type: 'string' }, linkType: { enum: ['blocks', 'related'] }, depth: { enum: [0, 1] } }, required: ['entity', 'from', 'to', 'linkType'] },
         { type: 'object', additionalProperties: false, properties: { entity: { const: 'settings' }, depth: { enum: [0, 1] } }, required: ['entity'] },
+        { type: 'object', additionalProperties: false, properties: { entity: { const: 'preferences' } }, required: ['entity'] },
       ],
     },
   },
@@ -86,6 +93,12 @@ function limitOf(value: unknown): number {
   return value;
 }
 
+function orderOf(value: unknown, fallback: 1 | -1): 1 | -1 {
+  if (value === undefined) return fallback;
+  if (value !== 'asc' && value !== 'desc') throw bad(['order'], 'order must be "asc" or "desc".');
+  return value === 'asc' ? 1 : -1;
+}
+
 type SortKey = (string | number)[];
 
 function compareKeys(a: SortKey, b: SortKey): number {
@@ -106,18 +119,19 @@ function decodeCursor(cursor: string): SortKey {
 }
 
 /**
- * Keyset paging over a list already sorted ascending by `keyOf`. The cursor is the sort key of the
+ * Keyset paging over a list already sorted by `keyOf` (ascending when `dir` is 1, descending when -1). The cursor is the sort key of the
  * last item returned, so the next page is whatever sorts after that key even if the item itself was
  * completed, deleted or edited between pages.
  */
-function page<T>(items: T[], limit: number, cursor: unknown, keyOf: (item: T) => SortKey): { items: T[]; nextCursor: string | null } {
+function page<T>(items: T[], limit: number, cursor: unknown, keyOf: (item: T) => SortKey, dir: 1 | -1 = 1, tag?: string): { items: T[]; nextCursor: string | null } {
   let start = 0;
   if (cursor !== undefined) {
     if (typeof cursor !== 'string') throw bad(['cursor'], 'cursor must be a string.');
     const after = decodeCursor(cursor);
+    if (tag !== undefined && after[0] !== tag) throw bad(['cursor'], 'cursor does not belong to this search; repeat the search without a cursor.');
     const shape = items.length > 0 ? keyOf(items[0]!) : after;
     if (after.length !== shape.length || after.some((part, i) => typeof part !== typeof shape[i])) throw bad(['cursor'], 'cursor does not belong to this search; repeat the search without a cursor.');
-    start = items.findIndex(item => compareKeys(keyOf(item), after) > 0);
+    start = items.findIndex(item => dir * compareKeys(keyOf(item), after) > 0);
     if (start < 0) start = items.length;
   }
   const slice = items.slice(start, start + limit);
@@ -129,17 +143,20 @@ function page<T>(items: T[], limit: number, cursor: unknown, keyOf: (item: T) =>
 }
 
 async function find(args: Record<string, unknown>, db: DB) {
-  only(args, ['entity', 'preset', 'filter', 'limit', 'cursor']);
+  only(args, ['entity', 'preset', 'filter', 'sort', 'order', 'limit', 'cursor']);
   const limit = limitOf(args.limit);
   const filter = args.filter === undefined ? {} : object(args.filter);
-  only(filter, ['statuses', 'text', 'project_id', 'status'], ['filter']);
+  only(filter, ['statuses', 'text', 'project_id', 'focused', 'status'], ['filter']);
   if (args.entity === 'project') {
     if (args.preset !== undefined) throw bad(['preset'], 'Projects have no presets.');
-    for (const key of ['statuses', 'text', 'project_id']) if (key in filter) throw bad(['filter', key], `${key} applies to tasks only.`);
+    if (args.sort !== undefined) throw bad(['sort'], 'sort applies to tasks only; projects sort by creation (use order).');
+    for (const key of ['statuses', 'text', 'project_id', 'focused']) if (key in filter) throw bad(['filter', key], `${key} applies to tasks only.`);
     const status = filter.status ?? 'active';
     if (status !== 'active' && status !== 'archived') throw bad(['filter', 'status'], 'status must be "active" or "archived".');
-    const projects = (await db.listProjects(status)).slice().sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
-    return { entity: 'project', ...(({ items, nextCursor }) => ({ items, nextCursor }))(page(projects, limit, args.cursor, project => [project.created_at, project.id])) };
+    const dir = orderOf(args.order, -1);
+    const projectKey = (project: { created_at: string; id: string }): SortKey => [`project:${dir}`, project.created_at, project.id];
+    const projects = (await db.listProjects(status)).slice().sort((a, b) => dir * compareKeys(projectKey(a), projectKey(b)));
+    return { entity: 'project', ...(({ items, nextCursor }) => ({ items, nextCursor }))(page(projects, limit, args.cursor, projectKey, dir, `project:${dir}`)) };
   }
   if (args.entity !== 'task') throw bad(['entity'], 'entity must be "task" or "project".');
   if ('status' in filter) throw bad(['filter', 'status'], 'status applies to projects only; use statuses for tasks.');
@@ -147,30 +164,43 @@ async function find(args: Record<string, unknown>, db: DB) {
   if (projectId !== undefined && typeof projectId !== 'string') throw bad(['filter', 'project_id'], 'project_id must be a string.');
   const text = filter.text;
   if (text !== undefined && typeof text !== 'string') throw bad(['filter', 'text'], 'text must be a string.');
+  const focused = filter.focused;
+  if (focused !== undefined && typeof focused !== 'boolean') throw bad(['filter', 'focused'], 'focused must be true or false.');
+  const sort = args.sort === undefined ? 'created' : args.sort;
+  if (!SORTS.includes(sort as Sort)) throw bad(['sort'], `sort must be one of ${SORTS.join(', ')}.`);
+  const dir = orderOf(args.order, DEFAULT_ORDER[sort as Sort]);
   let tasks: Task[];
-  let keyOf: (task: Task) => SortKey = task => [task.due_date ?? '', task.created_at, task.id];
   if (args.preset !== undefined) {
     if (args.preset !== 'ready') throw bad(['preset'], 'preset must be "ready".');
     if ('statuses' in filter) throw bad(['filter', 'statuses'], 'The ready preset is pending-only; omit statuses.');
     tasks = await db.listReadyTasks(projectId);
-    // Re-sort with one timestamp so the order and the cursor keys agree exactly. Scores drift with
-    // edits and the clock, so a page boundary can still shift slightly between calls, but a cursor
-    // never errors and never loops.
-    const at = new Date().toISOString();
-    keyOf = task => [-readinessScore(task, at), task.created_at, task.id];
-    tasks = tasks.slice().sort((a, b) => compareKeys(keyOf(a), keyOf(b)));
   } else {
     const statuses = filter.statuses ?? ['pending'];
     if (!Array.isArray(statuses) || statuses.length === 0 || statuses.some(status => status !== 'pending' && status !== 'done')) throw bad(['filter', 'statuses'], 'statuses must be a non-empty list of "pending" or "done".');
-    tasks = (await db.listAllTasks(statuses as Task['status'][])).slice()
-      .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? '') || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+    tasks = await db.listAllTasks(statuses as Task['status'][]);
     if (projectId !== undefined) tasks = tasks.filter(task => task.project_id === projectId);
   }
+  // One timestamp for the focus filter and the readiness keys, so the order and the cursor keys
+  // agree exactly. Scores drift with edits and the clock, so a readiness page boundary can still
+  // shift slightly between calls, but a cursor never errors and never loops.
+  const at = new Date().toISOString();
+  if (focused !== undefined) tasks = tasks.filter(task => isFocused(task, at) === focused);
+  // The first key part tags the sort and direction so a cursor from a different ordering is rejected.
+  const tag = `${sort}:${dir}`;
+  const keyOf = (task: Task): SortKey => {
+    switch (sort) {
+      case 'updated': return [tag, task.updated_at, task.id];
+      case 'due': return [tag, task.due_date === null ? 1 : 0, task.due_date ?? '', task.created_at, task.id];
+      case 'readiness': return [tag, readinessScore(task, at), task.created_at, task.id];
+      default: return [tag, task.created_at, task.id];
+    }
+  };
+  tasks = tasks.slice().sort((a, b) => dir * compareKeys(keyOf(a), keyOf(b)));
   if (text) {
     const q = text.toLowerCase();
     tasks = tasks.filter(task => task.title.toLowerCase().includes(q) || (task.notes?.toLowerCase().includes(q) ?? false));
   }
-  const { items, nextCursor } = page(tasks, limit, args.cursor, keyOf);
+  const { items, nextCursor } = page(tasks, limit, args.cursor, keyOf, dir, tag);
   return { entity: 'task', items, nextCursor };
 }
 
@@ -181,6 +211,10 @@ async function getContext(args: Record<string, unknown>, db: DB) {
   if (rest.entity === 'settings') {
     only(rest, ['entity']);
     return { contractVersion: 2, settings: await db.getPlanningSettings() };
+  }
+  if (rest.entity === 'preferences') {
+    only(rest, ['entity']);
+    return { contractVersion: 2, preferences: await db.getAllPreferences() };
   }
   if (rest.entity === 'link') {
     const key = parseLinkKey(rest);

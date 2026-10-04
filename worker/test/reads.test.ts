@@ -27,8 +27,8 @@ describe('find', () => {
       const found = await callReadTool('find', { entity: 'task' }, db) as { items: { id: string }[]; nextCursor: null };
       expect(found.items.map(t => t.id).sort()).toEqual(legacy.map(t => t.id).sort());
       expect(found.nextCursor).toBeNull();
-      const ready = await callReadTool('find', { entity: 'task', preset: 'ready' }, db) as { items: { id: string }[] };
-      expect(ready.items.map(t => t.id)).toEqual((await db.listReadyTasks()).map(t => t.id));
+      const ready = await callReadTool('find', { entity: 'task', preset: 'ready', sort: 'readiness' }, db) as { items: { id: string }[] };
+      expect(ready.items.map(t => t.id).sort()).toEqual((await db.listReadyTasks()).map(t => t.id).sort());
       expect(ready.items.map(t => t.id)).not.toContain((await db.listAllTasks()).find(t => t.title === 'Plant seeds')!.id);
       const scoped = await callReadTool('find', { entity: 'task', preset: 'ready', filter: { project_id: project.id } }, db) as { items: { id: string }[] };
       expect(scoped.items.map(t => t.id)).toEqual([a.id]);
@@ -188,8 +188,83 @@ describe('deprecation notices', () => {
     expect(description('list_tasks')).toMatch(/^Deprecated: use find\(/);
     expect(description('get_ready_tasks')).toContain('preset: "ready"');
     expect(description('get_action_log')).toMatch(/^Deprecated: use get_history\./);
+    expect(description('start_session')).toMatch(/^Deprecated: use find\(/);
     expect(description('get_entity')).toContain('get_context');
     expect(description('add_task')).not.toMatch(/Deprecated/);
     expect(description('find')).not.toMatch(/Deprecated/);
+  });
+});
+
+describe('find sort, order and focused', () => {
+  const ids = (result: unknown) => (result as { items: { id: string }[] }).items.map(t => t.id);
+
+  it('defaults to newest first and flips with order', async () => {
+    const { sql, d1 } = sqliteD1(); const db = new DB(d1);
+    try {
+      const made = [];
+      for (const title of ['One', 'Two', 'Three']) { made.push(await db.addTask({ title })); await new Promise(resolve => setTimeout(resolve, 5)); }
+      const newest = made.map(t => t.id).reverse();
+      expect(ids(await callReadTool('find', { entity: 'task' }, db))).toEqual(newest);
+      expect(ids(await callReadTool('find', { entity: 'task', order: 'asc' }, db))).toEqual([...newest].reverse());
+      expect(ids(await callReadTool('find', { entity: 'task', preset: 'ready' }, db))).toEqual(newest);
+      const projects = [await db.createProject({ title: 'A' })];
+      await new Promise(resolve => setTimeout(resolve, 5));
+      projects.push(await db.createProject({ title: 'B' }));
+      expect(ids(await callReadTool('find', { entity: 'project' }, db))).toEqual(projects.map(p => p.id).reverse());
+    } finally { sql.close(); }
+  });
+
+  it('sorts by due date ascending with undated tasks last, and pages in either direction', async () => {
+    const { sql, d1 } = sqliteD1(); const db = new DB(d1);
+    try {
+      const later = await db.addTask({ title: 'Later', due_date: '2026-12-01' });
+      const undated = await db.addTask({ title: 'Undated' });
+      const sooner = await db.addTask({ title: 'Sooner', due_date: '2026-11-01' });
+      expect(ids(await callReadTool('find', { entity: 'task', sort: 'due' }, db))).toEqual([sooner.id, later.id, undated.id]);
+      for (const order of ['asc', 'desc']) {
+        const all = ids(await callReadTool('find', { entity: 'task', sort: 'due', order }, db));
+        const first = await callReadTool('find', { entity: 'task', sort: 'due', order, limit: 1 }, db) as { items: { id: string }[]; nextCursor: string };
+        const rest = await callReadTool('find', { entity: 'task', sort: 'due', order, cursor: first.nextCursor }, db);
+        expect([first.items[0]!.id, ...ids(rest)]).toEqual(all);
+      }
+    } finally { sql.close(); }
+  });
+
+  it('filters by focus', async () => {
+    const { sql, d1 } = sqliteD1(); const db = new DB(d1);
+    try {
+      const a = await db.addTask({ title: 'Focused' });
+      const b = await db.addTask({ title: 'Other' });
+      await db.focusTask(a.id, new Date(Date.now() + 3_600_000).toISOString());
+      expect(ids(await callReadTool('find', { entity: 'task', filter: { focused: true } }, db))).toEqual([a.id]);
+      expect(ids(await callReadTool('find', { entity: 'task', filter: { focused: false } }, db))).toEqual([b.id]);
+      expect(ids(await callReadTool('find', { entity: 'task', preset: 'ready', filter: { focused: true } }, db))).toEqual([a.id]);
+    } finally { sql.close(); }
+  });
+
+  it('rejects a cursor from a different ordering and bad arguments', async () => {
+    const { sql, d1 } = sqliteD1(); const db = new DB(d1);
+    try {
+      for (const title of ['One', 'Two']) await db.addTask({ title });
+      const page = await callReadTool('find', { entity: 'task', limit: 1 }, db) as { nextCursor: string };
+      for (const input of [{ sort: 'updated' }, { order: 'asc' }]) {
+        await expect(callReadTool('find', { entity: 'task', ...input, cursor: page.nextCursor }, db)).rejects.toMatchObject({ detail: { code: 'invalid_input' } });
+      }
+      for (const input of [{ entity: 'task', sort: 'size' }, { entity: 'task', order: 'up' }, { entity: 'project', sort: 'created' }, { entity: 'task', filter: { focused: 'yes' } }, { entity: 'project', filter: { focused: true } }]) {
+        await expect(callReadTool('find', input, db)).rejects.toMatchObject({ detail: { code: 'invalid_input' } });
+      }
+    } finally { sql.close(); }
+  });
+});
+
+describe('get_context preferences', () => {
+  it('returns stored preferences with defaults merged in', async () => {
+    const { sql, d1 } = sqliteD1(); const db = new DB(d1);
+    try {
+      await db.setPreference('sort_by', 'due');
+      const result = await callReadTool('get_context', { entity: 'preferences' }, db) as { preferences: Record<string, string> };
+      expect(result.preferences).toMatchObject({ sort_by: 'due', kickoff_nudge: 'always' });
+      await expect(callReadTool('get_context', { entity: 'preferences', id: 'x' }, db)).rejects.toMatchObject({ detail: { code: 'invalid_input' } });
+    } finally { sql.close(); }
   });
 });

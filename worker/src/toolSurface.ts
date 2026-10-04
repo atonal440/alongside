@@ -123,6 +123,7 @@ export const REPLACED_BY: Record<string, string> = {
   get_entity: 'get_context({ entity, id, depth: 0 })',
   get_link: 'get_context({ entity: "link", from, to, linkType, depth: 0 })',
   get_planning_settings: 'get_context({ entity: "settings" })',
+  start_session: 'find({ entity: "task", filter: { focused: true } }), find({ entity: "task", preset: "ready", sort: "readiness", limit: 3 }) and get_context({ entity: "preferences" })',
 };
 
 export function withReplacement<T extends Named>(tool: T): T {

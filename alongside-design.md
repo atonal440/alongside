@@ -39,7 +39,7 @@ The re-entry experience when returning after a gap should feel like being handed
 
 ### No workflow in the server
 
-Alongside does not require a Claude Project to function, and the server no longer sends behavioral instructions. `initialize.instructions` only says how to call the tools. Rituals (the daily triage, kickoff notes, session close, tone) live in client skills such as `alongside-daily`, or in the user's own prompt. `start_session` remains an optional, read-only snapshot of focused tasks, ready tasks and preferences, and today the only read that returns focused tasks and stored preferences; it can be retired once `find` and a preferences read cover those.
+Alongside does not require a Claude Project to function, and the server no longer sends behavioral instructions. `initialize.instructions` only says how to call the tools. Rituals (the daily triage, kickoff notes, session close, tone) live in client skills such as `alongside-daily`, or in the user's own prompt. `start_session` remains an optional, read-only snapshot of focused tasks, ready tasks and preferences, deprecated: `find` (with `filter.focused`, `preset: "ready"` and `sort`) and `get_context({ entity: "preferences" })` cover it.
 
 The state is in D1, so the full experience is available anywhere Claude tools are, in whatever ritual the user brings.
 
