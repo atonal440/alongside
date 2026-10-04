@@ -117,7 +117,7 @@ export function asDeprecatedAlias<T extends Named>(tool: T): T {
 export const REPLACED_BY: Record<string, string> = {
   list_projects: 'find({ entity: "project", filter: { status } })',
   list_tasks: 'find({ entity: "task", filter: { statuses, text } })',
-  get_ready_tasks: 'find({ entity: "task", preset: "ready", filter: { project_id } })',
+  get_ready_tasks: 'find({ entity: "task", preset: "ready", sort: "readiness", filter: { project_id } })',
   get_project_context: 'get_context({ entity: "project", id })',
   get_action_log: 'get_history',
   get_entity: 'get_context({ entity, id, depth: 0 })',

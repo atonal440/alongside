@@ -186,7 +186,7 @@ describe('deprecation notices', () => {
   it('points each replaced read tool at its successor and leaves the rest alone', () => {
     const description = (name: string) => TOOLS.find(tool => tool.name === name)!.description;
     expect(description('list_tasks')).toMatch(/^Deprecated: use find\(/);
-    expect(description('get_ready_tasks')).toContain('preset: "ready"');
+    expect(description('get_ready_tasks')).toContain('preset: "ready", sort: "readiness"');
     expect(description('get_action_log')).toMatch(/^Deprecated: use get_history\./);
     expect(description('start_session')).toMatch(/^Deprecated: use find\(/);
     expect(description('get_entity')).toContain('get_context');
@@ -265,6 +265,21 @@ describe('get_context preferences', () => {
       const result = await callReadTool('get_context', { entity: 'preferences' }, db) as { preferences: Record<string, string> };
       expect(result.preferences).toMatchObject({ sort_by: 'due', kickoff_nudge: 'always' });
       await expect(callReadTool('get_context', { entity: 'preferences', id: 'x' }, db)).rejects.toMatchObject({ detail: { code: 'invalid_input' } });
+    } finally { sql.close(); }
+  });
+});
+
+describe('find sort readiness', () => {
+  it('ranks a blocked task below actionable ones even without the ready preset', async () => {
+    const { sql, d1 } = sqliteD1(); const db = new DB(d1);
+    try {
+      const blocker = await db.addTask({ title: 'Blocker' });
+      const blocked = await db.addTask({ title: 'Blocked', kickoff_note: 'start here' });
+      const plain = await db.addTask({ title: 'Plain' });
+      await db.linkTasks(blocker.id, blocked.id, 'blocks');
+      const found = await callReadTool('find', { entity: 'task', sort: 'readiness' }, db) as { items: { id: string }[] };
+      expect(found.items.map(t => t.id)[found.items.length - 1]).toBe(blocked.id);
+      expect(found.items.map(t => t.id)).toContain(plain.id);
     } finally { sql.close(); }
   });
 });

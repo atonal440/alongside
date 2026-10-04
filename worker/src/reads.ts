@@ -185,13 +185,15 @@ async function find(args: Record<string, unknown>, db: DB) {
   // shift slightly between calls, but a cursor never errors and never loops.
   const at = new Date().toISOString();
   if (focused !== undefined) tasks = tasks.filter(task => isFocused(task, at) === focused);
+  // Readiness needs the link graph so a blocked task scores as blocked, not as actionable.
+  const [links, everyTask] = sort === 'readiness' ? await Promise.all([db.listAllLinks(), db.listAllTasks()]) : [[], []];
   // The first key part tags the sort and direction so a cursor from a different ordering is rejected.
   const tag = `${sort}:${dir}`;
   const keyOf = (task: Task): SortKey => {
     switch (sort) {
       case 'updated': return [tag, task.updated_at, task.id];
       case 'due': return [tag, task.due_date === null ? 1 : 0, task.due_date ?? '', task.created_at, task.id];
-      case 'readiness': return [tag, readinessScore(task, at), task.created_at, task.id];
+      case 'readiness': return [tag, readinessScore(task, at, links, everyTask), task.created_at, task.id];
       default: return [tag, task.created_at, task.id];
     }
   };
