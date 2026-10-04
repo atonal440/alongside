@@ -38,7 +38,7 @@ These tools replace the older list/get reads and the by-hand revision bookkeepin
 
 ### `start_session`
 
-Optional snapshot; nothing requires calling it, and `find` and `get_context` return the same data. Read-only: it writes nothing. Default preferences are merged into the returned `preferences` in memory (a row exists only once someone sets it). It no longer returns `returning_after_gap` or instructions; a client that wants to know when the workspace last changed reads `get_history`. The old `last_session_at` preference is no longer read or written; existing rows stay readable and exported.
+Optional snapshot; nothing requires calling it, but it is currently the only read that returns focused tasks and stored preferences (`get_context({ entity: "settings" })` returns planning settings, not these). Read-only: it writes nothing. Default preferences are merged into the returned `preferences` in memory (a row exists only once someone sets it). It no longer returns `returning_after_gap` or instructions; a client that wants to know when the workspace last changed reads `get_history`. The old `last_session_at` preference is no longer read or written; existing rows stay readable and exported.
 
 **Parameters:** none
 
@@ -343,7 +343,7 @@ Create a dependency or relationship between two tasks.
 
 ### `update_preference`
 
-Update a user preference. Preferences are stored values; the server does not act on them, so a client reads them (`get_context({ entity: "settings" })`) and applies them as it sees fit.
+Update a user preference. Preferences are stored values; the server does not act on them, so a client reads them with `start_session` and applies them as it sees fit.
 
 **Parameters:**
 

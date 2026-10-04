@@ -48,7 +48,7 @@ Alongside stores tasks, projects, links, focus windows and a change history. It 
 
 Reading: find lists tasks or projects, get_context reads one entity with its neighborhood, get_history reads past changes.
 Writing: the verbs (add_task, complete_task, and so on) and apply_changes all go through the same planner. Pass a commandId so a retry replays the first result instead of repeating the change.
-Preferences are stored values the user has set; read them with get_context({ entity: "settings" }) and change them with update_preference when the user asks.
+Preferences are stored values the user has set; start_session returns them (with focused tasks) and update_preference changes them with update_preference when the user asks.
 `.trim();
 
 const TOOL_DEFS = [
@@ -57,7 +57,7 @@ const TOOL_DEFS = [
   ...READ_TOOLS,
   {
     name: 'start_session',
-    description: 'Optional snapshot: focused tasks, the top three ready tasks and preferences. Nothing requires calling it; find and get_context return the same data.',
+    description: 'Optional snapshot: focused tasks, the top three ready tasks and preferences. It is the way to read focused tasks and stored preferences; nothing requires calling it.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
