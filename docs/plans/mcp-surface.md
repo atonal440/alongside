@@ -627,6 +627,27 @@ never registered in `TOOLS`; that section was removed in phase A.
   improvement, but it's not needed for safety.
 - **D: Remove deprecated tools** once logs show no remaining callers, keeping
   the action-log history readable.
+
+  Phase D as built: the default `/mcp` list is 14 tools (`get_capabilities`,
+  `resolve_time`, `find`, `get_context`, `get_history`, `describe_commands`,
+  `preview_changes`, `apply_changes`, `show_tasks` and the quick verbs
+  `add_task`, `update_task`, `complete_task`, `defer_task`, `focus_task`).
+  Removed from `/mcp`: `start_session`, `show_project` (use `show_tasks({
+  project_id })`), `list_projects`, `list_tasks`, `get_ready_tasks`,
+  `get_project_context`, `get_action_log`, `get_entity`, `get_link`,
+  `get_planning_settings`, `reopen_task`, `delete_task`, `create_project`,
+  `update_project`, `delete_project`, `link_tasks`, `unlink_tasks`,
+  `update_preference`, and the deprecated aliases for `export_workspace`,
+  `restore_workspace`, `get_workspace_snapshot`, `get_workspace_delta`,
+  `get_entity_version`, `export_planning_settings` and `preview_legacy_dates`.
+  The admin endpoint is unchanged; the REST routes are unchanged. The
+  thin-adapter code for the removed writes (`projectVerbs.ts`, `prefVerbs.ts`)
+  and their parity rows are gone, with the matrix regenerated for the five
+  remaining quick verbs. No deprecation window was kept: the maintainer has no
+  external callers to wait on. `action_log.tool_name` and the receipt codec
+  still accept the removed names, so history and stored receipts stay readable.
+  Preferences are now changed with `apply_changes` and a `preference.set`
+  command.
 - **Slices 3–7** then add command kinds, `get_agenda`, `preview_schedule` and
   `undo_changes` to this surface instead of adding tools.
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DB } from '../src/db';
 import { handleApiRequest } from '../src/api';
 import { handleMcpRequest, TOOLS, ADMIN_TOOLS } from '../src/mcp';
-import { ADMIN_TOOL_NAMES, DEPRECATED_ALIASES, TOOL_ANNOTATIONS } from '../src/toolSurface';
+import { ADMIN_TOOL_NAMES, TOOL_ANNOTATIONS } from '../src/toolSurface';
 import { sqliteD1 } from './helpers/sqliteD1';
 
 const rpc = (path: string, method: string, params?: unknown) =>
@@ -16,35 +16,30 @@ async function call(path: string, surface: 'default' | 'admin', method: string, 
   } finally { sql.close(); }
 }
 
-describe('MCP tool tiers (phase A)', () => {
-  it('annotates every default tool and nothing is left unclassified', () => {
-    expect(TOOLS.length).toBe(39);
+const DEFAULT_TOOLS = [
+  'add_task', 'apply_changes', 'complete_task', 'defer_task', 'describe_commands', 'find', 'focus_task', 'get_capabilities',
+  'get_context', 'get_history', 'preview_changes', 'resolve_time', 'show_tasks', 'update_task',
+];
+
+describe('MCP tool tiers', () => {
+  it('lists exactly the neutral tool set on /mcp, every tool annotated', () => {
+    expect(TOOLS.map(tool => tool.name).sort()).toEqual(DEFAULT_TOOLS);
     for (const tool of TOOLS) expect(tool.annotations, tool.name).toBeDefined();
-    expect(Object.keys(TOOL_ANNOTATIONS).sort()).toEqual(TOOLS.map(tool => tool.name).sort());
+    for (const tool of ADMIN_TOOLS) expect(tool.annotations, tool.name).toBeDefined();
+    expect(Object.keys(TOOL_ANNOTATIONS).sort()).toEqual([...new Set([...TOOLS, ...ADMIN_TOOLS].map(tool => tool.name))].sort());
   });
 
-  it('marks reads read-only and only delete/apply/restore destructive', () => {
-    const byName = Object.fromEntries(TOOLS.map(tool => [tool.name, tool.annotations]));
-    for (const name of ['get_capabilities', 'resolve_time', 'list_tasks', 'get_entity', 'preview_changes', 'export_workspace', 'get_workspace_snapshot', 'get_action_log', 'show_tasks']) {
+  it('marks reads read-only and only apply and restore destructive', () => {
+    const byName = Object.fromEntries([...TOOLS, ...ADMIN_TOOLS].map(tool => [tool.name, tool.annotations]));
+    for (const name of ['get_capabilities', 'resolve_time', 'find', 'get_context', 'get_history', 'preview_changes', 'export_workspace', 'get_workspace_snapshot', 'show_tasks']) {
       expect(byName[name], name).toMatchObject({ readOnlyHint: true, destructiveHint: false });
     }
-    expect(TOOLS.filter(tool => tool.annotations.destructiveHint).map(tool => tool.name).sort())
-      .toEqual(['apply_changes', 'delete_project', 'delete_task', 'restore_workspace']);
-    expect(byName.start_session).toMatchObject({ readOnlyHint: true, destructiveHint: false });
-    for (const tool of TOOLS) expect(tool.annotations.openWorldHint).toBe(false);
+    expect([...TOOLS, ...ADMIN_TOOLS].filter(tool => tool.annotations.destructiveHint).map(tool => tool.name).sort())
+      .toEqual(['apply_changes', 'restore_workspace']);
+    for (const tool of [...TOOLS, ...ADMIN_TOOLS]) expect(tool.annotations.openWorldHint).toBe(false);
   });
 
-  it('keeps every moved tool on the default list as a deprecated alias with unchanged schema', () => {
-    for (const name of Object.keys(DEPRECATED_ALIASES)) {
-      const alias = TOOLS.find(tool => tool.name === name)!;
-      const original = ADMIN_TOOLS.find(tool => tool.name === name);
-      expect(alias.description, name).toMatch(/^Deprecated alias\./);
-      if (original) expect(alias.inputSchema).toEqual(original.inputSchema);
-    }
-    expect(TOOLS.filter(tool => tool.description.startsWith('Deprecated alias.')).map(tool => tool.name).sort()).toEqual(Object.keys(DEPRECATED_ALIASES).sort());
-  });
-
-  it('lists exactly the admin set on /mcp/admin with original descriptions', async () => {
+  it('lists exactly the admin set on /mcp/admin ', async () => {
     const listed = (await call('/mcp/admin', 'admin', 'tools/list')).result.tools as { name: string; description: string; annotations: unknown }[];
     expect(listed.map(tool => tool.name).sort()).toEqual([...ADMIN_TOOL_NAMES].sort());
     for (const tool of listed) { expect(tool.description).not.toMatch(/^Deprecated alias/); expect(tool.annotations).toBeDefined(); }
@@ -59,11 +54,12 @@ describe('MCP tool tiers (phase A)', () => {
     expect((await call('/mcp/admin', 'admin', 'resources/list')).result.resources).toEqual([]);
   });
 
-  it('still serves deprecated aliases on the default endpoint', async () => {
-    const snapshot = await call('/mcp', 'default', 'tools/call', { name: 'get_workspace_snapshot', arguments: {} });
-    expect(snapshot.result.structuredContent.cursor).toBeDefined();
-    const exported = await call('/mcp', 'default', 'tools/call', { name: 'export_planning_settings', arguments: {} });
-    expect(exported.result.structuredContent).toMatchObject({ kind: 'planning_settings' });
+  it('refuses tools removed from the default endpoint', async () => {
+    for (const name of ['start_session', 'list_tasks', 'list_projects', 'get_ready_tasks', 'show_project', 'get_action_log', 'get_entity', 'reopen_task', 'delete_task', 'create_project', 'link_tasks', 'update_preference',
+      'get_workspace_snapshot', 'get_workspace_delta', 'get_entity_version', 'export_workspace', 'restore_workspace', 'export_planning_settings', 'preview_legacy_dates']) {
+      const refused = await call('/mcp', 'default', 'tools/call', { name, arguments: {} });
+      expect(refused.error?.message, name).toMatch(/Unknown tool/);
+    }
   });
 
   it('sends neutral server instructions in initialize on the default endpoint only', async () => {

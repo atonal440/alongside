@@ -161,13 +161,13 @@ it('rejects a huge chained link graph without recursion or writes', async () => 
 });
 
 describe('restore transports', () => {
-  it('exposes strict REST and MCP restore with identical results and no weaker input', async () => {
+  it('exposes strict REST and admin MCP restore with identical results and no weaker input', async () => {
     const { sql, d1 } = sqliteD1(); const db = new DB(d1);
     try {
       sql.exec(seed);
       const exported = await db.exportWorkspace(); const cursor = cursorOf(sql);
       const rest = async (body: unknown) => { const request = new Request('https://x/api/v2/restore', { method: 'POST', body: JSON.stringify(body) }); return handleApiRequest(request, new URL(request.url), db); };
-      const rpc = async (args: unknown) => (await (await handleMcpRequest(new Request('https://x/mcp', { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'restore_workspace', arguments: args } }) }), db, { DB: d1, AUTH_TOKEN: 'tok' })).json()) as { result: { structuredContent: Record<string, unknown>; isError?: boolean } };
+      const rpc = async (args: unknown) => (await (await handleMcpRequest(new Request('https://x/mcp', { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'restore_workspace', arguments: args } }) }), db, { DB: d1, AUTH_TOKEN: 'tok' }, 'admin')).json()) as { result: { structuredContent: Record<string, unknown>; isError?: boolean } };
 
       const viaRest = await (await rest(input(exported, cursor, 'preflight'))).json();
       const viaMcp = (await rpc(input(exported, cursor, 'preflight'))).result.structuredContent;

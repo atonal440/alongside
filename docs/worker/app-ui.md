@@ -18,4 +18,4 @@ The widget runs inside the host and calls tools by name through `tools/call`, so
 | Check a task off | `complete_task({ task_id })`, and a toast for a recurring task's successor |
 | Uncheck a task | `preview_changes({ intent: true, actor: 'user', commands: [{ kind: 'task.reopen', id }] })`, then `apply_changes` with the returned `pinnedEnvelope` unchanged |
 
-A refused call (`isError` result) puts the checkbox back and logs the error; before, only JSON-RPC errors did. The widget no longer calls `list_tasks` or `reopen_task`, so phase D can remove them. `test/appWidget.test.ts` runs the real widget script against the real MCP handler through a fake host and fails if the widget starts calling a deprecated tool.
+A refused call (`isError` result) puts the checkbox back and logs the error; before, only JSON-RPC errors did. Phase D removed `list_tasks` and `reopen_task`. `test/appWidget.test.ts` runs the real widget script against the real MCP handler through a fake host and fails if the widget starts calling a deprecated tool.

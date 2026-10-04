@@ -154,16 +154,6 @@ The plan's table of known gaps holds up (see the rows). Recording the legacy beh
 | `done-title` | `{"task_id":"$done","title":"Edited after done"}` | Edit a done task | ok — tasks ~1: title (+updated_at); logs `update_task` | must match |
 | `done-due` | `{"task_id":"$done","due_date":"2026-11-01"}` | Schedule a done task | ok — tasks ~1: due_date, due_all_day (+updated_at); logs `update_task` | must match |
 
-### `reopen_task`
-
-| Row | Input | What it exercises | Legacy outcome | Status |
-| --- | --- | --- | --- | --- |
-| `done` | `{"task_id":"$done"}` | Done task | ok — tasks ~1: status (+updated_at); logs `reopen_task` | must match |
-| `deferred` | `{"task_id":"$deferred"}` | Deferred task clears its deferral | ok — tasks ~1: defer_until, defer_kind (+updated_at); logs `reopen_task` | must match |
-| `someday` | `{"task_id":"$someday"}` | Someday task | ok — tasks ~1: defer_kind (+updated_at); logs `reopen_task` | must match |
-| `pending` | `{"task_id":"$pend"}` | Plain pending task is refused | refused (JSON-RPC error): Only done or deferred pending tasks can be reopened. | must match |
-| `missing` | `{"task_id":"$none"}` | Task does not exist | refused (JSON-RPC error): Task not found | must match |
-
 ### `focus_task`
 
 | Row | Input | What it exercises | Legacy outcome | Status |
@@ -180,105 +170,5 @@ The plan's table of known gaps holds up (see the rows). Recording the legacy beh
 | `deferred` | `{"task_id":"$deferred"}` | Focusing clears the deferral | ok — tasks ~1: defer_until, defer_kind, focused_until (+updated_at); logs `focus_task` | must match |
 | `done` | `{"task_id":"$done"}` | Done task | refused (JSON-RPC error): Only pending tasks can use this transition. | must match |
 | `missing` | `{"task_id":"$none"}` | Task does not exist | refused (JSON-RPC error): Task not found | must match |
-
-### `delete_task`
-
-| Row | Input | What it exercises | Legacy outcome | Status |
-| --- | --- | --- | --- | --- |
-| `plain` | `{"task_id":"$pend"}` | Plain task | ok — tasks −1; logs `delete_task` | must match |
-| `with-links` | `{"task_id":"$blocker"}` | Link rows go with the task | ok — tasks −1; task_links −1; logs `delete_task` | must match |
-| `in-project` | `{"task_id":"$member"}` | Project member | ok — tasks −1; logs `delete_task` | must match |
-| `done` | `{"task_id":"$done"}` | Done task | ok — tasks −1; logs `delete_task` | must match |
-| `missing` | `{"task_id":"$none"}` | Task does not exist | refused (JSON-RPC error): Task not found | must match |
-
-### `create_project`
-
-| Row | Input | What it exercises | Legacy outcome | Status |
-| --- | --- | --- | --- | --- |
-| `title-only` | `{"title":"New project"}` | Minimal call | ok — projects +1; logs `create_project` | must match |
-| `all-fields` | `{"title":"New project","notes":"n","kickoff_note":"k"}` | Notes and kickoff note | ok — projects +1; logs `create_project` | must match |
-| `with-tasks` | `{"title":"New project","task_ids":["$pend","$pend2"]}` | Assign existing tasks | ok — tasks ~2: project_id (+updated_at); projects +1; logs `create_project` | must match |
-| `duplicate-task-ids` | `{"title":"New project","task_ids":["$pend","$pend"]}` | Duplicate IDs count once | ok — tasks ~1: project_id (+updated_at); projects +1; logs `create_project` | must match |
-| `moves-from-other-project` | `{"title":"New project","task_ids":["$member"]}` | Task already in another project | ok — tasks ~1: project_id (+updated_at); projects +1; logs `create_project` | must match |
-| `missing-task` | `{"title":"New project","task_ids":["$pend","$none"]}` | One task does not exist | refused (JSON-RPC error): task not found: $none | must match |
-| `done-task` | `{"title":"New project","task_ids":["$done"]}` | Done task | ok — tasks ~1: project_id (+updated_at); projects +1; logs `create_project` | must match |
-| `nineteen-tasks` | `{"title":"New project","task_ids":["$bulk0","$bulk1","$bulk2","$bulk3","$bulk4","$bulk5","$bulk6","$bulk7","$bulk8","…` | 19 tasks | ok — tasks ~19: project_id (+updated_at); projects +1; logs `create_project` | must match |
-| `twenty-tasks` | `{"title":"New project","task_ids":["$bulk0","$bulk1","$bulk2","$bulk3","$bulk4","$bulk5","$bulk6","$bulk7","$bulk8","…` | 20 tasks: more than the old 20-command bound allowed | ok — tasks ~20: project_id (+updated_at); projects +1; logs `create_project` | must match |
-| `thirty-tasks` | `{"title":"New project","task_ids":["$bulk0","$bulk1","$bulk2","$bulk3","$bulk4","$bulk5","$bulk6","$bulk7","$bulk8","…` | 30 tasks | ok — tasks ~30: project_id (+updated_at); projects +1; logs `create_project` | approved difference |
-| `forty-tasks` | `{"title":"New project","task_ids":["$bulk0","$bulk1","$bulk2","$bulk3","$bulk4","$bulk5","$bulk6","$bulk7","$bulk8","…` | 40 tasks | refused (tool error): Atomic plan requires 121 SQL statements; the limit is 100. | must match |
-| `empty-title` | `{"title":""}` | Empty title | refused (JSON-RPC error): Expected a non-empty string. | must match |
-| `non-array-task-ids` | `{"title":"New project","task_ids":"x"}` | task_ids is not an array | refused (JSON-RPC error): inputs.entries is not a function or its return value is not iterable | must match |
-
-### `update_project`
-
-| Row | Input | What it exercises | Legacy outcome | Status |
-| --- | --- | --- | --- | --- |
-| `title` | `{"project_id":"$proj","title":"Renamed"}` | Title only keeps notes and kickoff note | ok — projects ~1: title (+updated_at); logs `update_project` | must match |
-| `notes` | `{"project_id":"$proj","notes":"new"}` | Notes only | ok — projects ~1: notes (+updated_at); logs `update_project` | must match |
-| `notes-null` | `{"project_id":"$proj","notes":null}` | null clears notes | ok — projects ~1: notes (+updated_at); logs `update_project` | must match |
-| `kickoff-note` | `{"project_id":"$proj","kickoff_note":"new"}` | Kickoff note only | ok — projects ~1: kickoff_note (+updated_at); logs `update_project` | must match |
-| `archive` | `{"project_id":"$proj","status":"archived"}` | Archive keeps members | ok — projects ~1: status (+updated_at); logs `update_project` | must match |
-| `reopen` | `{"project_id":"$archived","status":"active"}` | Reopen an archived project | ok — projects ~1: status (+updated_at); logs `update_project` | must match |
-| `status-unchanged` | `{"project_id":"$proj","status":"active"}` | Status already active | ok — projects ~1: updated_at only; logs `update_project` | approved difference |
-| `archive-already-archived` | `{"project_id":"$archived","status":"archived"}` | Status already archived | ok — projects ~1: updated_at only; logs `update_project` | approved difference |
-| `title-and-status` | `{"project_id":"$proj","title":"Both","status":"archived"}` | Content and state together | ok — projects ~1: title, status (+updated_at); logs `update_project` | must match |
-| `bad-status` | `{"project_id":"$proj","status":"paused"}` | Unknown status | refused (JSON-RPC error): Invalid type: Expected ("active" \| "archived") but received "paused" | must match |
-| `empty-title` | `{"project_id":"$proj","title":""}` | Empty title | refused (JSON-RPC error): Expected a non-empty string. | must match |
-| `empty-patch` | `{"project_id":"$proj"}` | Only project_id: nothing to change, still logs | ok — logs `update_project` | must match |
-| `empty-patch-missing` | `{"project_id":"$noneProject"}` | Empty patch on a missing project | refused (JSON-RPC error): Project not found | must match |
-| `missing` | `{"project_id":"$noneProject","title":"x"}` | Project does not exist | refused (JSON-RPC error): Project not found | must match |
-
-### `delete_project`
-
-| Row | Input | What it exercises | Legacy outcome | Status |
-| --- | --- | --- | --- | --- |
-| `with-members` | `{"project_id":"$proj"}` | Members are kept and detached | ok — tasks ~1: project_id (+updated_at); projects −1; logs `delete_project` | must match |
-| `empty` | `{"project_id":"$archived"}` | Project without tasks | ok — projects −1; logs `delete_project` | must match |
-| `missing` | `{"project_id":"$noneProject"}` | Project does not exist | refused (JSON-RPC error): Project not found | must match |
-
-### `link_tasks`
-
-| Row | Input | What it exercises | Legacy outcome | Status |
-| --- | --- | --- | --- | --- |
-| `blocks-default` | `{"from_task_id":"$pend","to_task_id":"$pend2"}` | Default type is blocks | ok — task_links +1; logs `link_tasks` | must match |
-| `blocks` | `{"from_task_id":"$pend","to_task_id":"$pend2","link_type":"blocks"}` | Explicit blocks | ok — task_links +1; logs `link_tasks` | must match |
-| `related` | `{"from_task_id":"$pend2","to_task_id":"$pend","link_type":"related"}` | Related with descending IDs | ok — task_links +1; logs `link_tasks` | approved difference |
-| `related-ascending` | `{"from_task_id":"$pend","to_task_id":"$pend2","link_type":"related"}` | Related with the other orientation | ok — task_links +1; logs `link_tasks` | must match |
-| `existing-blocks` | `{"from_task_id":"$blocker","to_task_id":"$blocked"}` | Link that already exists | ok — logs `link_tasks` | must match |
-| `existing-related` | `{"from_task_id":"$rel1","to_task_id":"$rel2","link_type":"related"}` | Related link that already exists | ok — logs `link_tasks` | must match |
-| `existing-related-reversed` | `{"from_task_id":"$rel2","to_task_id":"$rel1","link_type":"related"}` | Related link that exists in the other orientation | ok — task_links +1; logs `link_tasks` | approved difference |
-| `reverse-blocks` | `{"from_task_id":"$blocked","to_task_id":"$blocker"}` | Would create a two-task cycle | refused (JSON-RPC error): Adding a blocks link from $blocked to $blocker would create a cycle. | must match |
-| `self` | `{"from_task_id":"$pend","to_task_id":"$pend"}` | Task to itself | refused (JSON-RPC error): A task cannot be linked to itself. | must match |
-| `missing-from` | `{"from_task_id":"$none","to_task_id":"$pend"}` | Blocking task does not exist | refused (JSON-RPC error): task not found: $none | must match |
-| `missing-to` | `{"from_task_id":"$pend","to_task_id":"$none"}` | Blocked task does not exist | refused (JSON-RPC error): task not found: $none | must match |
-| `done-endpoint` | `{"from_task_id":"$done","to_task_id":"$pend"}` | Done task as an endpoint | ok — task_links +1; logs `link_tasks` | must match |
-| `bad-type` | `{"from_task_id":"$pend","to_task_id":"$pend2","link_type":"duplicates"}` | Unknown link type | refused (JSON-RPC error): Invalid type: Expected ("blocks" \| "related") but received "duplicates" | must match |
-
-### `unlink_tasks`
-
-| Row | Input | What it exercises | Legacy outcome | Status |
-| --- | --- | --- | --- | --- |
-| `blocks-default` | `{"from_task_id":"$blocker","to_task_id":"$blocked"}` | Default type is blocks | ok — task_links −1; logs `unlink_tasks` | must match |
-| `related` | `{"from_task_id":"$rel1","to_task_id":"$rel2","link_type":"related"}` | Related link | ok — task_links −1; logs `unlink_tasks` | must match |
-| `related-reversed` | `{"from_task_id":"$rel2","to_task_id":"$rel1","link_type":"related"}` | Related link given in the other orientation | ok — logs `unlink_tasks` | must match |
-| `absent` | `{"from_task_id":"$pend","to_task_id":"$pend2"}` | No such link | ok — logs `unlink_tasks` | must match |
-| `wrong-type` | `{"from_task_id":"$blocker","to_task_id":"$blocked","link_type":"related"}` | Link exists with another type | ok — logs `unlink_tasks` | must match |
-| `wrong-orientation` | `{"from_task_id":"$blocked","to_task_id":"$blocker"}` | Blocks link in the other orientation | ok — logs `unlink_tasks` | must match |
-| `missing-tasks` | `{"from_task_id":"$none","to_task_id":"$none"}` | Neither task exists | ok — logs `unlink_tasks` | must match |
-| `bad-type` | `{"from_task_id":"$pend","to_task_id":"$pend2","link_type":"duplicates"}` | Unknown link type | refused (JSON-RPC error): Invalid type: Expected ("blocks" \| "related") but received "duplicates" | must match |
-
-### `update_preference`
-
-| Row | Input | What it exercises | Legacy outcome | Status |
-| --- | --- | --- | --- | --- |
-| `sort-by` | `{"key":"sort_by","value":"due"}` | Valid key and value; the row is new | ok — user_preferences +1 | must match |
-| `overwrite-existing` | `{"key":"planning_prompt","value":"auto"}` | Replace a row the fixture already holds | ok — user_preferences ~1: value | must match |
-| `same-value` | `{"key":"planning_prompt","value":"never"}` | Set a row to the value it already has | ok — no writes | must match |
-| `each-key-kickoff` | `{"key":"kickoff_nudge","value":"never"}` | Another key and value set | ok — user_preferences +1 | must match |
-| `overwrite` | `{"key":"urgency_visibility","value":"hide"}` | A valid value on a key the fixture has not set | ok — user_preferences +1 | must match |
-| `bad-value` | `{"key":"sort_by","value":"colour"}` | Value outside the key's set | refused (JSON-RPC error): sort_by must be one of: readiness, due, project. | must match |
-| `bad-key` | `{"key":"favourite_food","value":"x"}` | Unknown key | refused (JSON-RPC error): Invalid type: Expected ("sort_by" \| "urgency_visibility" \| "kickoff_nudge" \| "session_log" | must match |
-| `internal-key` | `{"key":"last_session_at","value":"2026-10-01T00:00:00.000Z"}` | Internal key | ok — user_preferences +1 | must match |
-| `missing-value` | `{"key":"sort_by"}` | No value | refused (JSON-RPC error): sort_by must be one of: readiness, due, project. | must match |
 
 <!-- matrix:end -->

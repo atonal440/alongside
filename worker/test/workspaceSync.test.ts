@@ -158,13 +158,13 @@ it('bootstraps pre-migration rows at zero without rewriting data and preserves s
   expect(feed(sql)).toEqual(before);expect(metadata(sql)).toEqual(meta);
  }finally{sql.close();}
 });
-it('exposes the same coherent snapshot through REST and MCP, with strict empty input',async()=>{
+it('exposes the same coherent snapshot through REST and the admin MCP endpoint, with strict empty input',async()=>{
  const {sql,d1}=sqliteD1();const db=new DB(d1);
  try {
   seed(sql);const expected=await db.getWorkspaceSnapshot();
   const rest=await handleApiRequest(new Request('https://x/api/v2/sync/snapshot'),new URL('https://x/api/v2/sync/snapshot'),db);
   expect(rest.status).toBe(200);expect(await rest.json()).toEqual(expected);
-  const call=(args:unknown)=>handleMcpRequest(new Request('https://x/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'get_workspace_snapshot',arguments:args}})}),db,{DB:d1,AUTH_TOKEN:"test"});
+  const call=(args:unknown)=>handleMcpRequest(new Request('https://x/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'get_workspace_snapshot',arguments:args}})}),db,{DB:d1,AUTH_TOKEN:"test"},'admin');
   const mcp=await (await call({})).json() as {result:{content:{text:string}[]}};
   expect(JSON.parse(mcp.result.content[0]!.text)).toEqual(expected);
   const bad=await (await call({limit:1})).json() as {result:{isError:boolean}};expect(bad.result.isError).toBe(true);

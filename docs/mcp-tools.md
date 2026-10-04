@@ -1,14 +1,14 @@
 # MCP Tools Reference
 
-Alongside exposes 39 tools (including deprecated aliases) via the MCP endpoint at `/mcp` (JSON-RPC POST). All calls require an `Authorization: Bearer {AUTH_TOKEN}` header.
+Alongside lists 14 tools on the MCP endpoint at `/mcp` (JSON-RPC POST). All calls require an `Authorization: Bearer {AUTH_TOKEN}` header.
 
 ## Endpoints, tiers and annotations
 
-Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`, plus `idempotentHint` where true) so a host can approve per tier: reads are `readOnlyHint: true`; conversational writes are non-destructive; `delete_task`, `delete_project`, `apply_changes` and `restore_workspace` are `destructiveHint: true`. `start_session` is read-only (see its entry); it used to seed preferences and store `last_session_at`.
+Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`, plus `idempotentHint` where true) so a host can approve per tier: reads are `readOnlyHint: true`; conversational writes are non-destructive; `apply_changes` (which carries deletes) and `restore_workspace` are `destructiveHint: true`.
 
 `/mcp/admin` is an opt-in second endpoint with the same bearer token. Connect it only when needed. It lists `export_workspace`, `restore_workspace`, `get_workspace_snapshot` (the cursor read restore needs, and the way to check after a lost restore response whether it committed), `export_planning_settings` and `preview_legacy_dates`. It has no widget resources.
 
-Tools that moved there (and the REST-only `get_workspace_delta` and `get_entity_version`) stay listed on `/mcp` as deprecated aliases that behave exactly as before; their descriptions start with `Deprecated alias.` and name the new home. They are removed in phase D. `initialize` on `/mcp` carries a short neutral `instructions` field (what the tools are, the retry rule); it prescribes no workflow, and `start_session` no longer returns instructions. `get_capabilities` reports `toolSurface` (`version`, `commandCatalog`, `adminEndpoint`).
+The default `/mcp` list is `get_capabilities`, `resolve_time`, `find`, `get_context`, `get_history`, `describe_commands`, `preview_changes`, `apply_changes`, `show_tasks` and the quick verbs `add_task`, `update_task`, `complete_task`, `defer_task` and `focus_task`. Phase D removed the deprecated tools: calling any other name returns `Unknown tool`. The sync reads `get_workspace_delta` and `get_entity_version` (and the old `get_entity`, `get_link` and `get_planning_settings`) are REST only (`/api/v2/…`); export, restore and the snapshot read are on `/mcp/admin`. `initialize` on `/mcp` carries a short neutral `instructions` field (what the tools are, the retry rule); it prescribes no workflow. `get_capabilities` reports `toolSurface` (`version`, `commandCatalog`, `adminEndpoint`).
 
 ---
 
@@ -22,11 +22,11 @@ Through MCP, `apply_changes` also writes one action-log entry per command, in de
 
 ## Find, context and loose-intent changes (phase B)
 
-These tools replace the older list/get reads and the by-hand revision bookkeeping. The old tools keep working; their descriptions start with `Deprecated: use …`.
+These tools replace the older list/get reads and the by-hand revision bookkeeping. The old tools were removed in phase D.
 
-**`find`** — `{ entity: 'task' | 'project', preset?, filter?, sort?, order?, limit?, cursor? }`. Task filters: `statuses` (default `["pending"]`, deferred tasks included, like `list_tasks`), `text` (title and notes, case-insensitive), `project_id` and `focused` (`true`: only tasks whose focus has not expired; `false`: the rest). `preset: 'ready'` restricts to unblocked, non-deferred pending tasks (pending-only, so it rejects `statuses`); it no longer implies an order. `sort` is `created` (default), `updated`, `due` or `readiness`; `order` is `asc` or `desc` and defaults to `desc` for `created`, `updated` and `readiness`, `asc` for `due` (undated tasks count as latest). Projects sort by creation, newest first by default, and take `order` only. `readiness` is a heuristic score (kickoff note, session log, recent edits and near due dates raise it); nothing in the server picks it unless asked. Project filter: `status` (default `"active"`). Returns `{ entity, items, nextCursor }`; pass `nextCursor` back as `cursor`. Order is deterministic: the chosen sort, then creation, then ID, all in the same direction, except for `readiness`, where `order` applies only to the score and ties break oldest first either way (as `get_ready_tasks` did). The cursor is opaque (the sort key of the last item returned, tagged with the sort and order, so a cursor from a different ordering is rejected), so paging continues correctly even if that item was completed, edited or deleted between pages when sorting by `created` (an edit can change `updated`, `due` and `readiness`, so under those sorts a row edited between pages can move across the cursor, so it may be returned twice or missed); a cursor that isn't a `nextCursor` is rejected with `invalid_input`.
+**`find`** — `{ entity: 'task' | 'project', preset?, filter?, sort?, order?, limit?, cursor? }`. Task filters: `statuses` (default `["pending"]`, deferred tasks included), `text` (title and notes, case-insensitive), `project_id` and `focused` (`true`: only tasks whose focus has not expired; `false`: the rest). `preset: 'ready'` restricts to unblocked, non-deferred pending tasks (pending-only, so it rejects `statuses`); it no longer implies an order. `sort` is `created` (default), `updated`, `due` or `readiness`; `order` is `asc` or `desc` and defaults to `desc` for `created`, `updated` and `readiness`, `asc` for `due` (undated tasks count as latest). Projects sort by creation, newest first by default, and take `order` only. `readiness` is a heuristic score (kickoff note, session log, recent edits and near due dates raise it); nothing in the server picks it unless asked. Project filter: `status` (default `"active"`). Returns `{ entity, items, nextCursor }`; pass `nextCursor` back as `cursor`. Order is deterministic: the chosen sort, then creation, then ID, all in the same direction, except for `readiness`, where `order` applies only to the score and ties break oldest first either way (as `get_ready_tasks` did). The cursor is opaque (the sort key of the last item returned, tagged with the sort and order, so a cursor from a different ordering is rejected), so paging continues correctly even if that item was completed, edited or deleted between pages when sorting by `created` (an edit can change `updated`, `due` and `readiness`, so under those sorts a row edited between pages can move across the cursor, so it may be returned twice or missed); a cursor that isn't a `nextCursor` is rejected with `invalid_input`.
 
-**`get_context`** — `{ entity: 'task' | 'project' | 'link' | 'settings' | 'preferences', … , depth?: 0 | 1 }`. `entity: 'preferences'` returns `{ preferences }`, the stored user preferences with defaults merged in (a key to value map); the server never acts on them. `depth: 0` returns exactly what `get_entity`, `get_link` or `get_planning_settings` return. The default `depth: 1` adds a `context` object: for a task its `project`, `prerequisites`, `dependents` and `related` tasks; for a project its `ready_tasks` and `task_counts`. Missing or deleted entities come back unchanged (null row), with no context.
+**`get_context`** — `{ entity: 'task' | 'project' | 'link' | 'settings' | 'preferences', … , depth?: 0 | 1 }`. `entity: 'preferences'` returns `{ preferences }`, the stored user preferences with defaults merged in (a key to value map); the server never acts on them. `depth: 0` returns the row plus its entity and structural revisions (what the REST routes `/api/v2/entity`, `/api/v2/link` and `/api/v2/planning-settings` return). The default `depth: 1` adds a `context` object: for a task its `project`, `prerequisites`, `dependents` and `related` tasks; for a project its `ready_tasks` and `task_counts`. Missing or deleted entities come back unchanged (null row), with no context.
 
 **`get_history`** — `{ limit? }`. Action-log rows (`source: 'action_log'`) merged with command-audit rows (`source: 'command'`, with `command_id`, `actor`, `reason`, `changes`), newest first.
 
@@ -34,101 +34,18 @@ These tools replace the older list/get reads and the by-hand revision bookkeepin
 
 **Loose intent for `preview_changes`.** Instead of a strict envelope, send `{ intent: true, contractVersion: 2, commands: [...] }` where each command is its strict form without `expectedRevision`, `expectedStructuralRevision`, creation IDs or `successor`. `commandId` (minted if omitted), `actor` (default `"llm"`) and `reason` are optional. A creation command may carry a `clientRef`; later commands refer to it as `"@clientRef"` in `id`, `from`, `to` and `project`. The server reads current state, mints IDs, fills every guard and previews the result. The response is the usual preview plus `pinnedEnvelope`: the strict envelope to pass to `apply_changes` unchanged. Patches to `*.content.set` and `task.legacy-schedule.set` merge into current values because those commands replace whole field groups. A completion gets a minted `successor` only when the task has a recurrence. If anything changes between preview and apply, `apply_changes` returns `revision_conflict` as for any stale guard. Retrying a lost apply with the same envelope replays the receipt. Strict envelopes are still accepted and return no `pinnedEnvelope`.
 
-## Session & Discovery
-
-### `start_session`
-
-Deprecated: use `find({ entity: "task", filter: { focused: true } })`, `find({ entity: "task", preset: "ready", sort: "readiness", limit: 3 })` and `get_context({ entity: "preferences" })`. Nothing requires calling it. Read-only: it writes nothing. Default preferences are merged into the returned `preferences` in memory (a row exists only once someone sets it). It returns no `returning_after_gap` or instructions; a client that wants to know when the workspace last changed reads `get_history`. The old `last_session_at` preference is no longer read or written; existing rows stay readable and exported. Removed in phase D.
-
-**Parameters:** none
-
-**Returns:**
-```ts
-{
-  focused_tasks: Task[],            // tasks whose focus has not expired
-  suggested_tasks: Task[],          // top 3 ready tasks by readiness score
-  preferences: Record<string, string>
-}
-```
-
----
-
-### `list_projects`
-
-List projects filtered by status.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|---|---|---|---|
-| `status` | `'active'\|'archived'` | no | Filter by status. Defaults to `"active"`. |
-
-**Returns:** `{ projects: Project[] }`
-
----
-
-### `list_tasks`
-
-List tasks filtered by status and/or a text search query.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|---|---|---|---|
-| `statuses` | `('pending'\|'done')[]` | no | Filter to these statuses. Defaults to `['pending']`. |
-| `query` | `string` | no | Text search across title and notes. |
-
-**Returns:** `{ tasks: Task[] }`
-
----
-
-### `get_ready_tasks`
-
-Returns unblocked tasks sorted by readiness score — the most actionable tasks first. A task is blocked if it has an incomplete task with a `blocks` link pointing to it.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|---|---|---|---|
-| `project_id` | `string` | no | Restrict to tasks in this project. |
-
-**Returns:** `{ tasks: Task[] }`
-
-**Readiness score formula:**
-```
-base:            3 pts  (unblocked)
-has kickoff_note +3 pts
-has session_log  +2 pts
-due within 7d    +1 pt
-recently active  +1 pt  (session in last 14 days)
-```
-
----
-
-### `get_action_log`
-
-Fetches the last 50 actions (creates, updates, completions, deletions, etc.) in reverse chronological order. Intended for the action log badge widget — not for direct use in conversation.
-
-**Parameters:** none
-
-**Returns:** `{ entries: ActionLogEntry[] }`
-
-Each entry: `{ id, tool_name, task_id, title, detail, created_at }`
-
----
-
 ## Task CRUD
 
-**Mutating tools on the command path.** `add_task`, `update_task`, `complete_task`, `defer_task`, `focus_task`, `reopen_task`, `delete_task`, `create_project`, `update_project`, `delete_project`, `link_tasks`, `unlink_tasks` and `update_preference` compile to the same commands `apply_changes` runs, so they share its guards, receipts and audit. Each accepts two optional arguments in addition to the ones listed below:
+**Mutating tools on the command path.** `add_task`, `update_task`, `complete_task`, `defer_task` and `focus_task` compile to the same commands `apply_changes` runs, so they share its guards, receipts and audit. Each accepts two optional arguments in addition to the ones listed below:
 
 | Name | Type | Description |
 |---|---|---|
 | `commandId` | `string` | A `c_…` ID. Retrying with the same ID and the same arguments returns the first call's response verbatim (same minted task ID, same `action_log_entry`) and writes nothing, even if the task has changed since. The same ID with different arguments returns `command_id_conflict`. Without it, every call is a new command. |
-| `expectedRevision` | `integer` | Not on `add_task`, `create_project` or `link_tasks`. For `update_preference` it is the preference's sync revision, and `null` means it has never been set. Refuse with `revision_conflict` if the task is no longer at this revision (read it with `get_context`). A pinned revision is never retried. |
+| `expectedRevision` | `integer` | Not on `add_task`. Refuse with `revision_conflict` if the task is no longer at this revision (read it with `get_context`). A pinned revision is never retried. |
 
 Without `expectedRevision` a verb reads the current state itself. If another write lands between that read and the commit, it re-reads, rebuilds its commands (re-merging a partial `update_task` patch against the new values) and tries again, up to three attempts, before returning the conflict. IDs for tasks the call creates (`add_task`, a recurring `complete_task`'s successor) derive from the command ID, so two identical requests racing each other plan the same identities and the loser replays the winner.
 
-The response and the action-log row are written in the same atomic batch as the change. A refused call writes neither. `update_preference` never logs, as before; its receipt still stores the response and the preference diff. A call that changes nothing (`update_task` with only `status: "pending"` on a pending task, or an empty patch) still records its command ID and writes its action-log entry once. Refusals are structured tool errors with a code and a recovery hint, not bare JSON-RPC errors. Where these verbs differ from the old handlers is listed in [the parity matrix](plans/mcp-parity-matrix.md).
+The response and the action-log row are written in the same atomic batch as the change. A refused call writes neither. A call that changes nothing (`update_task` with only `status: "pending"` on a pending task, or an empty patch) still records its command ID and writes its action-log entry once. Refusals are structured tool errors with a code and a recovery hint, not bare JSON-RPC errors. Where these verbs differ from the old handlers is listed in [the parity matrix](plans/mcp-parity-matrix.md).
 
 ### `add_task`
 
@@ -206,20 +123,6 @@ Hide a task. Use `kind: 'until'` (with a future ISO date in `until`) to defer te
 
 ---
 
-### `reopen_task`
-
-Revert a completed or deferred task back to active `pending`. Clears `defer_kind`/`defer_until` and `focused_until`.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|---|---|---|---|
-| `task_id` | `string` | yes | |
-
-**Returns:** `{ ...Task, action_log_entry }`
-
----
-
 ### `focus_task`
 
 Put a non-deferred pending task front-of-mind for a bounded time window. Deferred tasks must be reopened before they can be focused.
@@ -235,135 +138,24 @@ Put a non-deferred pending task front-of-mind for a bounded time window. Deferre
 
 ---
 
-### `delete_task`
-
-Permanently delete a task. This is a hard delete — there is no undo.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|---|---|---|---|
-| `task_id` | `string` | yes | |
-
-**Returns:** `{ deleted: true, task_id, title, action_log_entry }`
-
----
-
 ## Display (MCP App Widgets)
 
 These tools return a `ui` field that Claude renders as an inline widget using the MCP Apps spec. The widget communicates back to Claude via postMessage JSON-RPC to perform mutations (complete, reopen).
 
 ### `show_tasks`
 
-Render a task list widget inline in Claude. Checkboxes in the widget call `complete_task` or `reopen_task` without additional user prompting.
+Render a task list widget inline in Claude. Checkboxes in the widget call `complete_task`, or `preview_changes` and `apply_changes` with `task.reopen`, without additional user prompting.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |---|---|---|---|
-| `task_ids` | `string[]` | yes | Tasks to display. |
+| `task_ids` | `string[]` | one of | Tasks to display. |
+| `project_id` | `string` | one of | A project to display with its pending tasks. |
 
-**Returns:** `{ tasks: Task[], projects: Record<projectId, projectTitle> }` plus MCP App widget metadata.
+Give exactly one of the two.
 
----
-
-### `show_project`
-
-Render a project and all its tasks as an inline widget.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|---|---|---|---|
-| `project_id` | `string` | yes | |
-
-**Returns:** `{ project: Project, tasks: Task[] }` plus MCP App widget metadata.
-
----
-
-## Projects
-
-### `create_project`
-
-Create a new project and optionally link existing tasks to it. Task assignment is applied in the same batch as project creation; duplicate task ids are counted once, and a missing task id rejects the whole operation.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|---|---|---|---|
-| `title` | `string` | yes | |
-| `kickoff_note` | `string` | no | Re-entry context for the project. |
-| `task_ids` | `string[]` | no | Existing tasks to associate immediately. |
-
-**Returns:** `{ project: Project, linked_task_count: number, action_log_entry }`
-
----
-
-### `get_project_context`
-
-Fetch a project and its ready (unblocked) tasks. Useful for orienting at the start of a focused work session.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|---|---|---|---|
-| `project_id` | `string` | yes | |
-
-**Returns:** `{ project: Project, ready_tasks: Task[] }`
-
----
-
-## Relationships
-
-### `link_tasks`
-
-Create a dependency or relationship between two tasks.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|---|---|---|---|
-| `from_task_id` | `string` | yes | |
-| `to_task_id` | `string` | yes | |
-| `link_type` | `'blocks'\|'related'\|'supersedes'` | yes | |
-
-**Link type semantics:**
-
-| Type | Meaning |
-|---|---|
-| `blocks` | `from_task` must be completed before `to_task` appears in ready lists |
-| `related` | Informational only; no scheduling effect |
-| `supersedes` | `from_task` replaces `to_task`; `to_task` is effectively archived |
-
-**Returns:** `{ linked: true, from_task_id, from_task_title, to_task_id, to_task_title, link_type, action_log_entry }`
-
----
-
-## Preferences & Notes
-
-### `update_preference`
-
-Update a user preference. Preferences are stored values; the server does not act on them, so a client reads them with `get_context({ entity: "preferences" })` and applies them as it sees fit.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|---|---|---|---|
-| `key` | `string` | yes | Preference key (see below). |
-| `value` | `string` | yes | New value. |
-
-**Valid preference keys:**
-
-| Key | Description |
-|---|---|
-| `sort_by` | How to sort task lists |
-| `urgency_visibility` | How prominently to surface due-date urgency |
-| `kickoff_nudge` | Whether to prompt for kickoff notes at session end |
-| `session_log` | Whether to log session summaries |
-| `interruption_style` | How Claude should handle mid-session context switches |
-| `planning_prompt` | Prompt style for plan-type tasks |
-
-**Returns:** `{ updated: true, key, value }`
+**Returns:** for `task_ids`, `{ tasks: Task[], projects: Record<projectId, projectTitle> }`; for `project_id`, `{ project: Project, tasks: Task[] }`. Both carry MCP App widget metadata.
 
 ---
 
@@ -420,7 +212,7 @@ split into independent wipes; larger restore support requires staging.
 
 | Tool | Purpose |
 | --- | --- |
-| `get_planning_settings` | Read complete settings and revision, or null before setup |
+| `get_context({ entity: "settings" })` | Read complete settings and revision, or null before setup (REST: `GET /api/v2/planning-settings`) |
 | `export_planning_settings` | Export portable preference values without revision or credentials |
 | `preview_changes` | Preview a standalone command or bounded mixed batch without writes |
 | `apply_changes` | Commit a standalone command or bounded mixed batch with guards/receipt/audit/feed |
@@ -442,7 +234,7 @@ preferences document, not a full backup; restore non-null values through
 
 ## Entity version lookup
 
-`get_entity_version` accepts a strict task/project/duty key with `entity` and
+`get_entity_version` (REST only, `POST /api/v2/entity-version`) accepts a strict task/project/duty key with `entity` and
 `id`, or a link key with `entity: "link"`, `from`, `to` and `linkType`. It returns
 the key, workspace `structuralRevision` and `version` from one SQL statement.
 A null version has no ledger history; non-null versions have a numeric
@@ -452,13 +244,13 @@ v1 restore and ID reuse. This lookup does not fetch row content or provide delta
 for supported mutation commands. See [the version contract](shared/entity-versions.md).
 
 
-`get_entity` accepts `{entity: "task"|"project", id}` and returns row content,
+`get_entity` (REST only, `POST /api/v2/entity`; over MCP use `get_context` with `depth: 0`) accepts `{entity: "task"|"project", id}` and returns row content,
 its ledger `version`, and `structuralRevision` in one coherent read. Creation
 uses `task.create`/`project.create` with stable caller IDs, expected null identity
 revision and expected structural revision. A scoped clientRef maps to the ID;
 a task's selected project carries its own expected revision. See
 [the creation contract](shared/reliable-creation.md) for complete inputs and
-replay/retained-intent instructions. `get_link` reads an exact edge key and its
+replay/retained-intent instructions. `get_link` (REST only, `POST /api/v2/link`) reads an exact edge key and its
 content/version/structural snapshot. `link.add`/`link.remove` guard edge and
 aggregate revisions; related additions require ascending IDs and no reverse
 duplicate, while blocks additions reject cycles. Removal keeps a tombstone and
@@ -533,7 +325,7 @@ contracts and the remaining delta/offline rollout. This is not a restore input.
 
 ### `get_workspace_delta`
 
-Accepts a bootstrap/completed-pull cursor, optional continuation watermark and
+REST only (`POST /api/v2/sync/delta`). Accepts a bootstrap/completed-pull cursor, optional continuation watermark and
 1–500 image limit (default 100). Omit watermark on the first page; pass that
 unchanged watermark and each returned cursor through all remaining pages.
 Returns ordered historical versioned images, `from`, `cursor`, `watermark` and

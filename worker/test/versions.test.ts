@@ -8,7 +8,6 @@ import type { Plan } from '../src/domain/Op';
 import { parseEntityKey, parseEntityVersionResponse, entityStorageKey } from '@shared/wire/versions';
 import { parseRevision, parseTaskId } from '@shared/parse';
 import { handleApiRequest } from '../src/api';
-import { handleMcpRequest } from '../src/mcp';
 import { sqliteD1 } from './helpers/sqliteD1';
 
 const stamp = '2026-10-01T10:00:00.123Z';
@@ -218,7 +217,7 @@ it('counts aggregate/entity guard SQL before any I/O or mutation', async () => {
 });
 
 describe('version lookup boundaries', () => {
-  it('shares coherent parsed results across REST and MCP', async () => {
+  it('returns coherent parsed results over REST', async () => {
     const { sql, d1 } = sqliteD1();
     const db = new DB(d1);
     try {
@@ -227,8 +226,6 @@ describe('version lookup boundaries', () => {
       const rest = await handleApiRequest(req, new URL(req.url), db);
       const body = await rest.json();
       expect(rest.status).toBe(200); expect(parseEntityVersionResponse(body).ok).toBe(true);
-      const rpc = new Request('https://test/mcp', { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_entity_version', arguments: taskKey } }) });
-      expect(await (await handleMcpRequest(rpc, db, { DB: d1, AUTH_TOKEN: 'test' })).json()).toMatchObject({ result: { structuredContent: body } });
     } finally { sql.close(); }
   });
   it.each([{}, { entity: 'task', id: 'invalid' }, { entity: 'task', id, extra: true }, { entity: 'link', from: id, to: id }, { entity: 'link', from: id, to: id, linkType: 'unknown' }])('rejects malformed input before reading', async input => {

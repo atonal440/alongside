@@ -4,7 +4,6 @@ import { sqliteD1 } from './helpers/sqliteD1';
 import { parseWorkspaceDelta, parseWorkspaceDeltaInput, type WorkspaceDeltaInput } from '@shared/wire/sync';
 import { parseFoundationErrorEnvelope } from '@shared/wire/planning';
 import { handleApiRequest } from '../src/api';
-import { handleMcpRequest } from '../src/mcp';
 const now='2026-10-01T10:00:00Z';
 const insert=(id='t_first1')=>`INSERT INTO tasks(id,title,created_at,updated_at) VALUES('${id}','Initial','${now}','${now}')`;
 function input(raw:unknown):WorkspaceDeltaInput {const parsed=parseWorkspaceDeltaInput(raw);if(!parsed.ok)throw new Error(JSON.stringify(parsed.error));return parsed.value;}
@@ -86,19 +85,16 @@ it('returns large pages as separate D1 rows instead of one aggregated value',asy
   expect(rows).toBe(250);expect(page.changes).toHaveLength(250);expect(page.hasMore).toBe(false);expect(Buffer.byteLength(JSON.stringify(page))).toBeGreaterThan(2_000_000);
  }finally{sql.close();}
 });
-it('keeps REST/MCP inputs, pagination and reset errors equivalent',async()=>{
+it('keeps REST inputs, pagination and reset errors strict',async()=>{
  const {sql,d1}=sqliteD1();const db=new DB(d1);
  try {
   sql.exec(insert());const args={cursor:{epoch:0,sequence:0},limit:1};const expected=await db.getWorkspaceDelta(input(args));
   const restCall=async(body:unknown)=>{const request=new Request('https://x/api/v2/sync/delta',{method:'POST',body:JSON.stringify(body)});return handleApiRequest(request,new URL(request.url),db);};
   const rest=await restCall(args);expect(rest.status).toBe(200);expect(await rest.json()).toEqual(expected);
-  const rpc=async(argumentsValue:unknown)=>{const request=new Request('https://x/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'get_workspace_delta',arguments:argumentsValue}})});return(await handleMcpRequest(request,db,{DB:d1,AUTH_TOKEN:'tok'})).json() as Promise<{result:{structuredContent:unknown,isError?:boolean}}>};
-  expect((await rpc(args)).result.structuredContent).toEqual(expected);
   for(const body of [{cursor:{epoch:0,sequence:-1}},{cursor:args.cursor,limit:0},{cursor:args.cursor,limit:501},{cursor:args.cursor,watermark:{epoch:1,sequence:1}},{cursor:{epoch:0,sequence:1},watermark:args.cursor},{cursor:args.cursor,extra:true}]) {
-   expect((await restCall(body)).status).toBe(400);expect((await rpc(body)).result.isError).toBe(true);
+   expect((await restCall(body)).status).toBe(400);
   }
   const stale={cursor:{epoch:1,sequence:0}};const reset=await restCall(stale);expect(reset.status).toBe(409);const error=await reset.json();expect(parseFoundationErrorEnvelope(error).ok).toBe(true);
-  expect((await rpc(stale)).result).toMatchObject({isError:true,structuredContent:error});
  }finally{sql.close();}
 });
 
