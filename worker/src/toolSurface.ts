@@ -117,12 +117,13 @@ export function asDeprecatedAlias<T extends Named>(tool: T): T {
 export const REPLACED_BY: Record<string, string> = {
   list_projects: 'find({ entity: "project", filter: { status } })',
   list_tasks: 'find({ entity: "task", filter: { statuses, text } })',
-  get_ready_tasks: 'find({ entity: "task", preset: "ready", filter: { project_id } })',
+  get_ready_tasks: 'find({ entity: "task", preset: "ready", sort: "readiness", filter: { project_id } })',
   get_project_context: 'get_context({ entity: "project", id })',
   get_action_log: 'get_history',
   get_entity: 'get_context({ entity, id, depth: 0 })',
   get_link: 'get_context({ entity: "link", from, to, linkType, depth: 0 })',
   get_planning_settings: 'get_context({ entity: "settings" })',
+  start_session: 'find({ entity: "task", filter: { focused: true } }), find({ entity: "task", preset: "ready", sort: "readiness", limit: 3 }) and get_context({ entity: "preferences" })',
 };
 
 export function withReplacement<T extends Named>(tool: T): T {

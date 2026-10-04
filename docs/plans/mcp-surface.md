@@ -393,8 +393,8 @@ these two cases.
 
 `start_session` stays for now as an optional snapshot because hosts don't
 consistently support MCP prompts, but it is deprecated and removed in phase D:
-once `find` can filter focused tasks and a read exposes preferences it has
-no remaining job. The server carries no workflow.
+`find` now filters focused tasks and `get_context({ entity: "preferences" })` reads
+preferences, so it has no remaining job. The server carries no workflow.
 `initialize.instructions` is a few neutral lines about calling the tools, and the
 rituals the old `SESSION_INSTRUCTIONS` described (opening, gap triage, kickoff
 notes, session close) live in client skills. `returning_after_gap` is gone; a
@@ -420,7 +420,7 @@ Phases refer to [Rollout](#rollout).
 
 | Current tool | Becomes | Phase | Notes |
 | --- | --- | --- | --- |
-| `start_session` | `start_session` | A, read-only by C | Static instructions move to `initialize.instructions`; preference seeding and `last_session_at` writes removed |
+| `start_session` | `find` (`filter.focused`, `preset: 'ready'`, `sort`) and `get_context({ entity: 'preferences' })` | deprecated, removed D | Static instructions removed (neutral `initialize.instructions` only); preference seeding, `last_session_at` writes and the gap flag removed |
 | `show_tasks` | `show_tasks` | — | Unchanged |
 | `show_project` | `show_tasks({ project_id })` | D | Same widget resource; keep the old name until D |
 | `list_projects` | `find({ entity: 'project', filter: { status } })` | B, removed D | |

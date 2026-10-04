@@ -44,7 +44,7 @@ export const ContractErrorSchema = v.strictObject({
   code: v.string(), path: v.array(v.string()), message: v.string(), retryable: v.boolean(), recoveryHint: v.string(),
 });
 /** Bump when the set of default-endpoint tools changes shape (see docs/plans/mcp-surface.md). */
-export const TOOL_SURFACE_VERSION = 2;
+export const TOOL_SURFACE_VERSION = 3;
 /** Bump when command kinds or their schemas change. */
 export const COMMAND_CATALOG_VERSION = 1;
 export const CapabilitiesSchema = v.strictObject({

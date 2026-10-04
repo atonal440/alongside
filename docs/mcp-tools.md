@@ -24,9 +24,9 @@ Through MCP, `apply_changes` also writes one action-log entry per command, in de
 
 These tools replace the older list/get reads and the by-hand revision bookkeeping. The old tools keep working; their descriptions start with `Deprecated: use …`.
 
-**`find`** — `{ entity: 'task' | 'project', preset?: 'ready', filter?, limit?, cursor? }`. Task filters: `statuses` (default `["pending"]`, deferred tasks included, like `list_tasks`), `text` (title and notes, case-insensitive) and `project_id`. `preset: 'ready'` is `get_ready_tasks` (pending-only, so it rejects `statuses`). Project filter: `status` (default `"active"`). Returns `{ entity, items, nextCursor }`; pass `nextCursor` back as `cursor`. Order is deterministic: due date then creation then ID (readiness score for the preset). The cursor is opaque (the sort key of the last item returned), so paging continues correctly even if that item was completed, edited or deleted between pages; a cursor that isn't a `nextCursor` is rejected with `invalid_input`.
+**`find`** — `{ entity: 'task' | 'project', preset?, filter?, sort?, order?, limit?, cursor? }`. Task filters: `statuses` (default `["pending"]`, deferred tasks included, like `list_tasks`), `text` (title and notes, case-insensitive), `project_id` and `focused` (`true`: only tasks whose focus has not expired; `false`: the rest). `preset: 'ready'` restricts to unblocked, non-deferred pending tasks (pending-only, so it rejects `statuses`); it no longer implies an order. `sort` is `created` (default), `updated`, `due` or `readiness`; `order` is `asc` or `desc` and defaults to `desc` for `created`, `updated` and `readiness`, `asc` for `due` (undated tasks count as latest). Projects sort by creation, newest first by default, and take `order` only. `readiness` is a heuristic score (kickoff note, session log, recent edits and near due dates raise it); nothing in the server picks it unless asked. Project filter: `status` (default `"active"`). Returns `{ entity, items, nextCursor }`; pass `nextCursor` back as `cursor`. Order is deterministic: the chosen sort, then creation, then ID, all in the same direction, except for `readiness`, where `order` applies only to the score and ties break oldest first either way (as `get_ready_tasks` did). The cursor is opaque (the sort key of the last item returned, tagged with the sort and order, so a cursor from a different ordering is rejected), so paging continues correctly even if that item was completed, edited or deleted between pages when sorting by `created` (an edit can change `updated`, `due` and `readiness`, so under those sorts a row edited between pages can move across the cursor, so it may be returned twice or missed); a cursor that isn't a `nextCursor` is rejected with `invalid_input`.
 
-**`get_context`** — `{ entity: 'task' | 'project' | 'link' | 'settings', … , depth?: 0 | 1 }`. `depth: 0` returns exactly what `get_entity`, `get_link` or `get_planning_settings` return. The default `depth: 1` adds a `context` object: for a task its `project`, `prerequisites`, `dependents` and `related` tasks; for a project its `ready_tasks` and `task_counts`. Missing or deleted entities come back unchanged (null row), with no context.
+**`get_context`** — `{ entity: 'task' | 'project' | 'link' | 'settings' | 'preferences', … , depth?: 0 | 1 }`. `entity: 'preferences'` returns `{ preferences }`, the stored user preferences with defaults merged in (a key to value map); the server never acts on them. `depth: 0` returns exactly what `get_entity`, `get_link` or `get_planning_settings` return. The default `depth: 1` adds a `context` object: for a task its `project`, `prerequisites`, `dependents` and `related` tasks; for a project its `ready_tasks` and `task_counts`. Missing or deleted entities come back unchanged (null row), with no context.
 
 **`get_history`** — `{ limit? }`. Action-log rows (`source: 'action_log'`) merged with command-audit rows (`source: 'command'`, with `command_id`, `actor`, `reason`, `changes`), newest first.
 
@@ -38,7 +38,7 @@ These tools replace the older list/get reads and the by-hand revision bookkeepin
 
 ### `start_session`
 
-Optional snapshot; nothing requires calling it, but it is currently the only read that returns focused tasks and stored preferences (`get_context({ entity: "settings" })` returns planning settings, not these). Read-only: it writes nothing. Default preferences are merged into the returned `preferences` in memory (a row exists only once someone sets it). It no longer returns `returning_after_gap` or instructions; a client that wants to know when the workspace last changed reads `get_history`. The old `last_session_at` preference is no longer read or written; existing rows stay readable and exported.
+Deprecated: use `find({ entity: "task", filter: { focused: true } })`, `find({ entity: "task", preset: "ready", sort: "readiness", limit: 3 })` and `get_context({ entity: "preferences" })`. Nothing requires calling it. Read-only: it writes nothing. Default preferences are merged into the returned `preferences` in memory (a row exists only once someone sets it). It returns no `returning_after_gap` or instructions; a client that wants to know when the workspace last changed reads `get_history`. The old `last_session_at` preference is no longer read or written; existing rows stay readable and exported. Removed in phase D.
 
 **Parameters:** none
 
@@ -343,7 +343,7 @@ Create a dependency or relationship between two tasks.
 
 ### `update_preference`
 
-Update a user preference. Preferences are stored values; the server does not act on them, so a client reads them with `start_session` and applies them as it sees fit.
+Update a user preference. Preferences are stored values; the server does not act on them, so a client reads them with `get_context({ entity: "preferences" })` and applies them as it sees fit.
 
 **Parameters:**
 

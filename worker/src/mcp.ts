@@ -45,9 +45,9 @@ function uiMeta(resourceUri: string, extra?: Record<string, unknown>) {
 const SERVER_INSTRUCTIONS = `
 Alongside stores tasks, projects, links, focus windows and a change history. It does not prescribe a workflow; follow the user's own.
 
-Reading: find lists tasks or projects, get_context reads one entity with its neighborhood, get_history reads past changes.
+Reading: find lists tasks or projects (sort, order and filters such as focused are arguments), get_context reads one entity with its neighborhood, get_history reads past changes.
 Writing: the verbs (add_task, complete_task, and so on) and apply_changes all go through the same planner. Pass a commandId so a retry replays the first result instead of repeating the change.
-Preferences are stored values the user has set; start_session returns them (with focused tasks), and update_preference changes one when the user asks.
+Preferences are stored values the user has set; get_context({ entity: "preferences" }) reads them and update_preference changes one when the user asks.
 `.trim();
 
 const TOOL_DEFS = [
@@ -56,7 +56,7 @@ const TOOL_DEFS = [
   ...READ_TOOLS,
   {
     name: 'start_session',
-    description: 'Optional snapshot: focused tasks, the top three ready tasks and preferences. It is the way to read focused tasks and stored preferences; nothing requires calling it.',
+    description: 'Snapshot of focused tasks, the top three ready tasks by readiness and stored preferences. Nothing requires calling it.',
     inputSchema: { type: 'object', properties: {} },
   },
   {

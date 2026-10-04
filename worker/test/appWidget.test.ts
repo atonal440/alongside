@@ -115,7 +115,7 @@ describe('task widget', () => {
     try {
       const tasks = [];
       for (let i = 0; i < 205; i++) tasks.push(await db.addTask({ title: `T${String(i).padStart(3, '0')}`, due_date: `2027-01-01` }));
-      const last = tasks[tasks.length - 1]!;
+      const last = tasks[0]!;                                               // oldest task: last in find's newest-first order
       const widget = mountWidget(d1, db);
       await sleep();
       widget.show([last]);
