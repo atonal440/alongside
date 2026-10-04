@@ -28,7 +28,7 @@ describe('find', () => {
       expect(found.items.map(t => t.id).sort()).toEqual(legacy.map(t => t.id).sort());
       expect(found.nextCursor).toBeNull();
       const ready = await callReadTool('find', { entity: 'task', preset: 'ready', sort: 'readiness' }, db) as { items: { id: string }[] };
-      expect(ready.items.map(t => t.id).sort()).toEqual((await db.listReadyTasks()).map(t => t.id).sort());
+      expect(ready.items.map(t => t.id)).toEqual((await db.listReadyTasks()).map(t => t.id));
       expect(ready.items.map(t => t.id)).not.toContain((await db.listAllTasks()).find(t => t.title === 'Plant seeds')!.id);
       const scoped = await callReadTool('find', { entity: 'task', preset: 'ready', filter: { project_id: project.id } }, db) as { items: { id: string }[] };
       expect(scoped.items.map(t => t.id)).toEqual([a.id]);

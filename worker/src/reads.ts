@@ -122,8 +122,8 @@ function decodeCursor(cursor: string): SortKey {
  * Keyset paging over a list already sorted by `keyOf` (ascending when `dir` is 1, descending when -1). The cursor is the sort key of the
  * last item returned, so the next page is whatever sorts after that key even if the item itself was
  * completed, deleted or edited between pages. That holds for an immutable key (creation). With a
- * key an edit can change (updated, due, readiness), an edited row can move past the cursor and
- * appear again; rows are never skipped for that reason.
+ * key an edit can change (updated, due, readiness), an edited row can move across the cursor, so
+ * it may appear twice or be missed.
  */
 function page<T>(items: T[], limit: number, cursor: unknown, keyOf: (item: T) => SortKey, dir: 1 | -1 = 1, tag?: string): { items: T[]; nextCursor: string | null } {
   let start = 0;
@@ -196,16 +196,19 @@ async function find(args: Record<string, unknown>, db: DB) {
       case 'updated': return [tag, task.updated_at, task.id];
       case 'due': return [tag, task.due_date === null ? 1 : 0, task.due_date ?? '', task.created_at, task.id];
       // Deferred tasks aren't actionable now, so they rank with blocked ones (the scorer's floor).
-      case 'readiness': return [tag, isDeferred(task, at) ? 5 : readinessScore(task, at, links, everyTask), task.created_at, task.id];
+      case 'readiness': return [tag, (dir === -1 ? -1 : 1) * (isDeferred(task, at) ? 5 : readinessScore(task, at, links, everyTask)), task.created_at, task.id];
       default: return [tag, task.created_at, task.id];
     }
   };
-  tasks = tasks.slice().sort((a, b) => dir * compareKeys(keyOf(a), keyOf(b)));
+  // Readiness folds the direction into the score, so ties break oldest first either way (as
+  // get_ready_tasks did); the other sorts flip the whole key.
+  const keyDir = sort === 'readiness' ? 1 : dir;
+  tasks = tasks.slice().sort((a, b) => keyDir * compareKeys(keyOf(a), keyOf(b)));
   if (text) {
     const q = text.toLowerCase();
     tasks = tasks.filter(task => task.title.toLowerCase().includes(q) || (task.notes?.toLowerCase().includes(q) ?? false));
   }
-  const { items, nextCursor } = page(tasks, limit, args.cursor, keyOf, dir, tag);
+  const { items, nextCursor } = page(tasks, limit, args.cursor, keyOf, keyDir, tag);
   return { entity: 'task', items, nextCursor };
 }
 
