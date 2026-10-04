@@ -646,7 +646,7 @@ never registered in `TOOLS`; that section was removed in phase A.
   remaining quick verbs. No deprecation window was kept: the maintainer has no
   external callers to wait on. `action_log.tool_name` and the receipt codec
   still accept the removed names, so history and stored receipts stay readable.
-  Preferences are now changed with `apply_changes` and a `preference.set`
+  `toolSurface.version` is bumped to 4 for the removal. Preferences are now changed with `apply_changes` and a `preference.set`
   command.
 - **Slices 3–7** then add command kinds, `get_agenda`, `preview_schedule` and
   `undo_changes` to this surface instead of adding tools.

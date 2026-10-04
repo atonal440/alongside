@@ -73,7 +73,7 @@ the PWA's queue sends versioned command envelopes instead of legacy REST writes.
 
 ## Fixed-watermark delta pulls
 
-`POST /api/v2/sync/delta`, MCP `get_workspace_delta` and PWA `api.workspaceDelta`
+`POST /api/v2/sync/delta` (REST only; the MCP tool was removed in phase D) and PWA `api.workspaceDelta`
 accept `{cursor, watermark?, limit?}`. Use the cursor from a successful bootstrap
 or completed pull. The limit is 1–500, default 100. On the first page omit
 `watermark`; on every continuation pass the first page's unchanged watermark
