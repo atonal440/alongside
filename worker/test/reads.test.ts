@@ -283,3 +283,16 @@ describe('find sort readiness', () => {
     } finally { sql.close(); }
   });
 });
+
+describe('find sort readiness and deferral', () => {
+  it('ranks a deferred task below actionable ones', async () => {
+    const { sql, d1 } = sqliteD1(); const db = new DB(d1);
+    try {
+      const deferred = await db.addTask({ title: 'Later', kickoff_note: 'start here' });
+      await db.deferTask(deferred.id, 'someday');
+      const plain = await db.addTask({ title: 'Plain' });
+      const found = await callReadTool('find', { entity: 'task', sort: 'readiness' }, db) as { items: { id: string }[] };
+      expect(found.items.map(t => t.id)).toEqual([plain.id, deferred.id]);
+    } finally { sql.close(); }
+  });
+});

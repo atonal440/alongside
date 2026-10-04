@@ -8,7 +8,7 @@ import { CommandError } from './domain/commands';
 import { invalidInput } from './domain/temporalFoundation';
 import { COMMAND_ENVELOPE_PROPERTIES, COMMAND_VARIANTS } from './commands';
 import type { DB } from './db';
-import { isFocused, readinessScore } from '@shared/readiness';
+import { isDeferred, isFocused, readinessScore } from '@shared/readiness';
 import type { Task } from '@shared/types';
 
 const DEFAULT_LIMIT = 50;
@@ -121,7 +121,9 @@ function decodeCursor(cursor: string): SortKey {
 /**
  * Keyset paging over a list already sorted by `keyOf` (ascending when `dir` is 1, descending when -1). The cursor is the sort key of the
  * last item returned, so the next page is whatever sorts after that key even if the item itself was
- * completed, deleted or edited between pages.
+ * completed, deleted or edited between pages. That holds for an immutable key (creation). With a
+ * key an edit can change (updated, due, readiness), an edited row can move past the cursor and
+ * appear again; rows are never skipped for that reason.
  */
 function page<T>(items: T[], limit: number, cursor: unknown, keyOf: (item: T) => SortKey, dir: 1 | -1 = 1, tag?: string): { items: T[]; nextCursor: string | null } {
   let start = 0;
@@ -193,7 +195,8 @@ async function find(args: Record<string, unknown>, db: DB) {
     switch (sort) {
       case 'updated': return [tag, task.updated_at, task.id];
       case 'due': return [tag, task.due_date === null ? 1 : 0, task.due_date ?? '', task.created_at, task.id];
-      case 'readiness': return [tag, readinessScore(task, at, links, everyTask), task.created_at, task.id];
+      // Deferred tasks aren't actionable now, so they rank with blocked ones (the scorer's floor).
+      case 'readiness': return [tag, isDeferred(task, at) ? 5 : readinessScore(task, at, links, everyTask), task.created_at, task.id];
       default: return [tag, task.created_at, task.id];
     }
   };
