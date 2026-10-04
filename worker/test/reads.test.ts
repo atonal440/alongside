@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { DB } from '../src/db';
 import { callReadTool } from '../src/reads';
 import { callCommandTool } from '../src/commands';
-import { TOOLS } from '../src/mcp';
 import { CommandEnvelopeSchema } from '@shared/wire/commands';
 import { parseSchema } from '@shared/parse';
 import { sqliteD1 } from './helpers/sqliteD1';
@@ -179,19 +178,6 @@ describe('describe_commands', () => {
       expect(kinds.size).toBe((applyTool.inputSchema.properties.commands.items.oneOf as unknown[]).length);
       await expect(callReadTool('describe_commands', { family: 'series' }, db)).rejects.toMatchObject({ detail: { code: 'invalid_input' } });
     } finally { sql.close(); }
-  });
-});
-
-describe('deprecation notices', () => {
-  it('points each replaced read tool at its successor and leaves the rest alone', () => {
-    const description = (name: string) => TOOLS.find(tool => tool.name === name)!.description;
-    expect(description('list_tasks')).toMatch(/^Deprecated: use find\(/);
-    expect(description('get_ready_tasks')).toContain('preset: "ready", sort: "readiness"');
-    expect(description('get_action_log')).toMatch(/^Deprecated: use get_history\./);
-    expect(description('start_session')).toMatch(/^Deprecated: use find\(/);
-    expect(description('get_entity')).toContain('get_context');
-    expect(description('add_task')).not.toMatch(/Deprecated/);
-    expect(description('find')).not.toMatch(/Deprecated/);
   });
 });
 

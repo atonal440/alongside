@@ -26,7 +26,7 @@ const redoc = process.env.PARITY_DOC === '1';
 describe('parity matrix', () => {
   it('has unique row ids and covers every retained mutating tool', () => {
     expect(new Set(ROWS.map(r => r.id)).size).toBe(ROWS.length);
-    expect(new Set(ROWS.map(r => r.tool))).toEqual(new Set(['add_task', 'complete_task', 'defer_task', 'update_task', 'reopen_task', 'focus_task', 'delete_task', 'create_project', 'update_project', 'delete_project', 'link_tasks', 'unlink_tasks', 'update_preference']));
+    expect(new Set(ROWS.map(r => r.tool))).toEqual(new Set(['add_task', 'complete_task', 'defer_task', 'update_task', 'focus_task']));
   });
 
   if (approve) {

@@ -104,13 +104,6 @@ export const ROWS: Row[] = [
   row('update_task', 'done-title', { task_id: '$done', title: 'Edited after done' }, 'Edit a done task'),
   row('update_task', 'done-due', { task_id: '$done', due_date: '2026-11-01' }, 'Schedule a done task'),
 
-  // ── reopen_task ─────────────────────────────────────────────────────────────
-  row('reopen_task', 'done', { task_id: '$done' }, 'Done task'),
-  row('reopen_task', 'deferred', { task_id: '$deferred' }, 'Deferred task clears its deferral'),
-  row('reopen_task', 'someday', { task_id: '$someday' }, 'Someday task'),
-  row('reopen_task', 'pending', { task_id: '$pend' }, 'Plain pending task is refused'),
-  row('reopen_task', 'missing', { task_id: '$none' }, 'Task does not exist'),
-
   // ── focus_task ──────────────────────────────────────────────────────────────
   row('focus_task', 'default-hours', { task_id: '$pend' }, 'Defaults to 3 hours'),
   row('focus_task', 'hours', { task_id: '$pend', hours: 1.5 }, 'Fractional hours'),
@@ -124,83 +117,4 @@ export const ROWS: Row[] = [
   row('focus_task', 'deferred', { task_id: '$deferred' }, 'Focusing clears the deferral'),
   row('focus_task', 'done', { task_id: '$done' }, 'Done task'),
   row('focus_task', 'missing', { task_id: '$none' }, 'Task does not exist'),
-
-  // ── delete_task ─────────────────────────────────────────────────────────────
-  row('delete_task', 'plain', { task_id: '$pend' }, 'Plain task'),
-  row('delete_task', 'with-links', { task_id: '$blocker' }, 'Link rows go with the task'),
-  row('delete_task', 'in-project', { task_id: '$member' }, 'Project member'),
-  row('delete_task', 'done', { task_id: '$done' }, 'Done task'),
-  row('delete_task', 'missing', { task_id: '$none' }, 'Task does not exist'),
-
-  // ── create_project ──────────────────────────────────────────────────────────
-  row('create_project', 'title-only', { title: 'New project' }, 'Minimal call'),
-  row('create_project', 'all-fields', { title: 'New project', notes: 'n', kickoff_note: 'k' }, 'Notes and kickoff note'),
-  row('create_project', 'with-tasks', { title: 'New project', task_ids: ['$pend', '$pend2'] }, 'Assign existing tasks'),
-  row('create_project', 'duplicate-task-ids', { title: 'New project', task_ids: ['$pend', '$pend'] }, 'Duplicate IDs count once'),
-  row('create_project', 'moves-from-other-project', { title: 'New project', task_ids: ['$member'] }, 'Task already in another project'),
-  row('create_project', 'missing-task', { title: 'New project', task_ids: ['$pend', '$none'] }, 'One task does not exist'),
-  row('create_project', 'done-task', { title: 'New project', task_ids: ['$done'] }, 'Done task'),
-  row('create_project', 'nineteen-tasks', { title: 'New project', task_ids: ['$bulk0', '$bulk1', '$bulk2', '$bulk3', '$bulk4', '$bulk5', '$bulk6', '$bulk7', '$bulk8', '$bulk9', '$bulk10', '$bulk11', '$bulk12', '$bulk13', '$bulk14', '$bulk15', '$bulk16', '$bulk17', '$bulk18'] }, '19 tasks'),
-  row('create_project', 'twenty-tasks', { title: 'New project', task_ids: ['$bulk0', '$bulk1', '$bulk2', '$bulk3', '$bulk4', '$bulk5', '$bulk6', '$bulk7', '$bulk8', '$bulk9', '$bulk10', '$bulk11', '$bulk12', '$bulk13', '$bulk14', '$bulk15', '$bulk16', '$bulk17', '$bulk18', '$bulk19'] }, '20 tasks: more than the old 20-command bound allowed'),
-  row('create_project', 'thirty-tasks', { title: 'New project', task_ids: ['$bulk0', '$bulk1', '$bulk2', '$bulk3', '$bulk4', '$bulk5', '$bulk6', '$bulk7', '$bulk8', '$bulk9', '$bulk10', '$bulk11', '$bulk12', '$bulk13', '$bulk14', '$bulk15', '$bulk16', '$bulk17', '$bulk18', '$bulk19', '$bulk20', '$bulk21', '$bulk22', '$bulk23', '$bulk24', '$bulk25', '$bulk26', '$bulk27', '$bulk28', '$bulk29'] }, '30 tasks'),
-  row('create_project', 'forty-tasks', { title: 'New project', task_ids: ['$bulk0', '$bulk1', '$bulk2', '$bulk3', '$bulk4', '$bulk5', '$bulk6', '$bulk7', '$bulk8', '$bulk9', '$bulk10', '$bulk11', '$bulk12', '$bulk13', '$bulk14', '$bulk15', '$bulk16', '$bulk17', '$bulk18', '$bulk19', '$bulk20', '$bulk21', '$bulk22', '$bulk23', '$bulk24', '$bulk25', '$bulk26', '$bulk27', '$bulk28', '$bulk29', '$bulk30', '$bulk31', '$bulk32', '$bulk33', '$bulk34', '$bulk35', '$bulk36', '$bulk37', '$bulk38', '$bulk39'] }, '40 tasks'),
-  row('create_project', 'empty-title', { title: '' }, 'Empty title'),
-  row('create_project', 'non-array-task-ids', { title: 'New project', task_ids: 'x' }, 'task_ids is not an array'),
-
-  // ── update_project ──────────────────────────────────────────────────────────
-  row('update_project', 'title', { project_id: '$proj', title: 'Renamed' }, 'Title only keeps notes and kickoff note'),
-  row('update_project', 'notes', { project_id: '$proj', notes: 'new' }, 'Notes only'),
-  row('update_project', 'notes-null', { project_id: '$proj', notes: null }, 'null clears notes'),
-  row('update_project', 'kickoff-note', { project_id: '$proj', kickoff_note: 'new' }, 'Kickoff note only'),
-  row('update_project', 'archive', { project_id: '$proj', status: 'archived' }, 'Archive keeps members'),
-  row('update_project', 'reopen', { project_id: '$archived', status: 'active' }, 'Reopen an archived project'),
-  row('update_project', 'status-unchanged', { project_id: '$proj', status: 'active' }, 'Status already active'),
-  row('update_project', 'archive-already-archived', { project_id: '$archived', status: 'archived' }, 'Status already archived'),
-  row('update_project', 'title-and-status', { project_id: '$proj', title: 'Both', status: 'archived' }, 'Content and state together'),
-  row('update_project', 'bad-status', { project_id: '$proj', status: 'paused' }, 'Unknown status'),
-  row('update_project', 'empty-title', { project_id: '$proj', title: '' }, 'Empty title'),
-  row('update_project', 'empty-patch', { project_id: '$proj' }, 'Only project_id: nothing to change, still logs'),
-  row('update_project', 'empty-patch-missing', { project_id: '$noneProject' }, 'Empty patch on a missing project'),
-  row('update_project', 'missing', { project_id: '$noneProject', title: 'x' }, 'Project does not exist'),
-
-  // ── delete_project ──────────────────────────────────────────────────────────
-  row('delete_project', 'with-members', { project_id: '$proj' }, 'Members are kept and detached'),
-  row('delete_project', 'empty', { project_id: '$archived' }, 'Project without tasks'),
-  row('delete_project', 'missing', { project_id: '$noneProject' }, 'Project does not exist'),
-
-  // ── link_tasks ──────────────────────────────────────────────────────────────
-  row('link_tasks', 'blocks-default', { from_task_id: '$pend', to_task_id: '$pend2' }, 'Default type is blocks'),
-  row('link_tasks', 'blocks', { from_task_id: '$pend', to_task_id: '$pend2', link_type: 'blocks' }, 'Explicit blocks'),
-  row('link_tasks', 'related', { from_task_id: '$pend2', to_task_id: '$pend', link_type: 'related' }, 'Related with descending IDs'),
-  row('link_tasks', 'related-ascending', { from_task_id: '$pend', to_task_id: '$pend2', link_type: 'related' }, 'Related with the other orientation'),
-  row('link_tasks', 'existing-blocks', { from_task_id: '$blocker', to_task_id: '$blocked' }, 'Link that already exists'),
-  row('link_tasks', 'existing-related', { from_task_id: '$rel1', to_task_id: '$rel2', link_type: 'related' }, 'Related link that already exists'),
-  row('link_tasks', 'existing-related-reversed', { from_task_id: '$rel2', to_task_id: '$rel1', link_type: 'related' }, 'Related link that exists in the other orientation'),
-  row('link_tasks', 'reverse-blocks', { from_task_id: '$blocked', to_task_id: '$blocker' }, 'Would create a two-task cycle'),
-  row('link_tasks', 'self', { from_task_id: '$pend', to_task_id: '$pend' }, 'Task to itself'),
-  row('link_tasks', 'missing-from', { from_task_id: '$none', to_task_id: '$pend' }, 'Blocking task does not exist'),
-  row('link_tasks', 'missing-to', { from_task_id: '$pend', to_task_id: '$none' }, 'Blocked task does not exist'),
-  row('link_tasks', 'done-endpoint', { from_task_id: '$done', to_task_id: '$pend' }, 'Done task as an endpoint'),
-  row('link_tasks', 'bad-type', { from_task_id: '$pend', to_task_id: '$pend2', link_type: 'duplicates' }, 'Unknown link type'),
-
-  // ── unlink_tasks ────────────────────────────────────────────────────────────
-  row('unlink_tasks', 'blocks-default', { from_task_id: '$blocker', to_task_id: '$blocked' }, 'Default type is blocks'),
-  row('unlink_tasks', 'related', { from_task_id: '$rel1', to_task_id: '$rel2', link_type: 'related' }, 'Related link'),
-  row('unlink_tasks', 'related-reversed', { from_task_id: '$rel2', to_task_id: '$rel1', link_type: 'related' }, 'Related link given in the other orientation'),
-  row('unlink_tasks', 'absent', { from_task_id: '$pend', to_task_id: '$pend2' }, 'No such link'),
-  row('unlink_tasks', 'wrong-type', { from_task_id: '$blocker', to_task_id: '$blocked', link_type: 'related' }, 'Link exists with another type'),
-  row('unlink_tasks', 'wrong-orientation', { from_task_id: '$blocked', to_task_id: '$blocker' }, 'Blocks link in the other orientation'),
-  row('unlink_tasks', 'missing-tasks', { from_task_id: '$none', to_task_id: '$none' }, 'Neither task exists'),
-  row('unlink_tasks', 'bad-type', { from_task_id: '$pend', to_task_id: '$pend2', link_type: 'duplicates' }, 'Unknown link type'),
-
-  // ── update_preference ───────────────────────────────────────────────────────
-  row('update_preference', 'sort-by', { key: 'sort_by', value: 'due' }, 'Valid key and value; the row is new'),
-  row('update_preference', 'overwrite-existing', { key: 'planning_prompt', value: 'auto' }, 'Replace a row the fixture already holds'),
-  row('update_preference', 'same-value', { key: 'planning_prompt', value: 'never' }, 'Set a row to the value it already has'),
-  row('update_preference', 'each-key-kickoff', { key: 'kickoff_nudge', value: 'never' }, 'Another key and value set'),
-  row('update_preference', 'overwrite', { key: 'urgency_visibility', value: 'hide' }, 'A valid value on a key the fixture has not set'),
-  row('update_preference', 'bad-value', { key: 'sort_by', value: 'colour' }, 'Value outside the key\'s set'),
-  row('update_preference', 'bad-key', { key: 'favourite_food', value: 'x' }, 'Unknown key'),
-  row('update_preference', 'internal-key', { key: 'last_session_at', value: '2026-10-01T00:00:00.000Z' }, 'Internal key'),
-  row('update_preference', 'missing-value', { key: 'sort_by' }, 'No value'),
 ];

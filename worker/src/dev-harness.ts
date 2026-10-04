@@ -145,16 +145,16 @@ export function getHarnessHtml(): string {
           var args = (msg.params && msg.params.arguments) || {};
           log('in', 'tools/call: ' + name);
 
-          if (name === 'list_tasks') {
-            fetchTasks(args.statuses).then(function(t) {
+          if (name === 'find') {
+            fetchTasks(args.filter && args.filter.statuses).then(function(t) {
               frame.contentWindow.postMessage({
                 jsonrpc: '2.0', id: msg.id,
                 result: {
-                  content: [{ type: 'text', text: JSON.stringify({ tasks: t }) }],
-                  structuredContent: { tasks: t },
+                  content: [{ type: 'text', text: JSON.stringify({ items: t }) }],
+                  structuredContent: { items: t },
                 },
               }, '*');
-              log('out', 'list_tasks result (' + t.length + ' tasks)');
+              log('out', 'find result (' + t.length + ' tasks)');
             });
           } else if (name === 'complete_task') {
             completeTask(args.task_id).then(function(result) {

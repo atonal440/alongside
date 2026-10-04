@@ -61,7 +61,7 @@ export interface PreferenceState { value: string | null; revision: number | null
 export function preferenceConflict(command: { key: string; expectedRevision: number | null }, current: PreferenceState): CommandError {
   return new CommandError({ code: 'revision_conflict', path: ['commands', '0', 'expectedRevision'],
     message: `Preference ${command.key} changed since the supplied revision.`, retryable: false, expectedRevision: command.expectedRevision as never,
-    recoveryHint: 'Read the preference with get_context or start_session and submit a new command ID after rebasing.',
+    recoveryHint: 'Read the preference with get_context and submit a new command ID after rebasing.',
   });
 }
 export function planPreferenceCommand(input: CommandEnvelope, current: PreferenceState, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {

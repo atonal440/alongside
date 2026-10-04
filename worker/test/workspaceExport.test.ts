@@ -41,12 +41,12 @@ describe.each(['fresh','upgrade'] as const)('portable workspace export (%s)',mod
   }finally{sql.close();}
  });
 });
-it('exposes the portable export through REST/MCP with strict empty input and equivalent content',async()=>{
+it('exposes the portable export through REST and the admin MCP endpoint with strict empty input and equivalent content',async()=>{
  const {sql,d1}=sqliteD1();const db=new DB(d1);
  try {
   sql.exec(`INSERT INTO tasks(id,title,created_at,updated_at) VALUES('t_first1','Exported','${now}','${now}')`);
   const request=new Request('https://x/api/v2/export');const response=await handleApiRequest(request,new URL(request.url),db);expect(response.status).toBe(200);const rest=await response.json() as Record<string,unknown>;
-  const rpc=async(args:unknown)=>{const request=new Request('https://x/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'export_workspace',arguments:args}})});return(await handleMcpRequest(request,db,{DB:d1,AUTH_TOKEN:'tok'})).json() as Promise<{result:{structuredContent:Record<string,unknown>,isError?:boolean}}>};
+  const rpc=async(args:unknown)=>{const request=new Request('https://x/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'export_workspace',arguments:args}})});return(await handleMcpRequest(request,db,{DB:d1,AUTH_TOKEN:'tok'},'admin')).json() as Promise<{result:{structuredContent:Record<string,unknown>,isError?:boolean}}>};
   const mcp=(await rpc({})).result.structuredContent;const {exported_at:_restTime,...restData}=rest;const {exported_at:_mcpTime,...mcpData}=mcp;expect(mcpData).toEqual(restData);expect(parseWorkspaceExport(mcp).ok).toBe(true);
   expect((await rpc({includeCredentials:true})).result.isError).toBe(true);
   const bad=new Request('https://x/api/v2/export?includeCredentials=true');expect((await handleApiRequest(bad,new URL(bad.url),db)).status).toBe(400);

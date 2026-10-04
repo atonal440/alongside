@@ -58,8 +58,7 @@ export async function runTool(tool: ReceiptTool, rawArgs: unknown, db: DB, compi
   if (rawArgs === null || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) throw refuse('Expected an input object.');
   const { commandId: suppliedId, expectedRevision, ...args } = rawArgs as Json;
   if (suppliedId !== undefined && (typeof suppliedId !== 'string' || !COMMAND_ID.test(suppliedId))) throw refuse('commandId must look like c_ followed by 5–64 letters, digits, _ or -.', ['commandId']);
-  // A preference that has never been set has no revision, so null is a valid pin for that one tool.
-  if (expectedRevision !== undefined && !(expectedRevision === null && tool === 'update_preference') && (!Number.isSafeInteger(expectedRevision) || (expectedRevision as number) < 0)) throw refuse('expectedRevision must be a non-negative integer.', ['expectedRevision']);
+  if (expectedRevision !== undefined && (!Number.isSafeInteger(expectedRevision) || (expectedRevision as number) < 0)) throw refuse('expectedRevision must be a non-negative integer.', ['expectedRevision']);
   // The request is what the caller asked for, not what it compiles to: tool, arguments, and the pin.
   const requestHash = await toolRequestHash(tool, { ...args, ...(expectedRevision === undefined ? {} : { expectedRevision }) });
   const commandId = (suppliedId as string | undefined) ?? `c_${nanoid(16)}`;

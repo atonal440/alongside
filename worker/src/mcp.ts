@@ -2,15 +2,12 @@ import { callFoundationTool, FOUNDATION_TOOLS, FoundationInputError } from './fo
 import { callCommandTool, COMMAND_TOOLS } from './commands';
 import { CommandError } from './domain/commands';
 import { DB, DomainOperationError } from './db';
-import type { Task, Project } from '@shared/types';
 import type { Env } from './index';
 import { getAppHtml, getActionLogHtml } from './app-ui';
 import { runTool } from './adapters/runner';
 import { addTask, completeTask, deferTask, focusTask, updateTask } from './adapters/taskVerbs';
-import { createProject, deleteProject, deleteTask, linkTasks, reopenTask, unlinkTasks, updateProject } from './adapters/projectVerbs';
-import { updatePreference } from './adapters/prefVerbs';
 import { callReadTool, READ_TOOLS, READ_TOOL_NAMES } from './reads';
-import { ADMIN_TOOL_NAMES, annotate, asDeprecatedAlias, withReplacement } from './toolSurface';
+import { ADMIN_TOOL_NAMES, annotate } from './toolSurface';
 
 interface McpRequest {
   jsonrpc: '2.0';
@@ -47,7 +44,7 @@ Alongside stores tasks, projects, links, focus windows and a change history. It 
 
 Reading: find lists tasks or projects (sort, order and filters such as focused are arguments), get_context reads one entity with its neighborhood, get_history reads past changes.
 Writing: the verbs (add_task, complete_task, and so on) and apply_changes all go through the same planner. Pass a commandId so a retry replays the first result instead of repeating the change.
-Preferences are stored values the user has set; get_context({ entity: "preferences" }) reads them and update_preference changes one when the user asks.
+Preferences are stored values the user has set; get_context({ entity: "preferences" }) reads them and apply_changes with a preference.set command changes one when the user asks.
 `.trim();
 
 const TOOL_DEFS = [
@@ -55,68 +52,16 @@ const TOOL_DEFS = [
   ...COMMAND_TOOLS,
   ...READ_TOOLS,
   {
-    name: 'start_session',
-    description: 'Snapshot of focused tasks, the top three ready tasks by readiness and stored preferences. Nothing requires calling it.',
-    inputSchema: { type: 'object', properties: {} },
-  },
-  {
     name: 'show_tasks',
-    description: 'Renders tasks in the inline widget. Does not change task state.',
+    description: 'Renders tasks in the inline widget: the given task IDs, or a project and its pending tasks. Give exactly one of task_ids or project_id. Does not change task state.',
     inputSchema: {
       type: 'object',
       properties: {
         task_ids: { type: 'array', items: { type: 'string' }, description: 'Task IDs to display.' },
+        project_id: { type: 'string', description: 'A project to display with its pending tasks.' },
       },
-      required: ['task_ids'],
     },
     _meta: uiMeta(TASK_DASHBOARD_URI),
-  },
-  {
-    name: 'show_project',
-    description: 'Renders a project and its tasks in the inline widget.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        project_id: { type: 'string' },
-      },
-      required: ['project_id'],
-    },
-    _meta: uiMeta(TASK_DASHBOARD_URI),
-  },
-  {
-    name: 'list_projects',
-    description: 'Lists projects filtered by status. Defaults to active.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        status: { type: 'string', enum: ['active', 'archived'], description: 'Defaults to "active".' },
-      },
-    },
-  },
-  {
-    name: 'list_tasks',
-    description: 'Lists tasks filtered by status or search query. Includes deferred tasks (check defer_kind/defer_until to see if active). Defaults to pending.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        statuses: {
-          type: 'array',
-          items: { type: 'string', enum: ['pending', 'done'] },
-          description: 'Defaults to ["pending"].',
-        },
-        query: { type: 'string', description: 'Search title and notes (case-insensitive).' },
-      },
-    },
-  },
-  {
-    name: 'get_ready_tasks',
-    description: 'Returns unblocked tasks sorted by readiness score.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        project_id: { type: 'string', description: 'Filter to a specific project.' },
-      },
-    },
   },
   {
     name: 'add_task',
@@ -192,20 +137,6 @@ const TOOL_DEFS = [
     _meta: uiMeta(ACTION_LOG_URI),
   },
   {
-    name: 'reopen_task',
-    description: 'Clears a deferral or re-opens a completed task.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
-        expectedRevision: { type: 'integer', minimum: 0, description: 'Optional. Refuse the change if the entity is no longer at this revision (see get_context).' },
-        task_id: { type: 'string' },
-      },
-      required: ['task_id'],
-    },
-    _meta: uiMeta(ACTION_LOG_URI),
-  },
-  {
     name: 'focus_task',
     description: 'Puts a task front-of-mind for a time window (default 3 hours). Focus decays automatically — no cleanup needed.',
     inputSchema: {
@@ -220,133 +151,17 @@ const TOOL_DEFS = [
     },
     _meta: uiMeta(ACTION_LOG_URI),
   },
-  {
-    name: 'delete_task',
-    description: 'Permanently deletes a task. Prefer complete_task for finished work.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
-        expectedRevision: { type: 'integer', minimum: 0, description: 'Optional. Refuse the change if the entity is no longer at this revision (see get_context).' },
-        task_id: { type: 'string' },
-      },
-      required: ['task_id'],
-    },
-    _meta: uiMeta(ACTION_LOG_URI),
-  },
-  {
-    name: 'create_project',
-    description: 'Creates a project and optionally assigns existing tasks to it.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
-        title: { type: 'string', description: 'Project name.' },
-        notes: { type: 'string', description: 'General project notes.' },
-        kickoff_note: { type: 'string', description: 'Where to start and why.' },
-        task_ids: { type: 'array', items: { type: 'string' }, description: 'Existing tasks to assign.' },
-      },
-      required: ['title'],
-    },
-    _meta: uiMeta(ACTION_LOG_URI),
-  },
-  {
-    name: 'update_project',
-    description: 'Updates a project\'s title, notes, kickoff note, or status. Use status "archived" to archive.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
-        expectedRevision: { type: 'integer', minimum: 0, description: 'Optional. Refuse the change if the entity is no longer at this revision (see get_context).' },
-        project_id: { type: 'string' },
-        title: { type: 'string' },
-        notes: { type: 'string', description: 'General project notes.' },
-        kickoff_note: { type: 'string', description: 'Where to start and why.' },
-        status: { type: 'string', enum: ['active', 'archived'] },
-      },
-      required: ['project_id'],
-    },
-    _meta: uiMeta(ACTION_LOG_URI),
-  },
-  {
-    name: 'delete_project',
-    description: 'Permanently deletes a project. Its tasks are kept but unlinked.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
-        expectedRevision: { type: 'integer', minimum: 0, description: 'Optional. Refuse the change if the entity is no longer at this revision (see get_context).' },
-        project_id: { type: 'string' },
-      },
-      required: ['project_id'],
-    },
-    _meta: uiMeta(ACTION_LOG_URI),
-  },
-  {
-    name: 'get_project_context',
-    description: 'Returns a project\'s details and its ready tasks in one call.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        project_id: { type: 'string' },
-      },
-      required: ['project_id'],
-    },
-  },
-  {
-    name: 'link_tasks',
-    description: 'Creates a dependency between two tasks. Defaults to "blocks" (from must complete before to).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
-        from_task_id: { type: 'string', description: 'The blocking or related task.' },
-        to_task_id: { type: 'string', description: 'The blocked or related task.' },
-        link_type: { type: 'string', enum: ['blocks', 'related'], description: 'Defaults to "blocks".' },
-      },
-      required: ['from_task_id', 'to_task_id'],
-    },
-    _meta: uiMeta(ACTION_LOG_URI),
-  },
-  {
-    name: 'unlink_tasks',
-    description: 'Removes a dependency between two tasks.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
-        expectedRevision: { type: 'integer', minimum: 0, description: 'Optional. Refuse the change if the entity is no longer at this revision (see get_context).' },
-        from_task_id: { type: 'string' },
-        to_task_id: { type: 'string' },
-        link_type: { type: 'string', enum: ['blocks', 'related'], description: 'Defaults to "blocks".' },
-      },
-      required: ['from_task_id', 'to_task_id'],
-    },
-    _meta: uiMeta(ACTION_LOG_URI),
-  },
-  {
-    name: 'update_preference',
-    description: 'Sets a user preference. Call immediately when the user states one.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
-        expectedRevision: { type: ['integer', 'null'], minimum: 0, description: 'Optional. Refuse the change if the preference is no longer at this revision (null: it has never been set).' },
-        key: { type: 'string', enum: ['sort_by', 'urgency_visibility', 'kickoff_nudge', 'session_log', 'interruption_style', 'planning_prompt'] },
-        value: { type: 'string' },
-      },
-      required: ['key', 'value'],
-    },
-  },
-  {
-    name: 'get_action_log',
-    description: 'Returns recent operation history. Used by the action log widget.',
-    inputSchema: { type: 'object', properties: {} },
-  },
 ];
 
-/** Default `/mcp` list. Tools that moved to the admin endpoint or REST stay here as deprecated aliases until phase D. */
-export const TOOLS = TOOL_DEFS.map(tool => annotate(withReplacement(asDeprecatedAlias(tool))));
+const isSharedDef = (name: string) =>
+  FOUNDATION_TOOLS.some(tool => tool.name === name) || COMMAND_TOOLS.some(tool => tool.name === name);
+/** Foundation and command tools the default endpoint lists; the rest are admin-only or REST-only. */
+const DEFAULT_SHARED_TOOL_NAMES: readonly string[] = ['get_capabilities', 'resolve_time', 'preview_changes', 'apply_changes'];
+
+/** Default `/mcp` list. Export, restore and the sync reads live on `/mcp/admin` or REST only. */
+export const TOOLS = TOOL_DEFS
+  .filter(tool => !isSharedDef(tool.name) || DEFAULT_SHARED_TOOL_NAMES.includes(tool.name))
+  .map(tool => annotate(tool));
 
 /** Opt-in `/mcp/admin` list: export, restore, and the reads restore depends on. */
 export const ADMIN_TOOLS = ADMIN_TOOL_NAMES.map(name => {
@@ -382,16 +197,19 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     case 'defer_task': return runTool('defer_task', args, db, deferTask);
     case 'update_task': return runTool('update_task', args, db, updateTask);
     case 'focus_task': return runTool('focus_task', args, db, focusTask);
-    case 'reopen_task': return runTool('reopen_task', args, db, reopenTask);
-    case 'delete_task': return runTool('delete_task', args, db, deleteTask);
-    case 'create_project': return runTool('create_project', args, db, createProject);
-    case 'update_project': return runTool('update_project', args, db, updateProject);
-    case 'delete_project': return runTool('delete_project', args, db, deleteProject);
-    case 'link_tasks': return runTool('link_tasks', args, db, linkTasks);
-    case 'unlink_tasks': return runTool('unlink_tasks', args, db, unlinkTasks);
     case 'show_tasks': {
-      const taskIds = args.task_ids as string[];
-      const tasks = (await Promise.all(taskIds.map(id => db.getTask(id)))).filter((t): t is NonNullable<typeof t> => t !== null);
+      const projectId = args.project_id as string | undefined;
+      const taskIds = args.task_ids as string[] | undefined;
+      if ((projectId === undefined) === (taskIds === undefined)) throw new Error('Give exactly one of task_ids or project_id.');
+      if (projectId !== undefined && typeof projectId !== 'string') throw new Error('project_id must be a string.');
+      if (taskIds !== undefined && (!Array.isArray(taskIds) || taskIds.some(id => typeof id !== 'string'))) throw new Error('task_ids must be an array of strings.');
+      if (projectId !== undefined) {
+        const project = await db.getProject(projectId);
+        if (!project) throw new Error('Project not found');
+        const tasks = (await db.listAllTasks(['pending'])).filter(t => t.project_id === projectId);
+        return { project, tasks };
+      }
+      const tasks = (await Promise.all(taskIds!.map(id => db.getTask(id)))).filter((t): t is NonNullable<typeof t> => t !== null);
       // Include project names so the widget can show them without extra fetches
       const projectIds = [...new Set(tasks.filter(t => t.project_id).map(t => t.project_id as string))];
       const projectEntries = await Promise.all(
@@ -399,68 +217,6 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
       );
       const projects: Record<string, string> = Object.fromEntries(projectEntries.filter(([, v]) => v));
       return { tasks, projects };
-    }
-
-    case 'show_project': {
-      const project = await db.getProject(args.project_id as string);
-      if (!project) throw new Error('Project not found');
-      const allTasks = await db.listAllTasks(['pending']);
-      const tasks = allTasks.filter(t => t.project_id === args.project_id);
-      return { project, tasks };
-    }
-
-    case 'start_session': {
-      // Read-only: defaults are merged in memory (no rows are seeded), so nothing here needs a
-      // command ID or receipt.
-      const [readyTasks, focusedTasks, preferences] = await Promise.all([
-        db.listReadyTasks(),
-        db.listFocusedTasks(),
-        db.getAllPreferences(),
-      ]);
-
-      return {
-        focused_tasks: focusedTasks,
-        suggested_tasks: readyTasks.slice(0, 3),
-        preferences,
-      };
-    }
-    case 'list_projects': {
-      const status = ((args.status as string) || 'active') as Project['status'];
-      const projects = await db.listProjects(status);
-      return { projects };
-    }
-
-    case 'list_tasks': {
-      const statuses = ((args.statuses as string[]) || ['pending']) as Task['status'][];
-      let tasks = await db.listAllTasks(statuses);
-      const query = args.query as string | undefined;
-      if (query) {
-        const q = query.toLowerCase();
-        tasks = tasks.filter(t =>
-          t.title.toLowerCase().includes(q) ||
-          (t.notes && t.notes.toLowerCase().includes(q))
-        );
-      }
-      return { tasks };
-    }
-
-    case 'get_ready_tasks': {
-      const projectId = args.project_id as string | undefined;
-      const tasks = await db.listReadyTasks(projectId);
-      return { tasks };
-    }
-
-    case 'get_project_context': {
-      const project = await db.getProject(args.project_id as string);
-      if (!project) throw new Error('Project not found');
-      const ready_tasks = await db.listReadyTasks(args.project_id as string);
-      return { project, ready_tasks };
-    }
-
-    case 'update_preference': return runTool('update_preference', args, db, updatePreference);
-    case 'get_action_log': {
-      const entries = await db.getActionLog();
-      return { entries };
     }
 
     default:
