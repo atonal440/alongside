@@ -37,13 +37,11 @@ Alongside has no notification system and does not intend to acquire one. The too
 
 The re-entry experience when returning after a gap should feel like being handed context, not like being handed a verdict. The default opening after a gap: a brief triage offer ("here's what's here, some of this might be stale — want to do a quick pass?"), not an overdue count.
 
-### `start_session` as context injection
+### No workflow in the server
 
-Alongside does not require a Claude Project to function. Behavioral instructions — tone, sort preferences, session philosophy — are returned as part of the `start_session` tool response at the beginning of every session. Claude reads the `instructions` block and operates accordingly.
+Alongside does not require a Claude Project to function, and the server no longer sends behavioral instructions. `initialize.instructions` only says how to call the tools. Rituals (the daily triage, kickoff notes, session close, tone) live in client skills such as `alongside-daily`, or in the user's own prompt. `start_session` remains an optional, read-only snapshot of focused tasks, ready tasks and preferences, deprecated in favor of reads on `find`.
 
-This means the full Alongside experience is available anywhere Claude tools are available: claude.ai (with or without a Project), ChatGPT with MCP support, any future MCP-compatible client. The state is in D1. The instructions travel with the session, not with the client.
-
-For users who do create a Claude Project, the system prompt can reinforce these defaults at the context level, making them slightly more durable across long sessions. But it is not required.
+The state is in D1, so the full experience is available anywhere Claude tools are, in whatever ritual the user brings.
 
 ### Minimally invasive UI
 
@@ -312,7 +310,7 @@ CREATE TABLE user_preferences (
 );
 ```
 
-**Default preference values** (inserted on first `start_session` if absent):
+**Default preference values** (merged in at read time; a row exists only once someone sets it):
 
 | Key | Default | Effect |
 |-----|---------|--------|

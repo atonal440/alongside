@@ -538,15 +538,15 @@ never registered in `TOOLS`; that section was removed in phase A.
   `preview_legacy_dates`) stays listed there as a deprecated alias. Each alias
   behaves exactly as before, with a description naming its new home. They are
   removed in phase D with the other deprecated tools, once logs show no
-  callers. Move static session instructions to `initialize`. Add
+  callers. Move static session instructions to `initialize` (later replaced by a neutral stub; see the no-workflow principle). Add
   `toolSurface` to capabilities.
 
   Phase A as built: `start_session` was annotated as a non-read-only write
   until phase C removed its preference writes (done). The admin endpoint serves
   `export_planning_settings` under its current name; folding it into
   `export_workspace({ scope: 'settings' })` is left for when that tool gains
-  the argument. `start_session` still returns `instructions` alongside
-  `initialize.instructions` so hosts that ignore the latter keep working.
+  the argument. `start_session` returned `instructions` alongside
+  `initialize.instructions` at the time; it no longer does.
 - **B: New reads and pinning preview.** Add `find` (task, project),
   `get_context`, `get_history`, `describe_commands`, and loose-intent
   `preview_changes`. Mark the tools they replace as deprecated in their
@@ -582,7 +582,7 @@ never registered in `TOOLS`; that section was removed in phase A.
   receipt guarded by the link or project revision plus the structural
   revision. The command bound is raised from 20 to 100, with the 100-statement
   plan check as the real ceiling (23 tasks for `create_project`). `update_preference`
-  runs on the new standalone `preference.set` command. `start_session` is now read-only (defaults merge in memory; the gap comes from history). The sync read gate is in force (`checkSyncReadGate`: snapshot and delta return 426 to `pwa/<3`, with or without `Origin`; `minimumSyncRead` in capabilities). The task widget now refreshes with `find` and reopens with `preview_changes` + `apply_changes` (it keeps `complete_task`, a quick verb); `list_tasks` and `reopen_task` have no remaining in-repo callers. `apply_changes` over MCP now records command kinds in the action log (`worker/src/domain/commandLog.ts`; one entry per non-settings command, same atomic plan as the receipt). Phase C is complete.
+  runs on the new standalone `preference.set` command. `start_session` is now read-only (defaults merge in memory; the history-derived gap flag was later removed). The sync read gate is in force (`checkSyncReadGate`: snapshot and delta return 426 to `pwa/<3`, with or without `Origin`; `minimumSyncRead` in capabilities). The task widget now refreshes with `find` and reopens with `preview_changes` + `apply_changes` (it keeps `complete_task`, a quick verb); `list_tasks` and `reopen_task` have no remaining in-repo callers. `apply_changes` over MCP now records command kinds in the action log (`worker/src/domain/commandLog.ts`; one entry per non-settings command, same atomic plan as the receipt). Phase C is complete.
 - **C: One write path.** First build the parity matrix (see
   [Adapter parity](#adapter-parity)) and the versioned receipt shape. Then add
   same-identity composition to the batch planner, with the revised result contract (see
