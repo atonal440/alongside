@@ -32,7 +32,6 @@ function mcpError(id: string | number, code: number, message: string) {
 }
 
 /** No recorded activity for this long means the user is returning after a gap. */
-const RETURNING_GAP_MS = 7 * 86_400_000;
 const TASK_DASHBOARD_URI = 'ui://alongside/task-dashboard';
 const ACTION_LOG_URI = 'ui://alongside/action-log';
 
@@ -44,30 +43,12 @@ function uiMeta(resourceUri: string, extra?: Record<string, unknown>) {
   };
 }
 
-const SESSION_INSTRUCTIONS = `
-You are the Alongside task assistant.
+const SERVER_INSTRUCTIONS = `
+Alongside stores tasks, projects, links, focus windows and a change history. It does not prescribe a workflow; follow the user's own.
 
-OPENING: Lead with readiness, not urgency. If focused_tasks is non-empty, those are already front-of-mind — start there. Otherwise start from suggested_tasks — "what are you most ready to start?"
-
-FOCUS: Use focus_task to put 1-2 tasks front-of-mind. Focus decays automatically (default 3 hours) so there's nothing to clean up. Offer to focus tasks at session start if none are focused.
-
-TONE: Orient, don't audit. Never comment on gaps, overdue counts, or task neglect. Due dates are facts, not judgments.
-
-GAP: If returning_after_gap is true, offer a quick triage before suggesting tasks.
-
-URGENCY: Only surface urgency if urgency_visibility is "show". Default sort is readiness.
-
-EMPTY STATE: No tasks? Offer a brain dump to get started.
-
-KICKOFF NOTES: If a task lacks a kickoff_note, ask one orienting question and save the answer before starting. For plan tasks, run a planning conversation instead.
-
-STRUCTURE: If interruption_style is "proactive", offer to capture tasks, links, or kickoff notes noticed mid-conversation. Don't restructure without confirmation.
-
-LINKS: When you hear dependency language ("need X before Y"), offer to link_tasks.
-
-SESSION CLOSE: If session_log is "ask_at_end", offer to write one. If "auto_generate", write it. Update kickoff notes for tasks with clearer starting points.
-
-PREFERENCES: When the user states a preference, call update_preference immediately — no confirmation needed.
+Reading: find lists tasks or projects, get_context reads one entity with its neighborhood, get_history reads past changes.
+Writing: the verbs (add_task, complete_task, and so on) and apply_changes all go through the same planner. Pass a commandId so a retry replays the first result instead of repeating the change.
+Preferences are stored values the user has set; read them with get_context({ entity: "settings" }) and change them with update_preference when the user asks.
 `.trim();
 
 const TOOL_DEFS = [
@@ -76,7 +57,7 @@ const TOOL_DEFS = [
   ...READ_TOOLS,
   {
     name: 'start_session',
-    description: 'Call at the start of every session. Returns ready tasks, preferences, and session instructions.',
+    description: 'Optional snapshot: focused tasks, the top three ready tasks and preferences. Nothing requires calling it; find and get_context return the same data.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -130,7 +111,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'get_ready_tasks',
-    description: 'Returns unblocked tasks sorted by readiness score. Prefer over list_tasks when asked what to work on.',
+    description: 'Returns unblocked tasks sorted by readiness score.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -430,21 +411,18 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     }
 
     case 'start_session': {
-      // Read-only: defaults are merged in memory (no rows are seeded) and the gap is measured from
-      // the newest recorded activity, so nothing here needs a command ID or receipt.
-      const [readyTasks, focusedTasks, preferences, lastActivityAt] = await Promise.all([
+      // Read-only: defaults are merged in memory (no rows are seeded), so nothing here needs a
+      // command ID or receipt.
+      const [readyTasks, focusedTasks, preferences] = await Promise.all([
         db.listReadyTasks(),
         db.listFocusedTasks(),
         db.getAllPreferences(),
-        db.getLastActivityAt(),
       ]);
 
       return {
         focused_tasks: focusedTasks,
         suggested_tasks: readyTasks.slice(0, 3),
         preferences,
-        returning_after_gap: lastActivityAt !== null && Date.now() - new Date(lastActivityAt).getTime() > RETURNING_GAP_MS,
-        instructions: SESSION_INSTRUCTIONS,
       };
     }
     case 'list_projects': {
@@ -523,8 +501,7 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env, surfa
           },
         },
         serverInfo: { name: admin ? 'alongside-admin' : 'alongside', version: '1.0.0' },
-        // Hosts include this once per connection; start_session still returns it too until phase D.
-        ...(admin ? {} : { instructions: SESSION_INSTRUCTIONS }),
+        ...(admin ? {} : { instructions: SERVER_INSTRUCTIONS }),
       });
 
     case 'tools/list':

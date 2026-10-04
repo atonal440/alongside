@@ -17,7 +17,7 @@ Model Context Protocol (MCP) handler. Exposes Alongside task data and operations
 | Tool | Purpose |
 |------|---------|
 | `find`, `get_context`, `get_history`, `describe_commands` | Phase B reads (`reads.ts`); see `docs/mcp-tools.md` |
-| `start_session` | Returns ready tasks, focused tasks, preferences, and session instructions |
+| `start_session` | Optional snapshot of focused tasks, ready tasks and preferences |
 | `show_tasks` | Renders tasks in the inline widget |
 | `show_project` | Renders a project and its tasks in the inline widget |
 | `list_projects` | Lists projects filtered by status |

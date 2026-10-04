@@ -66,9 +66,9 @@ describe('MCP tool tiers (phase A)', () => {
     expect(exported.result.structuredContent).toMatchObject({ kind: 'planning_settings' });
   });
 
-  it('sends session instructions in initialize on the default endpoint only', async () => {
+  it('sends neutral server instructions in initialize on the default endpoint only', async () => {
     const init = await call('/mcp', 'default', 'initialize');
-    expect(init.result.instructions).toContain('Alongside task assistant');
+    expect(init.result.instructions).toContain('does not prescribe a workflow');
     expect((await call('/mcp/admin', 'admin', 'initialize')).result.instructions).toBeUndefined();
   });
 
