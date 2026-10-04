@@ -57,6 +57,7 @@ Four problems follow:
    version lookups serve the PWA over REST.
 6. **Reveal detail on demand.** The full command schema is fetched per family
    when needed. It isn't shipped in every `tools/list` response.
+7. **No workflow in the server.** Rituals (daily triage, kickoff notes, session close) live in client skills or the user's prompt. `initialize.instructions` says how to call the tools and nothing about what to do with them.
 
 ## Target surface
 
@@ -67,7 +68,7 @@ grows from today's 18 kinds to roughly 60.
 | --- | --- | --- | --- |
 | Read | `get_capabilities` | read-only | Contracts, limits, server time, zone, settings summary, command catalog version |
 | Read | `resolve_time` | read-only | Unchanged |
-| Read | `start_session` | read-only | Orientation: focused and suggested tasks, preferences, returning-after-gap |
+| Read | `start_session` | read-only | Optional orientation snapshot (focused and suggested tasks, preferences); deprecated, removed in phase D |
 | Read | `find` | read-only | Entity-typed search with filters, presets, sorting and cursor paging |
 | Read | `get_context` | read-only | Any entity plus a bounded neighborhood and current revisions |
 | Read | `get_agenda` (slice 4) | read-only | A time window: blocks, targets and deadlines, reminders, free slots |
@@ -390,11 +391,14 @@ task dashboard resource that `show_project` uses today. Other read tools can
 gain an optional `render` flag later if inline widgets prove useful beyond
 these two cases.
 
-`start_session` stays a tool because hosts don't consistently support MCP
-prompts. Its static guidance (`SESSION_INSTRUCTIONS`) moves to the
-`instructions` field of the `initialize` result, which hosts include once per
-connection instead of per call. The tool keeps the dynamic part: focused and
-suggested tasks, preferences and the returning-after-gap flag.
+`start_session` stays for now as an optional snapshot because hosts don't
+consistently support MCP prompts, but it is deprecated and removed in phase D:
+once `find` can filter focused tasks and a read exposes preferences it has
+no remaining job. The server carries no workflow.
+`initialize.instructions` is a few neutral lines about calling the tools, and the
+rituals the old `SESSION_INSTRUCTIONS` described (opening, gap triage, kickoff
+notes, session close) live in client skills. `returning_after_gap` is gone; a
+client reads `get_history` to see when the workspace last changed.
 
 Today `start_session` also writes. It seeds missing default preferences with
 `INSERT OR IGNORE`, and it stores `last_session_at`. Those writes have no
@@ -404,9 +408,8 @@ through the command path. Make it genuinely read-only instead:
 - **Defaults at read time.** Merge `DEFAULT_PREFERENCES` into the returned
   preferences in memory rather than inserting rows. A preference row exists
   only once someone sets it.
-- **Gap from history.** Compute `returning_after_gap` from the newest
-  action-log or command-audit entry, not a stored timestamp. "No activity for
-  seven days" is the signal the flag is meant to capture anyway.
+- **No gap flag.** `returning_after_gap` (history-derived, 7 days) was removed;
+  the client decides what counts as a gap.
 
 Retire the `last_session_at` key once nothing reads it, keeping it readable in
 existing preference rows and exports.
@@ -535,15 +538,15 @@ never registered in `TOOLS`; that section was removed in phase A.
   `preview_legacy_dates`) stays listed there as a deprecated alias. Each alias
   behaves exactly as before, with a description naming its new home. They are
   removed in phase D with the other deprecated tools, once logs show no
-  callers. Move static session instructions to `initialize`. Add
+  callers. Move static session instructions to `initialize` (later replaced by a neutral stub; see the no-workflow principle). Add
   `toolSurface` to capabilities.
 
   Phase A as built: `start_session` was annotated as a non-read-only write
   until phase C removed its preference writes (done). The admin endpoint serves
   `export_planning_settings` under its current name; folding it into
   `export_workspace({ scope: 'settings' })` is left for when that tool gains
-  the argument. `start_session` still returns `instructions` alongside
-  `initialize.instructions` so hosts that ignore the latter keep working.
+  the argument. `start_session` returned `instructions` alongside
+  `initialize.instructions` at the time; it no longer does.
 - **B: New reads and pinning preview.** Add `find` (task, project),
   `get_context`, `get_history`, `describe_commands`, and loose-intent
   `preview_changes`. Mark the tools they replace as deprecated in their
@@ -579,7 +582,7 @@ never registered in `TOOLS`; that section was removed in phase A.
   receipt guarded by the link or project revision plus the structural
   revision. The command bound is raised from 20 to 100, with the 100-statement
   plan check as the real ceiling (23 tasks for `create_project`). `update_preference`
-  runs on the new standalone `preference.set` command. `start_session` is now read-only (defaults merge in memory; the gap comes from history). The sync read gate is in force (`checkSyncReadGate`: snapshot and delta return 426 to `pwa/<3`, with or without `Origin`; `minimumSyncRead` in capabilities). The task widget now refreshes with `find` and reopens with `preview_changes` + `apply_changes` (it keeps `complete_task`, a quick verb); `list_tasks` and `reopen_task` have no remaining in-repo callers. `apply_changes` over MCP now records command kinds in the action log (`worker/src/domain/commandLog.ts`; one entry per non-settings command, same atomic plan as the receipt). Phase C is complete.
+  runs on the new standalone `preference.set` command. `start_session` is now read-only (defaults merge in memory; the history-derived gap flag was later removed). The sync read gate is in force (`checkSyncReadGate`: snapshot and delta return 426 to `pwa/<3`, with or without `Origin`; `minimumSyncRead` in capabilities). The task widget now refreshes with `find` and reopens with `preview_changes` + `apply_changes` (it keeps `complete_task`, a quick verb); `list_tasks` and `reopen_task` have no remaining in-repo callers. `apply_changes` over MCP now records command kinds in the action log (`worker/src/domain/commandLog.ts`; one entry per non-settings command, same atomic plan as the receipt). Phase C is complete.
 - **C: One write path.** First build the parity matrix (see
   [Adapter parity](#adapter-parity)) and the versioned receipt shape. Then add
   same-identity composition to the batch planner, with the revised result contract (see

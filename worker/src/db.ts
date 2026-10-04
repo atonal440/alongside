@@ -1046,14 +1046,6 @@ export class DB {
       .then(r => r.results);
   }
 
-  /** The newest action-log or command-audit timestamp, or null on a workspace with no history. */
-  async getLastActivityAt(): Promise<string | null> {
-    const row = await this.d1
-      .prepare('SELECT MAX(at) AS at FROM (SELECT MAX(created_at) AS at FROM action_log UNION ALL SELECT MAX(created_at) FROM command_audit)')
-      .first<{ at: string | null }>();
-    return row?.at ?? null;
-  }
-
   // ── Archive / Restore ──────────────────────────────────────────────────────
 
   async exportAll(includeLog = false): Promise<ExportPayload> {

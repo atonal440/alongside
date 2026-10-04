@@ -43,32 +43,10 @@ describe('start_session is read-only', () => {
   });
 });
 
-describe('returning_after_gap comes from history', () => {
-  const log = (w: World, createdAt: string) => w.sql.prepare("INSERT INTO action_log(tool_name,title,created_at) VALUES('add_task','Old',?)").run(createdAt);
-  const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
-
-  it('is false on an empty workspace and with recent activity', async () => withWorld(async w => {
-    expect((await call(w, 'start_session')).returning_after_gap).toBe(false);
-    log(w, daysAgo(1));
-    expect((await call(w, 'start_session')).returning_after_gap).toBe(false);
-  }));
-
-  it('is true when the newest action-log entry is older than seven days', async () => withWorld(async w => {
-    log(w, daysAgo(8)); log(w, daysAgo(30));
-    expect((await call(w, 'start_session')).returning_after_gap).toBe(true);
-  }));
-
-  it('counts command-audit activity as recent even when the action log is old', async () => withWorld(async w => {
-    log(w, daysAgo(40));
-    expect((await call(w, 'start_session')).returning_after_gap).toBe(true);
-    await call(w, 'update_preference', { key: 'sort_by', value: 'due' });          // writes a command audit row, no log row
-    expect((await call(w, 'start_session')).returning_after_gap).toBe(false);
-  }));
-
-  it('ignores a stale stored last_session_at', async () => withWorld(async w => {
-    await call(w, 'update_preference', { key: 'last_session_at', value: daysAgo(30) });
-    w.sql.prepare('DELETE FROM command_audit').run();                              // leave no recent activity beyond that
-    log(w, daysAgo(1));
-    expect((await call(w, 'start_session')).returning_after_gap).toBe(false);
+describe('orientation payload', () => {
+  it('carries no gap flag or instructions', async () => withWorld(async w => {
+    const result = await call(w, 'start_session');
+    expect(result).not.toHaveProperty('returning_after_gap');
+    expect(result).not.toHaveProperty('instructions');
   }));
 });

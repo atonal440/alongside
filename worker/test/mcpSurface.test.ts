@@ -66,9 +66,9 @@ describe('MCP tool tiers (phase A)', () => {
     expect(exported.result.structuredContent).toMatchObject({ kind: 'planning_settings' });
   });
 
-  it('sends session instructions in initialize on the default endpoint only', async () => {
+  it('sends neutral server instructions in initialize on the default endpoint only', async () => {
     const init = await call('/mcp', 'default', 'initialize');
-    expect(init.result.instructions).toContain('Alongside task assistant');
+    expect(init.result.instructions).toContain('does not prescribe a workflow');
     expect((await call('/mcp/admin', 'admin', 'initialize')).result.instructions).toBeUndefined();
   });
 
@@ -77,7 +77,7 @@ describe('MCP tool tiers (phase A)', () => {
     try {
       const response = await handleMcpRequest(rpc('/mcp', 'tools/call', { name: 'get_capabilities', arguments: {} }), new DB(d1), { DB: d1, AUTH_TOKEN: 't' });
       const body = await response.json() as any;
-      expect(body.result.structuredContent.toolSurface).toEqual({ version: 1, commandCatalog: 1, adminEndpoint: '/mcp/admin' });
+      expect(body.result.structuredContent.toolSurface).toEqual({ version: 2, commandCatalog: 1, adminEndpoint: '/mcp/admin' });
     } finally { sql.close(); }
   });
 

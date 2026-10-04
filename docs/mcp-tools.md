@@ -8,7 +8,7 @@ Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorl
 
 `/mcp/admin` is an opt-in second endpoint with the same bearer token. Connect it only when needed. It lists `export_workspace`, `restore_workspace`, `get_workspace_snapshot` (the cursor read restore needs, and the way to check after a lost restore response whether it committed), `export_planning_settings` and `preview_legacy_dates`. It has no widget resources.
 
-Tools that moved there (and the REST-only `get_workspace_delta` and `get_entity_version`) stay listed on `/mcp` as deprecated aliases that behave exactly as before; their descriptions start with `Deprecated alias.` and name the new home. They are removed in phase D. `initialize` on `/mcp` now carries the session instructions in its `instructions` field; `start_session` still returns them too until then. `get_capabilities` reports `toolSurface` (`version`, `commandCatalog`, `adminEndpoint`).
+Tools that moved there (and the REST-only `get_workspace_delta` and `get_entity_version`) stay listed on `/mcp` as deprecated aliases that behave exactly as before; their descriptions start with `Deprecated alias.` and name the new home. They are removed in phase D. `initialize` on `/mcp` carries a short neutral `instructions` field (what the tools are, the retry rule); it prescribes no workflow, and `start_session` no longer returns instructions. `get_capabilities` reports `toolSurface` (`version`, `commandCatalog`, `adminEndpoint`).
 
 ---
 
@@ -38,17 +38,16 @@ These tools replace the older list/get reads and the by-hand revision bookkeepin
 
 ### `start_session`
 
-Call this at the beginning of every work session. Read-only: it writes nothing. Default preferences are merged into the returned `preferences` in memory (a row exists only once someone sets it), and `returning_after_gap` is true when the newest action-log or command-audit entry is more than 7 days old (false on a workspace with no history). It measures the last change, not the last read, so someone who only reads is still "returning" after a week without edits. The old `last_session_at` preference is no longer read or written; existing rows stay readable and exported. Returns behavioral instructions for Claude to follow.
+Optional snapshot; nothing requires calling it, but it is currently the only read that returns focused tasks and stored preferences (`get_context({ entity: "settings" })` returns planning settings, not these). Read-only: it writes nothing. Default preferences are merged into the returned `preferences` in memory (a row exists only once someone sets it). It no longer returns `returning_after_gap` or instructions; a client that wants to know when the workspace last changed reads `get_history`. The old `last_session_at` preference is no longer read or written; existing rows stay readable and exported.
 
 **Parameters:** none
 
 **Returns:**
 ```ts
 {
+  focused_tasks: Task[],            // tasks whose focus has not expired
   suggested_tasks: Task[],          // top 3 ready tasks by readiness score
-  preferences: Record<string, string>,
-  returning_after_gap: boolean,     // true if nothing was changed for >7 days
-  instructions: string              // behavioral instructions for Claude
+  preferences: Record<string, string>
 }
 ```
 
@@ -344,7 +343,7 @@ Create a dependency or relationship between two tasks.
 
 ### `update_preference`
 
-Update a user preference. Preferences are applied automatically on the next `start_session`.
+Update a user preference. Preferences are stored values; the server does not act on them, so a client reads them with `start_session` and applies them as it sees fit.
 
 **Parameters:**
 
