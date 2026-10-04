@@ -371,15 +371,12 @@ The `blocks` link is the only one with scheduling implications. `get_ready_tasks
 
 ### `start_session`
 
-Call at the beginning of any Alongside session. Returns current task context **plus** behavioral instructions for the conversation. This is the mechanism by which Alongside works without requiring a Claude Project — the instructions land in context at the first tool call rather than in a system prompt.
+Optional orientation snapshot. It carries no instructions: the server prescribes no workflow, and rituals live in client skills or the user's prompt (see `docs/plans/mcp-surface.md`).
 
 Returns:
+- `focused_tasks`: tasks whose focus has not expired
 - `suggested_tasks`: top 3 ready tasks ranked by readiness score (see below)
 - `preferences`: current `user_preferences` values
-- `returning_after_gap`: true if last session was >7 days ago
-- `instructions`: behavioral directives (tone, sort order, session philosophy)
-
-Claude reads the `instructions` block and operates accordingly for the session. The instructions are not shown to the user.
 
 **Readiness score** (internal, not user-facing): computed per task from:
 - Has kickoff note (+3)

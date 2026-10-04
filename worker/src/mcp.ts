@@ -31,7 +31,6 @@ function mcpError(id: string | number, code: number, message: string) {
   });
 }
 
-/** No recorded activity for this long means the user is returning after a gap. */
 const TASK_DASHBOARD_URI = 'ui://alongside/task-dashboard';
 const ACTION_LOG_URI = 'ui://alongside/action-log';
 
@@ -48,7 +47,7 @@ Alongside stores tasks, projects, links, focus windows and a change history. It 
 
 Reading: find lists tasks or projects, get_context reads one entity with its neighborhood, get_history reads past changes.
 Writing: the verbs (add_task, complete_task, and so on) and apply_changes all go through the same planner. Pass a commandId so a retry replays the first result instead of repeating the change.
-Preferences are stored values the user has set; start_session returns them (with focused tasks) and update_preference changes them with update_preference when the user asks.
+Preferences are stored values the user has set; start_session returns them (with focused tasks), and update_preference changes one when the user asks.
 `.trim();
 
 const TOOL_DEFS = [

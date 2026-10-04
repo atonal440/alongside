@@ -393,7 +393,8 @@ these two cases.
 
 `start_session` stays for now as an optional snapshot because hosts don't
 consistently support MCP prompts, but it is deprecated and removed in phase D:
-once `find` can filter focused tasks and a read exposes preferences (the second PR) it has no remaining job. The server carries no workflow.
+once `find` can filter focused tasks and a read exposes preferences it has
+no remaining job. The server carries no workflow.
 `initialize.instructions` is a few neutral lines about calling the tools, and the
 rituals the old `SESSION_INSTRUCTIONS` described (opening, gap triage, kickoff
 notes, session close) live in client skills. `returning_after_gap` is gone; a
