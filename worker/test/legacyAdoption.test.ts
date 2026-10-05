@@ -56,6 +56,16 @@ describe.each(['fresh', 'upgrade'] as const)('legacy recurrence adoption (%s)', 
     } finally { sql.close(); }
   });
 
+  it('reaches adoptable tasks behind a full page of unadoptable ones', async () => {
+    const { sql, d1 } = sqliteD1(mode);
+    try {
+      for (let i = 0; i < 55; i += 1) legacy(sql, `t_a${String(i).padStart(4, '0')}`, { due_date: null, due_all_day: null });
+      legacy(sql, 't_zlast');
+      expect(await materializeDueDuties(d1, at('2026-10-05T13:00:00Z'))).toMatchObject({ adopted: 1, failed: 0 });
+      expect(task(sql, 't_zlast').duty_id).toBe('d_zlast');
+    } finally { sql.close(); }
+  });
+
   it('does nothing when the task changed after the plan was made', async () => {
     const { sql, d1 } = sqliteD1(mode);
     try {

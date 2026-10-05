@@ -23,8 +23,9 @@ export interface MaterializeSummary {
   adopted: number;
 }
 
-/** Legacy tasks adopted per run; each adoption is its own small atomic plan. */
-const ADOPTIONS_PER_RUN = 50;
+/** Legacy tasks examined per page and pages per run; each adoption is its own small atomic plan. */
+const ADOPTIONS_PER_PAGE = 50;
+const ADOPTION_PAGES = 5;
 
 /**
  * Creates the instances every active duty owes at `at` and advances each cursor. Idempotent and safe to run
@@ -92,19 +93,34 @@ function minuteNow(): IsoDateTime {
  * completion path and reported, never half-converted.
  */
 export async function adoptLegacyRecurrence(d1: D1Database, now: IsoDateTime, summary: MaterializeSummary): Promise<void> {
-  const legacy = await d1.prepare("SELECT * FROM tasks WHERE status='pending' AND recurrence IS NOT NULL AND duty_id IS NULL ORDER BY id LIMIT ?")
-    .bind(ADOPTIONS_PER_RUN).all<Task>();
-  for (const task of legacy.results) {
-    try {
-      const adoption = adoptLegacyTaskPlan(task, now);
-      if (!adoption.ok) { console.warn(`legacy recurring task ${task.id} stays on the completion path: ${adoption.error}`); continue; }
-      const applied = await applyPlan(d1, adoption.value.plan);
-      if (!applied.ok) { summary.failed += 1; console.error(`legacy recurring task ${task.id} was not adopted: ${applied.error.kind}`); continue; }
-      summary.adopted += 1;
-      if (adoption.value.offCalendar) console.warn(`legacy recurring task ${task.id} was off its calendar; kept as a one-off and the series starts at its next occurrence`);
-    } catch (cause) {
-      summary.failed += 1;
-      console.error(`legacy recurring task ${task.id} threw while being adopted`, cause);
+  // Keyset pages by id so tasks that cannot be adopted never crowd out adoptable ones behind them.
+  let after = '';
+  for (let page = 0; page < ADOPTION_PAGES; page += 1) {
+    const legacy = await d1.prepare("SELECT * FROM tasks WHERE status='pending' AND recurrence IS NOT NULL AND duty_id IS NULL AND id > ? ORDER BY id LIMIT ?")
+      .bind(after, ADOPTIONS_PER_PAGE).all<Task>();
+    for (const task of legacy.results) {
+      try {
+        const adoption = adoptLegacyTaskPlan(task, now);
+        if (!adoption.ok) { warnOnce(task.id, `legacy recurring task ${task.id} stays on the completion path: ${adoption.error}`); continue; }
+        const applied = await applyPlan(d1, adoption.value.plan);
+        if (!applied.ok) { summary.failed += 1; console.error(`legacy recurring task ${task.id} was not adopted: ${applied.error.kind}`); continue; }
+        summary.adopted += 1;
+        if (adoption.value.offCalendar) console.warn(`legacy recurring task ${task.id} was off its calendar; kept as a one-off and the series starts at its next occurrence`);
+      } catch (cause) {
+        summary.failed += 1;
+        console.error(`legacy recurring task ${task.id} threw while being adopted`, cause);
+      }
     }
+    const last = legacy.results[legacy.results.length - 1];
+    if (legacy.results.length < ADOPTIONS_PER_PAGE || last === undefined) break;
+    after = last.id;
   }
+}
+
+const warned = new Set<string>();
+/** Unadoptable records are reported once per isolate, not on every lazy read. */
+function warnOnce(id: string, message: string): void {
+  if (warned.has(id)) return;
+  warned.add(id);
+  console.warn(message);
 }
