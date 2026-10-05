@@ -1077,5 +1077,15 @@ recreated). Deviations from master plan section 4, chosen to keep the slice revi
   `commandCatalog` 2 (3a's `task.dates.set` also changed the catalog but did not bump it).
 - PWA: the detail view lists the parent ("Part of") and subtasks with a done count; no editing yet.
 
-Next in Slice 3: effective-date inheritance and blocker explanations, then tags/priority/estimates; group roles and
-completion policy remain open from section 4 and are now purely additive.
+Slice 3c (2026-10-05): effective dates and blocker explanations.
+- `shared/readiness.ts`: `effectiveDates` (earliest deadline, latest opening along the ancestor chain, with source task ids;
+  empty window flagged, never rejected) and `readiness()` (reason codes and warnings). `isReady`, `isAvailable(task, now, tasks)`,
+  `hasActiveBlocker` and the score use inherited openings, deadlines and ancestors' prerequisites; a finished ancestor
+  makes a task not ready. A parent with open subtasks stays ready (informational `open_subtasks`) until node roles exist.
+- Worker: `listReadyTasks` (and so `find` preset `ready`) filters in JS over all tasks and links; `get_context` on a task
+  returns `readiness`. `toolSurface.version` is 6; no wire protocol change.
+- PWA: the meta line shows an inherited "Starts" date with its source; the All view groups inherited-unavailable tasks as waiting.
+- Not done: rejecting ancestor/descendant `blocks` links and cycles in the effective graph (still an open item).
+
+Next in Slice 3: tags/priority/estimates when wanted (recurrence, slice 6, does not need them); group roles and
+completion policy remain open from section 4 and are purely additive.

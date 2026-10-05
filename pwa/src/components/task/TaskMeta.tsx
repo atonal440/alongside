@@ -1,13 +1,14 @@
 import type { Task } from '../../types';
-import { deadlineBoundary, isAvailable } from '@shared/readiness';
+import { deadlineBoundary, effectiveDates } from '@shared/readiness';
 import { datePointLabel, dueDateLabel, localDateOf, localTimeOf } from '../../utils/design';
 
 interface Props {
   task: Task;
   nowIso: string;
+  tasks?: readonly Task[];
 }
 
-export function taskMetaString(task: Task, nowIso: string): string {
+export function taskMetaString(task: Task, nowIso: string, tasks: readonly Task[] = []): string {
   const parts: string[] = [];
   if (task.due_date) {
     // Mirrors formatDue (pwa/src/utils/design.ts): an all-day due_date
@@ -34,14 +35,17 @@ export function taskMetaString(task: Task, nowIso: string): string {
     const passed = task.status !== 'done' && boundary !== null && Date.parse(boundary) < Date.parse(nowIso);
     parts.push(passed ? `Past deadline · ${deadline}` : `Deadline ${deadline}`);
   }
-  const opens = task.available_from ? datePointLabel(task.available_from) : '';
-  if (opens && !isAvailable(task, nowIso)) parts.push(`Starts ${opens}`);
+  // The opening that holds the task back may belong to an ancestor.
+  const opening = effectiveDates(task, tasks).availableFrom;
+  const openingSource = opening ? (opening.sourceId === task.id ? task : tasks.find(candidate => candidate.id === opening.sourceId)) : undefined;
+  const opens = openingSource?.available_from ? datePointLabel(openingSource.available_from) : '';
+  if (opens && opening && Date.parse(opening.at) > Date.parse(nowIso)) parts.push(openingSource === task ? `Starts ${opens}` : `Starts ${opens} (from "${openingSource!.title}")`);
   if (task.recurrence) parts.push('Recurring');
   return parts.join(' · ');
 }
 
-export function TaskMeta({ task, nowIso }: Props) {
-  const meta = taskMetaString(task, nowIso);
+export function TaskMeta({ task, nowIso, tasks }: Props) {
+  const meta = taskMetaString(task, nowIso, tasks);
   if (!meta) return null;
   return <div className="cc-meta">{meta}</div>;
 }

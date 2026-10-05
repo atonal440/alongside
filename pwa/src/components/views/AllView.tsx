@@ -28,7 +28,7 @@ import type { StatusFilter } from '../../context/reducer';
 import type { Project, Task, TaskLink } from '../../types';
 
 // A task whose available_from has not opened is waiting like a deferred one.
-const notYetAvailable = (task: Task): boolean => !isAvailable(task, new Date().toISOString());
+const notYetAvailable = (task: Task, tasks: Task[]): boolean => !isAvailable(task, new Date().toISOString(), tasks);
 
 type SortMode = 'readiness' | 'due' | 'project';
 
@@ -58,7 +58,7 @@ export function AllView() {
     for (const t of matchingTasks) {
       if (t.status === 'done') counts.done += 1;
       else if (isSomeday(t)) counts.someday += 1;
-      else if (isDeferred(t) || notYetAvailable(t)) counts.deferred += 1;
+      else if (isDeferred(t) || notYetAvailable(t, state.tasks)) counts.deferred += 1;
       else counts.ready += 1;
     }
     return counts;
@@ -69,8 +69,8 @@ export function AllView() {
       switch (state.statusFilter) {
         case 'done': return t.status === 'done';
         case 'someday': return t.status !== 'done' && isSomeday(t);
-        case 'deferred': return t.status !== 'done' && !isSomeday(t) && (isDeferred(t) || notYetAvailable(t));
-        case 'ready': return t.status !== 'done' && !isDeferred(t) && !notYetAvailable(t);
+        case 'deferred': return t.status !== 'done' && !isSomeday(t) && (isDeferred(t) || notYetAvailable(t, state.tasks));
+        case 'ready': return t.status !== 'done' && !isDeferred(t) && !notYetAvailable(t, state.tasks);
       }
     });
   }, [matchingTasks, state.statusFilter]);

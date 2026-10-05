@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { taskMetaString } from './TaskMeta';
+import { useAppState } from '../../hooks/useAppState';
 import type { Task } from '../../types';
 
 interface Props {
@@ -12,7 +13,8 @@ interface Props {
 
 export function TaskStack({ root, blocked, nowIso, onComplete, onDetail }: Props) {
   const [open, setOpen] = useState(false);
-  const meta = taskMetaString(root, nowIso);
+  const { state } = useAppState();
+  const meta = taskMetaString(root, nowIso, state.tasks);
 
   return (
     <div className="stack-card">

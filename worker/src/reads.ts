@@ -8,7 +8,7 @@ import { CommandError } from './domain/commands';
 import { invalidInput } from './domain/temporalFoundation';
 import { COMMAND_ENVELOPE_PROPERTIES, COMMAND_VARIANTS } from './commands';
 import type { DB } from './db';
-import { deadlineBoundary, isDeferred, isFocused, readinessScore } from '@shared/readiness';
+import { deadlineBoundary, isDeferred, isFocused, readiness, readinessScore } from '@shared/readiness';
 import type { Task } from '@shared/types';
 
 const DEFAULT_LIMIT = 50;
@@ -253,8 +253,10 @@ async function getContext(args: Record<string, unknown>, db: DB) {
   const project = snapshot.row.project_id ? await db.getProject(snapshot.row.project_id) : null;
   const parent = snapshot.row.parent_id ? await db.getTask(snapshot.row.parent_id) ?? null : null;
   const subtasks = await db.listSubtasks(snapshot.id);
+  const [everyTask, everyLink] = await Promise.all([db.listAllTasks(), db.listAllLinks()]);
   return { ...snapshot, context: {
     project,
+    readiness: readiness(snapshot.row, everyLink, everyTask, new Date().toISOString()),
     parent,
     subtasks,
     prerequisites: pick(link => link.link_type === 'blocks' && link.to_task_id === snapshot.id, 'from_task_id'),

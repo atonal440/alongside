@@ -1,5 +1,6 @@
 import type { Task } from '../../types';
 import { taskMetaString } from './TaskMeta';
+import { useAppState } from '../../hooks/useAppState';
 
 interface Props {
   task: Task;
@@ -13,7 +14,8 @@ export function CompactCard({ task, nowIso, cssClass = '', onComplete, onDetail 
   const done = task.status === 'done';
   const focused = !!task.focused_until && task.focused_until > new Date().toISOString();
   const label = focused ? 'Focused' : '';
-  const meta = taskMetaString(task, nowIso);
+  const { state } = useAppState();
+  const meta = taskMetaString(task, nowIso, state.tasks);
 
   return (
     <div className={`compact-card${done ? ' done' : ''}${cssClass ? ` ${cssClass}` : ''}`}>

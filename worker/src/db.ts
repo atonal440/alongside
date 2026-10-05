@@ -32,7 +32,7 @@ import {
   actionLog as actionLogTable,
 } from '@shared/schema';
 import type { Task, Project, TaskLink, ActionLog, TaskCreate, TaskUpdate, ProjectCreate, ProjectUpdate } from '@shared/types';
-import { isAvailable, readinessScore } from '@shared/readiness';
+import { isReady, readinessScore } from '@shared/readiness';
 import { unsafeBrand } from '@shared/brand';
 import type { ActiveDeferState, Plan, PendingTaskDomain, TaskDomain } from './domain';
 import type { Op, PreCheck } from './domain/Op';
@@ -527,29 +527,13 @@ export class DB {
     return result.meta.changes > 0;
   }
 
-  // Returns tasks that are not blocked by any incomplete task, sorted by readiness score.
+  // Returns tasks that can be started now (own and inherited gates, see shared/readiness.ts), sorted by readiness score.
   async listReadyTasks(projectId?: string): Promise<Task[]> {
     const ts = now();
-    const conditions = [
-      eq(tasksTable.status, 'pending'),
-      notDeferredCondition(ts),
-      // Correlated NOT EXISTS — kept in raw SQL; Drizzle has no first-class support for it
-      sql`NOT EXISTS (
-        SELECT 1 FROM task_links tl
-        JOIN tasks blocker ON tl.from_task_id = blocker.id
-        WHERE tl.to_task_id = ${tasksTable.id}
-          AND tl.link_type = 'blocks'
-          AND blocker.status != 'done'
-      )`,
-    ];
-    if (projectId) conditions.push(eq(tasksTable.project_id, projectId));
-
-    const results = await this.drizzle
-      .select()
-      .from(tasksTable)
-      .where(and(...conditions));
-
-    return results.filter(task => isAvailable(task, ts)).sort((a, b) => readinessScore(b, ts) - readinessScore(a, ts) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+    const [tasks, links] = await Promise.all([this.listAllTasks(), this.listAllLinks()]);
+    return tasks
+      .filter(task => (!projectId || task.project_id === projectId) && isReady(task, links, tasks, ts))
+      .sort((a, b) => readinessScore(b, ts, links, tasks) - readinessScore(a, ts, links, tasks) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
   }
 
   // Returns tasks whose focused_until is still in the future.
