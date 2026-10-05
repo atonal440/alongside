@@ -100,7 +100,7 @@ export function planSettingsCommand(input: CommandEnvelope, before: PlanningSett
 
 export function creationConflict(input: CommandEnvelope, current: EntitySnapshot): CommandError | null {
   const command = input.commands[0]!;
-  if (command.kind !== 'task.create' && command.kind !== 'project.create') throw new Error('Expected a creation command.');
+  if (command.kind !== 'task.create' && command.kind !== 'project.create' && command.kind !== 'duty.create') throw new Error('Expected a creation command.');
   if (current.version !== null || current.row !== null) return new CommandError({ code: 'revision_conflict', path: ['commands', '0', 'id'],
     message: 'This identity already has live or deleted history.', retryable: false, currentEntity: current, expectedRevision: null,
     recoveryHint: 'Replay the original command if this is a retry. For a different creation, keep intent and mint a new entity and command ID.',
@@ -164,6 +164,7 @@ export function commandEntityKey(command: Exclude<CommandEnvelope['commands'][nu
   switch (command.kind) {
     case 'task.delete': case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': case 'task.complete': case 'task.project.set': case 'task.parent.set': case 'task.type.set': case 'task.legacy-schedule.set': case 'task.dates.set': return { entity: 'task', id: command.id };
     case 'project.delete': case 'project.create': case 'project.content.set': case 'project.archive': case 'project.reopen': return { entity: 'project', id: command.id };
+    case 'duty.create': case 'duty.content.set': case 'duty.status.set': return { entity: 'duty', id: command.id };
   }
 }
 

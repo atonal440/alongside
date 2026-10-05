@@ -1,6 +1,6 @@
 import * as v from 'valibot';
 import { DutyIdSchema, EventInstantSchema, LinkTypeSchema, ProjectIdSchema, RevisionSchema, TaskIdSchema, parseSchema } from '../parse';
-import { ProjectRowSchema, TaskRowSchema, TaskLinkRowSchema } from './rows';
+import { DutyRowSchema, ProjectRowSchema, TaskRowSchema, TaskLinkRowSchema } from './rows';
 
 export const EntityKeySchema = v.variant('entity', [
   v.strictObject({ entity: v.literal('task'), id: TaskIdSchema }),
@@ -26,12 +26,14 @@ export const parseEntityVersionResponse = (input: unknown) => parseSchema(Entity
 export const EntityReadKeySchema = v.variant('entity', [
   v.strictObject({ entity: v.literal('task'), id: TaskIdSchema }),
   v.strictObject({ entity: v.literal('project'), id: ProjectIdSchema }),
+  v.strictObject({ entity: v.literal('duty'), id: DutyIdSchema }),
 ]);
 export type EntityReadKey = v.InferOutput<typeof EntityReadKeySchema>;
 const snapshotEntries = { contractVersion: v.literal(2), structuralRevision: RevisionSchema, version: v.nullable(EntityVersionSchema) };
 export const EntitySnapshotSchema = v.pipe(v.variant('entity', [
   v.strictObject({ ...snapshotEntries, entity: v.literal('task'), id: TaskIdSchema, row: v.nullable(TaskRowSchema) }),
   v.strictObject({ ...snapshotEntries, entity: v.literal('project'), id: ProjectIdSchema, row: v.nullable(ProjectRowSchema) }),
+  v.strictObject({ ...snapshotEntries, entity: v.literal('duty'), id: DutyIdSchema, row: v.nullable(DutyRowSchema) }),
 ]), v.check(value => value.row === null
   ? value.version === null || value.version.deletedAt !== null
   : value.row.id === value.id && value.version !== null && value.version.deletedAt === null,

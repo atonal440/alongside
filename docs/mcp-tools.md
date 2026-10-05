@@ -18,6 +18,8 @@ Through MCP, `apply_changes` also writes one action-log entry per command, in de
 
 ## The `preference.set` command
 
+Duty commands (`duty.create`, `duty.content.set`, `duty.status.set`) create, edit and pause/resume/end a recurring series; they are standalone like `preference.set`. Read duties with `find({ entity: 'duty' })` and `get_context({ entity: 'duty', id })`. Details in `docs/worker/duties.md`.
+
 `preference.set` is a standalone command (it cannot join a mixed batch, like `planning.set`): `{ kind: 'preference.set', key, value, expectedRevision }`. `key` is one of the preference keys (including the internal `last_session_at`, which stays accepted); `value` is validated against the key's allowed set. `expectedRevision` is the preference's sync revision, or `null` if it has never been set. The result holds one change, `{ entity: 'preference', id: key, before: { revision, value } | null, after: { revision, value } }`, with `after.revision` one past `before.revision`. The write is guarded in the same batch as the receipt and audit row, and lands in the sync feed through the existing triggers. The legacy command feed (`change_feed`) has no preference rows. It is the only way to set a preference over MCP (the `update_preference` tool was removed in phase D); `describe_commands({ family: 'preference' })` and loose-intent `preview_changes` support it.
 
 ## Find, context and loose-intent changes (phase B)
@@ -30,7 +32,7 @@ These tools replace the older list/get reads and the by-hand revision bookkeepin
 
 **`get_history`** — `{ limit? }`. Action-log rows (`source: 'action_log'`) merged with command-audit rows (`source: 'command'`, with `command_id`, `actor`, `reason`, `changes`), newest first.
 
-**`describe_commands`** — `{ family: 'task' | 'project' | 'link' | 'planning' }`. Returns that family's command schemas, one valid example envelope and the error codes to expect.
+**`describe_commands`** — `{ family: 'task' | 'project' | 'link' | 'planning' | 'duty' }`. Returns that family's command schemas, one valid example envelope and the error codes to expect.
 
 **Loose intent for `preview_changes`.** Instead of a strict envelope, send `{ intent: true, contractVersion: 2, commands: [...] }` where each command is its strict form without `expectedRevision`, `expectedStructuralRevision`, creation IDs or `successor`. `commandId` (minted if omitted), `actor` (default `"llm"`) and `reason` are optional. A creation command may carry a `clientRef`; later commands refer to it as `"@clientRef"` in `id`, `from`, `to` and `project`. The server reads current state, mints IDs, fills every guard and previews the result. The response is the usual preview plus `pinnedEnvelope`: the strict envelope to pass to `apply_changes` unchanged. Patches to `*.content.set` and `task.legacy-schedule.set` merge into current values because those commands replace whole field groups. A completion gets a minted `successor` only when the task has a recurrence. If anything changes between preview and apply, `apply_changes` returns `revision_conflict` as for any stale guard. Retrying a lost apply with the same envelope replays the receipt. Strict envelopes are still accepted and return no `pinnedEnvelope`.
 

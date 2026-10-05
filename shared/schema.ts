@@ -161,12 +161,12 @@ export const commandAudit = sqliteTable('command_audit', {
 export const changeFeed = sqliteTable('change_feed', {
   seq: integer('seq').primaryKey({ autoIncrement: true }),
   command_id: text('command_id').notNull().references(() => commandReceipts.command_id),
-  entity: text('entity', { enum: ['planning_settings', 'task', 'project', 'link'] }).notNull(),
+  entity: text('entity', { enum: ['planning_settings', 'task', 'project', 'link', 'duty'] }).notNull(),
   entity_id: text('entity_id').notNull(), revision: integer('revision').notNull(),
   operation: text('operation', { enum: ['upsert', 'delete'] }).notNull(),
   payload_json: text('payload_json').notNull(), created_at: text('created_at').notNull(),
 }, t => [
-  check('feed_entity', sql`(${t.entity} = 'planning_settings' AND ${t.entity_id} = 'workspace') OR (${t.entity} = 'task' AND ${t.entity_id} GLOB 't_*') OR (${t.entity} = 'project' AND ${t.entity_id} GLOB 'p_*') OR (${t.entity} = 'link' AND CASE WHEN json_valid(${t.entity_id}) THEN json_type(${t.entity_id}) = 'array' AND json_array_length(${t.entity_id}) = 3 AND json_type(${t.entity_id},'$[0]') = 'text' AND json_extract(${t.entity_id},'$[0]') GLOB 't_*' AND json_type(${t.entity_id},'$[1]') = 'text' AND json_extract(${t.entity_id},'$[1]') GLOB 't_*' AND json_type(${t.entity_id},'$[2]') = 'text' AND json_extract(${t.entity_id},'$[2]') IN ('blocks','related') ELSE 0 END)`),
+  check('feed_entity', sql`(${t.entity} = 'planning_settings' AND ${t.entity_id} = 'workspace') OR (${t.entity} = 'task' AND ${t.entity_id} GLOB 't_*') OR (${t.entity} = 'project' AND ${t.entity_id} GLOB 'p_*') OR (${t.entity} = 'duty' AND ${t.entity_id} GLOB 'd_*') OR (${t.entity} = 'link' AND CASE WHEN json_valid(${t.entity_id}) THEN json_type(${t.entity_id}) = 'array' AND json_array_length(${t.entity_id}) = 3 AND json_type(${t.entity_id},'$[0]') = 'text' AND json_extract(${t.entity_id},'$[0]') GLOB 't_*' AND json_type(${t.entity_id},'$[1]') = 'text' AND json_extract(${t.entity_id},'$[1]') GLOB 't_*' AND json_type(${t.entity_id},'$[2]') = 'text' AND json_extract(${t.entity_id},'$[2]') IN ('blocks','related') ELSE 0 END)`),
   check('feed_revision', sql`typeof(${t.revision}) = 'integer' AND ${t.revision} BETWEEN 0 AND 9007199254740991`),
   check('feed_operation', sql`${t.operation} IN ('upsert','delete')`),
   check('feed_payload', sql`json_valid(${t.payload_json})`),

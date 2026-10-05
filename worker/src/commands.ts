@@ -110,6 +110,31 @@ const taskFieldSchemas = [
   }, required: ['dueDate', 'dueAllDay', 'recurrence'] }),
   taskDatesSchema,
 ];
+const dutyId = { type: 'string', pattern: '^d_[0-9A-Za-z_-]{5,}$' };
+const revisionSchema = { type: 'integer', minimum: 0, maximum: 9007199254740991 };
+const dutyContentProperties = { ...creationProperties,
+  taskType: { enum: ['action', 'plan'] },
+  project: { oneOf: [{ type: 'null' }, { type: 'object', additionalProperties: false, properties: { id: { type: 'string', pattern: '^p_[0-9A-Za-z_-]{5,}$' }, expectedRevision: revisionSchema }, required: ['id', 'expectedRevision'] }] },
+  catchUp: { enum: ['next', 'all'], description: 'After a long gap: "next" creates only the newest missed occurrence (older open ones stay), "all" creates the backlog oldest first, 50 per run.' },
+};
+const dutyContentRequired = ['title', 'notes', 'kickoffNote', 'taskType', 'project', 'catchUp'];
+const dutySchemas = [
+  { type: 'object', additionalProperties: false, properties: {
+    kind: { const: 'duty.create' }, id: dutyId, clientRef: { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9_-]{0,63}$' },
+    expectedRevision: { type: 'null' }, expectedStructuralRevision: revisionSchema,
+    values: { type: 'object', additionalProperties: false, properties: { ...dutyContentProperties, schedule: { type: 'object', additionalProperties: false, properties: {
+      rrule: { type: 'string', description: 'RFC 5545 rule without DTSTART: FREQ DAILY|WEEKLY|MONTHLY|YEARLY with INTERVAL, BYDAY, BYMONTHDAY, BYMONTH, BYSETPOS, BYHOUR, BYMINUTE, WKST, and COUNT or UNTIL; HOURLY and MINUTELY take only INTERVAL (and COUNT or UNTIL). Example: FREQ=WEEKLY;BYDAY=MO,TH.' },
+      dtstart: { type: 'string', format: 'date-time', description: 'First instant the rule may occur; normalized to minute UTC. Its wall-clock time in timezone is the time of day every occurrence keeps.' },
+      timezone: { type: ['string', 'null'], description: 'IANA zone the rule is expanded in, so a 09:00 series stays at 09:00 across daylight-saving changes. Null behaves as UTC. Immutable: to reschedule or re-zone, end the duty and create another.' },
+    }, required: ['rrule', 'dtstart', 'timezone'] } }, required: [...dutyContentRequired, 'schedule'] },
+  }, required: ['kind', 'id', 'expectedRevision', 'expectedStructuralRevision', 'values'] },
+  { type: 'object', additionalProperties: false, properties: { kind: { const: 'duty.content.set' }, id: dutyId, expectedRevision: revisionSchema,
+    values: { type: 'object', additionalProperties: false, properties: dutyContentProperties, required: dutyContentRequired } },
+    required: ['kind', 'id', 'expectedRevision', 'values'], description: 'Changes the template future occurrences copy; tasks already generated are untouched. The schedule cannot change.' },
+  { type: 'object', additionalProperties: false, properties: { kind: { const: 'duty.status.set' }, id: dutyId, expectedRevision: revisionSchema,
+    status: { enum: ['active', 'paused', 'ended'], description: 'paused stops generation and active resumes it under the catch-up policy; ended is final (no next occurrence). Generated tasks are kept.' } },
+    required: ['kind', 'id', 'expectedRevision', 'status'] },
+];
 const linkSchemas = ['link.add', 'link.remove'].map(kind => ({
   type: 'object', additionalProperties: false, properties: {
     kind: { const: kind }, from: { type: 'string', pattern: '^t_[0-9A-Za-z_-]{5,}$' }, to: { type: 'string', pattern: '^t_[0-9A-Za-z_-]{5,}$' },
@@ -126,7 +151,7 @@ const preferenceSchema = {
   }, required: ['kind', 'key', 'value', 'expectedRevision'],
 };
 const commandEnvelope = { ...envelope, properties: { ...envelope.properties,
-  commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, preferenceSchema, creationCommandSchema('task'), creationCommandSchema('project'), contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema, ...taskFieldSchemas, ...linkSchemas, ...deleteSchemas] } },
+  commands: { ...envelope.properties.commands, items: { oneOf: [envelope.properties.commands.items, preferenceSchema, creationCommandSchema('task'), creationCommandSchema('project'), ...dutySchemas, contentCommandSchema('task'), contentCommandSchema('project'), ...stateSchemas, completionSchema, ...taskFieldSchemas, ...linkSchemas, ...deleteSchemas] } },
 } };
 const looseIntentSchema = {
   type: 'object', additionalProperties: false,

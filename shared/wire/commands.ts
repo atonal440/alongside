@@ -1,8 +1,8 @@
 import * as v from 'valibot';
-import { PREFERENCE_KEYS, CommandIdSchema, EventInstantSchema, MinuteInstantSchema, DueDateTimeSchema, RruleSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, LinkTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema, parseIsoDate, parseRrule, nextOccurrence } from '../parse';
+import { PREFERENCE_KEYS, DutyIdSchema, SeriesRruleSchema, TimezoneSchema, CommandIdSchema, EventInstantSchema, MinuteInstantSchema, DueDateTimeSchema, RruleSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, LinkTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema, parseIsoDate, parseRrule, nextOccurrence } from '../parse';
 import { TemporalPointSchema } from '../temporal';
 import { PlanningSettingsSchema } from './planning';
-import { ProjectRowSchema, TaskRowSchema, TaskLinkRowSchema } from './rows';
+import { DutyRowSchema, ProjectRowSchema, TaskRowSchema, TaskLinkRowSchema } from './rows';
 
 // Standalone and bounded mixed families share replay receipts. Offline command
 // storage joins this protocol in subsequent Slice 2 steps.
@@ -26,6 +26,12 @@ export const TaskCreateValuesSchema = v.strictObject({
   ...ProjectCreateValuesSchema.entries, taskType: TaskTypeSchema,
   project: v.nullable(v.strictObject({ id: ProjectIdSchema, expectedRevision: RevisionSchema })),
 });
+/** A duty's calendar. Immutable once created: rescheduling or re-zoning is end plus create. */
+export const DutyScheduleSchema = v.strictObject({ rrule: SeriesRruleSchema, dtstart: MinuteInstantSchema, timezone: v.nullable(TimezoneSchema) });
+/** The template every occurrence copies, plus how a long absence is caught up. */
+export const DutyContentValuesSchema = v.strictObject({
+  ...TaskCreateValuesSchema.entries, catchUp: v.picklist(['next', 'all']),
+});
 export const PlanningCommandSchema = v.strictObject({
   kind: v.literal('planning.set'), expectedRevision: v.nullable(RevisionSchema), values: PlanningValuesSchema,
 });
@@ -41,6 +47,17 @@ export const ProjectCreateCommandSchema = v.strictObject({
 export const TaskCreateCommandSchema = v.strictObject({
   kind: v.literal('task.create'), id: TaskIdSchema, clientRef: v.optional(ClientRefSchema),
   expectedRevision: v.null(), expectedStructuralRevision: RevisionSchema, values: TaskCreateValuesSchema,
+});
+export const DutyCreateCommandSchema = v.strictObject({
+  kind: v.literal('duty.create'), id: DutyIdSchema, clientRef: v.optional(ClientRefSchema),
+  expectedRevision: v.null(), expectedStructuralRevision: RevisionSchema,
+  values: v.strictObject({ ...DutyContentValuesSchema.entries, schedule: DutyScheduleSchema }),
+});
+export const DutyContentCommandSchema = v.strictObject({
+  kind: v.literal('duty.content.set'), id: DutyIdSchema, expectedRevision: RevisionSchema, values: DutyContentValuesSchema,
+});
+export const DutyStatusCommandSchema = v.strictObject({
+  kind: v.literal('duty.status.set'), id: DutyIdSchema, expectedRevision: RevisionSchema, status: v.picklist(['active', 'paused', 'ended']),
 });
 export const ProjectContentCommandSchema = v.strictObject({
   kind: v.literal('project.content.set'), id: ProjectIdSchema, expectedRevision: RevisionSchema, values: ProjectCreateValuesSchema,
@@ -115,10 +132,10 @@ export const CommandEnvelopeSchema = v.pipe(v.strictObject({
   actor: v.picklist(['user', 'llm', 'import']),
   reason: v.optional(v.pipe(v.string(), v.maxLength(1_000))),
   expectedStructuralRevision: v.optional(RevisionSchema),
-  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, PreferenceSetCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskParentCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, TaskDatesCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(MAX_BATCH_COMMANDS)),
+  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, PreferenceSetCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, DutyCreateCommandSchema, DutyContentCommandSchema, DutyStatusCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskParentCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, TaskDatesCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(MAX_BATCH_COMMANDS)),
 }), v.check(value => value.commands.length === 1 ? value.expectedStructuralRevision === undefined
-  : value.expectedStructuralRevision !== undefined && value.commands.every(command => command.kind !== 'planning.set' && command.kind !== 'preference.set'),
-'Mixed batches require an envelope structural revision; settings remain standalone.'),
+  : value.expectedStructuralRevision !== undefined && value.commands.every(command => command.kind !== 'planning.set' && command.kind !== 'preference.set' && !command.kind.startsWith('duty.')),
+'Mixed batches require an envelope structural revision; settings and duties remain standalone.'),
 v.check(value => { const refs=value.commands.flatMap(command => 'clientRef' in command && command.clientRef !== undefined ? [command.clientRef] : command.kind === 'task.complete' && command.successor?.clientRef !== undefined ? [command.successor.clientRef] : []); return new Set(refs).size === refs.length; }, 'Client references must be unique within a batch.'));
 export type CommandEnvelope = v.InferOutput<typeof CommandEnvelopeSchema>;
 export const parseCommandEnvelope = (input: unknown) => parseSchema(CommandEnvelopeSchema, input);
@@ -150,12 +167,17 @@ export const TaskChangeDiffSchema = v.strictObject({
   before: v.nullable(v.strictObject({ revision: RevisionSchema, row: TaskRowSchema })),
   after: v.union([v.strictObject({ revision: RevisionSchema, row: TaskRowSchema }), v.strictObject({ revision: RevisionSchema, deleted: v.literal(true) })]),
 });
+export const DutyChangeDiffSchema = v.strictObject({
+  entity: v.literal('duty'), id: DutyIdSchema,
+  before: v.nullable(v.strictObject({ revision: RevisionSchema, row: DutyRowSchema })),
+  after: v.strictObject({ revision: RevisionSchema, row: DutyRowSchema }),
+});
 export const LinkChangeDiffSchema = v.strictObject({
   entity: v.literal('link'), id: v.string(),
   before: v.nullable(v.strictObject({ revision: RevisionSchema, row: v.nullable(TaskLinkRowSchema) })),
   after: v.union([v.strictObject({ revision: RevisionSchema, row: TaskLinkRowSchema }), v.strictObject({ revision: RevisionSchema, deleted: v.literal(true) })]),
 });
-export const ChangeDiffSchema = v.variant('entity', [PlanningDiffSchema, PreferenceDiffSchema, ProjectChangeDiffSchema, TaskChangeDiffSchema, LinkChangeDiffSchema]);
+export const ChangeDiffSchema = v.variant('entity', [PlanningDiffSchema, PreferenceDiffSchema, ProjectChangeDiffSchema, TaskChangeDiffSchema, DutyChangeDiffSchema, LinkChangeDiffSchema]);
 type ChangeDiff = v.InferOutput<typeof ChangeDiffSchema>;
 
 // Group boundaries identify standalone completion effects. Check the entire
@@ -270,7 +292,7 @@ function validDiffIdentity(value: { serverNow: string; batch?: true | undefined;
 const RefsSchema = v.pipe(v.custom<Record<string, string>>(input => input !== null && typeof input === 'object' && !Array.isArray(input)
   && Object.entries(input).every(([key, value]) => /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(key)
     && !['constructor', 'prototype', '__proto__'].includes(key) && typeof value === 'string'), 'Expected valid client reference keys and IDs.'),
-v.record(ClientRefSchema, v.union([TaskIdSchema, ProjectIdSchema])));
+v.record(ClientRefSchema, v.union([TaskIdSchema, ProjectIdSchema, DutyIdSchema])));
 const resultEntries = {
   contractVersion: v.literal(2), commandId: CommandIdSchema, payloadHash: PayloadHashSchema,
   serverNow: EventInstantSchema, batch: v.optional(v.literal(true)), changeGroups: v.optional(v.pipe(v.array(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100))), v.minLength(2), v.maxLength(MAX_BATCH_COMMANDS))), commandChanges: v.optional(v.pipe(v.array(v.pipe(v.array(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(99))), v.minLength(1), v.maxLength(100))), v.minLength(2), v.maxLength(MAX_BATCH_COMMANDS))), changes: v.pipe(v.array(ChangeDiffSchema), v.minLength(1), v.maxLength(100)),

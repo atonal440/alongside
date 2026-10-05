@@ -15,7 +15,7 @@ import { invalidInput } from './domain/temporalFoundation';
 import type { DB } from './db';
 
 type Json = Record<string, unknown>;
-type Kind = { entity: 'task' | 'project' };
+type Kind = { entity: 'task' | 'project' | 'duty' };
 
 const MAX_ATTEMPTS = 3;
 const REF = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
@@ -64,7 +64,7 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
     let snapshot = snapshots.get(key);
     if (!snapshot) {
       const parsed = parseEntityKey({ entity, id });
-      if (!parsed.ok || parsed.value.entity === 'duty' || parsed.value.entity === 'link') throw fail(path, `"${id}" is not a valid ${entity} ID.`);
+      if (!parsed.ok || parsed.value.entity === 'link') throw fail(path, `"${id}" is not a valid ${entity} ID.`);
       snapshot = await db.getEntitySnapshot({ entity, id: parsed.value.id } as never);
       if (snapshot.structuralRevision !== structural) throw new StaleRead();
       snapshots.set(key, snapshot);
@@ -137,6 +137,7 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
       if (!predicted.has(`${entity}:${id}`)) written(entity, id, revision + 1);
       return revision;
     };
+    const standalone = () => { if ((args.commands as unknown[]).length > 1) throw fail(at, 'Duty commands are standalone; send one command per call.'); };
     const only = (input: Json, allowedKeys: string[], path: string[]) => {
       for (const key of Object.keys(input)) if (!allowedKeys.includes(key)) throw fail([...path, key], `Unknown key "${key}".`);
     };
@@ -174,6 +175,35 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
         remember(entity, id, { title: merged.title, notes: merged.notes, kickoff_note: merged.kickoffNote, ...(entity === 'task' ? { session_log: merged.sessionLog } : {}) });
         break;
       }
+      case 'duty.create': {
+        keys('clientRef', 'values');
+        standalone();
+        const input = values(); only(input, ['title', 'notes', 'kickoffNote', 'taskType', 'project', 'catchUp', 'schedule'], [...at, 'values']);
+        if (input.schedule === null || typeof input.schedule !== 'object' || Array.isArray(input.schedule)) throw fail([...at, 'values', 'schedule'], 'schedule must be an object with rrule and dtstart.');
+        const schedule = input.schedule as Json; only(schedule, ['rrule', 'dtstart', 'timezone'], [...at, 'values', 'schedule']);
+        // A series expands in one IANA zone; default to the workspace's so a 09:00 rule keeps its wall-clock time.
+        const timezone = schedule.timezone === undefined ? (await db.getPlanningSettings())?.timezone ?? null : schedule.timezone;
+        const id = `d_${nanoid(5)}`;
+        commands.push({ kind: 'duty.create', id, ...clientRef(), expectedRevision: null, expectedStructuralRevision: structural,
+          values: { title: input.title, notes: input.notes ?? null, kickoffNote: input.kickoffNote ?? null, taskType: input.taskType ?? 'action',
+            project: await project(input.project ?? null, [...at, 'values', 'project']), catchUp: input.catchUp ?? 'next',
+            schedule: { rrule: schedule.rrule, dtstart: schedule.dtstart, timezone } } });
+        register('duty', id);
+        break;
+      }
+      case 'duty.content.set': {
+        keys('id', 'values');
+        standalone();
+        const id = idOf('duty');
+        const input = values(); only(input, ['title', 'notes', 'kickoffNote', 'taskType', 'project', 'catchUp'], [...at, 'values']);
+        const row = await liveRow('duty', id, [...at, 'id']);
+        const current: Json = { title: row.title, notes: row.notes, kickoffNote: row.kickoff_note, taskType: row.task_type, catchUp: row.catch_up };
+        const merged = { ...current, ...input };
+        const selected = input.project !== undefined ? input.project : (row.project_id ?? null);
+        commands.push({ kind: command.kind, id, expectedRevision: await edit('duty', id), values: { ...merged, project: await project(selected, [...at, 'values', 'project']) } });
+        break;
+      }
+      case 'duty.status.set': { keys('id', 'status'); standalone(); const id = idOf('duty'); commands.push({ kind: command.kind, id, expectedRevision: await edit('duty', id), status: command.status }); break; }
       case 'task.focus.set': { keys('id', 'focusedUntil'); const id = idOf('task'); commands.push({ kind: command.kind, id, expectedRevision: await edit('task', id), focusedUntil: command.focusedUntil }); break; }
       case 'task.defer.set': { keys('id', 'defer'); const id = idOf('task'); commands.push({ kind: command.kind, id, expectedRevision: await edit('task', id), defer: command.defer }); break; }
       case 'task.type.set': { keys('id', 'taskType'); const id = idOf('task'); commands.push({ kind: command.kind, id, expectedRevision: await edit('task', id), taskType: command.taskType }); break; }

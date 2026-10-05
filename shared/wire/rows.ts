@@ -1,12 +1,16 @@
 import * as v from 'valibot';
 import type { InferOutput } from 'valibot';
-import type { Project, Task, TaskLink } from '../types';
+import type { Duty, Project, Task, TaskLink } from '../types';
 import type { Result } from '../result';
 import { TemporalPointTextSchema } from '../temporal';
 import {
   boundedStringSchema,
   DeferKindSchema,
   DueDateTimeSchema,
+  DutyIdSchema,
+  MinuteInstantSchema,
+  SeriesRruleSchema,
+  TimezoneSchema,
   IsoDateTimeMinuteSchema,
   IsoDateTimeSchema,
   LinkTypeSchema,
@@ -104,6 +108,17 @@ export const TaskLinkRowSchema = v.pipe(
   v.transform((row): TaskLink => ({ ...row })),
 );
 
+/** A duty (recurring series). The calendar columns (rrule, dtstart, timezone) never change after creation. */
+export const DutyRowSchema = v.strictObject({
+  id: DutyIdSchema, title: taskRowEntries.title,
+  notes: v.nullable(boundedStringSchema(10_000)), kickoff_note: v.nullable(boundedStringSchema(2_000)),
+  task_type: TaskTypeSchema, project_id: v.nullable(ProjectIdSchema), rrule: SeriesRruleSchema,
+  dtstart: MinuteInstantSchema, timezone: v.nullable(TimezoneSchema),
+  status: v.picklist(['active', 'paused', 'ended']), catch_up: v.picklist(['next', 'all']),
+  last_spawned_at: v.nullable(MinuteInstantSchema), next_occurrence_at: v.nullable(MinuteInstantSchema),
+  created_at: IsoDateTimeSchema, updated_at: IsoDateTimeSchema,
+});
+export type ParsedDutyRow = InferOutput<typeof DutyRowSchema>;
 export type ParsedTaskRow = InferOutput<typeof TaskRowSchema>;
 export type ParsedProjectRow = InferOutput<typeof ProjectRowSchema>;
 export type ParsedTaskLinkRow = InferOutput<typeof TaskLinkRowSchema>;
@@ -113,6 +128,7 @@ export type ParsedTaskLinkRow = InferOutput<typeof TaskLinkRowSchema>;
 type Expect<T extends true> = T;
 export type AssertTaskRowAssignable = Expect<ParsedTaskRow extends Task ? true : false>;
 export type AssertProjectRowAssignable = Expect<ParsedProjectRow extends Project ? true : false>;
+export type AssertDutyRowAssignable = Expect<ParsedDutyRow extends Duty ? true : false>;
 export type AssertTaskLinkRowAssignable = Expect<ParsedTaskLinkRow extends TaskLink ? true : false>;
 
 export function parseTaskRow(input: unknown): Result<ParsedTaskRow, ValidationError[]> {

@@ -20,11 +20,11 @@ const DEFAULT_ORDER: Record<Sort, 1 | -1> = { created: -1, updated: -1, due: 1, 
 export const READ_TOOLS = [
   {
     name: 'find',
-    description: 'Search tasks or projects. entity "task" filters by statuses (default ["pending"], deferred tasks included), text (case-insensitive over title and notes), project_id, parent_id (a task id: its direct subtasks; null: top-level tasks only) and focused (true: only tasks whose focus has not expired; false: only the rest); preset "ready" restricts to unblocked, non-deferred pending tasks. entity "project" filters by status (default "active"). Order is sort (created, updated, due, deadline or readiness; default created) in the given order (asc or desc; default desc for created, updated and readiness, asc for due and deadline; undated tasks count as latest). due sorts the target date, deadline the hard deadline. Readiness is a heuristic score (order applies to the score only; ties break oldest first) that favors tasks with a kickoff note or session log, recent edits and near due dates or deadlines, and ranks tasks that are not yet available with blocked ones; ask for it only if you want it. Results are deterministic and page with nextCursor.',
+    description: 'Search tasks, projects or duties (recurring series; entity "duty" filters by status and project_id, newest first, ended series omitted by default). entity "task" filters by statuses (default ["pending"], deferred tasks included), text (case-insensitive over title and notes), project_id, parent_id (a task id: its direct subtasks; null: top-level tasks only) and focused (true: only tasks whose focus has not expired; false: only the rest); preset "ready" restricts to unblocked, non-deferred pending tasks. entity "project" filters by status (default "active"). Order is sort (created, updated, due, deadline or readiness; default created) in the given order (asc or desc; default desc for created, updated and readiness, asc for due and deadline; undated tasks count as latest). due sorts the target date, deadline the hard deadline. Readiness is a heuristic score (order applies to the score only; ties break oldest first) that favors tasks with a kickoff note or session log, recent edits and near due dates or deadlines, and ranks tasks that are not yet available with blocked ones; ask for it only if you want it. Results are deterministic and page with nextCursor.',
     inputSchema: {
       type: 'object', additionalProperties: false,
       properties: {
-        entity: { enum: ['task', 'project'] },
+        entity: { enum: ['task', 'project', 'duty'] },
         preset: { enum: ['ready'], description: 'Task only. Mutually exclusive with statuses.' },
         filter: {
           type: 'object', additionalProperties: false,
@@ -34,7 +34,7 @@ export const READ_TOOLS = [
             project_id: { type: 'string', description: 'Task only. Restrict to one project.' },
             parent_id: { type: ['string', 'null'], description: 'Task only. A task id keeps its direct subtasks; null keeps top-level tasks.' },
             focused: { type: 'boolean', description: 'Task only. true keeps tasks whose focus has not expired; false keeps the others.' },
-            status: { enum: ['active', 'archived'], description: 'Project only. Defaults to "active".' },
+            status: { enum: ['active', 'archived', 'paused', 'ended'], description: 'Project: active (default) or archived. Duty: active, paused or ended (default: active and paused).' },
           },
         },
         sort: { enum: [...SORTS], description: 'Task only. Defaults to created.' },
@@ -47,11 +47,11 @@ export const READ_TOOLS = [
   },
   {
     name: 'get_context',
-    description: 'Read one entity. depth 0 returns the row plus entity and structural revisions. The default depth 1 adds the neighborhood for a task (project, prerequisites, dependents, related tasks) or a project (ready tasks, task counts); links, settings and preferences have no neighborhood. entity "preferences" returns the stored user preferences (key to value, defaults merged in), which the server never acts on.',
+    description: 'Read one entity. depth 0 returns the row plus entity and structural revisions. The default depth 1 adds the neighborhood for a task (project, prerequisites, dependents, related tasks) a project (ready tasks, task counts) or a duty (its project and the 20 most recent generated tasks); links, settings and preferences have no neighborhood. entity "preferences" returns the stored user preferences (key to value, defaults merged in), which the server never acts on.',
     inputSchema: {
       type: 'object',
       oneOf: [
-        ...['task', 'project'].map(entity => ({ type: 'object', additionalProperties: false, properties: { entity: { const: entity }, id: { type: 'string' }, depth: { enum: [0, 1] } }, required: ['entity', 'id'] })),
+        ...['task', 'project', 'duty'].map(entity => ({ type: 'object', additionalProperties: false, properties: { entity: { const: entity }, id: { type: 'string' }, depth: { enum: [0, 1] } }, required: ['entity', 'id'] })),
         { type: 'object', additionalProperties: false, properties: { entity: { const: 'link' }, from: { type: 'string' }, to: { type: 'string' }, linkType: { enum: ['blocks', 'related'] }, depth: { enum: [0, 1] } }, required: ['entity', 'from', 'to', 'linkType'] },
         { type: 'object', additionalProperties: false, properties: { entity: { const: 'settings' }, depth: { enum: [0, 1] } }, required: ['entity'] },
         { type: 'object', additionalProperties: false, properties: { entity: { const: 'preferences' } }, required: ['entity'] },
@@ -68,10 +68,10 @@ export const READ_TOOLS = [
   },
   {
     name: 'describe_commands',
-    description: 'Schema, an example and the error codes for one command family accepted by preview_changes / apply_changes. Call it before building a command you have not used. Families: task, project, link, planning, preference.',
+    description: 'Schema, an example and the error codes for one command family accepted by preview_changes / apply_changes. Call it before building a command you have not used. Families: task, project, duty (recurring series; standalone only), link, planning, preference.',
     inputSchema: {
       type: 'object', additionalProperties: false,
-      properties: { family: { enum: ['task', 'project', 'link', 'planning', 'preference'] } },
+      properties: { family: { enum: ['task', 'project', 'duty', 'link', 'planning', 'preference'] } },
       required: ['family'],
     },
   },
@@ -161,7 +161,22 @@ async function find(args: Record<string, unknown>, db: DB) {
     const projects = (await db.listProjects(status)).slice().sort((a, b) => dir * compareKeys(projectKey(a), projectKey(b)));
     return { entity: 'project', ...(({ items, nextCursor }) => ({ items, nextCursor }))(page(projects, limit, args.cursor, projectKey, dir, `project:${dir}`)) };
   }
-  if (args.entity !== 'task') throw bad(['entity'], 'entity must be "task" or "project".');
+  if (args.entity === 'duty') {
+    if (args.preset !== undefined) throw bad(['preset'], 'Duties have no presets.');
+    if (args.sort !== undefined) throw bad(['sort'], 'sort applies to tasks only; duties sort by creation (use order).');
+    for (const key of ['statuses', 'text', 'parent_id', 'focused']) if (key in filter) throw bad(['filter', key], `${key} applies to tasks only.`);
+    const status = filter.status;
+    if (status !== undefined && status !== 'active' && status !== 'paused' && status !== 'ended') throw bad(['filter', 'status'], 'status must be "active", "paused" or "ended".');
+    const projectFilter = filter.project_id;
+    if (projectFilter !== undefined && typeof projectFilter !== 'string') throw bad(['filter', 'project_id'], 'project_id must be a string.');
+    const dir = orderOf(args.order, -1);
+    const dutyKey = (duty: { created_at: string; id: string }): SortKey => [`duty:${dir}`, duty.created_at, duty.id];
+    // Ended series are history: omitted unless asked for.
+    const duties = (await db.listDuties()).filter(duty => (status === undefined ? duty.status !== 'ended' : duty.status === status) && (projectFilter === undefined || duty.project_id === projectFilter))
+      .sort((a, b) => dir * compareKeys(dutyKey(a), dutyKey(b)));
+    return { entity: 'duty', ...(({ items, nextCursor }) => ({ items, nextCursor }))(page(duties, limit, args.cursor, dutyKey, dir, `duty:${dir}`)) };
+  }
+  if (args.entity !== 'task') throw bad(['entity'], 'entity must be "task", "project" or "duty".');
   if ('status' in filter) throw bad(['filter', 'status'], 'status applies to projects only; use statuses for tasks.');
   const projectId = filter.project_id;
   if (projectId !== undefined && typeof projectId !== 'string') throw bad(['filter', 'project_id'], 'project_id must be a string.');
@@ -239,6 +254,10 @@ async function getContext(args: Record<string, unknown>, db: DB) {
   if (!key.ok) throw new CommandError(invalidInput(key.error), 400);
   const snapshot = await db.getEntitySnapshot(key.value);
   if (depth === 0 || snapshot.row === null) return snapshot;
+  if (snapshot.entity === 'duty') {
+    const [project, instances] = await Promise.all([snapshot.row.project_id ? db.getProject(snapshot.row.project_id) : null, db.listDutyInstances(snapshot.id, 20)]);
+    return { ...snapshot, context: { project: project ?? null, recent_instances: instances } };
+  }
   if (snapshot.entity === 'project') {
     const [ready, pending, done] = await Promise.all([db.listReadyTasks(snapshot.id), db.listAllTasks(['pending']), db.listAllTasks(['done'])]);
     const count = (tasks: Task[]) => tasks.filter(task => task.project_id === snapshot.id).length;
@@ -279,6 +298,7 @@ async function getHistory(args: Record<string, unknown>, db: DB) {
 const EXAMPLES: Record<string, unknown> = {
   task: { contractVersion: 2, commandId: 'c_example01', actor: 'llm', commands: [{ kind: 'task.focus.set', id: 't_example1', expectedRevision: 3, focusedUntil: '2026-10-03T18:00:00Z' }] },
   project: { contractVersion: 2, commandId: 'c_example02', actor: 'llm', commands: [{ kind: 'project.archive', id: 'p_example1', expectedRevision: 2 }] },
+  duty: { contractVersion: 2, commandId: 'c_example06', actor: 'llm', commands: [{ kind: 'duty.create', id: 'd_example1', expectedRevision: null, expectedStructuralRevision: 7, values: { title: 'Check the queue', notes: null, kickoffNote: null, taskType: 'action', project: null, catchUp: 'next', schedule: { rrule: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', dtstart: '2026-10-06T14:00:00Z', timezone: 'America/Chicago' } } }] },
   link: { contractVersion: 2, commandId: 'c_example03', actor: 'llm', commands: [{ kind: 'link.add', from: 't_example1', to: 't_example2', linkType: 'blocks', expectedRevision: null, expectedStructuralRevision: 7 }] },
   preference: { contractVersion: 2, commandId: 'c_example05', actor: 'user', commands: [{ kind: 'preference.set', key: 'sort_by', value: 'due', expectedRevision: null }] },
   planning: { contractVersion: 2, commandId: 'c_example04', actor: 'user', commands: [{ kind: 'planning.set', expectedRevision: null, values: { timezone: 'America/Chicago', bufferMinutes: 10, workingHours: [{ weekday: 1, start: '09:00', end: '17:00' }] } }] },
@@ -287,6 +307,7 @@ const FAMILY_ERRORS = {
   common: ['invalid_input', 'unknown_key', 'revision_conflict', 'structural_conflict', 'command_id_conflict', 'capacity_exceeded', 'storage_unavailable'],
   task: ['invalid_state', 'invalid_transition', 'missing_date', 'revision_exhausted'],
   project: ['invalid_state', 'invalid_transition'],
+  duty: ['invalid_input', 'invalid_transition'],
   link: ['graph_cycle', 'invalid_state', 'already_applied'],
   planning: ['revision_conflict'],
   preference: ['revision_conflict', 'revision_exhausted'],
@@ -295,7 +316,7 @@ const FAMILY_ERRORS = {
 function describeCommands(args: Record<string, unknown>) {
   only(args, ['family']);
   const family = args.family;
-  if (typeof family !== 'string' || !(family in EXAMPLES)) throw bad(['family'], 'family must be one of task, project, link, planning, preference.');
+  if (typeof family !== 'string' || !(family in EXAMPLES)) throw bad(['family'], 'family must be one of task, project, duty, link, planning, preference.');
   return {
     contractVersion: 2,
     family,

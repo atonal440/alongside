@@ -73,7 +73,7 @@ describe('MCP tool tiers', () => {
     try {
       const response = await handleMcpRequest(rpc('/mcp', 'tools/call', { name: 'get_capabilities', arguments: {} }), new DB(d1), { DB: d1, AUTH_TOKEN: 't' });
       const body = await response.json() as any;
-      expect(body.result.structuredContent.toolSurface).toEqual({ version: 6, commandCatalog: 2, adminEndpoint: '/mcp/admin' });
+      expect(body.result.structuredContent.toolSurface).toEqual({ version: 7, commandCatalog: 3, adminEndpoint: '/mcp/admin' });
     } finally { sql.close(); }
   });
 
