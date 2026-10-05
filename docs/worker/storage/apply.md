@@ -41,6 +41,8 @@ only while the live duty is active and last_spawned_at is null or strictly befor
 that occurrence. ON CONFLICT(duty_id, occurrence_at) DO NOTHING makes an occurrence
 replay benign without hiding unrelated primary-key or constraint errors.
 
+The `duty.adopt_task` op adopts a legacy recurring task: it inserts the duty and clears the task's recurrence (binding it as the occurrence when on calendar) with the same task-unchanged predicate on both statements, so a stale plan does nothing.
+
 The duty.update_cursor op atomically changes last_spawned_at and next_occurrence_at
 only for an active duty and a strictly newer cursor. A materialization plan must
 order inserts before its cursor update in the same batch. Older plans therefore
