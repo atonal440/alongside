@@ -102,8 +102,7 @@ command, so inside a mixed batch it sees parents and ancestors created or moved
 earlier in that batch. It refuses (as `invalid_transition`, nothing written) a
 self parent, a parent in another project, a placement that would make the task
 its own ancestor, and a chain deeper than 32 tasks counting the task itself.
-Depth is checked on the ancestor chain only; moving a task that already has
-deep subtasks under a deep parent is not re-measured downward.
+The depth check includes the moved task's own subtree (measured level by level, up to 500 subtasks).
 
 Rules that depend on subtasks, using the same reader:
 

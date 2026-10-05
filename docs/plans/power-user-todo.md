@@ -198,8 +198,7 @@ blocks on groups/milestones. Breaking a task into children is an explicit
 conversion to a group; preserve the original notes, links, and dates. Existing
 blocks require an explicit move/cancel choice in that conversion.
 
-Implementation note (2026-10-05, slice 3b): rules 1 (except groups-only and the downward depth
-check), 3 (a plain number, no rebalance) and a manual-completion form of 4 are implemented. Rule 2 landed
+Implementation note (2026-10-05, slice 3b): rules 1 (except groups-only), 3 (a plain number, no rebalance) and a manual-completion form of 4 are implemented. Rule 2 landed
 as a stricter invariant: a subtask must already be in its parent's project and project moves are refused for
 any task that has a parent or children, instead of an atomic subtree move. Deleting a task with subtasks is
 refused. See the 3b entry in the implementation checklist.

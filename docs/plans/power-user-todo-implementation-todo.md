@@ -1066,7 +1066,6 @@ recreated). Deviations from master plan section 4, chosen to keep the slice revi
   command a single-identity write (no derived effects in `validDiffIdentity`), and the 100-statement cap
   never depends on subtree size.
 - Deleting a task with subtasks is refused instead of detaching or cascading.
-- Depth is checked on the ancestor chain (max 32 including the task), not downward.
 
 - `task.parent.set` (guarded, standalone or in a batch; nine statements) with loose-intent client refs, and
   `parent_id`/`position` on `add_task`/`update_task`. `CommandReader` gained `children(id)` with a batch overlay,

@@ -179,7 +179,7 @@ function validCompletion(changes: ChangeDiff[], serverNow: string): boolean {
       due_date: `${nextOccurrence(rule.value.parts, anchor.value)}T12:00:00Z`, due_all_day: true,
       created_at: serverNow, updated_at: serverNow, defer_kind: 'none', defer_until: null, focused_until: null,
       kickoff_note: before.session_log ?? before.kickoff_note, session_log: null, duty_id: null, occurrence_at: null,
-      available_from: null, deadline: null };
+      available_from: null, deadline: null, parent_id: null, position: null };
     const after = successor.after.row;
     return Object.entries(expected).every(([field, stored]) => after[field as keyof typeof after] === stored);
   } catch {

@@ -67,6 +67,10 @@ describe.each(['fresh', 'upgrade'] as const)('task.parent.set (%s)', mode => {
       let tail = c.id;
       for (let depth = 4; depth <= MAX_TASK_DEPTH; depth++) { const next = await db.addTask({ title: `L${depth}` }); await setParent(db, next.id, tail); tail = next.id; }
       const extra = await db.addTask({ title: 'Too deep' });
+      // The moved task's own subtree counts too: a two-level subtree cannot hang under the last level.
+      const leaf = await db.addTask({ title: 'Leaf' }); const holder = await db.addTask({ title: 'Holder' });
+      await setParent(db, leaf.id, holder.id);
+      await expect(setParent(db, holder.id, tail)).rejects.toMatchObject({ detail: { code: 'invalid_transition', message: expect.stringContaining('deep') } });
       await expect(setParent(db, extra.id, tail)).rejects.toMatchObject({ detail: { code: 'invalid_transition', message: expect.stringContaining('deep') } });
     } finally { sql.close(); }
   });
@@ -121,6 +125,25 @@ describe.each(['fresh', 'upgrade'] as const)('task.parent.set (%s)', mode => {
       const preview = await callCommandTool('preview_changes', { ...base, commands: [{ kind: 'task.complete', id: child.id }, { kind: 'task.complete', id: parent.id }] }, db) as any;
       expect(parseChangesResult(await apply(db, preview.pinnedEnvelope)).ok).toBe(true);
       expect((await db.getTask(parent.id))!.status).toBe('done');
+    } finally { sql.close(); }
+  });
+
+  it('keeps a recurring subtask completion valid and the legacy routes honest', async () => {
+    const { sql, d1 } = sqliteD1(mode); const db = new DB(d1);
+    try {
+      const parent = await db.addTask({ title: 'Parent' });
+      const chore = await db.addTask({ title: 'Chore', due_date: '2026-10-05', recurrence: 'FREQ=WEEKLY' });
+      await setParent(db, chore.id, parent.id);
+      const done = await tool(db, d1, 'complete_task', { task_id: chore.id, commandId: cid() });
+      expect(done.error).toBeUndefined();
+      expect(JSON.stringify(done)).not.toContain('invalid');
+      await expect(db.completeTask(parent.id)).resolves.toBeDefined();   // chore's successor is top level; only the done chore remains
+      const p2 = await db.addTask({ title: 'P2' }); const c2 = await db.addTask({ title: 'C2' });
+      await setParent(db, c2.id, p2.id);
+      await expect(db.completeTask(p2.id)).rejects.toBeDefined();
+      await expect(db.deleteTask(p2.id)).rejects.toBeDefined();
+      const project = await db.createProject({ title: 'P' } as never);
+      await expect(db.updateTask(c2.id, { project_id: project.id } as never)).rejects.toBeDefined();
     } finally { sql.close(); }
   });
 

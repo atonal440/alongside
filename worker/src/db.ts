@@ -346,6 +346,8 @@ export class DB {
     const task = await this.getTask(id);
     if (!task) return null;
 
+    const open = (await this.readChildren(id)).filter(child => child.status === 'pending').length;
+    if (open > 0) throwAppError({ kind: 'invalid_transition', message: `Complete the ${open} open subtask${open === 1 ? '' : 's'} first.` });
     const timestamp = now();
     const domainTask = pendingTaskFromRow(task);
     if (!domainTask.ok) throwAppError(domainTask.error);
@@ -468,6 +470,10 @@ export class DB {
     patch.updated_at = timestamp;
     const existing = await this.getTask(id);
     if (!existing) return null;
+    if (updates.project_id !== undefined && updates.project_id !== existing.project_id
+      && (existing.parent_id !== null || (await this.readChildren(id)).length > 0)) {
+      throwAppError({ kind: 'invalid_transition', message: 'A task in a hierarchy cannot change project on its own; detach it from its parent and subtasks first.' });
+    }
 
     if (updates.defer_kind === 'until' || updates.defer_kind === 'someday') {
       const domainTask = this.parsePendingTaskDomain(existing);
@@ -497,6 +503,7 @@ export class DB {
   }
 
   async deleteTask(id: string): Promise<boolean> {
+    if ((await this.readChildren(id)).length > 0) throwAppError({ kind: 'invalid_transition', message: 'This task has subtasks; delete or detach them first.' });
     const result = await this.d1
       .prepare('DELETE FROM tasks WHERE id = ?')
       .bind(id)
@@ -756,7 +763,18 @@ export class DB {
         if (above.id === command.id) break;
         next = parentOf(above);
       }
-      return planTaskParentCommand(input, current, parent, ancestors, hash, clock);
+      // Levels below the moved task, so a deep subtree cannot be hung under a deep parent.
+      let height = 0;
+      if (parent !== null) {
+        let level = [command.id as string]; let visited = 0;
+        while (level.length > 0 && height <= MAX_TASK_DEPTH && visited < 500) {
+          const below = (await Promise.all(level.map(id => reader.children(id)))).flat().map(child => child.id);
+          visited += below.length;
+          if (below.length > 0) height++;
+          level = below;
+        }
+      }
+      return planTaskParentCommand(input, current, parent, ancestors, height, hash, clock);
     }
     if (command.kind === 'task.complete') {
       const current = await reader.entity({ entity: 'task', id: command.id });

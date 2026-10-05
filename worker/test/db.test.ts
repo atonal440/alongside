@@ -157,6 +157,9 @@ function d1WithExistingTasks(taskIds: string[], options: {
           if (sql.includes('FROM tasks')) return (tasks.has(id) ? { id } : null) as T | null;
           return null;
         },
+        async all() {
+          return { success: true, results: [] };   // no subtasks
+        },
         async run() {
           return { success: true, meta: {} } as D1Result;
         },

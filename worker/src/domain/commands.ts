@@ -360,7 +360,7 @@ export { MAX_TASK_DEPTH };
 /** A subtask as the hierarchy rules see it: identity and lifecycle only. */
 export interface ChildState { id: string; status: string }
 
-export function planTaskParentCommand(input: CommandEnvelope, current: EntitySnapshot, parent: EntitySnapshot | null, ancestors: EntitySnapshot[], hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
+export function planTaskParentCommand(input: CommandEnvelope, current: EntitySnapshot, parent: EntitySnapshot | null, ancestors: EntitySnapshot[], subtreeHeight: number, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
   const command = input.commands[0]!;
   if (command.kind !== 'task.parent.set' || current.entity !== 'task' || current.id !== command.id) throw new Error('Expected matching task parent command.');
   const conflict = entityCommandConflict(input, current);
@@ -387,7 +387,7 @@ export function planTaskParentCommand(input: CommandEnvelope, current: EntitySna
       'Move the task into the parent\'s project first, or choose a parent in the task\'s project.');
     const chain = [parent, ...ancestors];
     if (chain.some(task => task.id === command.id)) reject('That placement would make the task its own ancestor.', 'Choose a parent outside this task\'s own subtasks.');
-    if (chain.length + 1 > MAX_TASK_DEPTH) reject(`Tasks nest at most ${MAX_TASK_DEPTH} levels deep.`, 'Choose a shallower parent.');
+    if (chain.length + 1 + subtreeHeight > MAX_TASK_DEPTH) reject(`Tasks nest at most ${MAX_TASK_DEPTH} levels deep.`, 'Choose a shallower parent.');
     assertions.push({ kind: 'entity.revision', key: { entity: 'task', id: command.parent.id }, expected: command.parent.expectedRevision }, { kind: 'task.exists', id: command.parent.id });
   }
   const planned = planEntityUpdate(input, current, { entity: 'task', patch: { parent_id: command.parent?.id ?? null, position: command.parent === null ? null : command.position, updated_at: now } }, hash, now);

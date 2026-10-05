@@ -298,7 +298,7 @@ function describeCommands(args: Record<string, unknown>) {
   return {
     contractVersion: 2,
     family,
-    envelope: { description: 'Shared by preview_changes and apply_changes. Standalone commands carry their own guards; 2–20 commands need expectedStructuralRevision.', properties: COMMAND_ENVELOPE_PROPERTIES },
+    envelope: { description: 'Shared by preview_changes and apply_changes. Standalone commands carry their own guards; 2–100 commands need expectedStructuralRevision.', properties: COMMAND_ENVELOPE_PROPERTIES },
     commands: COMMAND_VARIANTS.filter(variant => variant.properties.kind.const.startsWith(`${family}.`)),
     example: EXAMPLES[family],
     errorCodes: [...FAMILY_ERRORS.common, ...FAMILY_ERRORS[family as keyof typeof FAMILY_ERRORS]],
