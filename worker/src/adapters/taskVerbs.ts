@@ -177,16 +177,18 @@ export const updateTask: Compiler = async (ctx, args) => {
   const dates = await dateRoleCommand(ctx, patch, id, row, guard());
   if (dates) commands.push(dates);
 
-  if (patch.parent_id !== undefined || patch.position !== undefined) {
-    const parent = patch.parent_id === undefined ? (row.parent_id ?? null) === null ? null : await parentRef(ctx, row.parent_id, ['parent_id']) : await parentRef(ctx, patch.parent_id, ['parent_id']);
-    commands.push({ kind: 'task.parent.set', id, expectedRevision: guard(), expectedStructuralRevision: ctx.structural, parent,
-      position: patch.position === undefined ? row.position ?? null : positionArg(patch) });
-  }
-
   if (patch.task_type !== undefined) commands.push({ kind: 'task.type.set', id, expectedRevision: guard(), taskType: patch.task_type });
 
+  // A hierarchy stays in one project, so a combined move detaches first, moves, then re-parents.
+  const parentChange = patch.parent_id !== undefined || patch.position !== undefined;
+  const parentCommand = async (parent: unknown, position: number | null) => commands.push({ kind: 'task.parent.set', id, expectedRevision: guard(), expectedStructuralRevision: ctx.structural, parent, position });
+  if (patch.project_id !== undefined && parentChange && row.parent_id) await parentCommand(null, null);
   if (patch.project_id !== undefined) {
     commands.push({ kind: 'task.project.set', id, expectedRevision: guard(), expectedStructuralRevision: ctx.structural, project: await projectRef(ctx, patch.project_id, ['project_id']) });
+  }
+  if (parentChange) {
+    const parent = patch.parent_id === undefined ? (row.parent_id ?? null) === null ? null : await parentRef(ctx, row.parent_id, ['parent_id']) : await parentRef(ctx, patch.parent_id, ['parent_id']);
+    if (parent !== null || (row.parent_id && patch.project_id === undefined)) await parentCommand(parent, patch.position === undefined ? row.position ?? null : positionArg(patch));
   }
 
   // Undeclared but accepted today: defer_kind / defer_until map to task.defer.set (parity finding 1).

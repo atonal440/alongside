@@ -511,8 +511,9 @@ export class DB {
   async deleteTask(id: string): Promise<boolean> {
     if ((await this.readChildren([id])).length > 0) throwAppError({ kind: 'invalid_transition', message: 'This task has subtasks; delete or detach them first.' });
     const result = await this.d1
-      .prepare('DELETE FROM tasks WHERE id = ?')
-      .bind(id)
+      // Atomic with the guard above: a subtask attached in between keeps the parent from being deleted.
+      .prepare('DELETE FROM tasks WHERE id = ? AND NOT EXISTS (SELECT 1 FROM tasks WHERE parent_id = ?)')
+      .bind(id, id)
       .run();
     return result.meta.changes > 0;
   }

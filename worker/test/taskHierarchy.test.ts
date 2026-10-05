@@ -148,6 +148,24 @@ describe.each(['fresh', 'upgrade'] as const)('task.parent.set (%s)', mode => {
     } finally { sql.close(); }
   });
 
+  it('moves a task into another project and under a parent there in one update', async () => {
+    const { sql, d1 } = sqliteD1(mode); const db = new DB(d1);
+    try {
+      const project = await db.createProject({ title: 'P' } as never);
+      const parent = await db.addTask({ title: 'Parent', project_id: project.id });
+      const loose = await db.addTask({ title: 'Loose' });
+      const moved = await tool(db, d1, 'update_task', { task_id: loose.id, project_id: project.id, parent_id: parent.id, commandId: cid() });
+      expect(moved.error).toBeUndefined();
+      expect(JSON.stringify(moved)).not.toContain('isError');
+      expect(await db.getTask(loose.id)).toMatchObject({ project_id: project.id, parent_id: parent.id });
+      // A subtask changing project must detach first, then re-parent under the new project's task.
+      const project2 = await db.createProject({ title: 'P2' } as never);
+      const parent2 = await db.addTask({ title: 'Parent2', project_id: project2.id });
+      await tool(db, d1, 'update_task', { task_id: loose.id, project_id: project2.id, parent_id: parent2.id, commandId: cid() });
+      expect(await db.getTask(loose.id)).toMatchObject({ project_id: project2.id, parent_id: parent2.id });
+    } finally { sql.close(); }
+  });
+
   it('builds a parent and child in one batch with client refs', async () => {
     const { sql, d1 } = sqliteD1(mode); const db = new DB(d1);
     try {
