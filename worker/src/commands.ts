@@ -180,6 +180,8 @@ export async function callCommandTool(name: string, args: unknown, db: DB, optio
   if (name === 'get_workspace_delta') {
     const input = parseWorkspaceDeltaInput(args);
     if (!input.ok) throw new CommandError(invalidInput(input.error), 400);
+    // A first page (no fixed watermark) is a fresh pull: bring due duties up to date first.
+    if (input.value.watermark === undefined) await db.materializeDueDuties();
     return db.getWorkspaceDelta(input.value);
   }
   if (name === 'restore_workspace') {
@@ -206,7 +208,7 @@ export async function callCommandTool(name: string, args: unknown, db: DB, optio
     if (args === null || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).length) {
       throw new CommandError(invalidInput([{ code: 'invalid_input', path: [], message: 'Expected an empty input object.' }]), 400);
     }
-    if (name === 'get_workspace_snapshot') return db.getWorkspaceSnapshot();
+    if (name === 'get_workspace_snapshot') { await db.materializeDueDuties(); return db.getWorkspaceSnapshot(); }
     if (name === 'export_workspace') return db.exportWorkspace();
     const settings = await db.getPlanningSettings();
     if (name === 'get_planning_settings') return { contractVersion: 2, settings };

@@ -53,3 +53,5 @@ Restoring historical rows must bypass active-status and live-cursor predicates;
 it still enforces ordinary database constraints and transactional rollback.
 Both insert paths reject unpaired duty_id/occurrence_at during preparation,
 before any wipe or other mutation executes.
+
+`duty.insert` and `duty.update` (optionally `ifStatus`, so a transition that lost a race is a no-op) write duty rows; the `duty.exists` precheck guards a plan against a duty deleted after planning. See [duty materialization](../duties.md).

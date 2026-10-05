@@ -62,6 +62,7 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   const listTasksRoute = parseRoute(RestRouteSpecs.listTasks, request, url);
   if (!listTasksRoute.ok) return validationJson(listTasksRoute.error);
   if (listTasksRoute.value) {
+    await db.materializeDueDuties();
     const tasks = await db.listTasks();
     return json(tasks);
   }
@@ -70,6 +71,7 @@ export async function handleApiRequest(request: Request, url: URL, db: DB): Prom
   const syncTasksRoute = parseRoute(RestRouteSpecs.syncTasks, request, url);
   if (!syncTasksRoute.ok) return validationJson(syncTasksRoute.error);
   if (syncTasksRoute.value) {
+    await db.materializeDueDuties();
     const tasks = await db.listAllTasks();
     return json(tasks);
   }

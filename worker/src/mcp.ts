@@ -211,6 +211,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>, db: D
     case 'update_task': return runTool('update_task', args, db, updateTask);
     case 'focus_task': return runTool('focus_task', args, db, focusTask);
     case 'show_tasks': {
+      await db.materializeDueDuties();
       const projectId = args.project_id as string | undefined;
       const taskIds = args.task_ids as string[] | undefined;
       if ((projectId === undefined) === (taskIds === undefined)) throw new Error('Give exactly one of task_ids or project_id.');

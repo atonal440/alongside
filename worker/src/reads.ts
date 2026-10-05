@@ -309,7 +309,7 @@ function describeCommands(args: Record<string, unknown>) {
 export async function callReadTool(name: string, args: unknown, db: DB): Promise<unknown> {
   const input = object(args);
   switch (name) {
-    case 'find': return find(input, db);
+    case 'find': await db.materializeDueDuties(); return find(input, db);
     case 'get_context': return getContext(input, db);
     case 'get_history': return getHistory(input, db);
     case 'describe_commands': return describeCommands(input);

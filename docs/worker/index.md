@@ -14,4 +14,6 @@ Entry point for the Cloudflare Worker. Exports the default `fetch` handler that 
 - `getHarnessHtml` dev harness at `/dev`
 - 404 for everything else
 
+The default export also has a `scheduled` handler (`scheduled.ts`, every 15 minutes) that materializes due duties; see [duty materialization](duties.md).
+
 Auth is enforced by checking the `Authorization: Bearer <token>` header against `Env.AUTH_TOKEN` before delegating to API and MCP handlers.

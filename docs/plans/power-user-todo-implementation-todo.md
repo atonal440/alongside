@@ -1089,3 +1089,9 @@ Slice 3c (2026-10-05): effective dates and blocker explanations.
 
 Next in Slice 3: tags/priority/estimates when wanted (recurrence, slice 6, does not need them); group roles and
 completion policy remain open from section 4 and are purely additive.
+
+### Recurrence R1: series engine (2026-10-05)
+- `dutyFromRow` and `materializeDutyPlan` (pure) plus `materializeDueDuties` (cheap gate, 200 duties per run, 50 instances per duty per run under `catch_up: 'all'`). `duty.insert`, `duty.update` (`ifStatus`) and `duty.exists` added to the op set.
+- Triggers: cron every 15 minutes (`scheduled.ts`) and lazy calls in `find`, `show_tasks`, the REST task lists, snapshot and the first delta page. No wire protocol change.
+- Deviation from the master plan: no `series_occurrences` ledger yet; the `(duty_id, occurrence_at)` unique index plus the monotonic cursor stop duplicates and reappearing occurrences. The ledger arrives with skips/exceptions.
+- Next: R2 duty commands (`duty.create`, pause/resume/end) and `find`/`get_context` for duties; R3 backfill of legacy recurring tasks, retire completion-driven spawning (same release), PWA surface.

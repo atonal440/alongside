@@ -1,7 +1,7 @@
 import type { Result } from '@shared/result';
 import { err, ok } from '@shared/result';
 import type { AppError } from '../domain/errors';
-import type { Op, Plan, PreCheck, ProjectRowPatch, TaskRow, TaskRowPatch } from '../domain/Op';
+import type { DutyRowPatch, Op, Plan, PreCheck, ProjectRowPatch, TaskRow, TaskRowPatch } from '../domain/Op';
 import { entityStorageKey, parseEntityVersionResponse, type EntityKey, type EntityVersionResponse } from '@shared/wire/versions';
 
 /** One statement returns a coherent entity/aggregate revision pair. */
@@ -28,7 +28,7 @@ export interface PlanApplier {
 }
 
 interface ExistingRowGuard {
-  entity: 'task' | 'project';
+  entity: 'task' | 'project' | 'duty';
   id: string;
 }
 
@@ -67,6 +67,10 @@ const DUTY_RESTORE_COLUMNS = [
   'id', 'title', 'notes', 'kickoff_note', 'task_type', 'project_id', 'rrule', 'dtstart', 'timezone', 'status',
   'catch_up', 'last_spawned_at', 'next_occurrence_at', 'created_at', 'updated_at',
 ] as const;
+const DUTY_UPDATE_COLUMNS = [
+  'title', 'notes', 'kickoff_note', 'task_type', 'project_id', 'status', 'catch_up', 'last_spawned_at',
+  'next_occurrence_at', 'updated_at',
+] as const satisfies readonly (keyof DutyRowPatch)[];
 const LOG_RESTORE_COLUMNS = ['id', 'tool_name', 'task_id', 'duty_id', 'title', 'detail', 'created_at'] as const;
 
 const TASK_UPDATE_COLUMNS = [
@@ -110,6 +114,9 @@ const PROJECT_UPDATE_COLUMNS = [
 
 const TASK_EXISTS_GUARD_SQL =
   "INSERT INTO tasks (title,status,created_at,updated_at,defer_kind,task_type) SELECT NULL,'pending','','','none','action' WHERE NOT EXISTS (SELECT 1 FROM tasks WHERE id = ?)";
+
+const DUTY_EXISTS_GUARD_SQL =
+  "INSERT INTO duties (title,rrule,dtstart,created_at,updated_at) SELECT NULL,'','','','' WHERE NOT EXISTS (SELECT 1 FROM duties WHERE id = ?)";
 
 const PROJECT_EXISTS_GUARD_SQL =
   "INSERT INTO projects (title,status,created_at,updated_at) SELECT NULL,'active','','' WHERE NOT EXISTS (SELECT 1 FROM projects WHERE id = ?)";
@@ -155,6 +162,13 @@ async function runExistingRowCheck(d1: D1Database, guard: ExistingRowGuard): Pro
           .bind(guard.id)
           .first<{ id: string }>();
         return row ? ok(undefined) : err({ kind: 'not_found', entity: 'project', id: guard.id });
+      }
+      case 'duty': {
+        const row = await d1
+          .prepare('SELECT id FROM duties WHERE id = ? LIMIT 1')
+          .bind(guard.id)
+          .first<{ id: string }>();
+        return row ? ok(undefined) : err({ kind: 'not_found', entity: 'duty', id: guard.id });
       }
       default:
         return assertNever(guard.entity);
@@ -219,6 +233,8 @@ async function runPreCheck(d1: D1Database, check: PreCheck): Promise<Result<void
       return runExistingRowCheck(d1, { entity: 'task', id: check.id });
     case 'project.exists':
       return runExistingRowCheck(d1, { entity: 'project', id: check.id });
+    case 'duty.exists':
+      return runExistingRowCheck(d1, { entity: 'duty', id: check.id });
     case 'task.no_open_children':
     case 'task.unattached': {
       try {
@@ -287,6 +303,8 @@ function bindPreCheckGuard(d1: D1Database, check: PreCheck): PlannedStatement[] 
       return [bindExistingRowGuard(d1, { entity: 'task', id: check.id })];
     case 'project.exists':
       return [bindExistingRowGuard(d1, { entity: 'project', id: check.id })];
+    case 'duty.exists':
+      return [bindExistingRowGuard(d1, { entity: 'duty', id: check.id })];
     case 'task.no_open_children':
     case 'task.unattached':
       // A NOT NULL violation aborts the whole batch if the hierarchy changed after planning.
@@ -360,7 +378,7 @@ function bindUpdate<Patch extends Record<string, unknown>>(
 }
 
 function bindExistingRowGuard(d1: D1Database, guard: ExistingRowGuard): PlannedStatement {
-  const sql = guard.entity === 'task' ? TASK_EXISTS_GUARD_SQL : PROJECT_EXISTS_GUARD_SQL;
+  const sql = guard.entity === 'task' ? TASK_EXISTS_GUARD_SQL : guard.entity === 'duty' ? DUTY_EXISTS_GUARD_SQL : PROJECT_EXISTS_GUARD_SQL;
   return {
     statement: d1.prepare(sql).bind(guard.id),
     guard,
@@ -400,6 +418,17 @@ function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
       // The legacy command feed predates preferences; their history is in the sync feed, written by trigger.
       return op.result.changes.filter(change => change.entity !== 'preference').map(change => guardedStatement(d1.prepare(`INSERT INTO change_feed(command_id,entity,entity_id,revision,operation,payload_json,created_at) VALUES(?,?,?,?,?,?,?)`)
         .bind(op.result.commandId, change.entity, change.id, change.after.revision, 'deleted' in change.after ? 'delete' : 'upsert', JSON.stringify(change.after), op.result.serverNow)));
+    case 'duty.insert':
+      return [guardedStatement(bindInsert(d1, 'duties', DUTY_RESTORE_COLUMNS, op.row))];
+    case 'duty.update': {
+      const guard = { entity: 'duty' as const, id: op.id };
+      const columns = DUTY_UPDATE_COLUMNS.filter(column => Object.prototype.hasOwnProperty.call(op.patch, column));
+      if (columns.length === 0) return [];
+      // ifStatus turns a stale transition into a successful no-op instead of an overwrite.
+      const statement = d1.prepare(`UPDATE duties SET ${columns.map(column => `${column} = ?`).join(', ')} WHERE id = ?${op.ifStatus ? ' AND status = ?' : ''}`)
+        .bind(...columns.map(column => toBindable(op.patch[column])), op.id, ...(op.ifStatus ? [op.ifStatus] : []));
+      return [bindExistingRowGuard(d1, guard), guardedStatement(statement, guard)];
+    }
     case 'duty.update_cursor':
       return [guardedStatement(d1.prepare(`UPDATE duties
         SET last_spawned_at=?, next_occurrence_at=?, updated_at=?
