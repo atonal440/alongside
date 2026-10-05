@@ -45,8 +45,8 @@ The duty.update_cursor op atomically changes last_spawned_at and next_occurrence
 only for an active duty and a strictly newer cursor. A materialization plan must
 order inserts before its cursor update in the same batch. Older plans therefore
 cannot insert behind a newer committed cursor or regress either cursor field.
-Historical tasks retain identity and state. Duty planners and drivers are future
-work; later revision/ledger contracts must build on these guards.
+Historical tasks retain identity and state. The materializer (see duties.md) builds on these
+guards; later revision/ledger contracts must too.
 
 `task.restore` is an unconditional insert used by both legacy and v2 import.
 Restoring historical rows must bypass active-status and live-cursor predicates;
