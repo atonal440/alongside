@@ -242,3 +242,9 @@ export function taskDateRoleProblem(roles: { availableFrom: TemporalPoint | null
   }
   return null;
 }
+
+/** The window problem of a stored row's two date-role columns, for import and restore checks. */
+export function storedDateRoleProblem(row: { available_from: string | null; deadline: string | null }): string | null {
+  const read = (text: string | null) => { const parsed = text === null ? null : parseTemporalPointText(text); return parsed?.ok ? parsed.value : null; };
+  return taskDateRoleProblem({ availableFrom: read(row.available_from), deadline: read(row.deadline) })?.message ?? null;
+}

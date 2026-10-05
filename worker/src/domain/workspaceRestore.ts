@@ -1,3 +1,4 @@
+import { storedDateRoleProblem } from '@shared/temporal';
 import type { Result } from '@shared/result';
 import { err, ok } from '@shared/result';
 import { parseRevision, type EventInstant, type ValidationError } from '@shared/parse';
@@ -19,6 +20,8 @@ function restoreProblems(doc: WorkspaceRestoreInput['document']): ValidationErro
     if ((task.duty_id === null) !== (task.occurrence_at === null)) {
       errors.push(problem(['document', 'tasks', String(index), 'duty_id'], 'invalid_state', 'duty_id and occurrence_at must be set together.'));
     }
+    const window = storedDateRoleProblem(task);
+    if (window) errors.push(problem(['document', 'tasks', String(index), 'available_from'], 'invalid_state', window));
     if (task.duty_id !== null) {
       const key = `${task.duty_id}\u0000${task.occurrence_at}`;
       const first = occurrences.get(key);

@@ -5,6 +5,7 @@ import { handleMcpRequest } from '../src/mcp';
 import { callReadTool } from '../src/reads';
 import { sqliteD1 } from './helpers/sqliteD1';
 import { parseCommandEnvelope, parseChangesResult } from '@shared/wire/commands';
+import { parseWorkspaceRestoreInput } from '@shared/wire/workspaceRestore';
 import { parseEntityReadKey } from '@shared/wire/versions';
 import { isAvailable, readinessScore } from '@shared/readiness';
 
@@ -184,6 +185,27 @@ describe('readiness', () => {
       const done = await db.completeTask(task.id);
       expect(done.next).toMatchObject({ available_from: null, deadline: null });
       expect(await db.getTask(task.id)).toMatchObject({ status: 'done', deadline: expect.any(String) });
+    } finally { sql.close(); }
+  });
+});
+
+describe('portable documents', () => {
+  it('refuses to restore a task whose window never opens', async () => {
+    const { sql, d1 } = sqliteD1(); const db = new DB(d1);
+    try {
+      const task = await db.addTask({ title: 'Round trip' });
+      await db.applyChanges(dates(task.id, 1, { availableFrom: day('2026-10-06'), deadline: day('2026-10-09') }));
+      const exported = await db.exportWorkspace();
+      const cursor = sql.prepare('SELECT epoch, watermark AS sequence FROM sync_metadata').get() as { epoch: number; sequence: number };
+      const make = (document: unknown) => parseWorkspaceRestoreInput({ contractVersion: 2, mode: 'apply', expectedCursor: cursor, document });
+      const good = make(exported);
+      expect(good.ok).toBe(true);
+      const bad = make({ ...exported, tasks: exported.tasks.map(row => ({ ...row, available_from: '{"kind":"date","date":"2026-10-12","timezone":"America/Los_Angeles"}' })) });
+      if (!bad.ok) throw new Error('schema should accept the document; the semantic check refuses it');
+      await expect(db.restoreWorkspace(bad.value as never)).rejects.toMatchObject({ status: 400, detail: { code: 'invalid_input' } });
+      if (!good.ok) throw new Error('unreachable');
+      await db.restoreWorkspace(good.value as never);
+      expect((await db.getTask(task.id))!.deadline).toBe(exported.tasks[0]!.deadline);
     } finally { sql.close(); }
   });
 });
