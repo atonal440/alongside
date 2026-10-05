@@ -130,6 +130,22 @@ describe('materializeDueDuties', () => {
   });
 });
 
+describe('resilience', () => {
+  it('reaches valid duties behind a full page of broken ones and survives a failing database', async () => {
+    const { d1, sql } = sqliteD1();
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      for (let index = 0; index < 205; index += 1) insert(sql, duty({ id: `d_bad${String(index).padStart(3, '0')}`, next_occurrence_at: '2026-01-01T08:00:00Z' }));
+      insert(sql, duty({ id: 'd_good', next_occurrence_at: '2026-01-01T09:00:00Z' }));
+      const summary = await materializeDueDuties(d1, at('2026-01-01T10:00:00Z'));
+      expect(summary).toMatchObject({ duties: 1, instances: 1, failed: 205 });
+      expect(occurrences(sql, 'd_good')).toHaveLength(1);
+      const broken = { prepare: () => { throw new Error('D1 unavailable'); } } as unknown as D1Database;
+      await expect(materializeDueDuties(broken, at('2026-01-01T10:00:00Z'))).resolves.toEqual({ duties: 0, instances: 0, failed: 1 });
+    } finally { error.mockRestore(); sql.close(); }
+  });
+});
+
 describe('triggers', () => {
   it('the cron handler creates due instances with no client', async () => {
     const { d1, sql } = sqliteD1();

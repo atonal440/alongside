@@ -4,7 +4,7 @@ A duty is a recurring series: `rrule` + `dtstart` + `timezone` define its calend
 
 ## Flow
 
-1. **Gate.** `materializeDueDuties(d1, at)` first runs one indexed read: is any active duty's `next_occurrence_at` at or before `at`? Usually not, and that is the whole cost.
+1. **Gate.** `materializeDueDuties(d1, at)` first runs one indexed read: is any active duty's `next_occurrence_at` at or before `at`? Usually not, and that is the whole cost. Any failure here is caught and reported in the summary so the lazy callers keep working.
 2. **Load.** Otherwise it loads up to `DUTIES_PER_RUN` (200) due duties, most overdue first.
 3. **Parse.** `dutyFromRow` turns a row into a `DutySeries` and checks it: the rule parses, `until` is not before `dtstart`, the cursor (`last_spawned_at`) is a real occurrence at or after `dtstart`, `next_occurrence_at` is exactly the occurrence after the cursor, and an `ended` duty has no next occurrence. A bad row is logged and skipped; it never blocks other duties and is never marked exhausted by accident.
 4. **Plan.** `materializeDutyPlan` is pure. With `catch_up: 'next'` it creates one instance at the newest occurrence at or before now and jumps the cursor there; older open instances are left alone. With `'all'` it creates the backlog oldest first, at most `INSTANCES_PER_DUTY` (50) per run, so the cursor only passes what was created. A series with nothing left becomes `ended`.
