@@ -7,6 +7,7 @@ import { verifySignature } from './sign';
 import { handleOAuthRequest } from './oauth';
 import { getHarnessHtml } from './dev-harness';
 import { getAppHtml } from './app-ui';
+import { handleScheduled } from './scheduled';
 
 export interface Env {
   DB: D1Database;
@@ -95,5 +96,8 @@ export default {
     }
 
     return response;
+  },
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(handleScheduled(env));
   },
 };

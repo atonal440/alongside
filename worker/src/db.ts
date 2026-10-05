@@ -59,6 +59,7 @@ import {
   unlinkTasksPlan,
 } from './domain';
 import { applyPlan } from './storage';
+import { materializeDueDuties, type MaterializeSummary } from './duties';
 import { parseImport } from './wire/importPayload';
 
 export type { ActionLog as ActionLogEntry };
@@ -662,6 +663,8 @@ export class DB {
   }
 
   // Typed version/configuration reads preserve the legacy task row contract.
+  /** Creates any instances due duties owe now; cheap when nothing is due. List and sync reads call it so clients are never stale. */
+  async materializeDueDuties(at?: IsoDateTime): Promise<MaterializeSummary> { return materializeDueDuties(this.d1, at); }
   async getWorkspaceSnapshot() { return readWorkspaceSnapshot(this.d1); }
   async getWorkspaceDelta(input: WorkspaceDeltaInput) { return readWorkspaceDelta(this.d1, input); }
   async exportWorkspace() { return workspaceExport(await this.getWorkspaceSnapshot(), new Date().toISOString()); }

@@ -2,7 +2,7 @@ import type { ValidationError } from '@shared/parse';
 
 export type AppError =
   | { kind: 'validation'; errors: ValidationError[] }
-  | { kind: 'not_found'; entity: 'task' | 'project' | 'link' | 'preference' | 'oauth_code'; id?: string }
+  | { kind: 'not_found'; entity: 'task' | 'project' | 'duty' | 'link' | 'preference' | 'oauth_code'; id?: string }
   | { kind: 'conflict'; message: string }
   | { kind: 'invalid_transition'; message: string }
   | { kind: 'invariant_violation'; message: string }

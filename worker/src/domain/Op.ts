@@ -12,11 +12,14 @@ export type ProjectRow = Project;
 export type TaskLinkRow = TaskLink;
 export type ActionLogRow = ActionLog;
 export type TaskRowPatch = Partial<Omit<TaskRow, 'id' | 'created_at'>>;
+export type DutyRow = Duty;
+export type DutyRowPatch = Partial<Omit<DutyRow, 'id' | 'created_at'>>;
 export type ProjectRowPatch = Partial<Omit<ProjectRow, 'id' | 'created_at'>>;
 
 export type PreCheck =
   | { kind: 'task.exists'; id: TaskId }
   | { kind: 'project.exists'; id: ProjectId }
+  | { kind: 'duty.exists'; id: Duty['id'] }
   /** No subtask of this task is pending. */
   | { kind: 'task.no_open_children'; id: TaskId }
   /** The task has no parent and no subtasks, so it may change project on its own. */
@@ -34,7 +37,9 @@ export type Op =
   | { kind: 'task.insert'; row: TaskRow }
   | { kind: 'task.update'; id: TaskId; patch: TaskRowPatch }
   | { kind: 'task.delete'; id: TaskId }
-  // Calendar execution guards land before the duty planners/drivers.
+  | { kind: 'duty.insert'; row: DutyRow }
+  /** `ifStatus` makes the update a no-op unless the duty is still in that status. */
+  | { kind: 'duty.update'; id: Duty['id']; patch: DutyRowPatch; ifStatus?: Duty['status'] }
   | { kind: 'duty.update_cursor'; id: Duty['id']; lastSpawnedAt: IsoDateTime; nextOccurrenceAt: IsoDateTime | null; updatedAt: IsoDateTime }
   | { kind: 'project.insert'; row: ProjectRow }
   | { kind: 'project.update'; id: ProjectId; patch: ProjectRowPatch }
