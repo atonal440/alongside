@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DB } from '../src/db';
 import { callCommandTool } from '../src/commands';
 import { handleMcpRequest } from '../src/mcp';
-import { callReadTool } from '../src/reads';
+import { callReadTool, READ_TOOLS } from '../src/reads';
 import { sqliteD1 } from './helpers/sqliteD1';
 import { parseCommandEnvelope, parseChangesResult } from '@shared/wire/commands';
 import { parseWorkspaceRestoreInput } from '@shared/wire/workspaceRestore';
@@ -46,6 +46,7 @@ describe.each(['fresh', 'upgrade'] as const)('task.parent.set (%s)', mode => {
       expect(child.context.parent.id).toBe(parent.id);
       const found = await callReadTool('find', { entity: 'task', filter: { parent_id: parent.id } }, db) as any;
       expect(found.items.map((task: any) => task.title).sort()).toEqual(['A', 'B']);
+      expect(READ_TOOLS.find(tool => tool.name === 'find')!.inputSchema.properties.filter.properties).toHaveProperty('parent_id');
       const top = await callReadTool('find', { entity: 'task', filter: { parent_id: null } }, db) as any;
       expect(top.items.map((task: any) => task.title)).toEqual(['Parent']);
       await setParent(db, a.id, null);

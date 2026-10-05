@@ -34,6 +34,16 @@ describe('canonical workspace reconciliation', () => {
     expect(result).toMatchObject({ ok: false, error: [{ code: 'dangling_reference' }] });
   });
 
+  it('rejects a missing parent, a deleted parent and a hierarchy loop', () => {
+    const orphan = page(10, 11, 11, false, [[11, taskImage('t_new001', 1, { parent_id: 't_nope01' })]]);
+    expect(applyStagedPull(base(), [orphan.parsed])).toMatchObject({ ok: false, error: [{ code: 'dangling_reference' }] });
+    const withChild = canonicalFromSnapshot(snapshot({ epoch: 1, sequence: 10 }, [taskImage('t_first1', 1), taskImage('t_kid001', 1, { parent_id: 't_first1' })]));
+    const removed = page(10, 11, 11, false, [[11, tombstone('task', 't_first1', 2)]]);
+    expect(applyStagedPull(withChild, [removed.parsed])).toMatchObject({ ok: false, error: [{ code: 'dangling_reference' }] });
+    const loop = page(10, 11, 11, false, [[11, taskImage('t_first1', 2, { parent_id: 't_kid001' })]]);
+    expect(applyStagedPull(withChild, [loop.parsed])).toMatchObject({ ok: false, error: [{ code: 'dangling_reference' }] });
+  });
+
   it('rejects deleting a project that a live task still references', () => {
     const only = page(10, 11, 11, false, [[11, tombstone('project', 'p_first1', 2)]]);
     const withMember = canonicalFromSnapshot(snapshot({ epoch: 1, sequence: 10 }, [taskImage('t_first1', 1, { project_id: 'p_first1' }), projectImage('p_first1', 1)]));

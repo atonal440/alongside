@@ -32,6 +32,7 @@ export const READ_TOOLS = [
             statuses: { type: 'array', items: { enum: ['pending', 'done'] }, description: 'Task only. Defaults to ["pending"].' },
             text: { type: 'string', description: 'Task only. Matches title and notes.' },
             project_id: { type: 'string', description: 'Task only. Restrict to one project.' },
+            parent_id: { type: ['string', 'null'], description: 'Task only. A task id keeps its direct subtasks; null keeps top-level tasks.' },
             focused: { type: 'boolean', description: 'Task only. true keeps tasks whose focus has not expired; false keeps the others.' },
             status: { enum: ['active', 'archived'], description: 'Project only. Defaults to "active".' },
           },

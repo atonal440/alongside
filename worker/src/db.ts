@@ -732,7 +732,7 @@ export class DB {
 
   /** Direct subtasks of a task, from the same database the planner will guard. */
   async readChildren(id: string): Promise<{ id: string; status: string }[]> {
-    const { results } = await this.d1.prepare('SELECT id, status FROM tasks WHERE parent_id = ? LIMIT 500').bind(id).all<{ id: string; status: string }>();
+    const { results } = await this.d1.prepare('SELECT id, status FROM tasks WHERE parent_id = ?').bind(id).all<{ id: string; status: string }>();
     return results;
   }
 
@@ -766,10 +766,9 @@ export class DB {
       // Levels below the moved task, so a deep subtree cannot be hung under a deep parent.
       let height = 0;
       if (parent !== null) {
-        let level = [command.id as string]; let visited = 0;
-        while (level.length > 0 && height <= MAX_TASK_DEPTH && visited < 500) {
+        let level = [command.id as string];
+        while (level.length > 0 && height <= MAX_TASK_DEPTH) {
           const below = (await Promise.all(level.map(id => reader.children(id)))).flat().map(child => child.id);
-          visited += below.length;
           if (below.length > 0) height++;
           level = below;
         }
