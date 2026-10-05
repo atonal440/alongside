@@ -1,5 +1,6 @@
 import type { Task } from '../../types';
-import { dueDateLabel, localDateOf, localTimeOf } from '../../utils/design';
+import { deadlineBoundary, isAvailable } from '@shared/readiness';
+import { datePointLabel, dueDateLabel, localDateOf, localTimeOf } from '../../utils/design';
 
 interface Props {
   task: Task;
@@ -25,6 +26,16 @@ export function taskMetaString(task: Task, nowIso: string): string {
       parts.push(dueDateLabel(task));
     }
   }
+  // The hard deadline and earliest start are shown but not edited here yet; the target above is
+  // still the date this form owns.
+  const deadline = task.deadline ? datePointLabel(task.deadline) : '';
+  if (deadline) {
+    const boundary = deadlineBoundary(task);
+    const passed = task.status !== 'done' && boundary !== null && Date.parse(boundary) < Date.parse(nowIso);
+    parts.push(passed ? `Past deadline · ${deadline}` : `Deadline ${deadline}`);
+  }
+  const opens = task.available_from ? datePointLabel(task.available_from) : '';
+  if (opens && !isAvailable(task, nowIso)) parts.push(`Starts ${opens}`);
   if (task.recurrence) parts.push('Recurring');
   return parts.join(' · ');
 }

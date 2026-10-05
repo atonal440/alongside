@@ -40,6 +40,8 @@ function taskRow(overrides: Partial<Task> = {}): Task {
     due_all_day: null,
     duty_id: null,
     occurrence_at: null,
+    available_from: null,
+    deadline: null,
     ...overrides,
   };
 }
@@ -250,6 +252,8 @@ describe('completeTaskPlan', () => {
         focused_until: null,
         duty_id: null,
         occurrence_at: null,
+        available_from: null,
+        deadline: null,
       },
     });
   });

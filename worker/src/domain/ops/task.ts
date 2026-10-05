@@ -81,6 +81,9 @@ export function completeTaskPlan(task: PendingTaskDomain, input: CompleteTaskPla
       focused_until: null,
       duty_id: null,
       occurrence_at: null,
+      // A successor starts without the hard dates of the occurrence it follows.
+      available_from: null,
+      deadline: null,
     };
 
     ops.push({ kind: 'task.insert', row: next });

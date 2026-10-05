@@ -21,7 +21,7 @@ function task(id: string, occurrence: string): Task {
     created_at: occurrence, updated_at: occurrence, defer_until: null,
     defer_kind: 'none', task_type: 'action', project_id: null,
     kickoff_note: 'Check soil', session_log: null, focused_until: null,
-    duty_id: 'd_demo1', occurrence_at: occurrence,
+    duty_id: 'd_demo1', occurrence_at: occurrence, available_from: null, deadline: null,
   };
 }
 function plan(id: string, occurrence: typeof first, next: typeof first): Plan {

@@ -4,7 +4,7 @@ import { installFetchStub } from '../helpers/fetchStub';
 import { parseWorkspaceDelta, parseWorkspaceDeltaInput } from '@shared/wire/sync';
 const config={apiBase:'http://localhost:8787',authToken:'tok'};
 const now='2026-10-01T10:00:00Z';
-const row={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:null,due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,created_at:now,updated_at:now};
+const row={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:null,due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,available_from:null,deadline:null,created_at:now,updated_at:now};
 const image={entity:'task',key:row.id,revision:2,deletedAt:null,row};
 const body={contractVersion:2,from:{epoch:2,sequence:1},cursor:{epoch:2,sequence:2},watermark:{epoch:2,sequence:3},hasMore:true,changes:[{sequence:2,entity:image}]};
 const parsedInput=parseWorkspaceDeltaInput({cursor:body.from,limit:1});if(!parsedInput.ok)throw new Error();const input=parsedInput.value;

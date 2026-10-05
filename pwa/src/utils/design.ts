@@ -1,4 +1,5 @@
 import type { Project, Task, TaskLink } from '../types';
+import { localParts, parseTemporalPointText } from '@shared/temporal';
 import {
   isDeferred as sharedIsDeferred,
   isFocused as sharedIsFocused,
@@ -56,6 +57,17 @@ export function dueDateLabel(task: Pick<Task, 'due_date' | 'due_all_day'>): stri
   if (!task.due_date) return '';
   const date = localDateOf(task.due_date);
   return task.due_all_day === false ? `${date} at ${localTimeOf(task.due_date)}` : date;
+}
+
+// A date-role point (deadline / available_from) is shown in the zone it was entered in, as the
+// plain date or as date and time; it is never reinterpreted in the viewer's zone because "Friday
+// in Los Angeles" has to stay Friday.
+export function datePointLabel(text: string): string {
+  const point = parseTemporalPointText(text);
+  if (!point.ok) return '';
+  if (point.value.kind === 'date') return point.value.date;
+  const { date, time } = localParts(Date.parse(point.value.at), point.value.timezone);
+  return `${date} at ${time}`;
 }
 
 export function formatDue(task: Pick<Task, 'due_date' | 'due_all_day'>, nowIso: string): string {

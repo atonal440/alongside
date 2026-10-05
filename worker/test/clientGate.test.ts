@@ -84,7 +84,8 @@ describe('sync read gate', () => {
       expect(old.status).toBe(426);
       expect(old.headers.get('Access-Control-Allow-Origin')).toBe('*');           // the old tab can read the 426
       expect((await fetchAs('/api/v2/sync/delta', 'POST', { 'X-Alongside-Client': 'pwa/2' })).status).toBe(426);
-      expect((await fetchAs('/api/v2/sync/snapshot', 'GET', { 'X-Alongside-Client': 'pwa/3', Origin: 'https://app.test' })).status).toBe(200);
+      expect((await fetchAs('/api/v2/sync/snapshot', 'GET', { 'X-Alongside-Client': 'pwa/4', Origin: 'https://app.test' })).status).toBe(200);
+      expect((await fetchAs('/api/v2/sync/snapshot', 'GET', { 'X-Alongside-Client': 'pwa/3', Origin: 'https://app.test' })).status).toBe(426);
       expect((await fetchAs('/api/v2/sync/snapshot', 'GET', {})).status).toBe(200);
       expect((await fetchAs('/api/tasks', 'GET', { 'X-Alongside-Client': 'pwa/2', Origin: 'https://app.test' })).status).toBe(200);
     } finally { sql.close(); }

@@ -4,6 +4,7 @@
  * Behavior differences from the legacy handlers are listed in docs/plans/mcp-parity-matrix.md.
  */
 import { parseDueDateParts } from '@shared/parse';
+import { parseTemporalPoint, parseTemporalPointText } from '@shared/temporal';
 import { parsePositiveFinite } from '../parse';
 import { derivedId, notFound, refuse, taskRowOf, type Compiler, type Ctx, type Json } from './runner';
 import type { ToolLogDraft } from '../db';
@@ -36,6 +37,33 @@ function dueParts(input: unknown, explicitAllDay?: boolean | null) {
   return { dueDate: parsed.value.due_date as string, dueAllDay: explicitAllDay ?? parsed.value.due_all_day };
 }
 
+/**
+ * A date-role argument as the command's TemporalPoint: a bare YYYY-MM-DD is a local date, any other
+ * string an instant with an offset, and an object is taken as a full point. Strings need a zone,
+ * from the call's timezone or else the workspace planning timezone.
+ */
+async function rolePoint(ctx: Ctx, input: unknown, timezone: string | undefined, field: string): Promise<Json | null> {
+  if (input === null) return null;
+  if (typeof input === 'object' && !Array.isArray(input)) return input as Json;
+  if (typeof input !== 'string') throw refuse(`${field} must be a YYYY-MM-DD date, an ISO instant with an offset, a TemporalPoint object, or null.`, [field]);
+  const zone = timezone ?? (await ctx.db.getPlanningSettings())?.timezone;
+  if (zone === undefined) throw refuse(`${field} needs a time zone: pass timezone (an IANA name), or set the workspace timezone with a planning.set command.`, ['timezone']);
+  return /^\d{4}-\d{2}-\d{2}$/.test(input) ? { kind: 'date', date: input, timezone: zone } : { kind: 'instant', at: input, timezone: zone };
+}
+async function dateRoleCommand(ctx: Ctx, args: Json, id: string, current: { available_from: string | null; deadline: string | null }, expectedRevision: number): Promise<Json | null> {
+  if (args.available_from === undefined && args.deadline === undefined) return null;
+  if (args.timezone !== undefined && typeof args.timezone !== 'string') throw refuse('timezone must be a string.', ['timezone']);
+  const stored = (text: string | null) => { const parsed = text === null ? null : parseTemporalPointText(text); return parsed?.ok ? parsed.value : null; };
+  const values = {
+    availableFrom: args.available_from === undefined ? stored(current.available_from) : await rolePoint(ctx, args.available_from, args.timezone as string | undefined, 'available_from'),
+    deadline: args.deadline === undefined ? stored(current.deadline) : await rolePoint(ctx, args.deadline, args.timezone as string | undefined, 'deadline'),
+  };
+  for (const [field, point] of [['available_from', values.availableFrom], ['deadline', values.deadline]] as const) {
+    if (point !== null && !parseTemporalPoint(point).ok) throw refuse(`${field} is not a valid date or instant with an IANA time zone.`, [field]);
+  }
+  return { kind: 'task.dates.set', id, expectedRevision, values };
+}
+
 export const addTask: Compiler = async (ctx, args) => {
   const id = await derivedId('t', ctx.commandId, 0);
   const project = args.project_id === undefined ? null : await projectRef(ctx, args.project_id, ['project_id']);
@@ -46,6 +74,8 @@ export const addTask: Compiler = async (ctx, args) => {
     const due = args.due_date === undefined || args.due_date === null ? { dueDate: null, dueAllDay: null } : dueParts(args.due_date);
     commands.push({ kind: 'task.legacy-schedule.set', id, expectedRevision: 1, values: { ...due, recurrence } });
   }
+  const dates = await dateRoleCommand(ctx, args, id, { available_from: null, deadline: null }, 1);
+  if (dates) commands.push(dates);
   return { kind: 'commands', commands, respond: result => {
     const row = taskRowOf(result, id);
     const log: ToolLogDraft = { tool_name: 'add_task', task_id: id, title: row.title, detail: row.due_date ?? null };
@@ -129,6 +159,9 @@ export const updateTask: Compiler = async (ctx, args) => {
     }
     commands.push({ kind: 'task.legacy-schedule.set', id, expectedRevision: guard(), values: { dueDate, dueAllDay, recurrence: patch.recurrence !== undefined ? patch.recurrence : row.recurrence } });
   }
+
+  const dates = await dateRoleCommand(ctx, patch, id, row, guard());
+  if (dates) commands.push(dates);
 
   if (patch.task_type !== undefined) commands.push({ kind: 'task.type.set', id, expectedRevision: guard(), taskType: patch.task_type });
 

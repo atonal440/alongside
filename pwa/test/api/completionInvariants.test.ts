@@ -8,7 +8,7 @@ const source = {
   status: 'pending', task_type: 'plan', project_id: 'p_source1',
   due_date: '2026-10-05T12:00:00Z', due_all_day: null, recurrence: 'FREQ=WEEKLY',
   defer_kind: 'until', defer_until: '2026-10-03T10:00:00Z', focused_until: null,
-  session_log: 'New kickoff', duty_id: null, occurrence_at: null, created_at: earlier, updated_at: earlier,
+  session_log: 'New kickoff', duty_id: null, occurrence_at: null,available_from: null,deadline: null, created_at: earlier, updated_at: earlier,
 };
 const completed = { ...source, status: 'done', defer_kind: 'none', defer_until: null, updated_at: now };
 const successor = {

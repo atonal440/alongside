@@ -1,7 +1,7 @@
 # Power-user todo implementation checklist
 
-Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion merged/deployed. Bounded mixed graph batches merged/deployed. Compound lifecycle batches merged/deployed. Workspace bootstrap, delta, portable export and bounded v2 restore merged/deployed. Slice 2f (canonical store, queue-replay read path, retained intent with rebase, version gate, legacy mirror retired) merged/deployed. Slice 2 (including 2g, reliable PWA commands) is complete; Slices 3–7 remain unimplemented.
-Updated: 2026-10-02.
+Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion merged/deployed. Bounded mixed graph batches merged/deployed. Compound lifecycle batches merged/deployed. Workspace bootstrap, delta, portable export and bounded v2 restore merged/deployed. Slice 2f (canonical store, queue-replay read path, retained intent with rebase, version gate, legacy mirror retired) merged/deployed. Slice 2 (including 2g, reliable PWA commands) is complete. Slice 3 has started: 3a (explicit `deadline`/`available_from` date roles) is implemented; hierarchy and the rest of Slice 3 remain, as do Slices 4–7.
+Updated: 2026-10-05.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
 This checklist owns sequencing/progress, not another copy of the contracts.
@@ -150,7 +150,9 @@ the review gate. Merge authorizes the existing production deployment workflow.
 Depends on slices 1–2. Goal: LLM-usable work structure and explainable constraints.
 
 - [ ] Add task extensions, `task_dates`, richer status/terminal timestamps,
-  waiting reason, node roles, tags/order, estimates, and chunk policy.
+  waiting reason, node roles, tags/order, estimates, and chunk policy. (3a: the date
+  roles landed as `tasks.available_from`/`tasks.deadline` columns, not a `task_dates`
+  table; the rest is open.)
 - [ ] Build parsed row/domain codecs and semantic create/subdivide/move/reorder/
   complete/reopen/cancel/delete planners; forbid arbitrary managed-field patches.
 - [ ] Enforce final-state hierarchy/effective-dependency validation, project
@@ -1029,3 +1031,28 @@ before sending and resends it verbatim after a lost response; revision conflicts
 the current revision and retry rebases as a new command. Found while testing: persisting attempts
 from the pre-send copy of an op would have dropped the stored envelope and defeated replay.
 `reliableCommands` is now true. See [canonical workspace](../pwa/sync/canonical-workspace.md#reliable-command-queue).
+
+### 2026-10-05 — Slice 3a: explicit date roles
+
+Branch `claude/project-thread-33dkl6`. Adds the two date roles `due_date` never expressed. `due_date` stays
+the *target*; migration 015 adds `tasks.available_from` and `tasks.deadline`, each one canonical
+`TemporalPoint` JSON object (`{kind:'date',date,timezone}` or `{kind:'instant',at,timezone}`) with a CHECK
+that it is a JSON object and a row codec that rejects any other spelling. Deviation from the master plan:
+two columns instead of a `task_dates` table, because a table would be a new synced entity (feed, ledger,
+tombstone, restore, IDB store) for no behavioral gain; revisit if per-role history or more roles are needed.
+
+- `task.dates.set` (guarded, standalone or in a batch) replaces both roles; validation rejects a skipped local
+  date and an empty window (availability must open strictly before the deadline boundary). Loose intent and
+  `update_task` merge a one-role patch. `add_task`/`update_task` take `deadline`, `available_from`, `timezone`
+  (workspace timezone as the default). Legacy writers cannot touch the roles and a legacy recurring successor
+  starts without them.
+- Readiness: a task is not ready until `available_from` opens (it ranks with blocked work), a nearer deadline
+  raises the score above a target at the same distance, and `find` sorts by `deadline`.
+- Wire: `CLIENT_PROTOCOL` and `MIN_SYNC_READ_PROTOCOL` are 4 (the feed can now carry the `task.dates.set` action
+  name); `features.taskDates` is true. Row codecs read the new fields as null when absent.
+- MCP results show the points as objects; `export_workspace` and the sync feed keep the stored JSON text.
+- PWA: shows `Deadline`/`Past deadline`/`Starts` in the task meta line; it does not edit the roles yet (no
+  visual redesign here), and its writes never change them.
+
+Next in Slice 3: hierarchy (`parent_id`, order, node role, group completion rules, depth limit), then
+effective-date inheritance and blocker explanations, tags/priority/estimates.

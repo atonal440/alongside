@@ -75,9 +75,41 @@ and `recurrence` to be null. Unknown keys, missing values and inappropriate
 combinations fail before writes. Final values pass the existing domain codec.
 
 This compatibility command replaces only `due_date`, `due_all_day`, `recurrence`
-and update time. It does not create hard deadlines, availability, hierarchy
+and update time. It does not create hard deadlines or availability (use `task.dates.set`), hierarchy
 constraints or future explicit date-role records. Done tasks remain done. Legacy
 completion/spawning behavior is unchanged; no background series engine is enabled.
+
+## Date roles
+
+`task.dates.set` replaces a task's `availableFrom` and `deadline` roles together.
+Both values are required; each is null or a point:
+
+```json
+{
+  "kind": "task.dates.set",
+  "id": "t_example",
+  "expectedRevision": 4,
+  "values": {
+    "availableFrom": { "kind": "date", "date": "2026-10-06", "timezone": "America/Los_Angeles" },
+    "deadline": { "kind": "instant", "at": "2026-10-09T17:00:00-07:00", "timezone": "America/Los_Angeles" }
+  }
+}
+```
+
+A `date` point keeps its zone: a date `availableFrom` opens at the start of that
+local day and a date `deadline` allows completion until the start of the next
+local day, never an assumed 24-hour day or `23:59`. An `instant` point is
+normalized to minute UTC and keeps the zone it was meant in. A date the zone
+skipped entirely (for example 2011-12-30 in `Pacific/Apia`) is refused, and the
+window must be non-empty: availability must open strictly before the deadline
+boundary. Failures are `invalid_input` with a path under `values`; nothing is
+written. The command changes only `available_from`, `deadline` and update time,
+may edit a done task, and needs no structural precondition. The target
+(`due_date`) is untouched and stays in `task.legacy-schedule.set`; a deadline
+earlier or later than the target is kept as entered. It counts six prepared SQL
+statements. Loose-intent previews and `update_task` merge a one-role patch into
+the stored points. A completion successor of a legacy recurring task starts with
+both roles unset, because a deadline names one occurrence.
 
 ## Atomicity and retained intention
 

@@ -1,3 +1,4 @@
+import { storedDateRoleProblem } from '@shared/temporal';
 import * as v from 'valibot';
 import type { InferOutput } from 'valibot';
 import type { ActionLog, Task } from '@shared/types';
@@ -84,10 +85,13 @@ const ImportTaskRowSchema = v.pipe(
       focused_until: row.focused_until,
       duty_id: row.duty_id,
       occurrence_at: row.occurrence_at,
+      available_from: row.available_from,
+      deadline: row.deadline,
     };
   }),
   v.check(row => (row.duty_id === null) === (row.occurrence_at === null),
     'Duty identity and occurrence must be supplied together.'),
+  v.forward(v.check(row => storedDateRoleProblem(row) === null, 'available_from must open before the deadline.'), ['available_from']),
 );
 
 // Tolerates pre-Stage-1 exports that predate duty_id.

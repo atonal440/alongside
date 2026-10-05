@@ -8,6 +8,7 @@
  * pin fails with the usual revision_conflict instead of applying.
  */
 import { nanoid } from 'nanoid';
+import { parseTemporalPoint, temporalPointText } from '@shared/temporal';
 import { parseEntityKey } from '@shared/wire/versions';
 import { CommandError } from './domain/commands';
 import { invalidInput } from './domain/temporalFoundation';
@@ -188,6 +189,19 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
         const merged = { ...current, ...input };
         commands.push({ kind: command.kind, id, expectedRevision: await edit('task', id), values: merged });
         remember('task', id, { due_date: merged.dueDate, due_all_day: merged.dueAllDay, recurrence: merged.recurrence });
+        break;
+      }
+      case 'task.dates.set': {
+        keys('id', 'values');
+        const id = idOf('task');
+        const input = values(); only(input, ['availableFrom', 'deadline'], [...at, 'values']);
+        // Stored points are canonical JSON text; the command carries them as objects.
+        const asPoint = (text: unknown): unknown => { try { return typeof text === 'string' ? JSON.parse(text) : null; } catch { return null; } };
+        const asText = (point: unknown): string | null => { const parsed = parseTemporalPoint(point); return parsed.ok ? temporalPointText(parsed.value) : null; };
+        const row = await liveRow('task', id, [...at, 'id']);
+        const merged = { availableFrom: asPoint(row.available_from), deadline: asPoint(row.deadline), ...input };
+        commands.push({ kind: command.kind, id, expectedRevision: await edit('task', id), values: merged });
+        remember('task', id, { available_from: asText(merged.availableFrom), deadline: asText(merged.deadline) });
         break;
       }
       case 'task.complete': {

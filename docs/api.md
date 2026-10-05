@@ -52,7 +52,7 @@ migration or background delivery occurs through these endpoints.
 ## Client protocol and the write gate
 
 Browser clients announce themselves with `X-Alongside-Client: <name>/<protocol>` (the PWA sends
-`pwa/3`; the protocol constants live in `shared/wire/clientVersion.ts`). `GET /api/v2/capabilities`
+`pwa/4`; the protocol constants live in `shared/wire/clientVersion.ts`). `GET /api/v2/capabilities`
 reports `clientProtocol: {current, minimumWrite, minimumSyncRead}` and `features.deltaSync` / `features.reliableCommands: true`.
 
 A **write** (any non-`GET/HEAD/OPTIONS` request under `/api/`) that carries an `Origin` header but
@@ -73,8 +73,8 @@ safely write after a future contract change. CORS preflight allows the header.
 
 `GET /api/v2/sync/snapshot` and `POST /api/v2/sync/delta` have their own, stricter gate because a
 feed page the client cannot parse fails every pull, and stays stuck until the client is replaced. Protocol 3
-is the first to parse command-kind names in `action_log.tool_name`, so a request announcing
-`pwa/<n>` with `n` below `minimumSyncRead` (3) gets the same 426 body, **whether or not it carries
+is the first to parse command-kind names in `action_log.tool_name` and protocol 4 adds `task.dates.set`, so a request announcing
+`pwa/<n>` with `n` below `minimumSyncRead` (4) gets the same 426 body, **whether or not it carries
 `Origin`** (browsers omit `Origin` on same-origin GETs, so an Origin check alone would let an old
 tab through if the PWA and API ever share an origin). A browser that announces nothing is treated as an
 old build only when it sends `Origin`. Scripts that announce nothing and send no `Origin`, and clients
@@ -116,7 +116,7 @@ Create a new task.
 |---|---|---|---|
 | `title` | `string` | yes | |
 | `notes` | `string` | no | |
-| `due_date` | `string \| null` | no | ISO 8601 date or datetime. A bare date (`2026-04-15`) is all-day, anchored to noon UTC; a full datetime is a genuine deadline at that moment. |
+| `due_date` | `string \| null` | no | ISO 8601 date or datetime. A bare date (`2026-04-15`) is all-day, anchored to noon UTC; a full datetime is a timed target at that moment (not a hard deadline; see `task.dates.set`). |
 | `due_all_day` | `boolean` | no | Overrides the all-day/timed inference from `due_date`'s shape. Rarely needed — the PWA sends this explicitly to preserve an existing value when an edit doesn't touch the due date. |
 | `recurrence` | `string` | no | Infinite date-only RRULE |
 | `task_type` | `string` | no | `action` or `plan` |
@@ -277,8 +277,10 @@ Full field reference for the task object returned by all endpoints:
 | `notes` | `string` | yes | |
 | `status` | `string` | no | `pending` or `done` |
 | `due_date` | `string` | yes | ISO 8601 datetime, minute resolution. A date-only value on write is anchored to noon UTC |
-| `due_all_day` | `boolean` | yes | Whether `due_date` is all-day (no real time-of-day) vs. a genuine timed deadline. `null` on rows that predate this field — treat as all-day |
+| `due_all_day` | `boolean` | yes | Whether `due_date` is all-day (no real time-of-day) vs. a genuine timed target. `null` on rows that predate this field — treat as all-day |
 | `recurrence` | `string` | yes | iCal RRULE string |
+| `available_from` | `string` | yes | Earliest permitted start, as canonical TemporalPoint JSON text (see [schema](shared/schema.md)). Written only by `task.dates.set` |
+| `deadline` | `string` | yes | Hard completion boundary in the same spelling. `due_date` stays the softer target. Written only by `task.dates.set` |
 | `task_type` | `string` | no | `action` or `plan` |
 | `project_id` | `string` | yes | FK to projects table |
 | `kickoff_note` | `string` | yes | Forward-looking re-entry note |
@@ -376,6 +378,9 @@ validation and atomic capacity. Supported families:
   [guarded task fields](shared/reliable-task-fields.md). Membership requires
   a structural revision and selected-project revision. Legacy schedule values
   explicitly include due-date classification; they never create a hard deadline.
+- `task.dates.set` replaces a task's `availableFrom` and `deadline` roles (each a
+  `{kind:'date',date,timezone}` or `{kind:'instant',at,timezone}` point, or null);
+  see [guarded task fields](shared/reliable-task-fields.md#date-roles).
 
 - `link.add`/`link.remove` with edge and structural revisions, endpoint/cycle
   guards and retained tombstones; see [reliable links](shared/reliable-links.md).

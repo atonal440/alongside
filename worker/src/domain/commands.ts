@@ -9,6 +9,7 @@ import { completeTaskPlan } from './ops/task';
 import { parseIsoDateTime } from '@shared/parse';
 import { invalidInput } from './temporalFoundation';
 import { preferenceEntryFromParts } from './preference';
+import { taskDateRoleProblem, temporalPointText } from '@shared/temporal';
 
 export class CommandError extends Error {
   constructor(readonly detail: FoundationErrorDetail, readonly status: number = 409) { super(detail.message); }
@@ -145,7 +146,7 @@ export function planCreateCommand(input: CommandEnvelope, current: EntitySnapsho
     }
     const row = { ...common, id: command.id, task_type: command.values.taskType, project_id: command.values.project?.id ?? null,
       status: 'pending' as const, due_date: null, due_all_day: null, recurrence: null, defer_until: null, defer_kind: 'none' as const,
-      session_log: null, focused_until: null, duty_id: null, occurrence_at: null,
+      session_log: null, focused_until: null, duty_id: null, occurrence_at: null, available_from: null, deadline: null,
     };
     mutation = { kind: 'task.insert', row };
     change = { entity: 'task', id: command.id, before: null, after: { revision: rev.value, row } };
@@ -160,7 +161,7 @@ export function planCreateCommand(input: CommandEnvelope, current: EntitySnapsho
 
 export function commandEntityKey(command: Exclude<CommandEnvelope['commands'][number], { kind: 'planning.set' | 'preference.set' | 'link.add' | 'link.remove' }>): EntityReadKey {
   switch (command.kind) {
-    case 'task.delete': case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': case 'task.complete': case 'task.project.set': case 'task.type.set': case 'task.legacy-schedule.set': return { entity: 'task', id: command.id };
+    case 'task.delete': case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': case 'task.complete': case 'task.project.set': case 'task.type.set': case 'task.legacy-schedule.set': case 'task.dates.set': return { entity: 'task', id: command.id };
     case 'project.delete': case 'project.create': case 'project.content.set': case 'project.archive': case 'project.reopen': return { entity: 'project', id: command.id };
   }
 }
@@ -243,6 +244,13 @@ export function planStateCommand(input: CommandEnvelope, current: EntitySnapshot
       case 'task.legacy-schedule.set':
         patch = { ...patch, due_date: command.values.dueDate, due_all_day: command.values.dueAllDay, recurrence: command.values.recurrence };
         break;
+      case 'task.dates.set': {
+        const problem = taskDateRoleProblem(command.values);
+        if (problem) throw new CommandError(invalidInput([{ code: 'invalid_input', path: ['commands', '0', 'values', ...problem.path], message: problem.message }]), 400);
+        patch = { ...patch, available_from: command.values.availableFrom === null ? null : temporalPointText(command.values.availableFrom),
+          deadline: command.values.deadline === null ? null : temporalPointText(command.values.deadline) };
+        break;
+      }
       case 'task.focus.set':
         if (current.row!.status !== 'pending') reject('Only pending tasks can change focus.');
         patch = { ...patch, focused_until: command.focusedUntil,

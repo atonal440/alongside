@@ -21,6 +21,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "available_from": null,
+    "deadline": null,
     "action_log_entry": {
      "tool_name": "update_task",
      "title": "Pending",
@@ -67,6 +69,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "available_from": null,
+    "deadline": null,
     "action_log_entry": {
      "tool_name": "update_task",
      "title": "To be deferred",
@@ -113,6 +117,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "available_from": null,
+    "deadline": null,
     "action_log_entry": {
      "tool_name": "update_task",
      "title": "To be done",

@@ -8,6 +8,7 @@ import { runTool } from './adapters/runner';
 import { addTask, completeTask, deferTask, focusTask, updateTask } from './adapters/taskVerbs';
 import { callReadTool, READ_TOOLS, READ_TOOL_NAMES } from './reads';
 import { ADMIN_TOOL_NAMES, annotate } from './toolSurface';
+import { presentDateRoles } from './present';
 
 interface McpRequest {
   jsonrpc: '2.0';
@@ -15,6 +16,8 @@ interface McpRequest {
   method: string;
   params?: Record<string, unknown>;
 }
+
+const PORTABLE_TOOLS = new Set(['export_workspace', 'restore_workspace', 'get_workspace_snapshot', 'get_workspace_delta']);
 
 function mcpResponse(id: string | number, result: unknown) {
   return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), {
@@ -72,11 +75,14 @@ const TOOL_DEFS = [
         commandId: { type: 'string', description: 'Optional c_… ID. Retrying with the same ID and arguments replays the first result instead of repeating the change.' },
         title: { type: 'string', description: 'Short, actionable title.' },
         notes: { type: 'string', description: 'Additional context or links.' },
-        due_date: { type: 'string', description: 'ISO 8601 date or datetime. A bare date is all-day (stored at noon UTC); a full datetime is a genuine deadline at that moment. Omit for undated.' },
+        due_date: { type: 'string', description: 'The target: when to aim to finish. ISO 8601 date or datetime. A bare date is all-day (stored at noon UTC); a full datetime is a timed target. Use deadline for a hard boundary. Omit for undated.' },
         recurrence: { type: 'string', description: 'Infinite date-only RRULE (e.g. FREQ=WEEKLY;INTERVAL=2 or FREQ=MONTHLY;BYDAY=3FR). Requires due_date.' },
         task_type: { type: 'string', enum: ['action', 'plan'], description: '"action" (default) or "plan".' },
         project_id: { type: 'string', description: 'Associate with a project.' },
         kickoff_note: { type: 'string', description: 'Where to start next time.' },
+        deadline: { type: 'string', description: 'Hard deadline, distinct from due_date (the target to aim for). A bare YYYY-MM-DD allows completion throughout that local day; an ISO datetime with offset is a moment. Needs timezone or a workspace timezone.' },
+        available_from: { type: 'string', description: 'Earliest permitted start, independent of deferral. YYYY-MM-DD opens at the start of that local day; an ISO datetime with offset is a moment. Needs timezone or a workspace timezone.' },
+        timezone: { type: 'string', description: 'IANA zone for deadline and available_from (e.g. America/Los_Angeles). Defaults to the workspace timezone.' },
       },
       required: ['title'],
     },
@@ -124,12 +130,15 @@ const TOOL_DEFS = [
         title: { type: 'string' },
         notes: { type: 'string', description: 'Replaces existing notes.' },
         status: { type: 'string', enum: ['pending'], description: 'Use complete_task for "done", defer_task to defer, focus_task to put front-of-mind. Only valid value is "pending" (to reset a task).' },
-        due_date: { type: 'string', description: 'ISO 8601 date or datetime. A bare date is all-day (stored at noon UTC); a full datetime is a genuine deadline at that moment.' },
+        due_date: { type: 'string', description: 'The target: when to aim to finish. ISO 8601 date or datetime. A bare date is all-day (stored at noon UTC); a full datetime is a timed target. Use deadline for a hard boundary.' },
         recurrence: { type: 'string', description: 'Infinite date-only RRULE.' },
         task_type: { type: 'string', enum: ['action', 'plan'] },
         project_id: { type: 'string', description: 'Move to project, or null to remove.' },
         kickoff_note: { type: 'string', description: 'Where to start next time.' },
         session_log: { type: 'string', description: 'What happened this session.' },
+        deadline: { type: 'string', description: 'Hard deadline, distinct from due_date (the target to aim for). YYYY-MM-DD or ISO datetime with offset; null clears it. Needs timezone or a workspace timezone.' },
+        available_from: { type: 'string', description: 'Earliest permitted start, independent of deferral. YYYY-MM-DD or ISO datetime with offset; null clears it.' },
+        timezone: { type: 'string', description: 'IANA zone for deadline and available_from. Defaults to the workspace timezone.' },
         focused_until: { type: 'string', description: 'ISO 8601 timestamp. Set to null to clear focus.' },
       },
       required: ['task_id'],
@@ -296,7 +305,9 @@ export async function handleMcpRequest(request: Request, db: DB, env: Env, surfa
       try {
         const listed = admin ? ADMIN_TOOLS : TOOLS;
         if (!listed.some(tool => tool.name === params.name)) throw new Error(`Unknown tool: ${params.name}`);
-        const result = await handleToolCall(params.name, params.arguments || {}, db);
+        const raw = await handleToolCall(params.name, params.arguments || {}, db);
+        // Portable documents and the sync feed keep the stored spelling so they restore exactly.
+        const result = PORTABLE_TOOLS.has(params.name) ? raw : presentDateRoles(raw);
         const toolDef = listed.find(t => t.name === params.name) as { _meta?: Record<string, unknown> } | undefined;
         const meta = toolDef?._meta ? { _meta: toolDef._meta } : {};
         return mcpResponse(body.id, {

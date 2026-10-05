@@ -5,7 +5,7 @@ import { CommandError } from '../domain/commands';
 // Fixed identifiers only, never caller-provided SQL. Keep explicit row columns
 // so obsolete upgrade-only columns (tasks.session_id) cannot cross the boundary.
 const sources = [
-  ['task', 'tasks', 'id', 'id title notes status due_date due_all_day recurrence created_at updated_at defer_until defer_kind task_type project_id kickoff_note session_log focused_until duty_id occurrence_at'],
+  ['task', 'tasks', 'id', 'id title notes status due_date due_all_day recurrence created_at updated_at defer_until defer_kind task_type project_id kickoff_note session_log focused_until duty_id occurrence_at available_from deadline'],
   ['project', 'projects', 'id', 'id title notes kickoff_note status created_at updated_at'],
   ['link', 'task_links', 'json_array(from_task_id,to_task_id,link_type)', 'from_task_id to_task_id link_type'],
   ['duty', 'duties', 'id', 'id title notes kickoff_note task_type project_id rrule dtstart timezone status catch_up last_spawned_at next_occurrence_at created_at updated_at'],
