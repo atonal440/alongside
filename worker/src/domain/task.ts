@@ -28,6 +28,7 @@ import {
   nextOccurrence,
 } from '../parse';
 import { unsafeBrand } from '@shared/brand';
+import { parseTemporalPointText, taskDateRoleProblem, type TemporalPoint } from '@shared/temporal';
 import { err, ok, type Result } from '@shared/result';
 import type { Task } from '@shared/types';
 import type { AppError } from './errors';
@@ -53,6 +54,10 @@ export interface TaskBase {
   taskType: TaskType;
   projectId: ProjectId | null;
   dueDate: IsoDateTime | null;
+  /** Earliest permitted start, independent of deferral. */
+  availableFrom: TemporalPoint | null;
+  /** Hard completion boundary; dueDate remains the softer target. */
+  deadline: TemporalPoint | null;
   recurrence: Recurrence;
   kickoffNote: BoundedString<2_000> | null;
   sessionLog: BoundedString<10_000> | null;
@@ -110,6 +115,12 @@ function nullableDueDateTime(path: string, input: string | null): Result<IsoDate
 function nullableIsoDateTime(path: string, input: string | null): Result<IsoDateTime | null, ValidationError[]> {
   if (input === null) return ok(null);
   const parsed = parseIsoDateTime(input);
+  return parsed.ok ? ok(parsed.value) : err(withPath(path, parsed.error));
+}
+
+function nullableTemporalPoint(path: string, input: string | null): Result<TemporalPoint | null, ValidationError[]> {
+  if (input === null) return ok(null);
+  const parsed = parseTemporalPointText(input);
   return parsed.ok ? ok(parsed.value) : err(withPath(path, parsed.error));
 }
 
@@ -246,6 +257,17 @@ export function taskFromRow(row: Task): Result<TaskDomain, ValidationError[]> {
   const dueDate = nullableDueDateTime('due_date', row.due_date);
   if (!dueDate.ok) errors.push(...dueDate.error);
 
+  const availableFrom = nullableTemporalPoint('available_from', row.available_from);
+  if (!availableFrom.ok) errors.push(...availableFrom.error);
+
+  const deadline = nullableTemporalPoint('deadline', row.deadline);
+  if (!deadline.ok) errors.push(...deadline.error);
+
+  if (availableFrom.ok && deadline.ok) {
+    const problem = taskDateRoleProblem({ availableFrom: availableFrom.value, deadline: deadline.value });
+    if (problem) errors.push({ path: [problem.path[0] === 'deadline' ? 'deadline' : 'available_from'], code: 'invalid_state', message: problem.message });
+  }
+
   const recurrence = recurrenceFromRow(row.due_date, row.recurrence, row.due_all_day);
   if (!recurrence.ok) errors.push(...recurrence.error);
 
@@ -311,6 +333,8 @@ export function taskFromRow(row: Task): Result<TaskDomain, ValidationError[]> {
     !taskType.ok ||
     !projectId.ok ||
     !dueDate.ok ||
+    !availableFrom.ok ||
+    !deadline.ok ||
     !recurrence.ok ||
     !kickoffNote.ok ||
     !sessionLog.ok ||
@@ -334,6 +358,8 @@ export function taskFromRow(row: Task): Result<TaskDomain, ValidationError[]> {
     taskType: taskType.value,
     projectId: projectId.value,
     dueDate: dueDate.value,
+    availableFrom: availableFrom.value,
+    deadline: deadline.value,
     recurrence: recurrence.value,
     kickoffNote: kickoffNote.value,
     sessionLog: sessionLog.value,

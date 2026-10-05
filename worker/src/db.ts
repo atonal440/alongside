@@ -32,7 +32,7 @@ import {
   actionLog as actionLogTable,
 } from '@shared/schema';
 import type { Task, Project, TaskLink, ActionLog, TaskCreate, TaskUpdate, ProjectCreate, ProjectUpdate } from '@shared/types';
-import { readinessScore } from '@shared/readiness';
+import { isAvailable, readinessScore } from '@shared/readiness';
 import { unsafeBrand } from '@shared/brand';
 import type { ActiveDeferState, Plan, PendingTaskDomain, TaskDomain } from './domain';
 import type { Op, PreCheck } from './domain/Op';
@@ -524,7 +524,7 @@ export class DB {
       .from(tasksTable)
       .where(and(...conditions));
 
-    return results.sort((a, b) => readinessScore(b, ts) - readinessScore(a, ts) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+    return results.filter(task => isAvailable(task, ts)).sort((a, b) => readinessScore(b, ts) - readinessScore(a, ts) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
   }
 
   // Returns tasks whose focused_until is still in the future.

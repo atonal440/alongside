@@ -221,3 +221,24 @@ export function parseTemporalPointText(text: string): Result<TemporalPoint, Vali
     return err([{ path: [], code: 'invalid_json', message: 'Expected TemporalPoint JSON.' }]);
   }
 }
+
+/**
+ * The first reason a task's own availability and deadline cannot both hold, or null. A date
+ * boundary that no instant of the zone satisfies is a validation error, and the work window
+ * [available_from, deadline] must be non-empty: availability opens strictly before the
+ * deadline boundary (end of a date deadline, the instant of a timed one).
+ */
+export function taskDateRoleProblem(roles: { availableFrom: TemporalPoint | null; deadline: TemporalPoint | null }): { path: string[]; message: string } | null {
+  const bounds: Partial<Record<'availableFrom' | 'deadline', MinuteInstant>> = {};
+  for (const [field, role] of [['availableFrom', 'available_from'], ['deadline', 'deadline']] as const) {
+    const point = roles[field];
+    if (point === null) continue;
+    const boundary = resolveDateBoundary(point, role);
+    if (!boundary.ok) return { path: [field], message: boundary.error.message };
+    bounds[field] = boundary.value.at;
+  }
+  if (bounds.availableFrom !== undefined && bounds.deadline !== undefined && bounds.availableFrom >= bounds.deadline) {
+    return { path: ['availableFrom'], message: 'available_from must open before the deadline.' };
+  }
+  return null;
+}

@@ -1,5 +1,6 @@
 import * as v from 'valibot';
 import { PREFERENCE_KEYS, CommandIdSchema, EventInstantSchema, MinuteInstantSchema, DueDateTimeSchema, RruleSchema, RevisionSchema, ProjectIdSchema, TaskIdSchema, TaskTypeSchema, LinkTypeSchema, boundedStringSchema, nonEmptyStringSchema, parseSchema, parseIsoDate, parseRrule, nextOccurrence } from '../parse';
+import { TemporalPointSchema } from '../temporal';
 import { PlanningSettingsSchema } from './planning';
 import { ProjectRowSchema, TaskRowSchema, TaskLinkRowSchema } from './rows';
 
@@ -90,6 +91,11 @@ v.check(value => value.recurrence === null || value.dueAllDay !== false, 'Legacy
 export const TaskLegacyScheduleCommandSchema = v.strictObject({
   kind: v.literal('task.legacy-schedule.set'), id: TaskIdSchema, expectedRevision: RevisionSchema, values: LegacyScheduleValuesSchema,
 });
+/** Replaces the availability and deadline roles together; the target stays in task.legacy-schedule.set. */
+export const TaskDatesValuesSchema = v.strictObject({ availableFrom: v.nullable(TemporalPointSchema), deadline: v.nullable(TemporalPointSchema) });
+export const TaskDatesCommandSchema = v.strictObject({
+  kind: v.literal('task.dates.set'), id: TaskIdSchema, expectedRevision: RevisionSchema, values: TaskDatesValuesSchema,
+});
 export const TaskDeleteCommandSchema = v.strictObject({ kind: v.literal('task.delete'), id: TaskIdSchema, expectedRevision: RevisionSchema, expectedStructuralRevision: RevisionSchema });
 export const ProjectDeleteCommandSchema = v.strictObject({ kind: v.literal('project.delete'), id: ProjectIdSchema, expectedRevision: RevisionSchema, expectedStructuralRevision: RevisionSchema });
 const linkCommandEntries = { from: TaskIdSchema, to: TaskIdSchema, linkType: LinkTypeSchema, expectedStructuralRevision: RevisionSchema };
@@ -103,7 +109,7 @@ export const CommandEnvelopeSchema = v.pipe(v.strictObject({
   actor: v.picklist(['user', 'llm', 'import']),
   reason: v.optional(v.pipe(v.string(), v.maxLength(1_000))),
   expectedStructuralRevision: v.optional(RevisionSchema),
-  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, PreferenceSetCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(MAX_BATCH_COMMANDS)),
+  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, PreferenceSetCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, TaskDatesCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(MAX_BATCH_COMMANDS)),
 }), v.check(value => value.commands.length === 1 ? value.expectedStructuralRevision === undefined
   : value.expectedStructuralRevision !== undefined && value.commands.every(command => command.kind !== 'planning.set' && command.kind !== 'preference.set'),
 'Mixed batches require an envelope structural revision; settings remain standalone.'),

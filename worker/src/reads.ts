@@ -8,19 +8,19 @@ import { CommandError } from './domain/commands';
 import { invalidInput } from './domain/temporalFoundation';
 import { COMMAND_ENVELOPE_PROPERTIES, COMMAND_VARIANTS } from './commands';
 import type { DB } from './db';
-import { isDeferred, isFocused, readinessScore } from '@shared/readiness';
+import { deadlineBoundary, isDeferred, isFocused, readinessScore } from '@shared/readiness';
 import type { Task } from '@shared/types';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
-const SORTS = ['created', 'updated', 'due', 'readiness'] as const;
+const SORTS = ['created', 'updated', 'due', 'deadline', 'readiness'] as const;
 type Sort = (typeof SORTS)[number];
-const DEFAULT_ORDER: Record<Sort, 1 | -1> = { created: -1, updated: -1, due: 1, readiness: -1 };
+const DEFAULT_ORDER: Record<Sort, 1 | -1> = { created: -1, updated: -1, due: 1, deadline: 1, readiness: -1 };
 
 export const READ_TOOLS = [
   {
     name: 'find',
-    description: 'Search tasks or projects. entity "task" filters by statuses (default ["pending"], deferred tasks included), text (case-insensitive over title and notes), project_id and focused (true: only tasks whose focus has not expired; false: only the rest); preset "ready" restricts to unblocked, non-deferred pending tasks. entity "project" filters by status (default "active"). Order is sort (created, updated, due or readiness; default created) in the given order (asc or desc; default desc for created, updated and readiness, asc for due; undated tasks count as latest). Readiness is a heuristic score (order applies to the score only; ties break oldest first) that favors tasks with a kickoff note or session log, recent edits and near due dates; ask for it only if you want it. Results are deterministic and page with nextCursor.',
+    description: 'Search tasks or projects. entity "task" filters by statuses (default ["pending"], deferred tasks included), text (case-insensitive over title and notes), project_id and focused (true: only tasks whose focus has not expired; false: only the rest); preset "ready" restricts to unblocked, non-deferred pending tasks. entity "project" filters by status (default "active"). Order is sort (created, updated, due, deadline or readiness; default created) in the given order (asc or desc; default desc for created, updated and readiness, asc for due and deadline; undated tasks count as latest). due sorts the target date, deadline the hard deadline. Readiness is a heuristic score (order applies to the score only; ties break oldest first) that favors tasks with a kickoff note or session log, recent edits and near due dates or deadlines, and ranks tasks that are not yet available with blocked ones; ask for it only if you want it. Results are deterministic and page with nextCursor.',
     inputSchema: {
       type: 'object', additionalProperties: false,
       properties: {
@@ -37,7 +37,7 @@ export const READ_TOOLS = [
           },
         },
         sort: { enum: [...SORTS], description: 'Task only. Defaults to created.' },
-        order: { enum: ['asc', 'desc'], description: 'Defaults to desc for created, updated and readiness, asc for due. Applies to projects too (by creation).' },
+        order: { enum: ['asc', 'desc'], description: 'Defaults to desc for created, updated and readiness, asc for due and deadline. Applies to projects too (by creation).' },
         limit: { type: 'integer', minimum: 1, maximum: MAX_LIMIT, description: `Defaults to ${DEFAULT_LIMIT}.` },
         cursor: { type: 'string', description: 'The nextCursor from the previous page.' },
       },
@@ -195,6 +195,8 @@ async function find(args: Record<string, unknown>, db: DB) {
     switch (sort) {
       case 'updated': return [tag, task.updated_at, task.id];
       case 'due': return [tag, task.due_date === null ? 1 : 0, task.due_date ?? '', task.created_at, task.id];
+      // The hard deadline's boundary instant: the end of a date deadline's local day.
+      case 'deadline': { const boundary = deadlineBoundary(task); return [tag, boundary === null ? 1 : 0, boundary ?? '', task.created_at, task.id]; }
       // Deferred tasks aren't actionable now, so they rank with blocked ones (the scorer's floor).
       case 'readiness': return [tag, (dir === -1 ? -1 : 1) * (isDeferred(task, at) ? 5 : readinessScore(task, at, links, everyTask)), task.created_at, task.id];
       default: return [tag, task.created_at, task.id];

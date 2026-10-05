@@ -2,15 +2,19 @@
 
 Shared predicate and scoring functions for task readiness. Used by the worker (in JS post-processing where SQL isn't convenient) and by the PWA (sidebar badge, suggest queue, status filter chips, readiness score bars). The worker also has a paired SQL fragment in `worker/src/db.ts` (`notDeferredCondition`) that mirrors `isDeferred` for D1 queries.
 
-A task is **ready** when it is pending, not deferred, and not blocked by an unfinished task.
+A task is **ready** when it is pending, not deferred, already available (its `available_from`, if any, has opened), and not blocked by an unfinished task.
 
 ## Functions
 
 **`isDeferred(task, nowIso)`** — Returns true when `defer_kind = 'someday'`, or `defer_kind = 'until'` with `defer_until > now`. Past `until` values are treated as not deferred (no write-back).
 
+**`isAvailable(task, nowIso)`** — False only while `available_from` resolves to an instant after `nowIso`. A date opens at the start of its local day in its own zone; an unset or unreadable value never blocks. Independent of deferral.
+
+**`deadlineBoundary(task)`** — The minute-UTC instant the hard `deadline` passes (the start of the next local day for a date deadline), or null. Used to sort and to score.
+
 **`hasActiveBlocker(task, links, tasks)`** — Returns true when any incoming `blocks` link points from a task whose status is not `'done'`.
 
-**`isReady(task, links, tasks, nowIso)`** — Composite of `status === 'pending'`, `!isDeferred`, and `!hasActiveBlocker`.
+**`isReady(task, links, tasks, nowIso)`** — Composite of `status === 'pending'`, `!isDeferred`, `isAvailable`, and `!hasActiveBlocker`.
 
 **`isFocused(task, nowIso)`** — Returns true when `focused_until` is set and greater than `nowIso`. Pure function; call sites pass the current ISO timestamp.
 
@@ -19,7 +23,7 @@ A task is **ready** when it is pending, not deferred, and not blocked by an unfi
 | Condition | Points |
 |---|---|
 | done | 0 (floor) |
-| has active blocker | 5 (fixed — below all ready tasks) |
+| has active blocker, or `available_from` not yet open | 5 (fixed — below all ready tasks) |
 | base (unblocked pending) | 10 |
 | `kickoff_note` present | +20 |
 | `session_log` present | +15 |
@@ -28,8 +32,11 @@ A task is **ready** when it is pending, not deferred, and not blocked by an unfi
 | `due_date` is in the past | +10 |
 | `due_date` is within the next 24h | +7 |
 | `due_date` within the next 7 days | +3 |
+| `deadline` boundary passed / within 24h / within 7 days | +12 / +9 / +4 |
 
-`due_date` is a UTC instant (Decision 4, `docs/plans/duties/02-timestamp-model.md`) — the due window compares instants against `nowIso`, not calendar days; there is no date-only "today" bucket at this layer (the PWA's `formatDue`/`TaskMeta` labels handle the viewer-local "Due today" distinction separately, on top of this score). Max possible score: 75. No clamping applied — consumers use values for relative ordering only.
+The target and the hard deadline do not add: the larger of the two bumps applies, so a hard deadline presses a little harder than a target at the same distance.
+
+`due_date` is a UTC instant (Decision 4, `docs/plans/duties/02-timestamp-model.md`) — the due window compares instants against `nowIso`, not calendar days; there is no date-only "today" bucket at this layer (the PWA's `formatDue`/`TaskMeta` labels handle the viewer-local "Due today" distinction separately, on top of this score). Max possible score: 77. No clamping applied — consumers use values for relative ordering only.
 
 ## See Also
 

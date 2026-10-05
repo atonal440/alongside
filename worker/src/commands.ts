@@ -84,6 +84,14 @@ const completionSchema = {
     }, required: ['id'] }] },
   }, required: ['kind', 'id', 'expectedRevision', 'expectedStructuralRevision', 'successor'],
 };
+const temporalPointSchema = { oneOf: [
+  { type: 'object', additionalProperties: false, properties: { kind: { const: 'date' }, date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Real local calendar date YYYY-MM-DD.' }, timezone: { type: 'string', description: 'IANA zone, e.g. America/Los_Angeles.' } }, required: ['kind', 'date', 'timezone'] },
+  { type: 'object', additionalProperties: false, properties: { kind: { const: 'instant' }, at: { type: 'string', format: 'date-time', description: 'Instant with offset or Z; normalized to minute UTC.' }, timezone: { type: 'string', description: 'IANA zone the instant is meant in.' } }, required: ['kind', 'at', 'timezone'] },
+] };
+const taskDatesSchema = stateCommandSchema('task.dates.set', 'values', { type: 'object', additionalProperties: false, properties: {
+  availableFrom: { oneOf: [{ type: 'null' }, temporalPointSchema], description: 'Earliest permitted start, independent of deferral. A date opens at the start of that local day. Null clears it.' },
+  deadline: { oneOf: [{ type: 'null' }, temporalPointSchema], description: 'Hard completion boundary, distinct from the target (dueDate in task.legacy-schedule.set). A date deadline allows completion throughout that local day; a timed one until that instant. Null clears it.' },
+}, required: ['availableFrom', 'deadline'] });
 const taskFieldSchemas = [
   { ...stateCommandSchema('task.project.set'), properties: { ...stateCommandSchema('task.project.set').properties,
     expectedStructuralRevision: { type: 'integer', minimum: 0, maximum: 9007199254740991 },
@@ -95,6 +103,7 @@ const taskFieldSchemas = [
     dueAllDay: { type: ['boolean', 'null'], description: 'Explicit classification. Null preserves legacy ambiguity; clearing dueDate requires null.' },
     recurrence: { type: ['string', 'null'], description: 'Legacy date-only RRULE; requires all-day/ambiguous dueDate. Clearing dueDate requires null.' },
   }, required: ['dueDate', 'dueAllDay', 'recurrence'] }),
+  taskDatesSchema,
 ];
 const linkSchemas = ['link.add', 'link.remove'].map(kind => ({
   type: 'object', additionalProperties: false, properties: {

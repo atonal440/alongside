@@ -41,7 +41,7 @@ export const COMMAND_KINDS = [
   'planning.set', 'preference.set',
   'project.create', 'project.content.set', 'project.archive', 'project.reopen', 'project.delete',
   'task.create', 'task.content.set', 'task.focus.set', 'task.defer.set', 'task.reopen', 'task.complete',
-  'task.project.set', 'task.type.set', 'task.legacy-schedule.set', 'task.delete',
+  'task.project.set', 'task.type.set', 'task.legacy-schedule.set', 'task.dates.set', 'task.delete',
   'link.add', 'link.remove',
 ] as const;
 

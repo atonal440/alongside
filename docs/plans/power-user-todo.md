@@ -113,6 +113,11 @@ type TimeInterval = { start: MinuteInstant; end: MinuteInstant };
 // EventInstant retains seconds/milliseconds for audit and work logs.
 ```
 
+Implementation note (2026-10-05, slice 3a): `target` is the legacy `due_date`/`due_all_day`
+pair; `available_from` and `deadline` are stored as canonical `TemporalPoint` JSON in two columns of
+`tasks`, not a `task_dates` table. The semantics here are unchanged.
+
+
 `MinuteInstant` normalizes offset-bearing input to canonical UTC and truncates
 sub-minute input, preserving the existing scheduling precision contract.
 `LocalDate` strictly validates real `YYYY-MM-DD` dates. `Timezone` uses the
