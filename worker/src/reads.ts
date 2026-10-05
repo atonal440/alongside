@@ -252,9 +252,7 @@ async function getContext(args: Record<string, unknown>, db: DB) {
     links.filter(predicate).flatMap(link => { const task = related.get(link[other]); return task ? [task] : []; });
   const project = snapshot.row.project_id ? await db.getProject(snapshot.row.project_id) : null;
   const parent = snapshot.row.parent_id ? await db.getTask(snapshot.row.parent_id) ?? null : null;
-  const everyTask = await db.listAllTasks();
-  const subtasks = everyTask.filter(task => task.parent_id === snapshot.id)
-    .sort((a, b) => (a.position ?? Infinity) - (b.position ?? Infinity) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+  const subtasks = await db.listSubtasks(snapshot.id);
   return { ...snapshot, context: {
     project,
     parent,

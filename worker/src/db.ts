@@ -298,6 +298,12 @@ export class DB {
       .orderBy(asc(tasksTable.due_date), asc(tasksTable.created_at));
   }
 
+  /** Direct subtasks of a task, ordered by position (unpositioned last), then oldest first. */
+  async listSubtasks(parentId: string): Promise<Task[]> {
+    const rows = await this.drizzle.select().from(tasksTable).where(eq(tasksTable.parent_id, parentId));
+    return rows.sort((a, b) => (a.position ?? Infinity) - (b.position ?? Infinity) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+  }
+
   async getTask(id: string): Promise<Task | null> {
     const result = await this.drizzle
       .select()

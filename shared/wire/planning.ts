@@ -44,9 +44,9 @@ export const ContractErrorSchema = v.strictObject({
   code: v.string(), path: v.array(v.string()), message: v.string(), retryable: v.boolean(), recoveryHint: v.string(),
 });
 /** Bump when the set of default-endpoint tools changes shape (see docs/plans/mcp-surface.md). */
-export const TOOL_SURFACE_VERSION = 4;
+export const TOOL_SURFACE_VERSION = 5;
 /** Bump when command kinds or their schemas change. */
-export const COMMAND_CATALOG_VERSION = 1;
+export const COMMAND_CATALOG_VERSION = 2;
 export const CapabilitiesSchema = v.strictObject({
   contractVersion: v.literal(2), serverNow: EventInstantSchema, timezone: TimezoneSchema,
   timezoneSource: TimezoneSourceSchema, setupRequired: v.boolean(),

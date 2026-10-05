@@ -1073,7 +1073,8 @@ recreated). Deviations from master plan section 4, chosen to keep the slice revi
 - `get_context` on a task returns `parent` and ordered `subtasks`; `find` filters by `parent_id` (null: top level).
 - Import and restore validate the whole hierarchy (missing parent, loop, project mismatch, depth) via
   `shared/hierarchy.ts`.
-- Wire: `CLIENT_PROTOCOL` and `MIN_SYNC_READ_PROTOCOL` are 5; `features.hierarchy` is true.
+- Wire: `CLIENT_PROTOCOL` and `MIN_SYNC_READ_PROTOCOL` are 5; `features.hierarchy` is true; `toolSurface.version` is 5 and
+  `commandCatalog` 2 (3a's `task.dates.set` also changed the catalog but did not bump it).
 - PWA: the detail view lists the parent ("Part of") and subtasks with a done count; no editing yet.
 
 Next in Slice 3: effective-date inheritance and blocker explanations, then tags/priority/estimates; group roles and
