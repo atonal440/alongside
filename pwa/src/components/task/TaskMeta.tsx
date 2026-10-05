@@ -1,5 +1,5 @@
 import type { Task } from '../../types';
-import { deadlineBoundary, effectiveDates } from '@shared/readiness';
+import { effectiveDates } from '@shared/readiness';
 import { datePointLabel, dueDateLabel, localDateOf, localTimeOf } from '../../utils/design';
 
 interface Props {
@@ -29,11 +29,13 @@ export function taskMetaString(task: Task, nowIso: string, tasks: readonly Task[
   }
   // The hard deadline and earliest start are shown but not edited here yet; the target above is
   // still the date this form owns.
-  const deadline = task.deadline ? datePointLabel(task.deadline) : '';
-  if (deadline) {
-    const boundary = deadlineBoundary(task);
-    const passed = task.status !== 'done' && boundary !== null && Date.parse(boundary) < Date.parse(nowIso);
-    parts.push(passed ? `Past deadline · ${deadline}` : `Deadline ${deadline}`);
+  const closing = effectiveDates(task, tasks).deadline;
+  const closingSource = closing ? (closing.sourceId === task.id ? task : tasks.find(candidate => candidate.id === closing.sourceId)) : undefined;
+  const deadline = closingSource?.deadline ? datePointLabel(closingSource.deadline) : '';
+  if (deadline && closing) {
+    const passed = task.status !== 'done' && Date.parse(closing.at) < Date.parse(nowIso);
+    const from = closingSource === task ? '' : ` (from "${closingSource!.title}")`;
+    parts.push(passed ? `Past deadline · ${deadline}${from}` : `Deadline ${deadline}${from}`);
   }
   // The opening that holds the task back may belong to an ancestor.
   const opening = effectiveDates(task, tasks).availableFrom;

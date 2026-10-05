@@ -94,6 +94,11 @@ function openPrerequisites(chain: readonly Task[], links: readonly TaskLink[], b
   return found;
 }
 
+/** True when any ancestor of the task is finished. */
+export function hasDoneAncestor(task: Task, tasks: readonly Task[]): boolean {
+  return chainOf(task, new Map(tasks.map(candidate => [candidate.id, candidate]))).slice(1).some(ancestor => ancestor.status === 'done');
+}
+
 /** True when the task, or an ancestor whose prerequisites apply to it, waits on an unfinished task. */
 export function hasActiveBlocker(task: Pick<Task, 'id'> & Partial<Task>, links: TaskLink[], tasks: Task[]): boolean {
   const byId = new Map(tasks.map(candidate => [candidate.id, candidate]));
@@ -160,7 +165,7 @@ export function readinessScore(
 ): number {
   if (task.status === 'done') return 0;
   // Not yet available ranks with blocked work: it cannot be started now.
-  if (hasActiveBlocker(task, links, tasks) || !isAvailable(task, nowIso, tasks)) return 5;
+  if (hasActiveBlocker(task, links, tasks) || !isAvailable(task, nowIso, tasks) || hasDoneAncestor(task, tasks)) return 5;
 
   const nowMs = new Date(nowIso).getTime();
   let score = 10;

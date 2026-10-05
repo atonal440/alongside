@@ -531,9 +531,12 @@ export class DB {
   async listReadyTasks(projectId?: string): Promise<Task[]> {
     const ts = now();
     const [tasks, links] = await Promise.all([this.listAllTasks(), this.listAllLinks()]);
-    return tasks
+    const scored = tasks
       .filter(task => (!projectId || task.project_id === projectId) && isReady(task, links, tasks, ts))
-      .sort((a, b) => readinessScore(b, ts, links, tasks) - readinessScore(a, ts, links, tasks) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+      .map(task => ({ task, score: readinessScore(task, ts, links, tasks) }));
+    return scored
+      .sort((a, b) => b.score - a.score || a.task.created_at.localeCompare(b.task.created_at) || a.task.id.localeCompare(b.task.id))
+      .map(entry => entry.task);
   }
 
   // Returns tasks whose focused_until is still in the future.

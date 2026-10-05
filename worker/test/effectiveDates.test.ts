@@ -3,7 +3,7 @@ import { DB } from '../src/db';
 import { callCommandTool } from '../src/commands';
 import { callReadTool } from '../src/reads';
 import { sqliteD1 } from './helpers/sqliteD1';
-import { effectiveDates, hasActiveBlocker, isAvailable, isReady, readiness, readinessScore } from '@shared/readiness';
+import { effectiveDates, hasActiveBlocker, hasDoneAncestor, isAvailable, isReady, readiness, readinessScore } from '@shared/readiness';
 import type { Task, TaskLink } from '@shared/schema';
 
 const NOW = '2026-10-05T12:00:00Z';
@@ -60,6 +60,9 @@ describe('effective dates', () => {
   it('reports every closed gate and keeps a parent with open subtasks ready', () => {
     const tasks = [task('p', { status: 'done' }), task('c', { parent_id: 'p', defer_kind: 'someday' })];
     expect(readiness(tasks[1]!, [], tasks, NOW).reasons.map(reason => reason.code)).toEqual(['deferred', 'ancestor_done']);
+    expect(hasDoneAncestor(tasks[1]!, tasks)).toBe(true);
+    const plain = [task('p', { status: 'done' }), task('c', { parent_id: 'p' })];
+    expect(readinessScore(plain[1]!, NOW, [], plain)).toBe(5);
     const parent = [task('p'), task('c', { parent_id: 'p' })];
     const result = readiness(parent[0]!, [], parent, NOW);
     expect(result.ready).toBe(true);

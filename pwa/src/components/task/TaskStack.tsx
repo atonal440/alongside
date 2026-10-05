@@ -1,20 +1,20 @@
 import { useState } from 'react';
 import { taskMetaString } from './TaskMeta';
-import { useAppState } from '../../hooks/useAppState';
 import type { Task } from '../../types';
 
 interface Props {
   root: Task;
   blocked: Task[];
   nowIso: string;
+  /** The workspace's tasks, so inherited dates from ancestors show; omit to show the task's own. */
+  tasks?: readonly Task[];
   onComplete: (id: string) => void;
   onDetail: (id: string) => void;
 }
 
-export function TaskStack({ root, blocked, nowIso, onComplete, onDetail }: Props) {
+export function TaskStack({ root, blocked, nowIso, tasks, onComplete, onDetail }: Props) {
   const [open, setOpen] = useState(false);
-  const { state } = useAppState();
-  const meta = taskMetaString(root, nowIso, state.tasks);
+  const meta = taskMetaString(root, nowIso, tasks);
 
   return (
     <div className="stack-card">
