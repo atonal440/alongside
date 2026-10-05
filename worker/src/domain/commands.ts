@@ -358,7 +358,7 @@ export function planCompleteCommand(input: CommandEnvelope, current: EntitySnaps
 
 export { MAX_TASK_DEPTH };
 /** A subtask as the hierarchy rules see it: identity and lifecycle only. */
-export interface ChildState { id: string; status: string }
+export interface ChildState { id: string; status: string; parent_id: string }
 
 export function planTaskParentCommand(input: CommandEnvelope, current: EntitySnapshot, parent: EntitySnapshot | null, ancestors: EntitySnapshot[], subtreeHeight: number, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
   const command = input.commands[0]!;

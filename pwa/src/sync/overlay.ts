@@ -1,7 +1,7 @@
 import type { Task, TaskLink, Project } from '../types';
 import type { IsoDateTime, NonEmptyString } from '@shared/parse';
 import type { PendingOp } from '../api/pendingOps';
-import { applyComplete, applyUpdate, newLocalTask, type TaskUpdatePatch } from '../domain/taskMutations';
+import { applyComplete, applyUpdate, newLocalTask, subtasksOf, type TaskUpdatePatch } from '../domain/taskMutations';
 import type { CanonicalWorkspace } from './canonical';
 import { applyIntentToTask } from './intent';
 
@@ -65,12 +65,14 @@ export function overlayPendingOps(base: Pick<CanonicalWorkspace, 'entities'>, op
       case 'task.complete': {
         const task = tasks.get(op.taskId);
         if (!task) return skipped('task_missing', `Task ${op.taskId} is not in the workspace.`);
+        if (subtasksOf([...tasks.values()], op.taskId).some(child => child.status === 'pending')) return skipped('invalid', 'Complete the open subtasks first.');
         const result = applyComplete(task, at);
         if (!result.ok) return skipped('invalid', result.error.message);
         tasks.set(op.taskId, result.value.task);
         return { kind: 'applied' };
       }
       case 'task.delete': {
+        if (subtasksOf([...tasks.values()], op.taskId).length > 0) return skipped('invalid', 'This task has subtasks; delete or detach them first.');
         if (!tasks.delete(op.taskId)) return skipped('task_missing', `Task ${op.taskId} is not in the workspace.`);
         for (const [key, link] of links) if (link.from_task_id === op.taskId || link.to_task_id === op.taskId) links.delete(key);
         return { kind: 'applied' };
@@ -104,10 +106,12 @@ export function overlayPendingOps(base: Pick<CanonicalWorkspace, 'entities'>, op
         const task = tasks.get(intent.id);
         if (!task) return skipped('task_missing', `Task ${intent.id} is not in the workspace.`);
         if (intent.kind === 'task.delete') {
+          if (subtasksOf([...tasks.values()], intent.id).length > 0) return skipped('invalid', 'This task has subtasks; delete or detach them first.');
           tasks.delete(intent.id);
           for (const [key, link] of links) if (link.from_task_id === intent.id || link.to_task_id === intent.id) links.delete(key);
           return { kind: 'applied' };
         }
+        if (intent.kind === 'task.complete' && subtasksOf([...tasks.values()], intent.id).some(child => child.status === 'pending')) return skipped('invalid', 'Complete the open subtasks first.');
         tasks.set(intent.id, applyIntentToTask(task, intent, at));
         return { kind: 'applied' };
       }

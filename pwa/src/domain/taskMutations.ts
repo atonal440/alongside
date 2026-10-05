@@ -73,6 +73,11 @@ export function newLocalTask(
   };
 }
 
+/** Direct subtasks of a task, among the tasks the user can currently see. */
+export function subtasksOf(tasks: readonly Task[], id: string): Task[] {
+  return tasks.filter(task => task.parent_id === id);
+}
+
 // General-purpose content update. Enforces recurrence ↔ due-date invariant and
 // done-task cross-field invariants (mirrors taskFromRow in worker/src/domain/task.ts).
 export function applyUpdate(

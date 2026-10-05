@@ -346,7 +346,7 @@ export class DB {
     const task = await this.getTask(id);
     if (!task) return null;
 
-    const open = (await this.readChildren(id)).filter(child => child.status === 'pending').length;
+    const open = (await this.readChildren([id])).filter(child => child.status === 'pending').length;
     if (open > 0) throwAppError({ kind: 'invalid_transition', message: `Complete the ${open} open subtask${open === 1 ? '' : 's'} first.` });
     const timestamp = now();
     const domainTask = pendingTaskFromRow(task);
@@ -471,7 +471,7 @@ export class DB {
     const existing = await this.getTask(id);
     if (!existing) return null;
     if (updates.project_id !== undefined && updates.project_id !== existing.project_id
-      && (existing.parent_id !== null || (await this.readChildren(id)).length > 0)) {
+      && (existing.parent_id !== null || (await this.readChildren([id])).length > 0)) {
       throwAppError({ kind: 'invalid_transition', message: 'A task in a hierarchy cannot change project on its own; detach it from its parent and subtasks first.' });
     }
 
@@ -503,7 +503,7 @@ export class DB {
   }
 
   async deleteTask(id: string): Promise<boolean> {
-    if ((await this.readChildren(id)).length > 0) throwAppError({ kind: 'invalid_transition', message: 'This task has subtasks; delete or detach them first.' });
+    if ((await this.readChildren([id])).length > 0) throwAppError({ kind: 'invalid_transition', message: 'This task has subtasks; delete or detach them first.' });
     const result = await this.d1
       .prepare('DELETE FROM tasks WHERE id = ?')
       .bind(id)
@@ -731,9 +731,14 @@ export class DB {
   }
 
   /** Direct subtasks of a task, from the same database the planner will guard. */
-  async readChildren(id: string): Promise<{ id: string; status: string }[]> {
-    const { results } = await this.d1.prepare('SELECT id, status FROM tasks WHERE parent_id = ?').bind(id).all<{ id: string; status: string }>();
-    return results;
+  async readChildren(ids: string[]): Promise<{ id: string; status: string; parent_id: string }[]> {
+    const found: { id: string; status: string; parent_id: string }[] = [];
+    for (let at = 0; at < ids.length; at += 80) {
+      const chunk = ids.slice(at, at + 80);
+      const { results } = await this.d1.prepare(`SELECT id, status, parent_id FROM tasks WHERE parent_id IN (${chunk.map(() => '?').join(',')})`).bind(...chunk).all<{ id: string; status: string; parent_id: string }>();
+      found.push(...results);
+    }
+    return found;
   }
 
   async getLinkSnapshot(key: LinkKey): Promise<LinkSnapshot> { return (await readLinkContext(this.d1, key)).current; }
@@ -741,14 +746,14 @@ export class DB {
   private async planCommand(input: CommandEnvelope, hash: string, clock: EventInstant, reader:CommandReader={entity:key=>this.getEntitySnapshot(key),link:key=>readLinkContext(this.d1,key),deletion:key=>readDeleteContext(this.d1,key),children:id=>this.readChildren(id)}): Promise<{ plan: Plan; result: ChangesResult }> {
     if(input.commands.length>1)return planBatchCommand(input,reader,(atom,virtual)=>this.planCommand(atom,hash,clock,virtual),(changes,expected)=>this.validateBatchGraph(changes,expected),hash,clock);
     const command = input.commands[0]!;
-    if (command.kind === 'task.delete' || command.kind === 'project.delete') return planDeleteCommand(input, await reader.deletion(commandEntityKey(command)), command.kind === 'task.delete' ? await reader.children(command.id) : [], hash, clock);
+    if (command.kind === 'task.delete' || command.kind === 'project.delete') return planDeleteCommand(input, await reader.deletion(commandEntityKey(command)), command.kind === 'task.delete' ? await reader.children([command.id]) : [], hash, clock);
     if (command.kind === 'link.add' || command.kind === 'link.remove') return planLinkCommand(input, await reader.link(linkCommandKey(command)), hash, clock);
     if (command.kind === 'planning.set') return planSettingsCommand(input, await this.getPlanningSettings(), hash, clock);
     if (command.kind === 'preference.set') return planPreferenceCommand(input, await this.readPreferenceState(command.key), hash, clock);
     if (command.kind === 'task.project.set') {
       const current = await reader.entity({ entity: 'task', id: command.id });
       const project = command.project === null ? null : await reader.entity({ entity: 'project', id: command.project.id });
-      return planTaskProjectCommand(input, current, project, await reader.children(command.id), hash, clock);
+      return planTaskProjectCommand(input, current, project, await reader.children([command.id]), hash, clock);
     }
     if (command.kind === 'task.parent.set') {
       const current = await reader.entity({ entity: 'task', id: command.id });
@@ -768,7 +773,7 @@ export class DB {
       if (parent !== null) {
         let level = [command.id as string];
         while (level.length > 0 && height <= MAX_TASK_DEPTH) {
-          const below = (await Promise.all(level.map(id => reader.children(id)))).flat().map(child => child.id);
+          const below = (await reader.children(level)).map(child => child.id);
           if (below.length > 0) height++;
           level = below;
         }
@@ -778,7 +783,7 @@ export class DB {
     if (command.kind === 'task.complete') {
       const current = await reader.entity({ entity: 'task', id: command.id });
       const successor = command.successor === null ? null : await reader.entity({ entity: 'task', id: command.successor.id });
-      return planCompleteCommand(input, current, successor, await reader.children(command.id), hash, clock);
+      return planCompleteCommand(input, current, successor, await reader.children([command.id]), hash, clock);
     }
     if (command.kind !== 'task.create' && command.kind !== 'project.create') {
       const snapshot = await reader.entity(commandEntityKey(command));

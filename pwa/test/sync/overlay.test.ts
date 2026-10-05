@@ -34,6 +34,18 @@ describe('overlayPendingOps', () => {
     expect(b.entities.get('task:t_aaaaa1')?.row).toMatchObject({ notes: null });
   });
 
+  it('keeps a parent open and present while it has subtasks', () => {
+    const tree = canonicalFromSnapshot(snapshot({ epoch: 1, sequence: 5 }, [taskImage('t_parent', 1), taskImage('t_child1', 1, { parent_id: 't_parent' })]));
+    const view = overlayPendingOps(tree, [
+      op({ op: 'command', intent: { kind: 'task.complete', id: 't_parent', successorId: null } }),
+      op({ op: 'command', intent: { kind: 'task.delete', id: 't_parent' } }),
+      op({ op: 'command', intent: { kind: 'task.complete', id: 't_child1', successorId: null } }),
+      op({ op: 'command', intent: { kind: 'task.complete', id: 't_parent', successorId: null } }),
+    ]);
+    expect(view.outcomes.map(o => o.kind)).toEqual(['skipped', 'skipped', 'applied', 'applied']);
+    expect(view.tasks.find(t => t.id === 't_parent')?.status).toBe('done');
+  });
+
   it('reports ops that no longer apply without blocking later ones', () => {
     const view = overlayPendingOps(base(), [
       op({ op: 'task.update', taskId: 't_gone01', body: { title: 'x' } }),
