@@ -17,6 +17,10 @@ export type ProjectRowPatch = Partial<Omit<ProjectRow, 'id' | 'created_at'>>;
 export type PreCheck =
   | { kind: 'task.exists'; id: TaskId }
   | { kind: 'project.exists'; id: ProjectId }
+  /** No subtask of this task is pending. */
+  | { kind: 'task.no_open_children'; id: TaskId }
+  /** The task has no parent and no subtasks, so it may change project on its own. */
+  | { kind: 'task.unattached'; id: TaskId }
   | { kind: 'link.blocks_acyclic'; from: TaskId; to: TaskId }
   | { kind: 'planning.revision'; expected: Revision | null }
   /** The preference's sync revision; null means no live row. */

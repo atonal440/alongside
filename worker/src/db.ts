@@ -19,10 +19,10 @@ import { parseStoredResult, type ReceiptTool, type StoredResult } from '@shared/
 import { StoredReceiptSchema, type CommandEnvelope, type ChangesResult, type ChangesPreview } from '@shared/wire/commands';
 import { parseSchema, parseEventInstant, type EventInstant, type CommandId } from '@shared/parse';
 import { invalidInput } from './domain/temporalFoundation';
-import { CommandError, commandHash, payloadConflict, planSettingsCommand, planPreferenceCommand, planCreateCommand, creationConflict, planContentCommand, entityCommandConflict, planStateCommand, commandEntityKey, planCompleteCommand, planTaskProjectCommand, revisionConflict, preferenceConflict } from './domain/commands';
+import { CommandError, commandHash, payloadConflict, planSettingsCommand, planPreferenceCommand, planCreateCommand, creationConflict, planContentCommand, entityCommandConflict, planStateCommand, commandEntityKey, planCompleteCommand, planTaskProjectCommand, planTaskParentCommand, MAX_TASK_DEPTH, revisionConflict, preferenceConflict } from './domain/commands';
 import { nanoid } from 'nanoid';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, ne, inArray, lte, or, asc, desc, gt, and, sql } from 'drizzle-orm';
+import { eq, ne, inArray, lte, or, asc, desc, gt, and, sql, isNull } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import {
   tasks as tasksTable,
@@ -298,6 +298,12 @@ export class DB {
       .orderBy(asc(tasksTable.due_date), asc(tasksTable.created_at));
   }
 
+  /** Direct subtasks of a task, ordered by position (unpositioned last), then oldest first. */
+  async listSubtasks(parentId: string): Promise<Task[]> {
+    const rows = await this.drizzle.select().from(tasksTable).where(eq(tasksTable.parent_id, parentId));
+    return rows.sort((a, b) => (a.position ?? Infinity) - (b.position ?? Infinity) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+  }
+
   async getTask(id: string): Promise<Task | null> {
     const result = await this.drizzle
       .select()
@@ -333,6 +339,8 @@ export class DB {
       occurrence_at: null,
       available_from: null,
       deadline: null,
+      parent_id: null,
+      position: null,
     };
     assertWritableTaskRow(task);
 
@@ -344,6 +352,8 @@ export class DB {
     const task = await this.getTask(id);
     if (!task) return null;
 
+    const open = (await this.readChildren([id])).filter(child => child.status === 'pending').length;
+    if (open > 0) throwAppError({ kind: 'invalid_transition', message: `Complete the ${open} open subtask${open === 1 ? '' : 's'} first.` });
     const timestamp = now();
     const domainTask = pendingTaskFromRow(task);
     if (!domainTask.ok) throwAppError(domainTask.error);
@@ -353,6 +363,8 @@ export class DB {
       nextTaskId: domainTask.value.recurrence.kind === 'recurring' ? mintTaskId() : undefined,
     });
     if (!plan.ok) throwAppError(plan.error);
+    // Atomic with the completion: a subtask attached since the read above aborts the batch.
+    plan.value.assertions.push({ kind: 'task.no_open_children', id: domainTask.value.id });
 
     await this.applyPlanOrThrow(plan.value);
 
@@ -466,6 +478,10 @@ export class DB {
     patch.updated_at = timestamp;
     const existing = await this.getTask(id);
     if (!existing) return null;
+    if (updates.project_id !== undefined && updates.project_id !== existing.project_id
+      && (existing.parent_id !== null || (await this.readChildren([id])).length > 0)) {
+      throwAppError({ kind: 'invalid_transition', message: 'A task in a hierarchy cannot change project on its own; detach it from its parent and subtasks first.' });
+    }
 
     if (updates.defer_kind === 'until' || updates.defer_kind === 'someday') {
       const domainTask = this.parsePendingTaskDomain(existing);
@@ -490,14 +506,23 @@ export class DB {
 
     assertWritableTaskRow({ ...existing, ...patch });
 
+    if (updates.project_id !== undefined && updates.project_id !== existing.project_id) {
+      // Atomic with the hierarchy check above: the update only matches a task that is still unattached.
+      const moved = await this.drizzle.update(tasksTable).set(patch).where(and(eq(tasksTable.id, id), isNull(tasksTable.parent_id),
+        sql`NOT EXISTS (SELECT 1 FROM tasks child WHERE child.parent_id = ${tasksTable.id})`)).returning({ id: tasksTable.id });
+      if (moved.length === 0) throwAppError({ kind: 'invalid_transition', message: 'A task in a hierarchy cannot change project on its own; detach it from its parent and subtasks first.' });
+      return this.getTask(id);
+    }
     await this.drizzle.update(tasksTable).set(patch).where(eq(tasksTable.id, id));
     return this.getTask(id);
   }
 
   async deleteTask(id: string): Promise<boolean> {
+    if ((await this.readChildren([id])).length > 0) throwAppError({ kind: 'invalid_transition', message: 'This task has subtasks; delete or detach them first.' });
     const result = await this.d1
-      .prepare('DELETE FROM tasks WHERE id = ?')
-      .bind(id)
+      // Atomic with the guard above: a subtask attached in between keeps the parent from being deleted.
+      .prepare('DELETE FROM tasks WHERE id = ? AND NOT EXISTS (SELECT 1 FROM tasks WHERE parent_id = ?)')
+      .bind(id, id)
       .run();
     return result.meta.changes > 0;
   }
@@ -558,6 +583,8 @@ export class DB {
 
     const plan = createProjectPlan(project, parseTaskIds(taskIds), timestamp);
     if (!plan.ok) throwAppError(plan.error);
+    // A hierarchy stays in one project, so only unattached tasks can be assigned here.
+    for (const op of plan.value.ops) if (op.kind === 'task.update') plan.value.assertions.push({ kind: 'task.unattached', id: op.id });
     await this.applyPlanOrThrow(plan.value);
     return project;
   }
@@ -721,24 +748,60 @@ export class DB {
     return readEntitySnapshot(this.d1, key);
   }
 
+  /** Direct subtasks of a task, from the same database the planner will guard. */
+  async readChildren(ids: string[]): Promise<{ id: string; status: string; parent_id: string }[]> {
+    const found: { id: string; status: string; parent_id: string }[] = [];
+    for (let at = 0; at < ids.length; at += 80) {
+      const chunk = ids.slice(at, at + 80);
+      const { results } = await this.d1.prepare(`SELECT id, status, parent_id FROM tasks WHERE parent_id IN (${chunk.map(() => '?').join(',')})`).bind(...chunk).all<{ id: string; status: string; parent_id: string }>();
+      found.push(...results);
+    }
+    return found;
+  }
+
   async getLinkSnapshot(key: LinkKey): Promise<LinkSnapshot> { return (await readLinkContext(this.d1, key)).current; }
 
-  private async planCommand(input: CommandEnvelope, hash: string, clock: EventInstant, reader:CommandReader={entity:key=>this.getEntitySnapshot(key),link:key=>readLinkContext(this.d1,key),deletion:key=>readDeleteContext(this.d1,key)}): Promise<{ plan: Plan; result: ChangesResult }> {
+  private async planCommand(input: CommandEnvelope, hash: string, clock: EventInstant, reader:CommandReader={entity:key=>this.getEntitySnapshot(key),link:key=>readLinkContext(this.d1,key),deletion:key=>readDeleteContext(this.d1,key),children:id=>this.readChildren(id)}): Promise<{ plan: Plan; result: ChangesResult }> {
     if(input.commands.length>1)return planBatchCommand(input,reader,(atom,virtual)=>this.planCommand(atom,hash,clock,virtual),(changes,expected)=>this.validateBatchGraph(changes,expected),hash,clock);
     const command = input.commands[0]!;
-    if (command.kind === 'task.delete' || command.kind === 'project.delete') return planDeleteCommand(input, await reader.deletion(commandEntityKey(command)), hash, clock);
+    if (command.kind === 'task.delete' || command.kind === 'project.delete') return planDeleteCommand(input, await reader.deletion(commandEntityKey(command)), command.kind === 'task.delete' ? await reader.children([command.id]) : [], hash, clock);
     if (command.kind === 'link.add' || command.kind === 'link.remove') return planLinkCommand(input, await reader.link(linkCommandKey(command)), hash, clock);
     if (command.kind === 'planning.set') return planSettingsCommand(input, await this.getPlanningSettings(), hash, clock);
     if (command.kind === 'preference.set') return planPreferenceCommand(input, await this.readPreferenceState(command.key), hash, clock);
     if (command.kind === 'task.project.set') {
       const current = await reader.entity({ entity: 'task', id: command.id });
       const project = command.project === null ? null : await reader.entity({ entity: 'project', id: command.project.id });
-      return planTaskProjectCommand(input, current, project, hash, clock);
+      return planTaskProjectCommand(input, current, project, await reader.children([command.id]), hash, clock);
+    }
+    if (command.kind === 'task.parent.set') {
+      const current = await reader.entity({ entity: 'task', id: command.id });
+      const parent = command.parent === null ? null : await reader.entity({ entity: 'task', id: command.parent.id });
+      // Walk up from the new parent far enough to see a loop or an over-deep chain.
+      const ancestors: EntitySnapshot[] = [];
+      const parentOf = (snapshot: EntitySnapshot | null) => snapshot?.entity === 'task' ? snapshot.row?.parent_id ?? null : null;
+      let next = parentOf(parent);
+      while (next !== null && ancestors.length < MAX_TASK_DEPTH) {
+        const above = await reader.entity({ entity: 'task', id: next as never });
+        ancestors.push(above);
+        if (above.id === command.id) break;
+        next = parentOf(above);
+      }
+      // Levels below the moved task, so a deep subtree cannot be hung under a deep parent.
+      let height = 0;
+      if (parent !== null) {
+        let level = [command.id as string];
+        while (level.length > 0 && height <= MAX_TASK_DEPTH) {
+          const below = (await reader.children(level)).map(child => child.id);
+          if (below.length > 0) height++;
+          level = below;
+        }
+      }
+      return planTaskParentCommand(input, current, parent, ancestors, height, hash, clock);
     }
     if (command.kind === 'task.complete') {
       const current = await reader.entity({ entity: 'task', id: command.id });
       const successor = command.successor === null ? null : await reader.entity({ entity: 'task', id: command.successor.id });
-      return planCompleteCommand(input, current, successor, hash, clock);
+      return planCompleteCommand(input, current, successor, await reader.children([command.id]), hash, clock);
     }
     if (command.kind !== 'task.create' && command.kind !== 'project.create') {
       const snapshot = await reader.entity(commandEntityKey(command));
@@ -908,7 +971,7 @@ export class DB {
       // Classify exhaustion reached by an unrelated writer after planning as
       // durable; repeatedly retrying a permanently full counter cannot help.
       if (command.kind === 'task.content.set' || command.kind === 'project.content.set') planContentCommand(input, current, hash, clock.value);
-      else if (command.kind === 'task.complete' || command.kind === 'task.project.set' || command.kind === 'task.delete' || command.kind === 'project.delete') await this.planCommand(input, hash, clock.value);
+      else if (command.kind === 'task.complete' || command.kind === 'task.project.set' || command.kind === 'task.parent.set' || command.kind === 'task.delete' || command.kind === 'project.delete') await this.planCommand(input, hash, clock.value);
       else planStateCommand(input, current, hash, clock.value);
     }
     if (applied.error.kind === 'capacity_exceeded') throwAppError(applied.error);

@@ -3,16 +3,17 @@ import { entityStorageKey } from '@shared/wire/versions';
 import type { CommandEnvelope, ChangesResult } from '@shared/wire/commands';
 import type { Plan } from './Op';
 import type { DeleteContext } from '../storage/deletion';
-import { CommandError, entityCommandConflict } from './commands';
+import { CommandError, entityCommandConflict, type ChildState } from './commands';
 import { taskFromRow } from './task';
 
-export function planDeleteCommand(input: CommandEnvelope, context: DeleteContext, hash: string, now: EventInstant): {plan:Plan;result:ChangesResult} {
+export function planDeleteCommand(input: CommandEnvelope, context: DeleteContext, children: ChildState[], hash: string, now: EventInstant): {plan:Plan;result:ChangesResult} {
   const command = input.commands[0]!;
   if (command.kind !== 'task.delete' && command.kind !== 'project.delete') throw new Error('Expected deletion command.');
   const {current} = context;
   if (current.id !== command.id || current.entity !== (command.kind === 'task.delete' ? 'task' : 'project')) throw new Error('Deletion identity mismatch.');
   const conflict = entityCommandConflict(input,current); if (conflict) throw conflict;
   if (current.structuralRevision !== command.expectedStructuralRevision) throw new CommandError({code:'structural_conflict',path:['commands','0','expectedStructuralRevision'],message:'Workspace changed since deletion planning.',retryable:false,currentEntity:current,expectedStructuralRevision:command.expectedStructuralRevision,recoveryHint:'Retain deletion intent; inspect the complete affected graph and explicitly rebase with a new command ID.'});
+  if (command.kind === 'task.delete' && children.length > 0) throw new CommandError({code:'invalid_transition',path:['commands','0'],message:`This task has ${children.length} subtask${children.length === 1 ? '' : 's'}.`,retryable:false,currentEntity:current,recoveryHint:'Retain intent; delete or detach the subtasks first (task.parent.set with parent null).'});
   if (context.hasDutyReferences) throw new CommandError({code:'invalid_transition',path:['commands','0'],message:'This project still owns duties.',retryable:false,currentEntity:current,recoveryHint:'Retain intent; inspect duty ownership. Reliable duty reassignment is required before project deletion.'});
   // Count every guard, mutation and feed image before expanding an atomic plan.
   const requiredStatements = 7 + context.affectedCount * (command.kind === 'task.delete' ? 1 : 3);

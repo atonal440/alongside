@@ -84,6 +84,9 @@ export function completeTaskPlan(task: PendingTaskDomain, input: CompleteTaskPla
       // A successor starts without the hard dates of the occurrence it follows.
       available_from: null,
       deadline: null,
+      // Hierarchy is not inherited: a successor starts top level.
+      parent_id: null,
+      position: null,
     };
 
     ops.push({ kind: 'task.insert', row: next });

@@ -9,6 +9,8 @@ export interface CommandReader {
   entity(key: EntityReadKey): Promise<EntitySnapshot>;
   link(key: LinkKey): Promise<LinkPlanningContext>;
   deletion(key:EntityReadKey):Promise<DeleteContext>;
+  /** Direct subtasks of a task, identity and status only. */
+  children(ids: string[]): Promise<{ id: string; status: string; parent_id: string }[]>;
 }
 type Planned = {
   plan: Plan;
@@ -55,6 +57,17 @@ export async function planBatchCommand(input: CommandEnvelope, reader: CommandRe
         storedEntities.set(id, current);
       }
       return { ...current, structuralRevision: structural };
+    },
+    async children(ids) {
+      // Stored subtasks of any of these tasks, overlaid by every task this batch has read or rewritten.
+      const wanted = new Set(ids);
+      const found = new Map((await reader.children(ids)).map(child => [child.id, child]));
+      for (const task of entities.values()) {
+        if (task.entity !== 'task') continue;
+        if (task.row !== null && task.row.parent_id != null && wanted.has(task.row.parent_id)) found.set(task.id, { id: task.id, status: task.row.status, parent_id: task.row.parent_id });
+        else found.delete(task.id);
+      }
+      return [...found.values()];
     },
     async deletion(key) {
       const initial=await reader.deletion(key);

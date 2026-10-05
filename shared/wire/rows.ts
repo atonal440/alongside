@@ -70,6 +70,9 @@ export const taskRowEntries = {
   // Absent in images written before date roles existed; read as unset.
   available_from: v.optional(v.nullable(TemporalPointTextSchema), null),
   deadline: v.optional(v.nullable(TemporalPointTextSchema), null),
+  // Hierarchy; absent in images written before it existed.
+  parent_id: v.optional(v.nullable(TaskIdSchema), null),
+  position: v.optional(v.nullable(v.pipe(v.number(), v.finite())), null),
 };
 
 export const TaskRowSchema = v.pipe(

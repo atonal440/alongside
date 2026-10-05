@@ -40,6 +40,8 @@ function taskRow(overrides: Partial<Task> = {}): Task {
     occurrence_at: null,
     available_from: null,
     deadline: null,
+    parent_id: null,
+    position: null,
     ...overrides,
   };
 }
@@ -151,9 +153,13 @@ function d1WithExistingTasks(taskIds: string[], options: {
             return (hasBlocksPath(from, to) ? { id: to } : null) as T | null;
           }
 
+          if (sql.includes('AS violated')) return null;   // hierarchy guards: no subtasks
           const id = String(statement.args[0]);
           if (sql.includes('FROM tasks')) return (tasks.has(id) ? { id } : null) as T | null;
           return null;
+        },
+        async all() {
+          return { success: true, results: [] };   // no subtasks
         },
         async run() {
           return { success: true, meta: {} } as D1Result;
@@ -191,7 +197,7 @@ function d1WithExistingTasks(taskIds: string[], options: {
 function mutationSqls(statements: FakeStatement[]): string[] {
   return statements
     .map(statement => statement.sql)
-    .filter(sql => sql !== TASK_EXISTS_GUARD_SQL && !sql.includes("SELECT NULL,NULL,'blocks'"));
+    .filter(sql => sql !== TASK_EXISTS_GUARD_SQL && !sql.includes("SELECT NULL,NULL,'blocks'") && !sql.startsWith("INSERT INTO entity_versions(entity,entity_key,revision) SELECT NULL,'',0 WHERE"));
 }
 
 describe('DB task recurrence boundaries', () => {
@@ -275,7 +281,7 @@ describe('DB plan application paths', () => {
     expect(batches).toHaveLength(1);
     expect(mutationSqls(batches[0])).toEqual([
       'UPDATE tasks SET status = ?, updated_at = ?, defer_until = ?, defer_kind = ?, focused_until = ? WHERE id = ?',
-      'INSERT INTO tasks (id,title,notes,status,due_date,due_all_day,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until,duty_id,occurrence_at,available_from,deadline) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      'INSERT INTO tasks (id,title,notes,status,due_date,due_all_day,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until,duty_id,occurrence_at,available_from,deadline,parent_id,position) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     ]);
   });
 

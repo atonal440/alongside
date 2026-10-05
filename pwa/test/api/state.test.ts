@@ -4,7 +4,7 @@ import { parseCommandEnvelope } from '@shared/wire/commands';
 import { installFetchStub } from '../helpers/fetchStub';
 const config = { apiBase: 'http://localhost:8787', authToken: 'tok' };
 const project = { id: 'p_first1', title: 'Project', notes: null, kickoff_note: null, status: 'active', created_at: '2026-10-01T10:00:00.123Z', updated_at: '2026-10-01T10:00:00.123Z' };
-const task = { ...project, id: 't_first1', status: 'pending', task_type: 'action', project_id: null, due_date: null, due_all_day: null, recurrence: null, defer_kind: 'none', defer_until: null, focused_until: null, session_log: null, duty_id: null, occurrence_at: null,available_from: null,deadline: null };
+const task = { ...project, id: 't_first1', status: 'pending', task_type: 'action', project_id: null, due_date: null, due_all_day: null, recurrence: null, defer_kind: 'none', defer_until: null, focused_until: null, session_log: null, duty_id: null, occurrence_at: null,available_from: null,deadline: null, parent_id: null, position: null };
 const cases = [
   { kind: 'task.focus.set', fields: { focusedUntil: '2026-10-02T03:22:59+02:00' }, before: task, after: { ...task, focused_until: '2026-10-02T01:22:00Z' } },
   { kind: 'task.defer.set', fields: { defer: { kind: 'someday' } }, before: task, after: { ...task, defer_kind: 'someday' } },

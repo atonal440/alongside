@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { sqliteTable, text, integer, primaryKey, uniqueIndex, index, check } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, primaryKey, uniqueIndex, index, check } from 'drizzle-orm/sqlite-core';
 
 export const projects = sqliteTable('projects', {
   id:           text('id').primaryKey(),
@@ -65,6 +65,9 @@ export const tasks = sqliteTable('tasks', {
   // see migration 015 and docs/plans/power-user-todo.md. Null = not set.
   available_from: text('available_from'),
   deadline:      text('deadline'),
+  // Hierarchy (migration 016): parent task id and sibling sort key.
+  parent_id:     text('parent_id'),
+  position:      real('position'),
 }, (t) => [
   uniqueIndex('tasks_duty_occurrence').on(t.duty_id, t.occurrence_at),
   index('idx_tasks_status').on(t.status),

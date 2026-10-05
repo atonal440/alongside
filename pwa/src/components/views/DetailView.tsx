@@ -33,6 +33,11 @@ export function DetailView() {
     .map(l => l.from_task_id === task.id ? taskMap[l.to_task_id] : taskMap[l.from_task_id])
     .filter(Boolean) as Task[];
 
+  const parent = task.parent_id ? taskMap[task.parent_id] : undefined;
+  const subtasks = state.tasks.filter(t => t.parent_id === task.id)
+    .sort((a, b) => (a.position ?? Infinity) - (b.position ?? Infinity) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+  const subtasksDone = subtasks.filter(t => t.status === 'done').length;
+
   const projectName = task.project_id ? (projectMap[task.project_id]?.title ?? '') : '';
 
   const focused = !!task.focused_until && task.focused_until > nowIso;
@@ -79,6 +84,10 @@ export function DetailView() {
       </div>
 
       <div className="detail-scroll">
+        {parent && (
+          <DependencySection label="Part of" tasks={[parent]} onDetailLink={handleDetailLink} />
+        )}
+
         {blockedBy.length > 0 && (
           <DependencySection label="Waiting on" tasks={blockedBy} onDetailLink={handleDetailLink} />
         )}
@@ -117,6 +126,10 @@ export function DetailView() {
             </>
           )}
         </div>
+
+        {subtasks.length > 0 && (
+          <DependencySection label={`Subtasks · ${subtasksDone} of ${subtasks.length} done`} tasks={subtasks} onDetailLink={handleDetailLink} />
+        )}
 
         {blocking.length > 0 && (
           <DependencySection label="Unlocks" tasks={blocking} onDetailLink={handleDetailLink} />

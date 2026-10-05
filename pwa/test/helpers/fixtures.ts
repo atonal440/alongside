@@ -21,7 +21,7 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     duty_id: null,
     occurrence_at: null,
     available_from: null,
-    deadline: null,
+    deadline: null, parent_id: null, position: null,
     ...overrides,
   };
 }

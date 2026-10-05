@@ -64,6 +64,18 @@ async function dateRoleCommand(ctx: Ctx, args: Json, id: string, current: { avai
   return { kind: 'task.dates.set', id, expectedRevision, values };
 }
 
+/** A parent argument as the command's parent reference: a live task id, or null for top level. */
+async function parentRef(ctx: Ctx, id: unknown, path: string[]) {
+  if (id === null) return null;
+  if (typeof id !== 'string') throw refuse('parent_id must be a task id or null.', path);
+  return { id, expectedRevision: (await liveTask(ctx, id)).revision };
+}
+function positionArg(args: Json): number | null {
+  if (args.position === undefined || args.position === null) return null;
+  if (typeof args.position !== 'number' || !Number.isFinite(args.position)) throw refuse('position must be a finite number or null.', ['position']);
+  return args.position;
+}
+
 export const addTask: Compiler = async (ctx, args) => {
   const id = await derivedId('t', ctx.commandId, 0);
   const project = args.project_id === undefined ? null : await projectRef(ctx, args.project_id, ['project_id']);
@@ -75,7 +87,9 @@ export const addTask: Compiler = async (ctx, args) => {
     commands.push({ kind: 'task.legacy-schedule.set', id, expectedRevision: 1, values: { ...due, recurrence } });
   }
   const dates = await dateRoleCommand(ctx, args, id, { available_from: null, deadline: null }, 1);
+  const parent = args.parent_id === undefined ? null : await parentRef(ctx, args.parent_id, ['parent_id']);
   if (dates) commands.push(dates);
+  if (parent) commands.push({ kind: 'task.parent.set', id, expectedRevision: 1, expectedStructuralRevision: ctx.structural, parent, position: positionArg(args) });
   return { kind: 'commands', commands, respond: result => {
     const row = taskRowOf(result, id);
     const log: ToolLogDraft = { tool_name: 'add_task', task_id: id, title: row.title, detail: row.due_date ?? null };
@@ -165,8 +179,16 @@ export const updateTask: Compiler = async (ctx, args) => {
 
   if (patch.task_type !== undefined) commands.push({ kind: 'task.type.set', id, expectedRevision: guard(), taskType: patch.task_type });
 
+  // A hierarchy stays in one project, so a combined move detaches first, moves, then re-parents.
+  const parentChange = patch.parent_id !== undefined || patch.position !== undefined;
+  const parentCommand = async (parent: unknown, position: number | null) => commands.push({ kind: 'task.parent.set', id, expectedRevision: guard(), expectedStructuralRevision: ctx.structural, parent, position });
+  if (patch.project_id !== undefined && parentChange && row.parent_id) await parentCommand(null, null);
   if (patch.project_id !== undefined) {
     commands.push({ kind: 'task.project.set', id, expectedRevision: guard(), expectedStructuralRevision: ctx.structural, project: await projectRef(ctx, patch.project_id, ['project_id']) });
+  }
+  if (parentChange) {
+    const parent = patch.parent_id === undefined ? (row.parent_id ?? null) === null ? null : await parentRef(ctx, row.parent_id, ['parent_id']) : await parentRef(ctx, patch.parent_id, ['parent_id']);
+    if (parent !== null || (row.parent_id && patch.project_id === undefined)) await parentCommand(parent, patch.position === undefined ? row.position ?? null : positionArg(patch));
   }
 
   // Undeclared but accepted today: defer_kind / defer_until map to task.defer.set (parity finding 1).

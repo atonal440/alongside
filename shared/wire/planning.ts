@@ -44,13 +44,13 @@ export const ContractErrorSchema = v.strictObject({
   code: v.string(), path: v.array(v.string()), message: v.string(), retryable: v.boolean(), recoveryHint: v.string(),
 });
 /** Bump when the set of default-endpoint tools changes shape (see docs/plans/mcp-surface.md). */
-export const TOOL_SURFACE_VERSION = 4;
+export const TOOL_SURFACE_VERSION = 5;
 /** Bump when command kinds or their schemas change. */
-export const COMMAND_CATALOG_VERSION = 1;
+export const COMMAND_CATALOG_VERSION = 2;
 export const CapabilitiesSchema = v.strictObject({
   contractVersion: v.literal(2), serverNow: EventInstantSchema, timezone: TimezoneSchema,
   timezoneSource: TimezoneSourceSchema, setupRequired: v.boolean(),
-  features: v.strictObject({ temporalResolution: v.literal(true), legacyDatePreview: v.literal(true), reliableCommands: v.literal(true), hierarchy: v.literal(false), taskDates: v.literal(true), timeblocks: v.literal(false), reminders: v.literal(false), seriesMaterialization: v.literal(false), deltaSync: v.literal(true) }),
+  features: v.strictObject({ temporalResolution: v.literal(true), legacyDatePreview: v.literal(true), reliableCommands: v.literal(true), hierarchy: v.literal(true), taskDates: v.literal(true), timeblocks: v.literal(false), reminders: v.literal(false), seriesMaterialization: v.literal(false), deltaSync: v.literal(true) }),
   clientProtocol: v.strictObject({ current: v.literal(CLIENT_PROTOCOL), minimumWrite: v.literal(MIN_WRITE_PROTOCOL), minimumSyncRead: v.literal(MIN_SYNC_READ_PROTOCOL) }),
   limits: v.strictObject({ atomicStatements: v.literal(100), maxHierarchyDepth: v.literal(32), maxPreviewRows: v.literal(500), maxDurationMinutes: PositiveMinutesSchema }),
   delivery: v.strictObject({ inbox: v.literal('unavailable'), webPush: v.literal('unconfigured'), backgroundEnabled: v.literal(false) }),

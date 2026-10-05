@@ -20,7 +20,7 @@ const DEFAULT_ORDER: Record<Sort, 1 | -1> = { created: -1, updated: -1, due: 1, 
 export const READ_TOOLS = [
   {
     name: 'find',
-    description: 'Search tasks or projects. entity "task" filters by statuses (default ["pending"], deferred tasks included), text (case-insensitive over title and notes), project_id and focused (true: only tasks whose focus has not expired; false: only the rest); preset "ready" restricts to unblocked, non-deferred pending tasks. entity "project" filters by status (default "active"). Order is sort (created, updated, due, deadline or readiness; default created) in the given order (asc or desc; default desc for created, updated and readiness, asc for due and deadline; undated tasks count as latest). due sorts the target date, deadline the hard deadline. Readiness is a heuristic score (order applies to the score only; ties break oldest first) that favors tasks with a kickoff note or session log, recent edits and near due dates or deadlines, and ranks tasks that are not yet available with blocked ones; ask for it only if you want it. Results are deterministic and page with nextCursor.',
+    description: 'Search tasks or projects. entity "task" filters by statuses (default ["pending"], deferred tasks included), text (case-insensitive over title and notes), project_id, parent_id (a task id: its direct subtasks; null: top-level tasks only) and focused (true: only tasks whose focus has not expired; false: only the rest); preset "ready" restricts to unblocked, non-deferred pending tasks. entity "project" filters by status (default "active"). Order is sort (created, updated, due, deadline or readiness; default created) in the given order (asc or desc; default desc for created, updated and readiness, asc for due and deadline; undated tasks count as latest). due sorts the target date, deadline the hard deadline. Readiness is a heuristic score (order applies to the score only; ties break oldest first) that favors tasks with a kickoff note or session log, recent edits and near due dates or deadlines, and ranks tasks that are not yet available with blocked ones; ask for it only if you want it. Results are deterministic and page with nextCursor.',
     inputSchema: {
       type: 'object', additionalProperties: false,
       properties: {
@@ -32,6 +32,7 @@ export const READ_TOOLS = [
             statuses: { type: 'array', items: { enum: ['pending', 'done'] }, description: 'Task only. Defaults to ["pending"].' },
             text: { type: 'string', description: 'Task only. Matches title and notes.' },
             project_id: { type: 'string', description: 'Task only. Restrict to one project.' },
+            parent_id: { type: ['string', 'null'], description: 'Task only. A task id keeps its direct subtasks; null keeps top-level tasks.' },
             focused: { type: 'boolean', description: 'Task only. true keeps tasks whose focus has not expired; false keeps the others.' },
             status: { enum: ['active', 'archived'], description: 'Project only. Defaults to "active".' },
           },
@@ -148,11 +149,11 @@ async function find(args: Record<string, unknown>, db: DB) {
   only(args, ['entity', 'preset', 'filter', 'sort', 'order', 'limit', 'cursor']);
   const limit = limitOf(args.limit);
   const filter = args.filter === undefined ? {} : object(args.filter);
-  only(filter, ['statuses', 'text', 'project_id', 'focused', 'status'], ['filter']);
+  only(filter, ['statuses', 'text', 'project_id', 'parent_id', 'focused', 'status'], ['filter']);
   if (args.entity === 'project') {
     if (args.preset !== undefined) throw bad(['preset'], 'Projects have no presets.');
     if (args.sort !== undefined) throw bad(['sort'], 'sort applies to tasks only; projects sort by creation (use order).');
-    for (const key of ['statuses', 'text', 'project_id', 'focused']) if (key in filter) throw bad(['filter', key], `${key} applies to tasks only.`);
+    for (const key of ['statuses', 'text', 'project_id', 'parent_id', 'focused']) if (key in filter) throw bad(['filter', key], `${key} applies to tasks only.`);
     const status = filter.status ?? 'active';
     if (status !== 'active' && status !== 'archived') throw bad(['filter', 'status'], 'status must be "active" or "archived".');
     const dir = orderOf(args.order, -1);
@@ -164,6 +165,8 @@ async function find(args: Record<string, unknown>, db: DB) {
   if ('status' in filter) throw bad(['filter', 'status'], 'status applies to projects only; use statuses for tasks.');
   const projectId = filter.project_id;
   if (projectId !== undefined && typeof projectId !== 'string') throw bad(['filter', 'project_id'], 'project_id must be a string.');
+  const parentId = filter.parent_id;
+  if (parentId !== undefined && parentId !== null && typeof parentId !== 'string') throw bad(['filter', 'parent_id'], 'parent_id must be a task id, or null for top-level tasks only.');
   const text = filter.text;
   if (text !== undefined && typeof text !== 'string') throw bad(['filter', 'text'], 'text must be a string.');
   const focused = filter.focused;
@@ -186,6 +189,7 @@ async function find(args: Record<string, unknown>, db: DB) {
   // agree exactly. Scores drift with edits and the clock, so a readiness page boundary can still
   // shift slightly between calls, but a cursor never errors and never loops.
   const at = new Date().toISOString();
+  if (parentId !== undefined) tasks = tasks.filter(task => (task.parent_id ?? null) === parentId);
   if (focused !== undefined) tasks = tasks.filter(task => isFocused(task, at) === focused);
   // Readiness needs the link graph so a blocked task scores as blocked, not as actionable.
   const [links, everyTask] = sort === 'readiness' ? await Promise.all([db.listAllLinks(), db.listAllTasks()]) : [[], []];
@@ -247,8 +251,12 @@ async function getContext(args: Record<string, unknown>, db: DB) {
   const pick = (predicate: (link: (typeof links)[number]) => boolean, other: 'from_task_id' | 'to_task_id') =>
     links.filter(predicate).flatMap(link => { const task = related.get(link[other]); return task ? [task] : []; });
   const project = snapshot.row.project_id ? await db.getProject(snapshot.row.project_id) : null;
+  const parent = snapshot.row.parent_id ? await db.getTask(snapshot.row.parent_id) ?? null : null;
+  const subtasks = await db.listSubtasks(snapshot.id);
   return { ...snapshot, context: {
     project,
+    parent,
+    subtasks,
     prerequisites: pick(link => link.link_type === 'blocks' && link.to_task_id === snapshot.id, 'from_task_id'),
     dependents: pick(link => link.link_type === 'blocks' && link.from_task_id === snapshot.id, 'to_task_id'),
     related: links.filter(link => link.link_type === 'related').flatMap(link => { const task = related.get(link.from_task_id === snapshot.id ? link.to_task_id : link.from_task_id); return task ? [task] : []; }),
@@ -289,7 +297,7 @@ function describeCommands(args: Record<string, unknown>) {
   return {
     contractVersion: 2,
     family,
-    envelope: { description: 'Shared by preview_changes and apply_changes. Standalone commands carry their own guards; 2–20 commands need expectedStructuralRevision.', properties: COMMAND_ENVELOPE_PROPERTIES },
+    envelope: { description: 'Shared by preview_changes and apply_changes. Standalone commands carry their own guards; 2–100 commands need expectedStructuralRevision.', properties: COMMAND_ENVELOPE_PROPERTIES },
     commands: COMMAND_VARIANTS.filter(variant => variant.properties.kind.const.startsWith(`${family}.`)),
     example: EXAMPLES[family],
     errorCodes: [...FAMILY_ERRORS.common, ...FAMILY_ERRORS[family as keyof typeof FAMILY_ERRORS]],

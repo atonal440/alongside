@@ -24,7 +24,7 @@ Through MCP, `apply_changes` also writes one action-log entry per command, in de
 
 These tools replace the older list/get reads and the by-hand revision bookkeeping. The old tools were removed in phase D.
 
-**`find`** — `{ entity: 'task' | 'project', preset?, filter?, sort?, order?, limit?, cursor? }`. Task filters: `statuses` (default `["pending"]`, deferred tasks included), `text` (title and notes, case-insensitive), `project_id` and `focused` (`true`: only tasks whose focus has not expired; `false`: the rest). `preset: 'ready'` restricts to unblocked, non-deferred pending tasks whose `available_from` has opened (pending-only, so it rejects `statuses`); it no longer implies an order. `sort` is `created` (default), `updated`, `due`, `deadline` or `readiness`; `order` is `asc` or `desc` and defaults to `desc` for `created`, `updated` and `readiness`, `asc` for `due` and `deadline` (undated tasks count as latest). `due` sorts the target date, `deadline` the hard deadline's boundary instant. Projects sort by creation, newest first by default, and take `order` only. `readiness` is a heuristic score (kickoff note, session log, recent edits and near due dates or deadlines raise it; a task that is not yet available ranks with blocked work); nothing in the server picks it unless asked. Project filter: `status` (default `"active"`). Returns `{ entity, items, nextCursor }`; pass `nextCursor` back as `cursor`. Order is deterministic: the chosen sort, then creation, then ID, all in the same direction, except for `readiness`, where `order` applies only to the score and ties break oldest first either way (as `get_ready_tasks` did). The cursor is opaque (the sort key of the last item returned, tagged with the sort and order, so a cursor from a different ordering is rejected), so paging continues correctly even if that item was completed, edited or deleted between pages when sorting by `created` (an edit can change `updated`, `due` and `readiness`, so under those sorts a row edited between pages can move across the cursor, so it may be returned twice or missed); a cursor that isn't a `nextCursor` is rejected with `invalid_input`.
+**`find`** — `{ entity: 'task' | 'project', preset?, filter?, sort?, order?, limit?, cursor? }`. Task filters: `statuses` (default `["pending"]`, deferred tasks included), `text` (title and notes, case-insensitive), `project_id`, `parent_id` (a task id: its direct subtasks; `null`: top-level tasks only) and `focused` (`true`: only tasks whose focus has not expired; `false`: the rest). `preset: 'ready'` restricts to unblocked, non-deferred pending tasks whose `available_from` has opened (pending-only, so it rejects `statuses`); it no longer implies an order. `sort` is `created` (default), `updated`, `due`, `deadline` or `readiness`; `order` is `asc` or `desc` and defaults to `desc` for `created`, `updated` and `readiness`, `asc` for `due` and `deadline` (undated tasks count as latest). `due` sorts the target date, `deadline` the hard deadline's boundary instant. Projects sort by creation, newest first by default, and take `order` only. `readiness` is a heuristic score (kickoff note, session log, recent edits and near due dates or deadlines raise it; a task that is not yet available ranks with blocked work); nothing in the server picks it unless asked. Project filter: `status` (default `"active"`). Returns `{ entity, items, nextCursor }`; pass `nextCursor` back as `cursor`. Order is deterministic: the chosen sort, then creation, then ID, all in the same direction, except for `readiness`, where `order` applies only to the score and ties break oldest first either way (as `get_ready_tasks` did). The cursor is opaque (the sort key of the last item returned, tagged with the sort and order, so a cursor from a different ordering is rejected), so paging continues correctly even if that item was completed, edited or deleted between pages when sorting by `created` (an edit can change `updated`, `due` and `readiness`, so under those sorts a row edited between pages can move across the cursor, so it may be returned twice or missed); a cursor that isn't a `nextCursor` is rejected with `invalid_input`.
 
 **`get_context`** — `{ entity: 'task' | 'project' | 'link' | 'settings' | 'preferences', … , depth?: 0 | 1 }`. `entity: 'preferences'` returns `{ preferences }`, the stored user preferences with defaults merged in (a key to value map); the server never acts on them. `depth: 0` returns the row plus its entity and structural revisions (what the REST routes `/api/v2/entity`, `/api/v2/link` and `/api/v2/planning-settings` return). The default `depth: 1` adds a `context` object: for a task its `project`, `prerequisites`, `dependents` and `related` tasks; for a project its `ready_tasks` and `task_counts`. Missing or deleted entities come back unchanged (null row), with no context.
 
@@ -61,6 +61,8 @@ Create a new task.
 | `deadline` | `string` | no | Hard deadline. A bare `YYYY-MM-DD` allows completion throughout that local day; an ISO datetime with offset is a moment. Needs `timezone` or a workspace timezone. |
 | `available_from` | `string` | no | Earliest permitted start, independent of deferral. `YYYY-MM-DD` opens at the start of that local day. Needs `timezone` or a workspace timezone. |
 | `timezone` | `string` | no | IANA zone for `deadline` and `available_from`; defaults to the workspace timezone (`planning.set`). With neither the call is refused. |
+| `parent_id` | `string` | no | Make the task a subtask of that task (same project, no loops, at most 32 deep). |
+| `position` | `number` | no | Sort key among siblings, ascending. Only used with `parent_id`. |
 | `recurrence` | `string` | no | Infinite date-only RRULE (e.g. `FREQ=WEEKLY;INTERVAL=1`, `FREQ=MONTHLY;BYDAY=3FR`). |
 | `task_type` | `'action'\|'plan'\|'recurring'` | no | Defaults to `'action'`. |
 | `project_id` | `string` | no | Associate with a project. |
@@ -84,6 +86,8 @@ Update one or more fields on an existing task. Only provided fields are changed.
 | `due_date` | `string` | no | ISO 8601 date or datetime — same all-day/timed rule as `add_task`; the target, not a hard deadline. |
 | `deadline` | `string \| null` | no | Hard deadline, same forms as on `add_task`; `null` clears it. Changing one of `deadline` and `available_from` keeps the other. |
 | `available_from` | `string \| null` | no | Earliest permitted start; `null` clears it. |
+| `parent_id` | `string \| null` | no | Move under another task, or `null` for top level. Changing only `parent_id` keeps `position`; `null` clears both. |
+| `position` | `number \| null` | no | Sibling sort key; kept when only `parent_id` changes. |
 | `timezone` | `string` | no | IANA zone for the two roles; defaults to the workspace timezone. |
 | `recurrence` | `string` | no | |
 | `task_type` | `string` | no | |
@@ -310,6 +314,15 @@ points as these objects; `export_workspace` keeps the stored JSON text so it
 restores exactly. A task is not ready (and ranks with blocked work) until its
 `available_from` opens, a nearer deadline raises its readiness score, and `find`
 can `sort: "deadline"`.
+`task.parent.set` takes `parent` (`{id,expectedRevision}` or null for top level)
+and `position` (a number or null), plus the structural revision. The parent must
+be a live task in the same project, the chain cannot loop and is at most 32 tasks
+deep. A task with open subtasks cannot be completed, and a task with subtasks
+cannot be deleted or moved to another project (a subtask also cannot change
+project on its own): detach or finish them first. `get_context` on a task adds
+`parent` and `subtasks` (ordered by `position`, then oldest first). Loose intent
+can create and place in one batch: `task.create` with a `clientRef`, then
+`task.parent.set` with `id: "@ref"` and `parent: "@other"`.
 These commands preserve other managed/context fields and support preview,
 atomic apply and exact replay. See
 [guarded task fields](shared/reliable-task-fields.md) for inputs and conflicts.

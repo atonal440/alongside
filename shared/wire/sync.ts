@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { hierarchyProblems } from '../hierarchy';
 import { CommandIdSchema, DutyIdSchema, EventInstantSchema, IsoDateTimeSchema, LinkTypeSchema,
   MinuteInstantSchema, ProjectIdSchema, RevisionSchema, SeriesRruleSchema, TaskIdSchema,
   TaskTypeSchema, TimezoneSchema, ActionNameSchema, boundedStringSchema, parseSchema } from '../parse';
@@ -94,6 +95,7 @@ export function findDanglingReference(entities: Iterable<SyncEntity>): string | 
         if (image.row === null) break;
         if (!has('project', image.row.project_id)) return `Task ${image.key} references missing project ${image.row.project_id}.`;
         if (!has('duty', image.row.duty_id)) return `Task ${image.key} references missing duty ${image.row.duty_id}.`;
+        if (!has('task', image.row.parent_id)) return `Task ${image.key} references missing parent ${image.row.parent_id}.`;
         break;
       case 'duty':
         if (image.row !== null && !has('project', image.row.project_id)) return `Duty ${image.key} references missing project ${image.row.project_id}.`;
@@ -105,6 +107,10 @@ export function findDanglingReference(entities: Iterable<SyncEntity>): string | 
         break;
     }
   }
+  // With the whole set in hand, also hold the hierarchy invariants (project match, loops, depth).
+  const tasks = images.flatMap(image => image.entity === 'task' && image.row !== null ? [image.row] : []);
+  const issue = hierarchyProblems(tasks)[0];
+  if (issue) return `Task ${tasks[issue.index]!.id}: ${issue.message}`;
   return null;
 }
 export const WorkspaceSnapshotSchema = v.pipe(v.strictObject({

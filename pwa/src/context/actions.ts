@@ -17,6 +17,7 @@ import {
   applyFocus,
   applyUnfocus,
   applyReopen,
+  subtasksOf,
   type DeferInput,
   type LocalMutationError,
   type TaskUpdatePatch,
@@ -103,7 +104,12 @@ export async function deleteTaskAction(
   config: ApiConfig,
   dispatch: Dispatch<AppAction>,
 ): Promise<void> {
-  if (await findTask(id, config)) await commit([{ kind: 'task.delete', id }], config, dispatch);
+  if (!(await findTask(id, config))) return;
+  if (subtasksOf((await loadView(config.apiBase)).tasks, id).length > 0) {
+    dispatch({ type: 'SET_TOAST', message: 'This task has subtasks; delete or detach them first.' });
+    return;
+  }
+  await commit([{ kind: 'task.delete', id }], config, dispatch);
 }
 
 export async function completeTaskAction(
@@ -113,6 +119,10 @@ export async function completeTaskAction(
 ): Promise<string | null> {
   const task = await findTask(id, config);
   if (!task) return null;
+  if (subtasksOf((await loadView(config.apiBase)).tasks, id).some(child => child.status === 'pending')) {
+    dispatch({ type: 'SET_TOAST', message: 'Complete the open subtasks first.' });
+    return null;
+  }
   const mutation = applyComplete(task, nowIso());
   if (!mutation.ok) {
     dispatch({ type: 'SET_TOAST', message: mutation.error.message });

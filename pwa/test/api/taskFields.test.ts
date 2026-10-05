@@ -3,7 +3,7 @@ import { api } from '../../src/api/endpoints';
 import { installFetchStub } from '../helpers/fetchStub';
 import { parseCommandEnvelope } from '@shared/wire/commands';
 const config={apiBase:'http://localhost:8787',authToken:'tok'};
-const row={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:null,due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,available_from:null,deadline:null,created_at:'2026-10-01T10:00:00.123Z',updated_at:'2026-10-01T10:00:00.123Z'};
+const row={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:null,due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,available_from:null,deadline:null, parent_id: null, position: null,created_at:'2026-10-01T10:00:00.123Z',updated_at:'2026-10-01T10:00:00.123Z'};
 it.each([
  {kind:'task.type.set',fields:{taskType:'plan'},patch:{task_type:'plan'}},
  {kind:'task.project.set',fields:{expectedStructuralRevision:5,project:{id:'p_first1',expectedRevision:3}},patch:{project_id:'p_first1'}},

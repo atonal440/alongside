@@ -21,6 +21,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -53,6 +55,8 @@
       "focused_until": null,
       "duty_id": null,
       "occurrence_at": null,
+      "parent_id": null,
+      "position": null,
       "available_from": null,
       "deadline": null
      }
@@ -96,6 +100,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -128,6 +134,8 @@
       "focused_until": null,
       "duty_id": null,
       "occurrence_at": null,
+      "parent_id": null,
+      "position": null,
       "available_from": null,
       "deadline": null
      }
@@ -171,6 +179,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -203,6 +213,8 @@
       "focused_until": null,
       "duty_id": null,
       "occurrence_at": null,
+      "parent_id": null,
+      "position": null,
       "available_from": null,
       "deadline": null
      }
@@ -254,6 +266,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -286,6 +300,8 @@
       "focused_until": null,
       "duty_id": null,
       "occurrence_at": null,
+      "parent_id": null,
+      "position": null,
       "available_from": null,
       "deadline": null
      }
@@ -329,6 +345,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -361,6 +379,8 @@
       "focused_until": null,
       "duty_id": null,
       "occurrence_at": null,
+      "parent_id": null,
+      "position": null,
       "available_from": null,
       "deadline": null
      }
@@ -404,6 +424,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -436,6 +458,8 @@
       "focused_until": null,
       "duty_id": null,
       "occurrence_at": null,
+      "parent_id": null,
+      "position": null,
       "available_from": null,
       "deadline": null
      }
@@ -479,6 +503,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -511,6 +537,8 @@
       "focused_until": null,
       "duty_id": null,
       "occurrence_at": null,
+      "parent_id": null,
+      "position": null,
       "available_from": null,
       "deadline": null
      }
@@ -594,6 +622,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -626,6 +656,8 @@
       "focused_until": null,
       "duty_id": null,
       "occurrence_at": null,
+      "parent_id": null,
+      "position": null,
       "available_from": null,
       "deadline": null
      }
@@ -710,6 +742,8 @@
      "focused_until": null,
      "duty_id": null,
      "occurrence_at": null,
+     "parent_id": null,
+     "position": null,
      "available_from": null,
      "deadline": null
     },
@@ -777,6 +811,8 @@
      "focused_until": null,
      "duty_id": null,
      "occurrence_at": null,
+     "parent_id": null,
+     "position": null,
      "available_from": null,
      "deadline": null
     },
@@ -799,6 +835,8 @@
      "focused_until": null,
      "duty_id": null,
      "occurrence_at": null,
+     "parent_id": null,
+     "position": null,
      "available_from": null,
      "deadline": null
     },
@@ -832,6 +870,8 @@
       "focused_until": null,
       "duty_id": null,
       "occurrence_at": null,
+      "parent_id": null,
+      "position": null,
       "available_from": null,
       "deadline": null
      }
@@ -899,6 +939,8 @@
      "focused_until": null,
      "duty_id": null,
      "occurrence_at": null,
+     "parent_id": null,
+     "position": null,
      "available_from": null,
      "deadline": null
     },
@@ -974,6 +1016,8 @@
      "focused_until": null,
      "duty_id": null,
      "occurrence_at": null,
+     "parent_id": null,
+     "position": null,
      "available_from": null,
      "deadline": null
     },
@@ -1045,6 +1089,8 @@
      "focused_until": null,
      "duty_id": null,
      "occurrence_at": null,
+     "parent_id": null,
+     "position": null,
      "available_from": null,
      "deadline": null
     },
@@ -1112,6 +1158,8 @@
      "focused_until": null,
      "duty_id": null,
      "occurrence_at": null,
+     "parent_id": null,
+     "position": null,
      "available_from": null,
      "deadline": null
     },
@@ -1186,6 +1234,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -1255,6 +1305,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -1324,6 +1376,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -1409,6 +1463,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -1490,6 +1546,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -1559,6 +1617,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -1644,6 +1704,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -1709,6 +1771,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -1774,6 +1838,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -1839,6 +1905,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -1904,6 +1972,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -1969,6 +2039,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -2042,6 +2114,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -2107,6 +2181,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -2196,6 +2272,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -2273,6 +2351,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -2346,6 +2426,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -2411,6 +2493,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -2476,6 +2560,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -2541,6 +2627,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -2606,6 +2694,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -2683,6 +2773,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -2756,6 +2848,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -2841,6 +2935,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -2902,6 +2998,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -2963,6 +3061,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3028,6 +3128,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3093,6 +3195,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3170,6 +3274,8 @@
     "focused_until": "2026-10-03T18:00:00Z",
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3235,6 +3341,8 @@
     "focused_until": "2026-10-03T18:00:00Z",
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3316,6 +3424,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3381,6 +3491,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3442,6 +3554,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3511,6 +3625,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3576,6 +3692,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3649,6 +3767,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3714,6 +3834,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3779,6 +3901,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3848,6 +3972,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3917,6 +4043,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -3965,6 +4093,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -4029,6 +4159,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -4094,6 +4226,8 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -4163,6 +4297,8 @@
     "focused_until": "2026-10-03T15:00:00Z",
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -4228,6 +4364,8 @@
     "focused_until": "2026-10-03T13:30:00Z",
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -4293,6 +4431,8 @@
     "focused_until": "2026-10-04T12:00:00Z",
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -4398,6 +4538,8 @@
     "focused_until": "2026-10-03T13:00:00Z",
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {
@@ -4463,6 +4605,8 @@
     "focused_until": "2026-10-03T15:00:00Z",
     "duty_id": null,
     "occurrence_at": null,
+    "parent_id": null,
+    "position": null,
     "available_from": null,
     "deadline": null,
     "action_log_entry": {

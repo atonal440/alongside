@@ -4,7 +4,7 @@ import { installFetchStub } from '../helpers/fetchStub';
 import { parseWorkspaceRestoreInput } from '@shared/wire/workspaceRestore';
 const config={apiBase:'http://localhost:8787',authToken:'tok'};
 const now='2026-10-01T10:00:00Z';
-const task={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:null,due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,available_from:null,deadline:null,created_at:now,updated_at:now};
+const task={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:null,due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,available_from:null,deadline:null, parent_id: null, position: null,created_at:now,updated_at:now};
 const document={version:2,exported_at:now,tasks:[task],projects:[],links:[],duties:[],preferences:[],planning_settings:null,action_log:[],command_audit:[]};
 const zero={tasks:0,projects:0,links:0,duties:0,preferences:0,planning_settings:0,action_log:0};
 const request=(mode:'preflight'|'apply')=>{const parsed=parseWorkspaceRestoreInput({contractVersion:2,mode,expectedCursor:{epoch:0,sequence:4},document});if(!parsed.ok)throw new Error('bad input');return parsed.value;};

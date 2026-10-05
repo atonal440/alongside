@@ -58,6 +58,8 @@ const TASK_INSERT_COLUMNS = [
   'occurrence_at',
   'available_from',
   'deadline',
+  'parent_id',
+  'position',
 ] as const;
 
 const TASK_RESTORE_COLUMNS = TASK_INSERT_COLUMNS;
@@ -84,6 +86,8 @@ const TASK_UPDATE_COLUMNS = [
   'focused_until',
   'available_from',
   'deadline',
+  'parent_id',
+  'position',
 ] as const satisfies readonly (keyof TaskRowPatch)[];
 
 const PROJECT_INSERT_COLUMNS = [
@@ -215,6 +219,13 @@ async function runPreCheck(d1: D1Database, check: PreCheck): Promise<Result<void
       return runExistingRowCheck(d1, { entity: 'task', id: check.id });
     case 'project.exists':
       return runExistingRowCheck(d1, { entity: 'project', id: check.id });
+    case 'task.no_open_children':
+    case 'task.unattached': {
+      try {
+        const violated = await d1.prepare(`SELECT 1 AS violated WHERE ${HIERARCHY_VIOLATION[check.kind]}`).bind(...hierarchyBinds(check)).first();
+        return violated === null ? ok(undefined) : err({ kind: 'conflict', message: check.kind === 'task.unattached' ? 'The task is part of a hierarchy.' : 'The task has open subtasks.' });
+      } catch (cause) { return err(storageError('Failed to read hierarchy.', cause)); }
+    }
     case 'link.blocks_acyclic':
       return runBlocksAcyclicCheck(d1, check.from, check.to);
     case 'planning.revision': {
@@ -248,6 +259,12 @@ async function runPreCheck(d1: D1Database, check: PreCheck): Promise<Result<void
   }
 }
 
+const HIERARCHY_VIOLATION = {
+  'task.no_open_children': "EXISTS (SELECT 1 FROM tasks WHERE parent_id=? AND status='pending')",
+  'task.unattached': 'EXISTS (SELECT 1 FROM tasks WHERE id=? AND parent_id IS NOT NULL) OR EXISTS (SELECT 1 FROM tasks WHERE parent_id=?)',
+} as const;
+const hierarchyBinds = (check: { kind: keyof typeof HIERARCHY_VIOLATION; id: string }) => check.kind === 'task.unattached' ? [check.id, check.id] : [check.id];
+
 function bindBlocksAcyclicGuard(d1: D1Database, from: string, to: string): PlannedStatement {
   return guardedStatement(d1.prepare(BLOCKS_ACYCLIC_GUARD_SQL).bind(from, to, to, from));
 }
@@ -270,6 +287,10 @@ function bindPreCheckGuard(d1: D1Database, check: PreCheck): PlannedStatement[] 
       return [bindExistingRowGuard(d1, { entity: 'task', id: check.id })];
     case 'project.exists':
       return [bindExistingRowGuard(d1, { entity: 'project', id: check.id })];
+    case 'task.no_open_children':
+    case 'task.unattached':
+      // A NOT NULL violation aborts the whole batch if the hierarchy changed after planning.
+      return [guardedStatement(d1.prepare(`INSERT INTO entity_versions(entity,entity_key,revision) SELECT NULL,'',0 WHERE ${HIERARCHY_VIOLATION[check.kind]}`).bind(...hierarchyBinds(check)))];
     case 'link.blocks_acyclic':
       return [bindBlocksAcyclicGuard(d1, check.from, check.to)];
     case 'planning.revision': {

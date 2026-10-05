@@ -4,7 +4,7 @@ import { installFetchStub } from '../helpers/fetchStub';
 import { parseCommandEnvelope, parseChangesResult } from '@shared/wire/commands';
 const config={apiBase:'http://localhost:8787',authToken:'tok'};
 const now='2026-10-01T10:00:00.123Z';
-const task={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:'p_first1',due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,available_from:null,deadline:null,created_at:now,updated_at:now};
+const task={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:'p_first1',due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,available_from:null,deadline:null, parent_id: null, position: null,created_at:now,updated_at:now};
 const project={id:'p_first1',title:'Project',notes:null,kickoff_note:null,status:'active',created_at:now,updated_at:now};
 const root={entity:'project',id:project.id,before:{row:project,revision:1},after:{deleted:true,revision:2}};
 const member={entity:'task',id:task.id,before:{row:task,revision:1},after:{row:{...task,project_id:null},revision:2}};

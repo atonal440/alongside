@@ -79,6 +79,12 @@ export const TaskProjectCommandSchema = v.strictObject({
   expectedStructuralRevision: RevisionSchema,
   project: v.nullable(v.strictObject({ id: ProjectIdSchema, expectedRevision: RevisionSchema })),
 });
+export const TaskParentCommandSchema = v.strictObject({
+  kind: v.literal('task.parent.set'), id: TaskIdSchema, expectedRevision: RevisionSchema,
+  expectedStructuralRevision: RevisionSchema,
+  parent: v.nullable(v.strictObject({ id: TaskIdSchema, expectedRevision: RevisionSchema })),
+  position: v.nullable(v.pipe(v.number(), v.finite())),
+});
 export const TaskTypeCommandSchema = v.strictObject({
   kind: v.literal('task.type.set'), id: TaskIdSchema, expectedRevision: RevisionSchema, taskType: TaskTypeSchema,
 });
@@ -109,7 +115,7 @@ export const CommandEnvelopeSchema = v.pipe(v.strictObject({
   actor: v.picklist(['user', 'llm', 'import']),
   reason: v.optional(v.pipe(v.string(), v.maxLength(1_000))),
   expectedStructuralRevision: v.optional(RevisionSchema),
-  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, PreferenceSetCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, TaskDatesCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(MAX_BATCH_COMMANDS)),
+  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, PreferenceSetCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskParentCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, TaskDatesCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(MAX_BATCH_COMMANDS)),
 }), v.check(value => value.commands.length === 1 ? value.expectedStructuralRevision === undefined
   : value.expectedStructuralRevision !== undefined && value.commands.every(command => command.kind !== 'planning.set' && command.kind !== 'preference.set'),
 'Mixed batches require an envelope structural revision; settings remain standalone.'),
@@ -173,7 +179,7 @@ function validCompletion(changes: ChangeDiff[], serverNow: string): boolean {
       due_date: `${nextOccurrence(rule.value.parts, anchor.value)}T12:00:00Z`, due_all_day: true,
       created_at: serverNow, updated_at: serverNow, defer_kind: 'none', defer_until: null, focused_until: null,
       kickoff_note: before.session_log ?? before.kickoff_note, session_log: null, duty_id: null, occurrence_at: null,
-      available_from: null, deadline: null };
+      available_from: null, deadline: null, parent_id: null, position: null };
     const after = successor.after.row;
     return Object.entries(expected).every(([field, stored]) => after[field as keyof typeof after] === stored);
   } catch {

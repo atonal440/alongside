@@ -53,7 +53,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   duty_id       TEXT REFERENCES duties(id),  -- set together with occurrence_at, null together
   occurrence_at TEXT,               -- UTC datetime; the duty occurrence this task instance is
   available_from TEXT CHECK (available_from IS NULL OR (json_valid(available_from) AND json_type(available_from) = 'object')),  -- TemporalPoint JSON: earliest permitted start
-  deadline      TEXT CHECK (deadline IS NULL OR (json_valid(deadline) AND json_type(deadline) = 'object'))  -- TemporalPoint JSON: hard completion boundary
+  deadline      TEXT CHECK (deadline IS NULL OR (json_valid(deadline) AND json_type(deadline) = 'object')),  -- TemporalPoint JSON: hard completion boundary
+  parent_id     TEXT,               -- parent task id (no FK: planners own integrity); null = top level
+  position      REAL CHECK (position IS NULL OR (typeof(position) IN ('integer','real') AND position = position))  -- sibling sort key, ascending
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
@@ -435,11 +437,11 @@ WHEN NEW.entity='task'
 BEGIN
   SELECT RAISE(ABORT,'Sync metadata missing or live source row missing.')
   WHERE NOT EXISTS(SELECT 1 FROM sync_metadata WHERE id=1)
-    OR (NEW.deleted_at IS NULL AND (SELECT json_object('id',id,'title',title,'notes',notes,'status',status,'due_date',due_date,'due_all_day',CASE due_all_day WHEN 1 THEN json('true') WHEN 0 THEN json('false') ELSE due_all_day END,'recurrence',recurrence,'created_at',created_at,'updated_at',updated_at,'defer_until',defer_until,'defer_kind',defer_kind,'task_type',task_type,'project_id',project_id,'kickoff_note',kickoff_note,'session_log',session_log,'focused_until',focused_until,'duty_id',duty_id,'occurrence_at',occurrence_at,'available_from',available_from,'deadline',deadline) FROM tasks WHERE id=NEW.entity_key) IS NULL);
+    OR (NEW.deleted_at IS NULL AND (SELECT json_object('id',id,'title',title,'notes',notes,'status',status,'due_date',due_date,'due_all_day',CASE due_all_day WHEN 1 THEN json('true') WHEN 0 THEN json('false') ELSE due_all_day END,'recurrence',recurrence,'created_at',created_at,'updated_at',updated_at,'defer_until',defer_until,'defer_kind',defer_kind,'task_type',task_type,'project_id',project_id,'kickoff_note',kickoff_note,'session_log',session_log,'focused_until',focused_until,'duty_id',duty_id,'occurrence_at',occurrence_at,'available_from',available_from,'deadline',deadline,'parent_id',parent_id,'position',position) FROM tasks WHERE id=NEW.entity_key) IS NULL);
   INSERT INTO sync_feed(epoch,entity,entity_key,revision,operation,row_json,deleted_at,recorded_at)
   VALUES((SELECT epoch FROM sync_metadata WHERE id=1),NEW.entity,NEW.entity_key,NEW.revision,
     CASE WHEN NEW.deleted_at IS NULL THEN 'upsert' ELSE 'delete' END,
-    CASE WHEN NEW.deleted_at IS NULL THEN (SELECT json_object('id',id,'title',title,'notes',notes,'status',status,'due_date',due_date,'due_all_day',CASE due_all_day WHEN 1 THEN json('true') WHEN 0 THEN json('false') ELSE due_all_day END,'recurrence',recurrence,'created_at',created_at,'updated_at',updated_at,'defer_until',defer_until,'defer_kind',defer_kind,'task_type',task_type,'project_id',project_id,'kickoff_note',kickoff_note,'session_log',session_log,'focused_until',focused_until,'duty_id',duty_id,'occurrence_at',occurrence_at,'available_from',available_from,'deadline',deadline) FROM tasks WHERE id=NEW.entity_key) ELSE 'null' END,
+    CASE WHEN NEW.deleted_at IS NULL THEN (SELECT json_object('id',id,'title',title,'notes',notes,'status',status,'due_date',due_date,'due_all_day',CASE due_all_day WHEN 1 THEN json('true') WHEN 0 THEN json('false') ELSE due_all_day END,'recurrence',recurrence,'created_at',created_at,'updated_at',updated_at,'defer_until',defer_until,'defer_kind',defer_kind,'task_type',task_type,'project_id',project_id,'kickoff_note',kickoff_note,'session_log',session_log,'focused_until',focused_until,'duty_id',duty_id,'occurrence_at',occurrence_at,'available_from',available_from,'deadline',deadline,'parent_id',parent_id,'position',position) FROM tasks WHERE id=NEW.entity_key) ELSE 'null' END,
     NEW.deleted_at,strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 END;
 
@@ -449,11 +451,11 @@ WHEN NEW.entity='task'
 BEGIN
   SELECT RAISE(ABORT,'Sync metadata missing or live source row missing.')
   WHERE NOT EXISTS(SELECT 1 FROM sync_metadata WHERE id=1)
-    OR (NEW.deleted_at IS NULL AND (SELECT json_object('id',id,'title',title,'notes',notes,'status',status,'due_date',due_date,'due_all_day',CASE due_all_day WHEN 1 THEN json('true') WHEN 0 THEN json('false') ELSE due_all_day END,'recurrence',recurrence,'created_at',created_at,'updated_at',updated_at,'defer_until',defer_until,'defer_kind',defer_kind,'task_type',task_type,'project_id',project_id,'kickoff_note',kickoff_note,'session_log',session_log,'focused_until',focused_until,'duty_id',duty_id,'occurrence_at',occurrence_at,'available_from',available_from,'deadline',deadline) FROM tasks WHERE id=NEW.entity_key) IS NULL);
+    OR (NEW.deleted_at IS NULL AND (SELECT json_object('id',id,'title',title,'notes',notes,'status',status,'due_date',due_date,'due_all_day',CASE due_all_day WHEN 1 THEN json('true') WHEN 0 THEN json('false') ELSE due_all_day END,'recurrence',recurrence,'created_at',created_at,'updated_at',updated_at,'defer_until',defer_until,'defer_kind',defer_kind,'task_type',task_type,'project_id',project_id,'kickoff_note',kickoff_note,'session_log',session_log,'focused_until',focused_until,'duty_id',duty_id,'occurrence_at',occurrence_at,'available_from',available_from,'deadline',deadline,'parent_id',parent_id,'position',position) FROM tasks WHERE id=NEW.entity_key) IS NULL);
   INSERT INTO sync_feed(epoch,entity,entity_key,revision,operation,row_json,deleted_at,recorded_at)
   VALUES((SELECT epoch FROM sync_metadata WHERE id=1),NEW.entity,NEW.entity_key,NEW.revision,
     CASE WHEN NEW.deleted_at IS NULL THEN 'upsert' ELSE 'delete' END,
-    CASE WHEN NEW.deleted_at IS NULL THEN (SELECT json_object('id',id,'title',title,'notes',notes,'status',status,'due_date',due_date,'due_all_day',CASE due_all_day WHEN 1 THEN json('true') WHEN 0 THEN json('false') ELSE due_all_day END,'recurrence',recurrence,'created_at',created_at,'updated_at',updated_at,'defer_until',defer_until,'defer_kind',defer_kind,'task_type',task_type,'project_id',project_id,'kickoff_note',kickoff_note,'session_log',session_log,'focused_until',focused_until,'duty_id',duty_id,'occurrence_at',occurrence_at,'available_from',available_from,'deadline',deadline) FROM tasks WHERE id=NEW.entity_key) ELSE 'null' END,
+    CASE WHEN NEW.deleted_at IS NULL THEN (SELECT json_object('id',id,'title',title,'notes',notes,'status',status,'due_date',due_date,'due_all_day',CASE due_all_day WHEN 1 THEN json('true') WHEN 0 THEN json('false') ELSE due_all_day END,'recurrence',recurrence,'created_at',created_at,'updated_at',updated_at,'defer_until',defer_until,'defer_kind',defer_kind,'task_type',task_type,'project_id',project_id,'kickoff_note',kickoff_note,'session_log',session_log,'focused_until',focused_until,'duty_id',duty_id,'occurrence_at',occurrence_at,'available_from',available_from,'deadline',deadline,'parent_id',parent_id,'position',position) FROM tasks WHERE id=NEW.entity_key) ELSE 'null' END,
     NEW.deleted_at,strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 END;
 

@@ -39,6 +39,7 @@ function draft(command: Command, result: ChangesResult, titles: Titles, extraTas
     case 'task.type.set': return task(command.id, command.taskType);
     case 'task.legacy-schedule.set': return task(command.id, command.values.dueDate ?? 'cleared');
     case 'task.dates.set': return task(command.id, [command.values.availableFrom && `from ${command.values.availableFrom.kind === 'date' ? command.values.availableFrom.date : command.values.availableFrom.at}`, command.values.deadline && `deadline ${command.values.deadline.kind === 'date' ? command.values.deadline.date : command.values.deadline.at}`].filter(Boolean).join(', ') || 'cleared');
+    case 'task.parent.set': return task(command.id, command.parent ? `under ${taskTitle(command.parent.id)}` : 'top level');
     case 'task.focus.set': return task(command.id, command.focusedUntil ?? 'cleared');
     case 'task.defer.set': return task(command.id, command.defer.kind === 'until' ? command.defer.until : command.defer.kind);
     case 'task.project.set': return task(command.id, command.project ? titles.project.get(command.project.id) ?? command.project.id : 'removed');

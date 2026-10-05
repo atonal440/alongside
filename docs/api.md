@@ -73,8 +73,8 @@ safely write after a future contract change. CORS preflight allows the header.
 
 `GET /api/v2/sync/snapshot` and `POST /api/v2/sync/delta` have their own, stricter gate because a
 feed page the client cannot parse fails every pull, and stays stuck until the client is replaced. Protocol 3
-is the first to parse command-kind names in `action_log.tool_name` and protocol 4 adds `task.dates.set`, so a request announcing
-`pwa/<n>` with `n` below `minimumSyncRead` (4) gets the same 426 body, **whether or not it carries
+is the first to parse command-kind names in `action_log.tool_name` and protocol 4 adds `task.dates.set` and protocol 5 `task.parent.set`, so a request announcing
+`pwa/<n>` with `n` below `minimumSyncRead` (5) gets the same 426 body, **whether or not it carries
 `Origin`** (browsers omit `Origin` on same-origin GETs, so an Origin check alone would let an old
 tab through if the PWA and API ever share an origin). A browser that announces nothing is treated as an
 old build only when it sends `Origin`. Scripts that announce nothing and send no `Origin`, and clients
@@ -119,6 +119,8 @@ Create a new task.
 | `due_date` | `string \| null` | no | ISO 8601 date or datetime. A bare date (`2026-04-15`) is all-day, anchored to noon UTC; a full datetime is a timed target at that moment (not a hard deadline; see `task.dates.set`). |
 | `due_all_day` | `boolean` | no | Overrides the all-day/timed inference from `due_date`'s shape. Rarely needed — the PWA sends this explicitly to preserve an existing value when an edit doesn't touch the due date. |
 | `recurrence` | `string` | no | Infinite date-only RRULE |
+| `parent_id` | `string` | yes | The parent task, or null for a top-level task. Written only by `task.parent.set` |
+| `position` | `number` | yes | Sort key among siblings, ascending; null sorts last, then oldest first. Written only by `task.parent.set` |
 | `task_type` | `string` | no | `action` or `plan` |
 | `project_id` | `string \| null` | no | Existing project ID |
 | `kickoff_note` | `string \| null` | no | Forward-looking re-entry note |
@@ -381,6 +383,11 @@ validation and atomic capacity. Supported families:
 - `task.dates.set` replaces a task's `availableFrom` and `deadline` roles (each a
   `{kind:'date',date,timezone}` or `{kind:'instant',at,timezone}` point, or null);
   see [guarded task fields](shared/reliable-task-fields.md#date-roles).
+
+- `task.parent.set` places a task under a parent (`{id,expectedRevision}`) or
+  makes it top level (`parent: null`), with an optional sibling `position`; see
+  [guarded task fields](shared/reliable-task-fields.md#hierarchy). It requires a
+  structural revision.
 
 - `link.add`/`link.remove` with edge and structural revisions, endpoint/cycle
   guards and retained tombstones; see [reliable links](shared/reliable-links.md).

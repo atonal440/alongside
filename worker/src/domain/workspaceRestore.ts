@@ -1,4 +1,5 @@
 import { storedDateRoleProblem } from '@shared/temporal';
+import { hierarchyProblems } from '@shared/hierarchy';
 import type { Result } from '@shared/result';
 import { err, ok } from '@shared/result';
 import { parseRevision, type EventInstant, type ValidationError } from '@shared/parse';
@@ -29,6 +30,7 @@ function restoreProblems(doc: WorkspaceRestoreInput['document']): ValidationErro
       else occurrences.set(key, index);
     }
   });
+  for (const issue of hierarchyProblems(doc.tasks)) errors.push(problem(['document', 'tasks', String(issue.index), 'parent_id'], 'invalid_state', issue.message));
   const cycle = findBlocksCycle(doc.links);
   if (cycle) errors.push(problem(['document', 'links'], 'cycle', `Blocks links must be acyclic. Cycle: ${cycle.join(' -> ')}.`));
   return errors;

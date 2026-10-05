@@ -68,7 +68,14 @@ export function newLocalTask(
     occurrence_at: null,
     available_from: null,
     deadline: null,
+    parent_id: null,
+    position: null,
   };
+}
+
+/** Direct subtasks of a task, among the tasks the user can currently see. */
+export function subtasksOf(tasks: readonly Task[], id: string): Task[] {
+  return tasks.filter(task => task.parent_id === id);
 }
 
 // General-purpose content update. Enforces recurrence ↔ due-date invariant and

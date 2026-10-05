@@ -4,6 +4,7 @@ import type { InferOutput } from 'valibot';
 import type { ActionLog, Task } from '@shared/types';
 import type { Result } from '@shared/result';
 import { err, ok } from '@shared/result';
+import { hierarchyProblems } from '@shared/hierarchy';
 import {
   IsoDateTimeMinuteSchema,
   IsoDateTimeSchema,
@@ -87,6 +88,8 @@ const ImportTaskRowSchema = v.pipe(
       occurrence_at: row.occurrence_at,
       available_from: row.available_from,
       deadline: row.deadline,
+      parent_id: row.parent_id,
+      position: row.position,
     };
   }),
   v.check(row => (row.duty_id === null) === (row.occurrence_at === null),
@@ -123,5 +126,7 @@ export type ParsedImportPayload = InferOutput<typeof ImportV1Schema>;
 export function parseImport(input: unknown): Result<ParsedImportPayload, ValidationError[]> {
   const parsed = parseSchema(ImportV1Schema, input);
   if (!parsed.ok) return err(prefixErrors('payload', parsed.error));
+  const issues = hierarchyProblems(parsed.value.tasks);
+  if (issues.length > 0) return err(issues.map(issue => ({ path: ['payload', 'tasks', String(issue.index), 'parent_id'], code: 'invalid_state', message: issue.message })));
   return ok(parsed.value);
 }
