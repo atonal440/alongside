@@ -5,10 +5,13 @@ export const TASK_COLUMNS = ['id', 'title', 'notes', 'status', 'due_date', 'due_
   'defer_until', 'defer_kind', 'task_type', 'project_id', 'kickoff_note', 'session_log', 'focused_until', 'duty_id', 'occurrence_at',
   'available_from', 'deadline', 'parent_id', 'position'];
 
+export const DUTY_COLUMNS = ['id', 'title', 'notes', 'kickoff_note', 'task_type', 'project_id', 'rrule', 'dtstart', 'timezone', 'status', 'catch_up',
+  'last_spawned_at', 'next_occurrence_at', 'created_at', 'updated_at'];
+
 /** One SQLite snapshot covers content, its ledger revision and the aggregate. */
 export async function readEntitySnapshot(d1: D1Database, key: EntityReadKey): Promise<EntitySnapshot> {
-  const table = key.entity === 'task' ? 'tasks' : 'projects';
-  const columns = key.entity === 'task' ? TASK_COLUMNS : PROJECT_COLUMNS;
+  const table = key.entity === 'task' ? 'tasks' : key.entity === 'duty' ? 'duties' : 'projects';
+  const columns = key.entity === 'task' ? TASK_COLUMNS : key.entity === 'duty' ? DUTY_COLUMNS : PROJECT_COLUMNS;
   const json = columns.map(column => `'${column}', ${column}`).join(',');
   const stored = await d1.prepare(`SELECT w.structural_revision, e.revision, e.deleted_at,
     (SELECT json_object(${json}) FROM ${table} WHERE id=?) AS row_json

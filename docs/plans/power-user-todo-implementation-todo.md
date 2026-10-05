@@ -1095,3 +1095,9 @@ completion policy remain open from section 4 and are purely additive.
 - Triggers: cron every 15 minutes (`scheduled.ts`) and lazy calls in `find`, `show_tasks`, the REST task lists, snapshot and the first delta page. No wire protocol change.
 - Deviation from the master plan: no `series_occurrences` ledger yet; the `(duty_id, occurrence_at)` unique index plus the monotonic cursor stop duplicates and reappearing occurrences. The ledger arrives with skips/exceptions.
 - Next: R2 duty commands (`duty.create`, pause/resume/end) and `find`/`get_context` for duties; R3 backfill of legacy recurring tasks, retire completion-driven spawning (same release), PWA surface.
+
+### Recurrence R2: duty commands and reads (2026-10-05)
+- `duty.create`, `duty.content.set` and `duty.status.set` (standalone commands), planner in `domain/dutyCommands.ts`, loose-intent pinning, `find`/`get_context` for duties, `describe_commands` family `duty`.
+- Migration 017 widens the legacy `change_feed` entity check to include duties (found while testing; R1 never wrote duty changes through commands). Client protocol and sync read floor are now 6; tool surface 7, command catalog 3.
+- Calendar fields stay immutable: reschedule = end + create. Resume does not backfill.
+- Next: R3 backfill legacy recurring tasks into duties, retire completion-driven spawning (same release), PWA surface.

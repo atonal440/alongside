@@ -11,13 +11,13 @@ import type { ToolLogDraft } from '../db';
 type Command = CommandEnvelope['commands'][number];
 type Change = ChangesResult['changes'][number];
 
-interface Titles { task: Map<string, string>; project: Map<string, string> }
+interface Titles { task: Map<string, string>; project: Map<string, string>; duty: Map<string, string> }
 
 /** Titles visible in the result (after-image, or before-image for a deletion). */
 export function titlesFrom(result: ChangesResult): Titles {
-  const titles: Titles = { task: new Map(), project: new Map() };
+  const titles: Titles = { task: new Map(), project: new Map(), duty: new Map() };
   for (const change of result.changes) {
-    if (change.entity !== 'task' && change.entity !== 'project') continue;
+    if (change.entity !== 'task' && change.entity !== 'project' && change.entity !== 'duty') continue;
     const row = 'row' in change.after ? change.after.row : change.before?.row;
     if (row) titles[change.entity].set(change.id, row.title);
   }
@@ -49,6 +49,8 @@ function draft(command: Command, result: ChangesResult, titles: Titles, extraTas
       return task(command.id, due ? `→ recurs ${due}` : null);
     }
     case 'project.create': case 'project.content.set': case 'project.archive': case 'project.reopen': case 'project.delete': return project(command.id);
+    case 'duty.create': case 'duty.content.set': return { tool_name: command.kind, task_id: null, title: titles.duty.get(command.id) ?? command.id, detail: null };
+    case 'duty.status.set': return { tool_name: command.kind, task_id: null, title: titles.duty.get(command.id) ?? command.id, detail: command.status };
     case 'link.add': case 'link.remove':
       return { tool_name: command.kind, task_id: null, title: `${taskTitle(command.from)} → ${taskTitle(command.to)}`, detail: command.linkType };
   }

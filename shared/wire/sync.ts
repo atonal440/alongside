@@ -1,9 +1,9 @@
 import * as v from 'valibot';
 import { hierarchyProblems } from '../hierarchy';
 import { CommandIdSchema, DutyIdSchema, EventInstantSchema, IsoDateTimeSchema, LinkTypeSchema,
-  MinuteInstantSchema, ProjectIdSchema, RevisionSchema, SeriesRruleSchema, TaskIdSchema,
-  TaskTypeSchema, TimezoneSchema, ActionNameSchema, boundedStringSchema, parseSchema } from '../parse';
-import { ProjectRowSchema, TaskLinkRowSchema, TaskRowSchema, taskRowEntries } from './rows';
+  ProjectIdSchema, RevisionSchema, TaskIdSchema, TimezoneSchema, ActionNameSchema, boundedStringSchema, parseSchema } from '../parse';
+import { DutyRowSchema, ProjectRowSchema, TaskLinkRowSchema, TaskRowSchema } from './rows';
+export { DutyRowSchema };
 import { PlanningSettingsSchema, WorkingHoursSchema } from './planning';
 import { ChangeDiffSchema } from './commands';
 import { SyncCursorSchema } from './syncCursor';
@@ -27,15 +27,6 @@ export const PreferenceRowSchema = v.variant('key', [
   v.strictObject({ key: v.literal('planning_prompt'), value: v.picklist(['auto', 'always', 'never', 'manual']) }),
   v.strictObject({ key: v.literal('last_session_at'), value: IsoDateTimeSchema }),
 ]);
-export const DutyRowSchema = v.strictObject({
-  id: DutyIdSchema, title: taskRowEntries.title,
-  notes: v.nullable(boundedStringSchema(10_000)), kickoff_note: v.nullable(boundedStringSchema(2_000)),
-  task_type: TaskTypeSchema, project_id: v.nullable(ProjectIdSchema), rrule: SeriesRruleSchema,
-  dtstart: MinuteInstantSchema, timezone: v.nullable(TimezoneSchema),
-  status: v.picklist(['active', 'paused', 'ended']), catch_up: v.picklist(['next', 'all']),
-  last_spawned_at: v.nullable(MinuteInstantSchema), next_occurrence_at: v.nullable(MinuteInstantSchema),
-  created_at: IsoDateTimeSchema, updated_at: IsoDateTimeSchema,
-});
 export const SyncActionLogRowSchema = v.strictObject({
   id: positiveId, tool_name: ActionNameSchema, task_id: v.nullable(TaskIdSchema), duty_id: v.nullable(DutyIdSchema),
   title: boundedStringSchema(500), detail: v.nullable(boundedStringSchema(2_000)), created_at: IsoDateTimeSchema,

@@ -37,6 +37,7 @@ const applied = [
   '014_workspace_sync.sql',
   '015_task_date_roles.sql',
   '016_task_hierarchy.sql',
+  '017_duty_commands.sql',
 ];
 
 const inserts = applied

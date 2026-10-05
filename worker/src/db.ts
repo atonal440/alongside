@@ -31,7 +31,7 @@ import {
   userPreferences as prefsTable,
   actionLog as actionLogTable,
 } from '@shared/schema';
-import type { Task, Project, TaskLink, ActionLog, TaskCreate, TaskUpdate, ProjectCreate, ProjectUpdate } from '@shared/types';
+import type { Task, Project, TaskLink, ActionLog, Duty, TaskCreate, TaskUpdate, ProjectCreate, ProjectUpdate } from '@shared/types';
 import { isReady, readinessScore } from '@shared/readiness';
 import { unsafeBrand } from '@shared/brand';
 import type { ActiveDeferState, Plan, PendingTaskDomain, TaskDomain } from './domain';
@@ -59,6 +59,7 @@ import {
   unlinkTasksPlan,
 } from './domain';
 import { applyPlan } from './storage';
+import { isDutyCommand, planDutyCommand } from './domain/dutyCommands';
 import { materializeDueDuties, type MaterializeSummary } from './duties';
 import { parseImport } from './wire/importPayload';
 
@@ -586,6 +587,16 @@ export class DB {
     return result[0] ?? null;
   }
 
+  async listDuties(): Promise<Duty[]> {
+    const { results } = await this.d1.prepare('SELECT * FROM duties ORDER BY created_at DESC, id DESC').all<Duty>();
+    return results;
+  }
+
+  /** The tasks a duty has generated, newest occurrence first. */
+  async listDutyInstances(dutyId: string, limit: number): Promise<Task[]> {
+    return this.drizzle.select().from(tasksTable).where(eq(tasksTable.duty_id, dutyId)).orderBy(desc(tasksTable.occurrence_at)).limit(limit);
+  }
+
   async listProjects(status?: Project['status']): Promise<Project[]> {
     if (status) {
       return this.drizzle
@@ -754,6 +765,12 @@ export class DB {
   private async planCommand(input: CommandEnvelope, hash: string, clock: EventInstant, reader:CommandReader={entity:key=>this.getEntitySnapshot(key),link:key=>readLinkContext(this.d1,key),deletion:key=>readDeleteContext(this.d1,key),children:id=>this.readChildren(id)}): Promise<{ plan: Plan; result: ChangesResult }> {
     if(input.commands.length>1)return planBatchCommand(input,reader,(atom,virtual)=>this.planCommand(atom,hash,clock,virtual),(changes,expected)=>this.validateBatchGraph(changes,expected),hash,clock);
     const command = input.commands[0]!;
+    if (isDutyCommand(command)) {
+      const current = await reader.entity({ entity: 'duty', id: command.id });
+      const selected = command.kind === 'duty.status.set' ? null : command.values.project;
+      const project = selected === null ? null : await reader.entity({ entity: 'project', id: selected.id });
+      return planDutyCommand(input, current, project, hash, clock);
+    }
     if (command.kind === 'task.delete' || command.kind === 'project.delete') return planDeleteCommand(input, await reader.deletion(commandEntityKey(command)), command.kind === 'task.delete' ? await reader.children([command.id]) : [], hash, clock);
     if (command.kind === 'link.add' || command.kind === 'link.remove') return planLinkCommand(input, await reader.link(linkCommandKey(command)), hash, clock);
     if (command.kind === 'planning.set') return planSettingsCommand(input, await this.getPlanningSettings(), hash, clock);
@@ -950,6 +967,8 @@ export class DB {
     } else if (command.kind === 'planning.set') {
       const current = await this.getPlanningSettings();
       if ((current?.revision ?? null) !== command.expectedRevision) throw revisionConflict(command.expectedRevision, current);
+    } else if (isDutyCommand(command)) {
+      await this.planCommand(input, hash, clock.value);   // throws the precise conflict if state moved
     } else if (command.kind === 'task.create' || command.kind === 'project.create') {
       const current = await this.getEntitySnapshot(command.kind === 'task.create' ? { entity: 'task', id: command.id } : { entity: 'project', id: command.id });
       const conflict = creationConflict(input, current);

@@ -42,6 +42,7 @@ export const COMMAND_KINDS = [
   'project.create', 'project.content.set', 'project.archive', 'project.reopen', 'project.delete',
   'task.create', 'task.content.set', 'task.focus.set', 'task.defer.set', 'task.reopen', 'task.complete',
   'task.project.set', 'task.parent.set', 'task.type.set', 'task.legacy-schedule.set', 'task.dates.set', 'task.delete',
+  'duty.create', 'duty.content.set', 'duty.status.set',
   'link.add', 'link.remove',
 ] as const;
 
