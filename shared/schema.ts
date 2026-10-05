@@ -61,6 +61,10 @@ export const tasks = sqliteTable('tasks', {
   focused_until: text('focused_until'),
   duty_id:       text('duty_id').references(() => duties.id),
   occurrence_at: text('occurrence_at'),
+  // Date roles beyond the target (due_date): canonical TemporalPoint JSON text,
+  // see migration 015 and docs/plans/power-user-todo.md. Null = not set.
+  available_from: text('available_from'),
+  deadline:      text('deadline'),
 }, (t) => [
   uniqueIndex('tasks_duty_occurrence').on(t.duty_id, t.occurrence_at),
   index('idx_tasks_status').on(t.status),

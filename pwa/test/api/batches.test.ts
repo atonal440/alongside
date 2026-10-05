@@ -4,7 +4,7 @@ import { installFetchStub } from '../helpers/fetchStub';
 import { parseCommandEnvelope, parseChangesResult } from '@shared/wire/commands';
 const config={apiBase:'http://localhost:8787',authToken:'tok'};
 const now='2026-10-01T10:00:00.123Z';
-const row={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:null,due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,created_at:now,updated_at:now};
+const row={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:null,due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,available_from:null,deadline:null,created_at:now,updated_at:now};
 const second={...row,id:'t_second'};
 const parsed=parseCommandEnvelope({contractVersion:2,commandId:'c_batch01',actor:'user',expectedStructuralRevision:0,commands:[row,second].map((task,index)=>({kind:'task.create',id:task.id,clientRef:index?'second':'first',expectedRevision:null,expectedStructuralRevision:0,values:{title:task.title,notes:null,kickoffNote:null,taskType:'action',project:null}}))});if(!parsed.ok)throw new Error();
 const result={contractVersion:2,commandId:parsed.value.commandId,payloadHash:'a'.repeat(64),serverNow:now,batch:true,applied:true,refs:{first:row.id,second:second.id},warnings:[],changes:[row,second].map(task=>({entity:'task',id:task.id,before:null,after:{revision:1,row:task}}))};

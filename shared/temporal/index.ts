@@ -1,4 +1,4 @@
-import { parseSchema } from '../parse/primitives';
+import { parseSchema, type ValidationError } from '../parse/primitives';
 import * as v from 'valibot';
 import { err, ok, type Result } from '../result';
 import {
@@ -199,3 +199,25 @@ export function resolveOffset(point: TemporalPoint, offset: RelativeOffset, date
 export const parseTemporalPoint = (input: unknown) => parseSchema(TemporalPointSchema, input);
 export const parseTimeInterval = (input: unknown) => parseSchema(TimeIntervalSchema, input);
 export const parseRelativeOffset = (input: unknown) => parseSchema(RelativeOffsetSchema, input);
+
+/** The single stored spelling of a point: fixed key order, so equal points are equal text. */
+export function temporalPointText(point: TemporalPoint): string {
+  return JSON.stringify(point.kind === 'date'
+    ? { kind: point.kind, date: point.date, timezone: point.timezone }
+    : { kind: point.kind, at: point.at, timezone: point.timezone });
+}
+/**
+ * A stored point column: JSON text that parses as a TemporalPoint and is already canonical.
+ * Output stays text; parse it into a point with parseTemporalPointText where the value is used.
+ */
+export const TemporalPointTextSchema = v.pipe(v.string(), v.check(text => {
+  try {
+    const parsed = parseTemporalPoint(JSON.parse(text));
+    return parsed.ok && temporalPointText(parsed.value) === text;
+  } catch { return false; }
+}, 'Expected canonical TemporalPoint JSON.'));
+export function parseTemporalPointText(text: string): Result<TemporalPoint, ValidationError[]> {
+  try { return parseTemporalPoint(JSON.parse(text)); } catch {
+    return err([{ path: [], code: 'invalid_json', message: 'Expected TemporalPoint JSON.' }]);
+  }
+}

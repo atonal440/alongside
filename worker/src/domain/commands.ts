@@ -145,7 +145,7 @@ export function planCreateCommand(input: CommandEnvelope, current: EntitySnapsho
     }
     const row = { ...common, id: command.id, task_type: command.values.taskType, project_id: command.values.project?.id ?? null,
       status: 'pending' as const, due_date: null, due_all_day: null, recurrence: null, defer_until: null, defer_kind: 'none' as const,
-      session_log: null, focused_until: null, duty_id: null, occurrence_at: null,
+      session_log: null, focused_until: null, duty_id: null, occurrence_at: null, available_from: null, deadline: null,
     };
     mutation = { kind: 'task.insert', row };
     change = { entity: 'task', id: command.id, before: null, after: { revision: rev.value, row } };

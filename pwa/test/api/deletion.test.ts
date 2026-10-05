@@ -4,7 +4,7 @@ import { installFetchStub } from '../helpers/fetchStub';
 import { parseCommandEnvelope, parseChangesResult } from '@shared/wire/commands';
 const config={apiBase:'http://localhost:8787',authToken:'tok'};
 const now='2026-10-01T10:00:00.123Z';
-const task={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:'p_first1',due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,created_at:now,updated_at:now};
+const task={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:'p_first1',due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,available_from:null,deadline:null,created_at:now,updated_at:now};
 const project={id:'p_first1',title:'Project',notes:null,kickoff_note:null,status:'active',created_at:now,updated_at:now};
 const link={from_task_id:task.id,to_task_id:'t_second',link_type:'blocks'};
 const base={contractVersion:2,commandId:'c_delete1',payloadHash:'a'.repeat(64),serverNow:now,applied:true,warnings:[],refs:{}};

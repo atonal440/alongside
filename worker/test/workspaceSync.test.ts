@@ -226,6 +226,7 @@ it('bootstraps previously advertised preferences and retired log names without r
    INSERT INTO action_log(tool_name,task_id,title,created_at) VALUES('snooze_task','t_deleted','Historical snooze','${now}')`);
   const beforePrefs=sql.prepare('SELECT * FROM user_preferences').all();const beforeLog=sql.prepare('SELECT * FROM action_log').all();
   sql.exec(readFileSync(`${dir}/014_workspace_sync.sql`,'utf8'));
+  sql.exec(readFileSync(`${dir}/015_task_date_roles.sql`,'utf8'));
   const d1={prepare(query:string){return{async all(){return{success:true,results:sql.prepare(query).all()};}};}} as unknown as D1Database;
   const snapshot=await new DB(d1).getWorkspaceSnapshot();
   expect(snapshot.entities.filter(row=>row.entity==='preference').map(row=>row.row)).toEqual([...beforePrefs].sort((a,b)=>(a.key as string).localeCompare(b.key as string)));

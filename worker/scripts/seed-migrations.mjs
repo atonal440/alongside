@@ -35,6 +35,7 @@ const applied = [
   '012_creation_commands.sql',
   '013_link_commands.sql',
   '014_workspace_sync.sql',
+  '015_task_date_roles.sql',
 ];
 
 const inserts = applied

@@ -2,6 +2,7 @@ import * as v from 'valibot';
 import type { InferOutput } from 'valibot';
 import type { Project, Task, TaskLink } from '../types';
 import type { Result } from '../result';
+import { TemporalPointTextSchema } from '../temporal';
 import {
   boundedStringSchema,
   DeferKindSchema,
@@ -66,6 +67,9 @@ export const taskRowEntries = {
   focused_until: v.nullable(IsoDateTimeSchema),
   duty_id: v.nullable(v.string()),
   occurrence_at: v.nullable(IsoDateTimeMinuteSchema),
+  // Absent in images written before date roles existed; read as unset.
+  available_from: v.optional(v.nullable(TemporalPointTextSchema), null),
+  deadline: v.optional(v.nullable(TemporalPointTextSchema), null),
 };
 
 export const TaskRowSchema = v.pipe(

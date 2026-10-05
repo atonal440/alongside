@@ -66,6 +66,8 @@ export function newLocalTask(
     focused_until: null,
     duty_id: null,
     occurrence_at: null,
+    available_from: null,
+    deadline: null,
   };
 }
 

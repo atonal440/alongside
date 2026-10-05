@@ -5,7 +5,7 @@ import { parseCommandEnvelope } from '@shared/wire/commands';
 const config = { apiBase:'http://localhost:8787',authToken:'tok' };
 const parsed = parseCommandEnvelope({ contractVersion:2,commandId:'c_complete1',actor:'user',commands:[{kind:'task.complete',id:'t_first1',expectedRevision:1,expectedStructuralRevision:1,successor:{id:'t_successor',clientRef:'next'}}] });
 if (!parsed.ok) throw new Error();const input = parsed.value;
-const row = {id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:null,due_date:'2026-10-05T12:00:00Z',due_all_day:true,recurrence:'FREQ=WEEKLY',defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,created_at:'2026-10-01T10:00:00.123Z',updated_at:'2026-10-01T10:00:00.123Z'};
+const row = {id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:null,due_date:'2026-10-05T12:00:00Z',due_all_day:true,recurrence:'FREQ=WEEKLY',defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,available_from:null,deadline:null,created_at:'2026-10-01T10:00:00.123Z',updated_at:'2026-10-01T10:00:00.123Z'};
 const completed = {entity:'task',id:row.id,before:{row,revision:1},after:{row:{...row,status:'done'},revision:2}};
 const next = {entity:'task',id:'t_successor',before:null,after:{row:{...row,id:'t_successor',due_date:'2026-10-12T12:00:00Z'},revision:1}};
 const result = {contractVersion:2,commandId:input.commandId,payloadHash:'a'.repeat(64),serverNow:row.updated_at,changes:[completed,next],refs:{next:next.id},warnings:[],applied:true};

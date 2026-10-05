@@ -4,7 +4,7 @@ import { installFetchStub } from '../helpers/fetchStub';
 import { parseWorkspaceSnapshot } from '@shared/wire/sync';
 const config={apiBase:'http://localhost:8787',authToken:'tok'};
 const now='2026-10-01T10:00:00Z';
-const task={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:null,due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,created_at:now,updated_at:now};
+const task={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:null,due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,available_from:null,deadline:null,created_at:now,updated_at:now};
 const duty={id:'d_first1',title:'Duty',notes:null,kickoff_note:null,task_type:'action',project_id:null,rrule:'FREQ=DAILY',dtstart:now,timezone:null,status:'active',catch_up:'next',last_spawned_at:null,next_occurrence_at:null,created_at:now,updated_at:now};
 const image={entity:'task',key:task.id,revision:4,deletedAt:null,row:task};
 const body={contractVersion:2,cursor:{epoch:2,sequence:100},structuralRevision:4,entities:[image]};

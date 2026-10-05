@@ -38,6 +38,8 @@ function taskRow(overrides: Partial<Task> = {}): Task {
     due_all_day: null,
     duty_id: null,
     occurrence_at: null,
+    available_from: null,
+    deadline: null,
     ...overrides,
   };
 }
@@ -273,7 +275,7 @@ describe('DB plan application paths', () => {
     expect(batches).toHaveLength(1);
     expect(mutationSqls(batches[0])).toEqual([
       'UPDATE tasks SET status = ?, updated_at = ?, defer_until = ?, defer_kind = ?, focused_until = ? WHERE id = ?',
-      'INSERT INTO tasks (id,title,notes,status,due_date,due_all_day,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until,duty_id,occurrence_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      'INSERT INTO tasks (id,title,notes,status,due_date,due_all_day,recurrence,created_at,updated_at,defer_until,defer_kind,task_type,project_id,kickoff_note,session_log,focused_until,duty_id,occurrence_at,available_from,deadline) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     ]);
   });
 

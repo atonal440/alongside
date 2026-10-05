@@ -166,7 +166,8 @@ function validCompletion(changes: ChangeDiff[], serverNow: string): boolean {
     const expected = { ...before, id: successor.id, status: 'pending',
       due_date: `${nextOccurrence(rule.value.parts, anchor.value)}T12:00:00Z`, due_all_day: true,
       created_at: serverNow, updated_at: serverNow, defer_kind: 'none', defer_until: null, focused_until: null,
-      kickoff_note: before.session_log ?? before.kickoff_note, session_log: null, duty_id: null, occurrence_at: null };
+      kickoff_note: before.session_log ?? before.kickoff_note, session_log: null, duty_id: null, occurrence_at: null,
+      available_from: null, deadline: null };
     const after = successor.after.row;
     return Object.entries(expected).every(([field, stored]) => after[field as keyof typeof after] === stored);
   } catch {

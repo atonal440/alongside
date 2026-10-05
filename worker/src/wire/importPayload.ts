@@ -84,6 +84,8 @@ const ImportTaskRowSchema = v.pipe(
       focused_until: row.focused_until,
       duty_id: row.duty_id,
       occurrence_at: row.occurrence_at,
+      available_from: row.available_from,
+      deadline: row.deadline,
     };
   }),
   v.check(row => (row.duty_id === null) === (row.occurrence_at === null),
