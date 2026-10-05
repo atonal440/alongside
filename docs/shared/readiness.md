@@ -2,19 +2,23 @@
 
 Shared predicate and scoring functions for task readiness. Used by the worker (in JS post-processing where SQL isn't convenient) and by the PWA (sidebar badge, suggest queue, status filter chips, readiness score bars). The worker also has a paired SQL fragment in `worker/src/db.ts` (`notDeferredCondition`) that mirrors `isDeferred` for D1 queries.
 
-A task is **ready** when it is pending, not deferred, already available (its `available_from`, if any, has opened), and not blocked by an unfinished task.
+A task is **ready** when it is pending, not deferred, already available (its own `available_from`, and every ancestor's, has opened), not blocked by an unfinished task (its own prerequisites and those of any ancestor), and has no finished ancestor.
+
+**Effective dates.** A subtask cannot start before any ancestor opens or finish after any ancestor's hard deadline, so `effectiveDates(task, tasks)` returns the latest `available_from` and earliest `deadline` along the ancestor chain, each with the id of the task whose own date sets it (ties go to the nearest task). Targets (`due_date`) are never inherited. A child dated later than its parent keeps its own value; the parent's simply wins. `windowEmpty` is true when the effective opening is not strictly before the effective deadline: the task is infeasible, not corrupt, and surfaces an `empty_window` warning.
+
+**`readiness(task, links, tasks, nowIso)`** — `{ ready, reasons, warnings, effective }`. `reasons` is empty exactly when ready; each is a code with data: `not_pending`, `deferred` (`until`), `not_yet_available` (`opensAt`, `sourceId`), `blocked_by` (`taskId`, plus `via` when an ancestor's prerequisite), `ancestor_done` (`taskId`). `warnings` never gate: `empty_window`, `deadline_passed` (`at`, `sourceId`) and `open_subtasks` (`count`; there are no node roles yet, so a parent with open subtasks stays actionable). Parent loops and missing parents end the chain instead of throwing.
 
 ## Functions
 
 **`isDeferred(task, nowIso)`** — Returns true when `defer_kind = 'someday'`, or `defer_kind = 'until'` with `defer_until > now`. Past `until` values are treated as not deferred (no write-back).
 
-**`isAvailable(task, nowIso)`** — False only while `available_from` resolves to an instant after `nowIso`. A date opens at the start of its local day in its own zone; an unset or unreadable value never blocks. Independent of deferral.
+**`isAvailable(task, nowIso, tasks?)`** — False only while `available_from` (the latest along the ancestor chain when `tasks` is passed) resolves to an instant after `nowIso`. A date opens at the start of its local day in its own zone; an unset or unreadable value never blocks. Independent of deferral.
 
 **`deadlineBoundary(task)`** — The minute-UTC instant the hard `deadline` passes (the start of the next local day for a date deadline), or null. Used to sort and to score.
 
-**`hasActiveBlocker(task, links, tasks)`** — Returns true when any incoming `blocks` link points from a task whose status is not `'done'`.
+**`hasActiveBlocker(task, links, tasks)`** — Returns true when any incoming `blocks` link to the task or one of its ancestors points from a task whose status is not `'done'`.
 
-**`isReady(task, links, tasks, nowIso)`** — Composite of `status === 'pending'`, `!isDeferred`, `isAvailable`, and `!hasActiveBlocker`.
+**`isReady(task, links, tasks, nowIso)`** — `readiness(...).ready`.
 
 **`isFocused(task, nowIso)`** — Returns true when `focused_until` is set and greater than `nowIso`. Pure function; call sites pass the current ISO timestamp.
 

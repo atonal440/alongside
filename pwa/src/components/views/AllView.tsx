@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { isAvailable } from '@shared/readiness';
+import { hasDoneAncestor, isAvailable } from '@shared/readiness';
 import { useAppState } from '../../hooks/useAppState';
 import { buildBlocksMap, buildBlockedByMap } from '../../utils/linkMaps';
 import {
@@ -27,8 +27,8 @@ import { deriveTaskFlow, type TaskFlowAction, type TaskFlowActionId } from '../.
 import type { StatusFilter } from '../../context/reducer';
 import type { Project, Task, TaskLink } from '../../types';
 
-// A task whose available_from has not opened is waiting like a deferred one.
-const notYetAvailable = (task: Task): boolean => !isAvailable(task, new Date().toISOString());
+// A task whose available_from (or an ancestor's) has not opened, or whose ancestor is finished, waits like a deferred one.
+const notYetAvailable = (task: Task, tasks: Task[]): boolean => !isAvailable(task, new Date().toISOString(), tasks) || hasDoneAncestor(task, tasks);
 
 type SortMode = 'readiness' | 'due' | 'project';
 
@@ -58,22 +58,22 @@ export function AllView() {
     for (const t of matchingTasks) {
       if (t.status === 'done') counts.done += 1;
       else if (isSomeday(t)) counts.someday += 1;
-      else if (isDeferred(t) || notYetAvailable(t)) counts.deferred += 1;
+      else if (isDeferred(t) || notYetAvailable(t, state.tasks)) counts.deferred += 1;
       else counts.ready += 1;
     }
     return counts;
-  }, [matchingTasks]);
+  }, [matchingTasks, state.tasks]);
 
   const filteredTasks = useMemo(() => {
     return matchingTasks.filter(t => {
       switch (state.statusFilter) {
         case 'done': return t.status === 'done';
         case 'someday': return t.status !== 'done' && isSomeday(t);
-        case 'deferred': return t.status !== 'done' && !isSomeday(t) && (isDeferred(t) || notYetAvailable(t));
-        case 'ready': return t.status !== 'done' && !isDeferred(t) && !notYetAvailable(t);
+        case 'deferred': return t.status !== 'done' && !isSomeday(t) && (isDeferred(t) || notYetAvailable(t, state.tasks));
+        case 'ready': return t.status !== 'done' && !isDeferred(t) && !notYetAvailable(t, state.tasks);
       }
     });
-  }, [matchingTasks, state.statusFilter]);
+  }, [matchingTasks, state.statusFilter, state.tasks]);
 
   const sortedTasks = useMemo(() => {
     return [...filteredTasks].sort((a, b) => {

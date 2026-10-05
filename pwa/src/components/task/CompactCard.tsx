@@ -4,16 +4,18 @@ import { taskMetaString } from './TaskMeta';
 interface Props {
   task: Task;
   nowIso: string;
+  /** The workspace's tasks, so inherited dates from ancestors show; omit to show the task's own. */
+  tasks?: readonly Task[];
   cssClass?: string;
   onComplete?: (id: string) => void;
   onDetail?: (id: string) => void;
 }
 
-export function CompactCard({ task, nowIso, cssClass = '', onComplete, onDetail }: Props) {
+export function CompactCard({ task, nowIso, tasks, cssClass = '', onComplete, onDetail }: Props) {
   const done = task.status === 'done';
   const focused = !!task.focused_until && task.focused_until > new Date().toISOString();
   const label = focused ? 'Focused' : '';
-  const meta = taskMetaString(task, nowIso);
+  const meta = taskMetaString(task, nowIso, tasks);
 
   return (
     <div className={`compact-card${done ? ' done' : ''}${cssClass ? ` ${cssClass}` : ''}`}>
