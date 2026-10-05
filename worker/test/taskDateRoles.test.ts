@@ -35,6 +35,8 @@ describe.each(['fresh', 'upgrade'] as const)('task.dates.set (%s)', mode => {
     const { sql, d1 } = sqliteD1(mode); const db = new DB(d1);
     try {
       const task = await db.addTask({ title: 'Apply', notes: 'n', due_date: '2026-10-05' });
+      const planned = await db.previewChanges(dates(task.id, 1, { availableFrom: day('2026-10-06'), deadline: null }, 'c_dates0pv'));
+      expect(planned.requiredStatements).toBe(6);   // documented in reliable-task-fields.md
       const result = await db.applyChanges(dates(task.id, 1, { availableFrom: day('2026-10-06'), deadline: { kind: 'instant', at: '2026-10-09T17:00:00-07:00', timezone: LA } }));
       expect(parseChangesResult(result).ok).toBe(true);
       const row = (await db.getTask(task.id))!;
