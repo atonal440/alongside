@@ -56,6 +56,8 @@ export interface TaskBase {
   dueDate: IsoDateTime | null;
   /** Earliest permitted start, independent of deferral. */
   availableFrom: TemporalPoint | null;
+  parentId: TaskId | null;
+  position: number | null;
   /** Hard completion boundary; dueDate remains the softer target. */
   deadline: TemporalPoint | null;
   recurrence: Recurrence;
@@ -263,6 +265,12 @@ export function taskFromRow(row: Task): Result<TaskDomain, ValidationError[]> {
   const deadline = nullableTemporalPoint('deadline', row.deadline);
   if (!deadline.ok) errors.push(...deadline.error);
 
+  const parentId = row.parent_id === null || row.parent_id === undefined ? ok(null) : parseTaskId(row.parent_id);
+  if (!parentId.ok) errors.push(...withPath('parent_id', parentId.error));
+  else if (parentId.value !== null && parentId.value === row.id) errors.push({ path: ['parent_id'], code: 'invalid_state', message: 'A task cannot be its own parent.' });
+  const position = row.position ?? null;
+  if (position !== null && !Number.isFinite(position)) errors.push({ path: ['position'], code: 'invalid_state', message: 'position must be a finite number.' });
+
   if (availableFrom.ok && deadline.ok) {
     const problem = taskDateRoleProblem({ availableFrom: availableFrom.value, deadline: deadline.value });
     if (problem) errors.push({ path: [problem.path[0] === 'deadline' ? 'deadline' : 'available_from'], code: 'invalid_state', message: problem.message });
@@ -335,6 +343,7 @@ export function taskFromRow(row: Task): Result<TaskDomain, ValidationError[]> {
     !dueDate.ok ||
     !availableFrom.ok ||
     !deadline.ok ||
+    !parentId.ok ||
     !recurrence.ok ||
     !kickoffNote.ok ||
     !sessionLog.ok ||
@@ -360,6 +369,8 @@ export function taskFromRow(row: Task): Result<TaskDomain, ValidationError[]> {
     dueDate: dueDate.value,
     availableFrom: availableFrom.value,
     deadline: deadline.value,
+    parentId: parentId.value as TaskId | null,
+    position,
     recurrence: recurrence.value,
     kickoffNote: kickoffNote.value,
     sessionLog: sessionLog.value,

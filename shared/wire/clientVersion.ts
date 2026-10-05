@@ -9,16 +9,17 @@ export const CLIENT_HEADER = 'X-Alongside-Client';
 /**
  * 3 = parses command-kind action-log names (see docs/plans/mcp-surface.md).
  * 4 = parses the task.dates.set action name and the available_from/deadline task columns.
+ * 5 = parses the task.parent.set action name and the parent_id/position task columns.
  */
-export const CLIENT_PROTOCOL = 4;
+export const CLIENT_PROTOCOL = 5;
 /** Oldest browser-client protocol still allowed to write. Raise it to lock out old builds. */
 export const MIN_WRITE_PROTOCOL = 2;
 /**
  * Oldest browser-client protocol allowed to read the sync feed (snapshot and delta). Protocol 3
- * parses command-kind action-log names, and protocol 4 the task.dates.set name; older builds would reject a feed page that contains one
+ * parses command-kind action-log names, and protocol 4 the task.dates.set name, protocol 5 the task.parent.set name; older builds would reject a feed page that contains one
  * and fail every pull, so they are told to reload before the worker writes such a row.
  */
-export const MIN_SYNC_READ_PROTOCOL = 4;
+export const MIN_SYNC_READ_PROTOCOL = 5;
 export const UPGRADE_REQUIRED_STATUS = 426;
 
 export interface ClientAnnouncement { name: string; protocol: number }

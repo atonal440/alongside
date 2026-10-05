@@ -225,6 +225,19 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
         commands.push({ kind: command.kind, id, expectedRevision: await edit('task', id), expectedStructuralRevision: structural, project: await project(command.project, [...at, 'project']) });
         break;
       }
+      case 'task.parent.set': {
+        keys('id', 'parent', 'position');
+        const id = idOf('task');
+        let parent: { id: string; expectedRevision: number } | null = null;
+        if (command.parent !== null) {
+          const { id: parentId } = resolve(command.parent, 'task', [...at, 'parent']);
+          parent = { id: parentId, expectedRevision: await revisionOf('task', parentId, [...at, 'parent']) };
+        }
+        const position = command.position === undefined ? null : command.position;
+        commands.push({ kind: command.kind, id, expectedRevision: await edit('task', id), expectedStructuralRevision: structural, parent, position });
+        remember('task', id, { parent_id: parent?.id ?? null, position });
+        break;
+      }
       case 'task.delete':
       case 'project.delete': {
         keys('id');

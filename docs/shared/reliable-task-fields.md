@@ -75,9 +75,54 @@ and `recurrence` to be null. Unknown keys, missing values and inappropriate
 combinations fail before writes. Final values pass the existing domain codec.
 
 This compatibility command replaces only `due_date`, `due_all_day`, `recurrence`
-and update time. It does not create hard deadlines or availability (use `task.dates.set`), hierarchy
+and update time. It does not create hard deadlines or availability (use `task.dates.set`), hierarchy (use `task.parent.set`)
 constraints or future explicit date-role records. Done tasks remain done. Legacy
 completion/spawning behavior is unchanged; no background series engine is enabled.
+
+## Hierarchy
+
+`task.parent.set` places a task under a parent or makes it top level. `parent`
+is null or `{id, expectedRevision}`; `position` is a finite number or null (and
+is stored as null when `parent` is null). It requires the entity and structural
+revisions and counts nine prepared SQL statements.
+
+```json
+{
+  "kind": "task.parent.set",
+  "id": "t_child",
+  "expectedRevision": 2,
+  "expectedStructuralRevision": 31,
+  "parent": { "id": "t_parent", "expectedRevision": 5 },
+  "position": 1
+}
+```
+
+The planner walks up from the new parent through the same reader as every other
+command, so inside a mixed batch it sees parents and ancestors created or moved
+earlier in that batch. It refuses (as `invalid_transition`, nothing written) a
+self parent, a parent in another project, a placement that would make the task
+its own ancestor, and a chain deeper than 32 tasks counting the task itself.
+Depth is checked on the ancestor chain only; moving a task that already has
+deep subtasks under a deep parent is not re-measured downward.
+
+Rules that depend on subtasks, using the same reader:
+
+- A task with open (pending) subtasks cannot be completed; finish them first,
+  or complete children and parent in one batch in that order.
+- A task with subtasks cannot be deleted. Project deletion detaches the whole
+  subtree together, because a hierarchy always sits in one project.
+- A subtask cannot change project on its own, and a task with subtasks cannot
+  change project; make it top level (or move the subtree one task at a time
+  from the leaves up) first.
+- A completion successor of a legacy recurring task starts top level.
+
+`parent_id` has no foreign key (restore inserts rows in one pass), so import and
+restore validate the whole document instead: every parent exists, shares the
+child's project, and no chain loops or exceeds the depth limit.
+
+Not in this slice: group node roles, an opt-in `all_children_done` completion
+policy, cancel cascades, subtree-wide project moves, blocks links between an
+ancestor and a descendant, and inherited effective dates.
 
 ## Date roles
 

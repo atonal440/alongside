@@ -97,6 +97,11 @@ const taskFieldSchemas = [
     expectedStructuralRevision: { type: 'integer', minimum: 0, maximum: 9007199254740991 },
     project: { oneOf: [{ type: 'null' }, { type: 'object', additionalProperties: false, properties: { id: { type: 'string', pattern: '^p_[0-9A-Za-z_-]{5,}$' }, expectedRevision: { type: 'integer', minimum: 0, maximum: 9007199254740991 } }, required: ['id', 'expectedRevision'] }] },
   }, required: ['kind', 'id', 'expectedRevision', 'expectedStructuralRevision', 'project'] },
+  { ...stateCommandSchema('task.parent.set'), properties: { ...stateCommandSchema('task.parent.set').properties,
+    expectedStructuralRevision: { type: 'integer', minimum: 0, maximum: 9007199254740991 },
+    parent: { oneOf: [{ type: 'null' }, { type: 'object', additionalProperties: false, properties: { id: { type: 'string', pattern: '^t_[0-9A-Za-z_-]{5,}$' }, expectedRevision: { type: 'integer', minimum: 0, maximum: 9007199254740991 } }, required: ['id', 'expectedRevision'] }], description: 'The parent task, in the same project as this task; null makes it top level. Chains are at most 32 deep and cannot loop.' },
+    position: { type: ['number', 'null'], description: 'Sort key among siblings, ascending; null sorts after positioned siblings, oldest first.' },
+  }, required: ['kind', 'id', 'expectedRevision', 'expectedStructuralRevision', 'parent', 'position'] },
   stateCommandSchema('task.type.set', 'taskType', { enum: ['action', 'plan'] }),
   stateCommandSchema('task.legacy-schedule.set', 'values', { type: 'object', additionalProperties: false, properties: {
     dueDate: { type: ['string', 'null'], description: 'Legacy calendar date or offset instant, normalized to minute UTC in years 0100–9999; not a hard deadline.' },

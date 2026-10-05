@@ -4,7 +4,7 @@ import { installFetchStub } from '../helpers/fetchStub';
 import { parseWorkspaceExport } from '@shared/wire/workspaceExport';
 const config={apiBase:'http://localhost:8787',authToken:'tok'};
 const now='2026-10-01T10:00:00Z';
-const task={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:null,due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,available_from:null,deadline:null,created_at:now,updated_at:now};
+const task={id:'t_first1',title:'Task',notes:null,kickoff_note:null,status:'pending',task_type:'action',project_id:null,due_date:null,due_all_day:null,recurrence:null,defer_kind:'none',defer_until:null,focused_until:null,session_log:null,duty_id:null,occurrence_at:null,available_from:null,deadline:null, parent_id: null, position: null,created_at:now,updated_at:now};
 const body={version:2,exported_at:now,tasks:[task],projects:[],links:[],duties:[],preferences:[{key:'sort_by',value:'manual'}],planning_settings:null,action_log:[{id:1,tool_name:'snooze_task',task_id:'t_deleted',duty_id:null,title:'Historical',detail:null,created_at:now}],command_audit:[]};
 it('parses a portable v2 export with retained legacy user data',async()=>{
  const parsed=parseWorkspaceExport(body);if(!parsed.ok)throw new Error();

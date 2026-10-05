@@ -1,6 +1,6 @@
 # Power-user todo implementation checklist
 
-Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion merged/deployed. Bounded mixed graph batches merged/deployed. Compound lifecycle batches merged/deployed. Workspace bootstrap, delta, portable export and bounded v2 restore merged/deployed. Slice 2f (canonical store, queue-replay read path, retained intent with rebase, version gate, legacy mirror retired) merged/deployed. Slice 2 (including 2g, reliable PWA commands) is complete. Slice 3 has started: 3a (explicit `deadline`/`available_from` date roles) is implemented; hierarchy and the rest of Slice 3 remain, as do Slices 4–7.
+Status: Slices 1 and 2a–2c merged/deployed. Slice 2d creation merged/deployed; guarded content edits merged/deployed. Guarded state commands merged/deployed; reliable completion merged/deployed. Guarded task fields merged/deployed. Reliable links merged/deployed. Task/project deletion merged/deployed. Bounded mixed graph batches merged/deployed. Compound lifecycle batches merged/deployed. Workspace bootstrap, delta, portable export and bounded v2 restore merged/deployed. Slice 2f (canonical store, queue-replay read path, retained intent with rebase, version gate, legacy mirror retired) merged/deployed. Slice 2 (including 2g, reliable PWA commands) is complete. Slice 3 has started: 3a (explicit `deadline`/`available_from` date roles) is merged and 3b (subtask hierarchy) is implemented; effective dates, tags, priority and estimates remain, as do Slices 4–7.
 Updated: 2026-10-05.
 
 Semantic authority: [power-user-todo.md](power-user-todo.md). Read it first.
@@ -1054,5 +1054,28 @@ tombstone, restore, IDB store) for no behavioral gain; revisit if per-role histo
 - PWA: shows `Deadline`/`Past deadline`/`Starts` in the task meta line; it does not edit the roles yet (no
   visual redesign here), and its writes never change them.
 
-Next in Slice 3: hierarchy (`parent_id`, order, node role, group completion rules, depth limit), then
-effective-date inheritance and blocker explanations, tags/priority/estimates.
+### 2026-10-05 — Slice 3b: subtask hierarchy
+
+Migration 016 adds `tasks.parent_id` and `tasks.position` (null for existing rows; the sync task triggers are
+recreated). Deviations from master plan section 4, chosen to keep the slice reviewable:
+
+- No `node_role`: any task may have subtasks, instead of only `group` nodes. No `all_children_done` policy and
+  no cancel cascade yet. Completion is manual and refuses while a subtask is open.
+- `parent_id` has no foreign key and there is no derived project propagation: a subtask must already be in its
+  parent's project, and a task with a parent or children cannot change project on its own. This keeps every
+  command a single-identity write (no derived effects in `validDiffIdentity`), and the 100-statement cap
+  never depends on subtree size.
+- Deleting a task with subtasks is refused instead of detaching or cascading.
+- Depth is checked on the ancestor chain (max 32 including the task), not downward.
+
+- `task.parent.set` (guarded, standalone or in a batch; nine statements) with loose-intent client refs, and
+  `parent_id`/`position` on `add_task`/`update_task`. `CommandReader` gained `children(id)` with a batch overlay,
+  so completion and deletion rules see earlier commands in the same batch.
+- `get_context` on a task returns `parent` and ordered `subtasks`; `find` filters by `parent_id` (null: top level).
+- Import and restore validate the whole hierarchy (missing parent, loop, project mismatch, depth) via
+  `shared/hierarchy.ts`.
+- Wire: `CLIENT_PROTOCOL` and `MIN_SYNC_READ_PROTOCOL` are 5; `features.hierarchy` is true.
+- PWA: the detail view lists the parent ("Part of") and subtasks with a done count; no editing yet.
+
+Next in Slice 3: effective-date inheritance and blocker explanations, then tags/priority/estimates; group roles and
+completion policy remain open from section 4 and are now purely additive.

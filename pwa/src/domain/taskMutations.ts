@@ -68,6 +68,8 @@ export function newLocalTask(
     occurrence_at: null,
     available_from: null,
     deadline: null,
+    parent_id: null,
+    position: null,
   };
 }
 

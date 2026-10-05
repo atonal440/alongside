@@ -42,6 +42,8 @@ function taskRow(overrides: Partial<Task> = {}): Task {
     occurrence_at: null,
     available_from: null,
     deadline: null,
+    parent_id: null,
+    position: null,
     ...overrides,
   };
 }
@@ -254,6 +256,8 @@ describe('completeTaskPlan', () => {
         occurrence_at: null,
         available_from: null,
         deadline: null,
+        parent_id: null,
+        position: null,
       },
     });
   });

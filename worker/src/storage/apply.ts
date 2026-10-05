@@ -58,6 +58,8 @@ const TASK_INSERT_COLUMNS = [
   'occurrence_at',
   'available_from',
   'deadline',
+  'parent_id',
+  'position',
 ] as const;
 
 const TASK_RESTORE_COLUMNS = TASK_INSERT_COLUMNS;
@@ -84,6 +86,8 @@ const TASK_UPDATE_COLUMNS = [
   'focused_until',
   'available_from',
   'deadline',
+  'parent_id',
+  'position',
 ] as const satisfies readonly (keyof TaskRowPatch)[];
 
 const PROJECT_INSERT_COLUMNS = [

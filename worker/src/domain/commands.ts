@@ -1,4 +1,5 @@
 import { parseRevision, type EventInstant } from '@shared/parse';
+import { MAX_TASK_DEPTH } from '@shared/hierarchy';
 import type { CommandEnvelope, ChangesResult } from '@shared/wire/commands';
 import type { FoundationErrorDetail, PlanningSettings } from '@shared/wire/planning';
 import type { Plan, TaskRowPatch, ProjectRowPatch } from './Op';
@@ -146,7 +147,7 @@ export function planCreateCommand(input: CommandEnvelope, current: EntitySnapsho
     }
     const row = { ...common, id: command.id, task_type: command.values.taskType, project_id: command.values.project?.id ?? null,
       status: 'pending' as const, due_date: null, due_all_day: null, recurrence: null, defer_until: null, defer_kind: 'none' as const,
-      session_log: null, focused_until: null, duty_id: null, occurrence_at: null, available_from: null, deadline: null,
+      session_log: null, focused_until: null, duty_id: null, occurrence_at: null, available_from: null, deadline: null, parent_id: null, position: null,
     };
     mutation = { kind: 'task.insert', row };
     change = { entity: 'task', id: command.id, before: null, after: { revision: rev.value, row } };
@@ -161,7 +162,7 @@ export function planCreateCommand(input: CommandEnvelope, current: EntitySnapsho
 
 export function commandEntityKey(command: Exclude<CommandEnvelope['commands'][number], { kind: 'planning.set' | 'preference.set' | 'link.add' | 'link.remove' }>): EntityReadKey {
   switch (command.kind) {
-    case 'task.delete': case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': case 'task.complete': case 'task.project.set': case 'task.type.set': case 'task.legacy-schedule.set': case 'task.dates.set': return { entity: 'task', id: command.id };
+    case 'task.delete': case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': case 'task.complete': case 'task.project.set': case 'task.parent.set': case 'task.type.set': case 'task.legacy-schedule.set': case 'task.dates.set': return { entity: 'task', id: command.id };
     case 'project.delete': case 'project.create': case 'project.content.set': case 'project.archive': case 'project.reopen': return { entity: 'project', id: command.id };
   }
 }
@@ -285,7 +286,7 @@ export function planStateCommand(input: CommandEnvelope, current: EntitySnapshot
   }
 }
 
-export function planCompleteCommand(input: CommandEnvelope, current: EntitySnapshot, successor: EntitySnapshot | null, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
+export function planCompleteCommand(input: CommandEnvelope, current: EntitySnapshot, successor: EntitySnapshot | null, children: ChildState[], hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
   const command = input.commands[0]!;
   if (command.kind !== 'task.complete' || current.entity !== 'task' || current.id !== command.id) throw new Error('Expected matching task completion.');
   const conflict = entityCommandConflict(input, current);
@@ -300,6 +301,9 @@ export function planCompleteCommand(input: CommandEnvelope, current: EntitySnaps
   if (task.value.lifecycle !== 'pending') throw new CommandError({ code: 'invalid_transition', path: ['commands', '0'], message: 'Only pending tasks can be completed.',
     retryable: false, currentEntity: current, recoveryHint: 'Inspect currentEntity; replay the original command if this is a retry.',
   });
+  const open = children.filter(child => child.status === 'pending').length;
+  if (open > 0) throw new CommandError({ code: 'invalid_transition', path: ['commands', '0'], message: `Complete the ${open} open subtask${open === 1 ? '' : 's'} first.`,
+    retryable: false, currentEntity: current, recoveryHint: 'Complete or detach the open subtasks, then complete this task again with a new command ID.' });
   const recurring = task.value.recurrence.kind === 'recurring';
   if (recurring !== (command.successor !== null)) throw new CommandError({ code: 'invalid_input', path: ['commands', '0', 'successor'],
     message: recurring ? 'A legacy recurring completion requires a stable successor ID.' : 'A nonrecurring completion requires successor:null.',
@@ -352,7 +356,45 @@ export function planCompleteCommand(input: CommandEnvelope, current: EntitySnaps
   } };
 }
 
-export function planTaskProjectCommand(input: CommandEnvelope, current: EntitySnapshot, project: EntitySnapshot | null, hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
+export { MAX_TASK_DEPTH };
+/** A subtask as the hierarchy rules see it: identity and lifecycle only. */
+export interface ChildState { id: string; status: string }
+
+export function planTaskParentCommand(input: CommandEnvelope, current: EntitySnapshot, parent: EntitySnapshot | null, ancestors: EntitySnapshot[], hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
+  const command = input.commands[0]!;
+  if (command.kind !== 'task.parent.set' || current.entity !== 'task' || current.id !== command.id) throw new Error('Expected matching task parent command.');
+  const conflict = entityCommandConflict(input, current);
+  if (conflict) throw conflict;
+  if (current.structuralRevision !== command.expectedStructuralRevision) throw new CommandError({ code: 'structural_conflict', path: ['commands', '0', 'expectedStructuralRevision'],
+    message: 'Workspace changed since planning the hierarchy.', retryable: false, currentEntity: current, expectedStructuralRevision: command.expectedStructuralRevision,
+    recoveryHint: 'Retain the intended placement, inspect current state and submit a new command ID after explicitly rebasing.',
+  });
+  const reject = (message: string, hint: string, path: string[] = ['commands', '0', 'parent']): never => { throw new CommandError({ code: 'invalid_transition', path, message,
+    retryable: false, currentEntity: current, recoveryHint: hint }); };
+  const assertions: Plan['assertions'] = [{ kind: 'workspace.structural_revision', expected: command.expectedStructuralRevision }];
+  if (command.parent !== null) {
+    if (command.parent.id === command.id) reject('A task cannot be its own parent.', 'Choose a different parent.');
+    if (parent?.entity !== 'task' || parent.id !== command.parent.id) throw new Error('Selected parent snapshot mismatch.');
+    if (parent.row === null || parent.version?.revision !== command.parent.expectedRevision) throw new CommandError({ code: 'revision_conflict', path: ['commands', '0', 'parent'],
+      message: 'Selected parent is missing or changed.', retryable: false, currentEntity: parent, expectedRevision: command.parent.expectedRevision,
+      recoveryHint: 'Retain the placement intent and inspect the selected parent before explicitly rebasing with a new command ID.',
+    });
+    if (parent.structuralRevision !== current.structuralRevision) throw new CommandError({ code: 'structural_conflict', path: ['commands', '0', 'expectedStructuralRevision'],
+      message: 'Workspace changed between hierarchy reads.', retryable: false, currentEntity: parent, expectedStructuralRevision: command.expectedStructuralRevision,
+      recoveryHint: 'Retain the placement intent and preview again after explicitly rebasing with a new command ID.',
+    });
+    if ((parent.row.project_id ?? null) !== (current.row!.project_id ?? null)) reject('A subtask must be in the same project as its parent.',
+      'Move the task into the parent\'s project first, or choose a parent in the task\'s project.');
+    const chain = [parent, ...ancestors];
+    if (chain.some(task => task.id === command.id)) reject('That placement would make the task its own ancestor.', 'Choose a parent outside this task\'s own subtasks.');
+    if (chain.length + 1 > MAX_TASK_DEPTH) reject(`Tasks nest at most ${MAX_TASK_DEPTH} levels deep.`, 'Choose a shallower parent.');
+    assertions.push({ kind: 'entity.revision', key: { entity: 'task', id: command.parent.id }, expected: command.parent.expectedRevision }, { kind: 'task.exists', id: command.parent.id });
+  }
+  const planned = planEntityUpdate(input, current, { entity: 'task', patch: { parent_id: command.parent?.id ?? null, position: command.parent === null ? null : command.position, updated_at: now } }, hash, now);
+  return { result: planned.result, plan: { ...planned.plan, assertions: [...planned.plan.assertions, ...assertions] } };
+}
+
+export function planTaskProjectCommand(input: CommandEnvelope, current: EntitySnapshot, project: EntitySnapshot | null, children: ChildState[], hash: string, now: EventInstant): { plan: Plan; result: ChangesResult } {
   const command = input.commands[0]!;
   if (command.kind !== 'task.project.set' || current.entity !== 'task' || current.id !== command.id) throw new Error('Expected matching task project command.');
   const conflict = entityCommandConflict(input, current);
@@ -361,6 +403,12 @@ export function planTaskProjectCommand(input: CommandEnvelope, current: EntitySn
     message: 'Workspace changed since planning membership.', retryable: false, currentEntity: current, expectedStructuralRevision: command.expectedStructuralRevision,
     recoveryHint: 'Retain the intended membership, inspect current state and submit a new command ID after explicitly rebasing.',
   });
+  if (current.row!.parent_id !== null && current.row!.parent_id !== undefined) throw new CommandError({ code: 'invalid_transition', path: ['commands', '0', 'project'],
+    message: 'A subtask stays in its parent\'s project.', retryable: false, currentEntity: current,
+    recoveryHint: 'Make the task top level with task.parent.set first, or move the parent task instead.' });
+  if (children.length > 0) throw new CommandError({ code: 'invalid_transition', path: ['commands', '0', 'project'],
+    message: 'A task with subtasks cannot change project on its own.', retryable: false, currentEntity: current,
+    recoveryHint: 'Detach or move its subtasks first; a hierarchy stays in one project.' });
   const assertions: Plan['assertions'] = [{ kind: 'workspace.structural_revision', expected: command.expectedStructuralRevision }];
   if (command.project !== null) {
     if (project?.entity !== 'project' || project.id !== command.project.id) throw new Error('Selected project snapshot mismatch.');
