@@ -1101,3 +1101,9 @@ completion policy remain open from section 4 and are purely additive.
 - Migration 017 widens the legacy `change_feed` entity check to include duties (found while testing; R1 never wrote duty changes through commands). Client protocol and sync read floor are now 6; tool surface 7, command catalog 3.
 - Calendar fields stay immutable: reschedule = end + create. Resume does not backfill.
 - Next: R3 backfill legacy recurring tasks into duties, retire completion-driven spawning (same release), PWA surface.
+
+### Recurrence R3: adopt legacy recurring tasks (2026-10-05)
+- `duty.adopt_task` op, `adoptLegacyTaskPlan` (pure) and `adoptLegacyRecurrence`, run first by `materializeDueDuties` (cron and lazy reads). No migration: adoption is data written by the worker, idempotent and per record.
+- Deviation from "retire completion spawning": the legacy successor path stays for records the engine cannot represent (no/timed due date, rejected rule, COUNT), keeping one spawner per record. Every representable record leaves it on its next run.
+- Duties with no timezone anchored at 12:00Z make all-day instances (legacy date-only convention).
+- Not done: PWA surface for duties (list/pause/end), reminders, ledger/exceptions.

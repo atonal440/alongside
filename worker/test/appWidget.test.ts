@@ -67,7 +67,7 @@ describe('task widget', () => {
     expect(script).not.toContain("'reopen_task'");
   });
 
-  it('refreshes through find and completes through complete_task, including a recurring successor toast', async () => {
+  it('refreshes through find and completes through complete_task, including a recurring task the calendar engine has adopted', async () => {
     const { sql, d1 } = sqliteD1(); const db = new DB(d1);
     try {
       const a = await db.addTask({ title: 'Plain' });
@@ -85,7 +85,8 @@ describe('task widget', () => {
       expect(widget.root.innerHTML).toMatch(/Plain[\s\S]*status-done/);
       await widget.toggle(b.id, true);
       await sleep();
-      expect(widget.toast()).toContain('Done! Next');
+      // The find above adopted the weekly task into a duty, so completion creates no successor; the calendar does.
+      expect(widget.toast()).toBe('');
       expect(widget.errors).toEqual([]);
     } finally { sql.close(); }
   });

@@ -1,8 +1,8 @@
-import type { Duty } from '@shared/types';
+import type { Duty, Task } from '@shared/types';
 import { parseIsoDateTimeMinute, type IsoDateTime } from '@shared/parse/primitives';
 import { nanoid } from 'nanoid';
 import { dutyFromRow } from './domain/duty';
-import { materializeDutyPlan } from './domain/ops/duty';
+import { adoptLegacyTaskPlan, materializeDutyPlan } from './domain/ops/duty';
 import { applyPlan } from './storage';
 
 /** Duties examined per page, most overdue first, so one run's work stays bounded. */
@@ -19,7 +19,12 @@ export interface MaterializeSummary {
   instances: number;
   /** Duties skipped because their row or expansion failed; they stay due and are reported, not retried in the same run. */
   failed: number;
+  /** Legacy completion-recurring tasks moved onto the calendar engine this run. */
+  adopted: number;
 }
+
+/** Legacy tasks adopted per run; each adoption is its own small atomic plan. */
+const ADOPTIONS_PER_RUN = 50;
 
 /**
  * Creates the instances every active duty owes at `at` and advances each cursor. Idempotent and safe to run
@@ -27,9 +32,10 @@ export interface MaterializeSummary {
  * (duty, occurrence), and the cursor only moves forward. One duty's failure never blocks the others.
  */
 export async function materializeDueDuties(d1: D1Database, at?: IsoDateTime): Promise<MaterializeSummary> {
-  const summary: MaterializeSummary = { duties: 0, instances: 0, failed: 0 };
+  const summary: MaterializeSummary = { duties: 0, instances: 0, failed: 0, adopted: 0 };
   try {
     const now = at ?? minuteNow();
+    await adoptLegacyRecurrence(d1, now, summary);
     const gate = await d1.prepare("SELECT 1 AS due FROM duties WHERE status='active' AND next_occurrence_at IS NOT NULL AND next_occurrence_at <= ? LIMIT 1")
       .bind(now).first();
     if (gate === null) return summary;
@@ -77,4 +83,28 @@ function minuteNow(): IsoDateTime {
   const parsed = parseIsoDateTimeMinute(new Date().toISOString());
   if (!parsed.ok) throw new Error('System clock produced an invalid timestamp.');
   return parsed.value;
+}
+
+/**
+ * Moves pending legacy completion-recurring tasks onto duties so the calendar engine is their only spawner.
+ * Idempotent: the adoption is guarded on the task still being the unbound row it was planned from, and an
+ * adopted task no longer carries a recurrence. Records the engine cannot represent are left on the legacy
+ * completion path and reported, never half-converted.
+ */
+export async function adoptLegacyRecurrence(d1: D1Database, now: IsoDateTime, summary: MaterializeSummary): Promise<void> {
+  const legacy = await d1.prepare("SELECT * FROM tasks WHERE status='pending' AND recurrence IS NOT NULL AND duty_id IS NULL ORDER BY id LIMIT ?")
+    .bind(ADOPTIONS_PER_RUN).all<Task>();
+  for (const task of legacy.results) {
+    try {
+      const adoption = adoptLegacyTaskPlan(task, now);
+      if (!adoption.ok) { console.warn(`legacy recurring task ${task.id} stays on the completion path: ${adoption.error}`); continue; }
+      const applied = await applyPlan(d1, adoption.value.plan);
+      if (!applied.ok) { summary.failed += 1; console.error(`legacy recurring task ${task.id} was not adopted: ${applied.error.kind}`); continue; }
+      summary.adopted += 1;
+      if (adoption.value.offCalendar) console.warn(`legacy recurring task ${task.id} was off its calendar; kept as a one-off and the series starts at its next occurrence`);
+    } catch (cause) {
+      summary.failed += 1;
+      console.error(`legacy recurring task ${task.id} threw while being adopted`, cause);
+    }
+  }
 }
