@@ -115,6 +115,8 @@ Rules that depend on subtasks, using the same reader:
   from the leaves up) first.
 - A completion successor of a legacy recurring task starts top level.
 
+The legacy REST routes (complete, project change, delete, project creation with tasks) enforce the same rules with guards inside the same atomic statement or batch, so a subtask attached concurrently cannot slip past a stale read.
+
 `parent_id` has no foreign key (restore inserts rows in one pass), so import and
 restore validate the whole document instead: every parent exists, shares the
 child's project, and no chain loops or exceeds the depth limit.

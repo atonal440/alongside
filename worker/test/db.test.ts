@@ -153,6 +153,7 @@ function d1WithExistingTasks(taskIds: string[], options: {
             return (hasBlocksPath(from, to) ? { id: to } : null) as T | null;
           }
 
+          if (sql.includes('AS violated')) return null;   // hierarchy guards: no subtasks
           const id = String(statement.args[0]);
           if (sql.includes('FROM tasks')) return (tasks.has(id) ? { id } : null) as T | null;
           return null;
@@ -196,7 +197,7 @@ function d1WithExistingTasks(taskIds: string[], options: {
 function mutationSqls(statements: FakeStatement[]): string[] {
   return statements
     .map(statement => statement.sql)
-    .filter(sql => sql !== TASK_EXISTS_GUARD_SQL && !sql.includes("SELECT NULL,NULL,'blocks'"));
+    .filter(sql => sql !== TASK_EXISTS_GUARD_SQL && !sql.includes("SELECT NULL,NULL,'blocks'") && !sql.startsWith("INSERT INTO entity_versions(entity,entity_key,revision) SELECT NULL,'',0 WHERE"));
 }
 
 describe('DB task recurrence boundaries', () => {

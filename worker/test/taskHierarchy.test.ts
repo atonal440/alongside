@@ -166,6 +166,25 @@ describe.each(['fresh', 'upgrade'] as const)('task.parent.set (%s)', mode => {
     } finally { sql.close(); }
   });
 
+  it('keeps the legacy REST guards atomic: a stale check cannot slip a hierarchy violation through', async () => {
+    const { sql, d1 } = sqliteD1(mode); const db = new DB(d1);
+    try {
+      const parent = await db.addTask({ title: 'Parent' }); const child = await db.addTask({ title: 'Child' });
+      const project = await db.createProject({ title: 'P' } as never);
+      // Attach a child behind the legacy path's back: each guarded write must still refuse.
+      sql.prepare('UPDATE tasks SET parent_id=? WHERE id=?').run(parent.id, child.id);
+      await expect(db.deleteTask(parent.id)).rejects.toBeDefined();
+      await expect(db.createProject({ title: 'Q' } as never, [parent.id])).rejects.toBeDefined();
+      await expect(db.updateTask(child.id, { project_id: project.id } as never)).rejects.toBeDefined();
+      expect(await db.getTask(parent.id)).toMatchObject({ project_id: null });
+      // The same guards used by completion, run without the preceding read.
+      const { applyPlan } = await import('../src/storage/apply');
+      const guarded = await applyPlan(d1, { assertions: [{ kind: 'task.no_open_children', id: parent.id as never }], ops: [{ kind: 'task.update', id: parent.id as never, patch: { status: 'done' } }] });
+      expect(guarded.ok).toBe(false);
+      expect((await db.getTask(parent.id))!.status).toBe('pending');
+    } finally { sql.close(); }
+  });
+
   it('builds a parent and child in one batch with client refs', async () => {
     const { sql, d1 } = sqliteD1(mode); const db = new DB(d1);
     try {

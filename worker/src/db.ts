@@ -22,7 +22,7 @@ import { invalidInput } from './domain/temporalFoundation';
 import { CommandError, commandHash, payloadConflict, planSettingsCommand, planPreferenceCommand, planCreateCommand, creationConflict, planContentCommand, entityCommandConflict, planStateCommand, commandEntityKey, planCompleteCommand, planTaskProjectCommand, planTaskParentCommand, MAX_TASK_DEPTH, revisionConflict, preferenceConflict } from './domain/commands';
 import { nanoid } from 'nanoid';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, ne, inArray, lte, or, asc, desc, gt, and, sql } from 'drizzle-orm';
+import { eq, ne, inArray, lte, or, asc, desc, gt, and, sql, isNull } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import {
   tasks as tasksTable,
@@ -363,6 +363,8 @@ export class DB {
       nextTaskId: domainTask.value.recurrence.kind === 'recurring' ? mintTaskId() : undefined,
     });
     if (!plan.ok) throwAppError(plan.error);
+    // Atomic with the completion: a subtask attached since the read above aborts the batch.
+    plan.value.assertions.push({ kind: 'task.no_open_children', id: domainTask.value.id });
 
     await this.applyPlanOrThrow(plan.value);
 
@@ -504,6 +506,13 @@ export class DB {
 
     assertWritableTaskRow({ ...existing, ...patch });
 
+    if (updates.project_id !== undefined && updates.project_id !== existing.project_id) {
+      // Atomic with the hierarchy check above: the update only matches a task that is still unattached.
+      const moved = await this.drizzle.update(tasksTable).set(patch).where(and(eq(tasksTable.id, id), isNull(tasksTable.parent_id),
+        sql`NOT EXISTS (SELECT 1 FROM tasks child WHERE child.parent_id = ${tasksTable.id})`)).returning({ id: tasksTable.id });
+      if (moved.length === 0) throwAppError({ kind: 'invalid_transition', message: 'A task in a hierarchy cannot change project on its own; detach it from its parent and subtasks first.' });
+      return this.getTask(id);
+    }
     await this.drizzle.update(tasksTable).set(patch).where(eq(tasksTable.id, id));
     return this.getTask(id);
   }
@@ -574,6 +583,8 @@ export class DB {
 
     const plan = createProjectPlan(project, parseTaskIds(taskIds), timestamp);
     if (!plan.ok) throwAppError(plan.error);
+    // A hierarchy stays in one project, so only unattached tasks can be assigned here.
+    for (const op of plan.value.ops) if (op.kind === 'task.update') plan.value.assertions.push({ kind: 'task.unattached', id: op.id });
     await this.applyPlanOrThrow(plan.value);
     return project;
   }
