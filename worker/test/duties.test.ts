@@ -46,12 +46,12 @@ describe('materializeDueDuties', () => {
     try {
       insert(sql, duty());
       const summary = await materializeDueDuties(d1, at('2026-01-04T12:00:00Z'));
-      expect(summary).toEqual({ duties: 1, instances: 1, failed: 0 });
+      expect(summary).toEqual({ duties: 1, instances: 1, failed: 0, adopted: 0 });
       expect(occurrences(sql)).toEqual(['2026-01-04T09:00:00Z']);
       expect(cursor(sql)).toEqual({ status: 'active', last_spawned_at: '2026-01-04T09:00:00Z', next_occurrence_at: '2026-01-05T09:00:00Z' });
       expect(sql.prepare('SELECT * FROM tasks').get()).toMatchObject({ title: 'Water plants', notes: 'Keep this', kickoff_note: 'Check soil', due_date: '2026-01-04T09:00:00Z', status: 'pending', duty_id: 'd_daily' });
       // Running again, or from a second trigger, changes nothing.
-      expect(await materializeDueDuties(d1, at('2026-01-04T12:00:00Z'))).toEqual({ duties: 0, instances: 0, failed: 0 });
+      expect(await materializeDueDuties(d1, at('2026-01-04T12:00:00Z'))).toEqual({ duties: 0, instances: 0, failed: 0, adopted: 0 });
       expect(occurrences(sql)).toHaveLength(1);
     } finally { sql.close(); }
   });
@@ -123,7 +123,7 @@ describe('materializeDueDuties', () => {
       insert(sql, duty({ id: 'd_bad', next_occurrence_at: '2026-01-01T08:00:00Z' }));
       insert(sql, duty({ id: 'd_good' }));
       const summary = await materializeDueDuties(d1, at('2026-01-01T10:00:00Z'));
-      expect(summary).toEqual({ duties: 1, instances: 1, failed: 1 });
+      expect(summary).toEqual({ duties: 1, instances: 1, failed: 1, adopted: 0 });
       expect(occurrences(sql, 'd_good')).toHaveLength(1);
       expect(occurrences(sql, 'd_bad')).toEqual([]);
     } finally { error.mockRestore(); sql.close(); }
@@ -138,10 +138,10 @@ describe('resilience', () => {
       for (let index = 0; index < 205; index += 1) insert(sql, duty({ id: `d_bad${String(index).padStart(3, '0')}`, next_occurrence_at: '2026-01-01T08:00:00Z' }));
       insert(sql, duty({ id: 'd_good', next_occurrence_at: '2026-01-01T09:00:00Z' }));
       const summary = await materializeDueDuties(d1, at('2026-01-01T10:00:00Z'));
-      expect(summary).toMatchObject({ duties: 1, instances: 1, failed: 205 });
+      expect(summary).toMatchObject({ duties: 1, instances: 1, failed: 205, adopted: 0 });
       expect(occurrences(sql, 'd_good')).toHaveLength(1);
       const broken = { prepare: () => { throw new Error('D1 unavailable'); } } as unknown as D1Database;
-      await expect(materializeDueDuties(broken, at('2026-01-01T10:00:00Z'))).resolves.toEqual({ duties: 0, instances: 0, failed: 1 });
+      await expect(materializeDueDuties(broken, at('2026-01-01T10:00:00Z'))).resolves.toEqual({ duties: 0, instances: 0, failed: 1, adopted: 0 });
     } finally { error.mockRestore(); sql.close(); }
   });
 });
@@ -181,7 +181,7 @@ describe('triggers', () => {
     const { d1, sql } = sqliteD1();
     try {
       insert(sql, duty({ dtstart: '2999-01-01T09:00:00Z', next_occurrence_at: '2999-01-01T09:00:00Z' }));
-      expect(await materializeDueDuties(d1)).toEqual({ duties: 0, instances: 0, failed: 0 });
+      expect(await materializeDueDuties(d1)).toEqual({ duties: 0, instances: 0, failed: 0, adopted: 0 });
       expect(sql.prepare('SELECT COUNT(*) AS n FROM tasks').get()).toEqual({ n: 0 });
     } finally { sql.close(); }
   });

@@ -796,3 +796,4 @@ BEGIN
   VALUES('planning_settings','workspace',1,CASE WHEN EXISTS(SELECT 1 FROM planning_settings WHERE id=1) THEN NULL ELSE strftime('%Y-%m-%dT%H:%M:%fZ','now') END)
   ON CONFLICT(entity,entity_key) DO UPDATE SET revision=sync_aux_versions.revision+1,deleted_at=excluded.deleted_at;
 END;
+CREATE INDEX IF NOT EXISTS tasks_legacy_recurrence ON tasks(id) WHERE status = 'pending' AND recurrence IS NOT NULL AND duty_id IS NULL;

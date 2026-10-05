@@ -420,6 +420,21 @@ function opStatements(d1: D1Database, op: Op): PlannedStatement[] {
         .bind(op.result.commandId, change.entity, change.id, change.after.revision, 'deleted' in change.after ? 'delete' : 'upsert', JSON.stringify(change.after), op.result.serverNow)));
     case 'duty.insert':
       return [guardedStatement(bindInsert(d1, 'duties', DUTY_RESTORE_COLUMNS, op.row))];
+    case 'duty.adopt_task': {
+      const unchanged = `id=? AND status='pending' AND duty_id IS NULL AND recurrence=? AND due_date=?`;
+      const values = DUTY_RESTORE_COLUMNS.map(column => toBindable(op.duty[column]));
+      const bindTask = [op.taskId, op.recurrence, op.dueDate];
+      const bind = op.occurrenceAt === null
+        ? d1.prepare(`UPDATE tasks SET recurrence=NULL, updated_at=? WHERE ${unchanged}`).bind(op.updatedAt, ...bindTask)
+        : d1.prepare(`UPDATE tasks SET recurrence=NULL, duty_id=?, occurrence_at=?, updated_at=? WHERE ${unchanged}`)
+          .bind(op.duty.id, op.occurrenceAt, op.updatedAt, ...bindTask);
+      // Both statements test the same predicate inside one batch, so the duty exists only if the task moved.
+      return [
+        guardedStatement(d1.prepare(`INSERT INTO duties (${DUTY_RESTORE_COLUMNS.join(',')}) SELECT ${DUTY_RESTORE_COLUMNS.map(() => '?').join(',')}
+          WHERE EXISTS (SELECT 1 FROM tasks WHERE ${unchanged})`).bind(...values, ...bindTask)),
+        guardedStatement(bind),
+      ];
+    }
     case 'duty.update': {
       const guard = { entity: 'duty' as const, id: op.id };
       const columns = DUTY_UPDATE_COLUMNS.filter(column => Object.prototype.hasOwnProperty.call(op.patch, column));

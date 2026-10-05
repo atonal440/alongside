@@ -38,6 +38,7 @@ const applied = [
   '015_task_date_roles.sql',
   '016_task_hierarchy.sql',
   '017_duty_commands.sql',
+  '018_legacy_recurrence_index.sql',
 ];
 
 const inserts = applied

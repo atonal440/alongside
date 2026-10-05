@@ -38,6 +38,12 @@ export type Op =
   | { kind: 'task.update'; id: TaskId; patch: TaskRowPatch }
   | { kind: 'task.delete'; id: TaskId }
   | { kind: 'duty.insert'; row: DutyRow }
+  /**
+   * Adopts a legacy completion-recurring task into a new duty in one guarded step: the duty is inserted and
+   * the task's recurrence cleared (and, when `occurrenceAt` is set, the task bound to the duty as that
+   * occurrence) only while the task is still the pending, unbound row with this recurrence and due date.
+   */
+  | { kind: 'duty.adopt_task'; duty: DutyRow; taskId: TaskId; dueDate: string; recurrence: string; occurrenceAt: IsoDateTime | null; updatedAt: IsoDateTime }
   /** `ifStatus` makes the update a no-op unless the duty is still in that status. */
   | { kind: 'duty.update'; id: Duty['id']; patch: DutyRowPatch; ifStatus?: Duty['status'] }
   | { kind: 'duty.update_cursor'; id: Duty['id']; lastSpawnedAt: IsoDateTime; nextOccurrenceAt: IsoDateTime | null; updatedAt: IsoDateTime }

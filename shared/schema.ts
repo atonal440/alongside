@@ -70,6 +70,7 @@ export const tasks = sqliteTable('tasks', {
   position:      real('position'),
 }, (t) => [
   uniqueIndex('tasks_duty_occurrence').on(t.duty_id, t.occurrence_at),
+  index('tasks_legacy_recurrence').on(t.id).where(sql`${t.status} = 'pending' AND ${t.recurrence} IS NOT NULL AND ${t.duty_id} IS NULL`),
   index('idx_tasks_status').on(t.status),
   index('idx_tasks_due_date').on(t.due_date),
   index('idx_tasks_project_id').on(t.project_id),

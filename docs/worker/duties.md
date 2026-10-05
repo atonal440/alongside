@@ -34,6 +34,18 @@ Three standalone commands (`domain/dutyCommands.ts`; they cannot join a batch):
 
 `find({ entity: 'duty', filter: { status, project_id } })` omits ended duties unless asked and sorts by `created`. `get_context({ entity: 'duty', id })` returns the duty, its project and its 20 most recent instances. `describe_commands({ family: 'duty' })` lists the schemas. Migration 017 lets the legacy command feed carry duty rows; the client protocol is 6 because duty changes now reach the sync feed as action names.
 
+## Adopting legacy recurring tasks (R3)
+
+Completion-driven recurrence (`tasks.recurrence`) has one spawner per record: a pending task with a recurrence and no `duty_id` is on the legacy path (completing it creates the successor); once it has a duty it is on the calendar path and its recurrence is cleared. `adoptLegacyRecurrence` (`duties.ts`, called first by `materializeDueDuties`, so by the cron and every lazy read) moves records from the first to the second. It is idempotent and examines up to 250 tasks per run in id-ordered pages (so unadoptable tasks cannot crowd out adoptable ones; a partial index, migration 018, keeps the check cheap), each as its own atomic `duty.adopt_task` plan (the duty insert and the task update test the same predicate in one batch, so a task that changed after planning produces nothing).
+
+- **Mapping.** The duty copies title, notes, kickoff note, type and project; `rrule` is the legacy rule; `dtstart` is the task's due date (the legacy noon-UTC convention); `timezone` is null; `catch_up` is `next`; id is `d_` plus the task id suffix. Instances of any duty with no timezone anchored at 12:00Z are all-day (the legacy date-only convention, and the way to ask for an all-day series through `duty.create`).
+- **On calendar.** When the due date is an occurrence of the rule, the task becomes the duty's current occurrence (`duty_id`, `occurrence_at`) and the cursor sits there.
+- **Off calendar.** Otherwise the task stays a one-off (recurrence cleared, no duty) and the series starts at the first occurrence after it, where the legacy successor would have landed.
+- **Not adopted.** Tasks with no due date, a timed due date, a rule the series parser rejects, or `COUNT` (its origin is lost) stay on the legacy completion path and are logged each run. Done tasks are ignored.
+- **Behavior change to expect.** Legacy rules advanced from the previous due date when a task was completed. Calendar generation is independent of completion: an overdue adopted task stays open while the engine creates the newest due occurrence alongside it, and completing a task creates no successor.
+
+Writing a recurrence through the legacy verbs (`add_task`/`update_task` with `recurrence`, `task.legacy-schedule.set`) still works; the next run adopts the task. New series should use `duty.create`.
+
 ## Not here yet
 
-The `series_occurrences` ledger (skips, exceptions, templates versions), backfill of legacy completion-driven recurrence and its retirement (they ship together), reminders and the PWA UI. See `docs/plans/power-user-todo.md` section 7.
+The `series_occurrences` ledger (skips, exceptions, templates versions), reminders and a PWA UI for duties (adopted tasks already sync as ordinary tasks with `duty_id`). See `docs/plans/power-user-todo.md` section 7.
