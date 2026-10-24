@@ -60,7 +60,7 @@ data class SyncState(
     /**
      * The canonical cursor when the first [landed] command landed. The canonical file and this state
      * are separate writes, so after a crash between them the file may already include the landed
-     * commands; a stored cursor that differs from this one proves a pull has absorbed them.
+     * commands; a stored cursor beyond this one proves a pull has absorbed them.
      */
     val landedAt: SyncCursor? = null,
     val retained: List<RetainedOp> = emptyList(),

@@ -109,7 +109,10 @@ class SyncEngine(
                 state = saved?.takeIf { it.source == newSource } ?: SyncState(source = newSource)
                 canonical = if (sample != null) canonicalFromWorkspace(sample) else readCanonical(newSource)
                 // Landed commands the stored canonical copy already includes (a crash between the two writes).
-                val absorbed = canonical?.let { it.cursor != state.landedAt } == true
+                // The stored cursor must have moved past the landing cursor: a pull that only saw
+                // entities the app drops moves the in-memory cursor without rewriting the file.
+                val at = state.landedAt
+                val absorbed = canonical?.cursor?.let { c -> at == null || c.epoch != at.epoch || c.sequence > at.sequence } == true
                 if (state.landed.isNotEmpty() && absorbed && sample == null) state = state.copy(landed = emptyList(), landedAt = null)
                 loaded = true
                 publish()

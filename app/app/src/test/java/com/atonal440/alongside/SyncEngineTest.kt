@@ -278,6 +278,23 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `landed commands are kept on restart unless the stored copy moved past them`() = runBlocking {
+        val op = QueuedOp(7, "c_landed", Intent.Reopen("t_aaaaa"), 1, "2026-10-24T12:00:00Z")
+        val keep = MemorySyncStore().also {
+            it.state = com.atonal440.alongside.data.sync.SyncState("https://w.example", nextId = 8, landed = listOf(op), landedAt = SyncCursor(0, 5))
+            it.canonical = com.atonal440.alongside.data.sync.CanonicalFile("https://w.example", SyncCursor(0, 3), emptyList())
+        }
+        loaded(engine(keep)).commit(listOf(Intent.Reopen("t_aaaaa")))
+        assertEquals(1, keep.state!!.landed.size)
+        val drop = MemorySyncStore().also {
+            it.state = com.atonal440.alongside.data.sync.SyncState("https://w.example", nextId = 8, landed = listOf(op), landedAt = SyncCursor(0, 5))
+            it.canonical = com.atonal440.alongside.data.sync.CanonicalFile("https://w.example", SyncCursor(0, 6), emptyList())
+        }
+        loaded(engine(drop)).commit(listOf(Intent.Reopen("t_aaaaa")))
+        assertTrue(drop.state!!.landed.isEmpty())
+    }
+
+    @Test
     fun `predicted bases count the commands ahead`() {
         val image = SyncImage("task", "t_aaaaa", 4, row = server.taskRow("t_aaaaa"))
         val canonical = CanonicalWorkspace(SyncCursor(1, 2), mapOf(image.id to image))
