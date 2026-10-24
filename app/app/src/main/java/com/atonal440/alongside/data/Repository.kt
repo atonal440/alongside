@@ -73,9 +73,6 @@ class Repository private constructor(private val context: Context) {
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val messages: SharedFlow<String> = _messages
 
-    /** Successor ids spawned by recurring completions, kept for [complete]'s undo. */
-    private val spawned = mutableMapOf<String, String>()
-
     init {
         startCacheWriter()
     }
@@ -158,12 +155,13 @@ class Repository private constructor(private val context: Context) {
         if (_queue.value.isNotEmpty() || syncedAt == null || System.currentTimeMillis() - syncedAt > maxAgeMillis) refreshInBackground()
     }
 
-    /** Marks a task done. Returns the successor id when a recurring task spawned one. */
+    /** Marks a task done. Returns the id its next occurrence will have when it repeats. */
     suspend fun complete(id: String): String? {
         ensureLoaded()
-        if (_workspace.value.task(id) == null) return null
-        mutate(PendingOp.Complete(id))
-        return synchronized(spawned) { spawned.remove(id) }
+        val task = _workspace.value.task(id) ?: return null
+        val successorId = if (task.recurrence != null) mintId("t") else null
+        mutate(PendingOp.Complete(id, mintId("c"), successorId))
+        return successorId
     }
 
     /** Undo for [complete]: reopen the task and drop the successor it spawned, if any. */
@@ -264,7 +262,9 @@ class Repository private constructor(private val context: Context) {
         }
         when (op) {
             is PendingOp.Create -> {
-                sendCreate(api, op, gen)
+                sendCommand(api, op.taskId, op.sent, gen, save = { sent -> replaceQueued(op.copy(sent = sent)) }) { read ->
+                    createEnvelope(op, read.structuralRevision)
+                }
                 if (op.projectId != null || op.dueDate != null) {
                     api.updateTask(op.taskId, buildJsonObject {
                         if (op.projectId != null) put("project_id", op.projectId)
@@ -279,23 +279,22 @@ class Repository private constructor(private val context: Context) {
                 apply { it.replace(row) }
             }
             is PendingOp.Complete -> {
-                val result = api.completeTask(op.taskId)
-                result.next?.let { next ->
-                    synchronized(spawned) { spawned[op.taskId] = next.id }
-                    // An undo queued while offline didn't know the successor; give it the id so
-                    // replaying it deletes the copy this completion just spawned.
-                    if (gen == generation) updateQueue { ops ->
-                        ops.map { if (it is PendingOp.Reopen && it.taskId == op.taskId && it.spawnedId == null) it.copy(spawnedId = next.id) else it }
-                    }
+                var successorId = op.successorId
+                sendCommand(api, op.taskId, op.sent, gen, save = { sent -> replaceQueued(op.copy(successorId = successorId, sent = sent)) }) { read ->
+                    val row = read.row ?: throw ApiException(404, "That task is gone from the server.")
+                    val revision = read.revision ?: throw ApiException(404, "That task is gone from the server.")
+                    // The server's row decides whether a successor is due; mint one if this phone didn't know it repeats.
+                    if (row.recurrence != null && successorId == null) successorId = mintId("t")
+                    completeEnvelope(op, revision, read.structuralRevision, successorId.takeIf { row.recurrence != null })
                 }
-                apply { ws -> ws.replace(result.completed).let { w -> result.next?.let(w::upsert) ?: w } }
+                val completed = api.task(op.taskId)
+                val successor = successorId?.let { id -> runCatching { api.task(id) }.getOrNull() }
+                apply { ws -> ws.replace(completed).let { w -> successor?.let(w::upsert) ?: w } }
             }
             is PendingOp.Reopen -> {
-                // Read the queue again: a replayed completion may have filled in the successor.
-                val spawnedId = (_queue.value.firstOrNull() as? PendingOp.Reopen)?.spawnedId ?: op.spawnedId
-                if (spawnedId != null) ignoreMissing { api.deleteTask(spawnedId) }
+                if (op.spawnedId != null) ignoreMissing { api.deleteTask(op.spawnedId) }
                 val row = api.updateTask(op.taskId, buildJsonObject { put("status", "pending") })
-                apply { ws -> ws.replace(row).let { if (spawnedId != null) it.remove(spawnedId) else it } }
+                apply { ws -> ws.replace(row).let { if (op.spawnedId != null) it.remove(op.spawnedId) else it } }
             }
             is PendingOp.Delete -> {
                 ignoreMissing { api.deleteTask(op.taskId) }
@@ -304,53 +303,71 @@ class Repository private constructor(private val context: Context) {
         }
     }
 
+    /** Swap the queued op for the same task and kind with [updated] (to save its sent envelope). */
+    private fun replaceQueued(updated: PendingOp) = updateQueue { ops ->
+        ops.map { if (it::class == updated::class && it.taskId == updated.taskId) updated else it }
+    }
+
     /**
-     * Sends a create the way the PWA does: the envelope is built once, saved into the queued op
-     * before the first send, and resent unchanged on every retry, so a lost response replays the
-     * original result. Only a structural conflict, which proves nothing was applied, rebuilds it,
-     * once; a second one in a row is treated as a busy server and retried later.
+     * Sends a reliable v2 command the way the PWA does: the envelope is built once from a fresh read,
+     * saved into the queued op before the first send, and resent unchanged on every retry, so a lost
+     * response replays the original result. Only a structural or revision conflict, which proves
+     * nothing was applied, rebuilds it, once; a second in a row is treated as a busy server.
      */
-    private suspend fun sendCreate(api: AlongsideApi, initial: PendingOp.Create, gen: Int) {
-        var op = initial
+    private suspend fun sendCommand(
+        api: AlongsideApi,
+        taskId: String,
+        initialSent: JsonObject?,
+        gen: Int,
+        save: (JsonObject?) -> Unit,
+        build: (AlongsideApi.TaskRead) -> JsonObject,
+    ) {
+        var sent = initialSent
         for (attempt in 0..1) {
-            val envelope = op.sent.takeIf { attempt == 0 } ?: run {
-                val structuralRevision = api.structuralRevision(op.taskId)
-                buildCreateEnvelope(op, structuralRevision).also { built ->
-                    op = op.copy(sent = built)
-                    if (gen == generation) updateQueue { ops -> ops.map { if (it is PendingOp.Create && it.taskId == op.taskId) op else it } }
-                }
+            val envelope = sent ?: build(api.readTask(taskId)).also { built ->
+                sent = built
+                if (gen == generation) save(built)
             }
             try {
                 api.applyChanges(envelope)
                 return
             } catch (e: ApiException) {
-                if (e.code != "structural_conflict") throw e
+                if (e.code != "structural_conflict" && e.code != "revision_conflict") throw e
                 if (attempt == 1) throw ApiException(503, "The server is busy. Trying again later.")
-                op = op.copy(sent = null)
+                sent = null
             }
         }
     }
 
-    private fun buildCreateEnvelope(op: PendingOp.Create, structuralRevision: Long) = buildJsonObject {
+    private fun commandEnvelope(commandId: String, command: JsonObject) = buildJsonObject {
         put("contractVersion", 2)
-        put("commandId", op.commandId)
+        put("commandId", commandId)
         put("actor", "user")
-        put("commands", buildJsonArray {
-            add(buildJsonObject {
-                put("kind", "task.create")
-                put("id", op.taskId)
-                put("expectedRevision", JsonNull)
-                put("expectedStructuralRevision", structuralRevision)
-                put("values", buildJsonObject {
-                    put("title", op.title)
-                    put("notes", op.notes.json())
-                    put("kickoffNote", JsonNull)
-                    put("taskType", op.taskType)
-                    put("project", JsonNull)
-                })
-            })
-        })
+        put("commands", buildJsonArray { add(command) })
     }
+
+    private fun createEnvelope(op: PendingOp.Create, structuralRevision: Long) = commandEnvelope(op.commandId, buildJsonObject {
+        put("kind", "task.create")
+        put("id", op.taskId)
+        put("expectedRevision", JsonNull)
+        put("expectedStructuralRevision", structuralRevision)
+        put("values", buildJsonObject {
+            put("title", op.title)
+            put("notes", op.notes.json())
+            put("kickoffNote", JsonNull)
+            put("taskType", op.taskType)
+            put("project", JsonNull)
+        })
+    })
+
+    private fun completeEnvelope(op: PendingOp.Complete, revision: Long, structuralRevision: Long, successorId: String?) =
+        commandEnvelope(op.commandId, buildJsonObject {
+            put("kind", "task.complete")
+            put("id", op.taskId)
+            put("expectedRevision", revision)
+            put("expectedStructuralRevision", structuralRevision)
+            put("successor", successorId?.let { id -> buildJsonObject { put("id", id) } } ?: JsonNull)
+        })
 
     /** Deleting something already gone is a success. */
     private suspend fun ignoreMissing(block: suspend () -> Unit) {

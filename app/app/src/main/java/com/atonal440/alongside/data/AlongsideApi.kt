@@ -35,13 +35,19 @@ class AlongsideApi(baseUrl: String, private val token: String) {
 
     suspend fun task(id: String): Task = get("/api/tasks/$id")
 
-    /** The workspace's structural revision, read with an entity (the create guard needs it). */
-    suspend fun structuralRevision(taskId: String): Long {
+    /** A task's row, its revision and the workspace structural revision, from one coherent read. */
+    data class TaskRead(val row: Task?, val revision: Long?, val structuralRevision: Long)
+
+    suspend fun readTask(taskId: String): TaskRead {
         val read: JsonObject = send("POST", "/api/v2/entity", buildJsonObject {
             put("entity", "task")
             put("id", taskId)
         })
-        return read["structuralRevision"]?.jsonPrimitive?.longOrNull ?: throw ApiException(0, "The server sent something this app couldn't read.")
+        val unreadable = ApiException(0, "The server sent something this app couldn't read.")
+        val structural = read["structuralRevision"]?.jsonPrimitive?.longOrNull ?: throw unreadable
+        val revision = (read["version"] as? JsonObject)?.get("revision")?.jsonPrimitive?.longOrNull
+        val row = (read["row"] as? JsonObject)?.let { runCatching { json.decodeFromJsonElement(Task.serializer(), it) }.getOrNull() }
+        return TaskRead(row, revision, structural)
     }
 
     /** Apply a v2 command envelope (`POST /api/v2/changes`). Same command id + payload replays. */

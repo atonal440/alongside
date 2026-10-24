@@ -27,7 +27,7 @@ class PendingOpTest {
             PendingOp.Create("t_abcdef", "c_abcdef", "Buy reeds", null, "action", "p_1", "2026-10-25",
                 sent = buildJsonObject { put("commandId", "c_abcdef") }),
             PendingOp.Patch("t_abcdef", buildJsonObject { put("defer_kind", "someday") }),
-            PendingOp.Complete("t_2"),
+            PendingOp.Complete("t_abcde2", "c_abcde2", successorId = "t_next01", sent = buildJsonObject { put("commandId", "c_abcde2") }),
             PendingOp.Reopen("t_2", spawnedId = "t_3"),
             PendingOp.Delete("t_4"),
         )

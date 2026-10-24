@@ -71,8 +71,12 @@ Compose UI / widgets ──► Repository ──► PendingOp queue (pending_ops
   ([stable creation](../shared/reliable-creation.md)). The task id and command id are minted on
   the phone, and the envelope is saved into the queued op before the first send, so a retry after
   a lost response replays the original result instead of making a second task. Project and due
-  date follow as a legacy PATCH, which is safe to repeat. Other writes use the legacy endpoints
-  (`PATCH /api/tasks/:id`, `POST /api/tasks/:id/complete`, `DELETE`).
+  date follow as a legacy PATCH, which is safe to repeat.
+- **Completing** uses the reliable `task.complete` command
+  ([reliable completion](../shared/reliable-completion.md)) the same way. For a repeating task the
+  successor's id is minted when you tap complete, so the undo queued behind it deletes exactly that
+  copy, and a retry after a lost response replays the original result. Other writes use the
+  legacy endpoints (`PATCH /api/tasks/:id`, `DELETE`).
 - **Switching** server, token or sample mode bumps a generation counter and clears the queue;
   in-flight work from the old source checks it and discards its results.
 - **Widgets** render from the cache and pull in the background when it is more than 15 minutes

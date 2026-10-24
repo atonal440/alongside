@@ -72,8 +72,19 @@ sealed interface PendingOp {
         }
     }
 
+    /**
+     * Completed through the reliable `task.complete` command. For a repeating task the successor's
+     * id is minted when the person taps complete, so the undo queued behind it knows exactly which
+     * copy to delete, and a retry after a lost response replays the original result (same
+     * successor) instead of being refused because the task is already done.
+     */
     @Serializable @SerialName("complete")
-    data class Complete(override val taskId: String) : PendingOp {
+    data class Complete(
+        override val taskId: String,
+        val commandId: String,
+        val successorId: String?,
+        val sent: JsonObject? = null,
+    ) : PendingOp {
         override fun applyLocally(ws: Workspace, now: String): Workspace {
             val task = ws.task(taskId) ?: return ws
             return ws.replace(task.copy(status = "done", focused_until = null, updated_at = now))
