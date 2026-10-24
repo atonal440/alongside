@@ -73,7 +73,7 @@ fun AlongsideApp(vm: AppViewModel) {
     val showSettings by vm.showSettings.collectAsStateWithLifecycle()
     val sync by vm.sync.collectAsStateWithLifecycle()
     val newTaskRequested by vm.newTaskRequested.collectAsState()
-    val setAside by vm.setAside.collectAsStateWithLifecycle()
+    val needsAttention by vm.needsAttention.collectAsStateWithLifecycle()
 
     var filtersOpen by remember { mutableStateOf(false) }
     var newTaskOpen by remember { mutableStateOf(false) }
@@ -146,7 +146,7 @@ fun AlongsideApp(vm: AppViewModel) {
         if (showSettings) {
             SettingsScreen(
                 settings, board.ws.syncedAtMillis, firstRun = false, onSave = vm::saveSettings, onClose = { vm.openSettings(false) },
-                setAsideCount = setAside.size, onRetrySetAside = { vm.retrySetAside() }, onDiscardSetAside = { vm.discardSetAside(setAside) },
+                needsAttention = needsAttention, onRetryNeedsAttention = { vm.retryNeedsAttention() }, onDiscardNeedsAttention = { vm.discardNeedsAttention(needsAttention) },
             )
         }
 

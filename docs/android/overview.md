@@ -49,50 +49,37 @@ To add a widget, long-press the home screen, choose Widgets, and find Alongside.
 ## How data flows
 
 ```
-Compose UI / widgets ──► Repository ──► PendingOp queue (pending_ops.json)
-        ▲                    │                   │ flush, in order
-        │                    ▼                   ▼
-   Board (derived)   workspace.json  ◄──  worker REST + /api/v2/changes
+Compose UI / widgets ──► Repository ──► SyncEngine ──► command queue (sync_state.json)
+        ▲                                   │ flush in order, then pull
+        │                                   ▼
+   Board (derived)  ◄── canonical + queue ◄── worker /api/v2 (changes, sync/snapshot, sync/delta)
 ```
 
-`data/Repository.kt` is the single source of truth for both the app and the widgets.
+`data/Repository.kt` is the single source of truth for both the app and the widgets, and a thin
+wrapper over `data/sync/SyncEngine.kt`, which is a port of the PWA's sync engine; see
+[Android sync](sync.md) for the design.
 
-- **Reads** come from `workspace.json`, the last pulled workspace (`/api/tasks/sync`,
-  `/api/projects/sync`, `/api/tasks/links`). `domain/TaskLogic.kt` turns it into a `Board`: each
-  top-level task's bucket (ready, focused, napping, someday, waiting, done), date labels and
-  sort order. The board is rebuilt on every change and once a minute, so naps and focus expire on
-  screen without a sync.
-- **Writes** are `PendingOp`s (`data/PendingOp.kt`). Each one is applied locally straight away,
-  appended to `pending_ops.json`, and sent in order. A network failure leaves it queued for the
-  next attempt, however long that takes. A server error (5xx, 408, 429) also leaves it queued, but
-  after `MAX_SERVER_FAILURES` (5) in a row it is set aside in `set_aside_ops.json`, together with
-  any later changes to the same task (they depend on it), so other tasks' writes can go through; Settings then offers Try again (back to the end of the queue with a
-  fresh count) or Discard. A 4xx drops the op and re-reads the task so the screen stops showing it;
-  deleting a task with subtasks is refused before it is queued, as the worker would refuse it. A pull
-  is only published when the queue is empty, and after each server reply the ops still waiting
-  are laid back over it, so an earlier answer never undoes a later change.
-- **Creating** uses the reliable `task.create` command
-  ([stable creation](../shared/reliable-creation.md)). The task id and command id are minted on
-  the phone, and the envelope is saved into the queued op before the first send, so a retry after
-  a lost response replays the original result instead of making a second task. Project and due
-  date follow as a legacy PATCH, which is safe to repeat.
-- **Completing** uses the reliable `task.complete` command
-  ([reliable completion](../shared/reliable-completion.md)) the same way. For a repeating task the
-  successor's id is minted when you tap complete, so the undo queued behind it deletes exactly that
-  copy, and a retry after a lost response replays the original result. Other writes use the
-  legacy endpoints (`PATCH /api/tasks/:id`, `DELETE`).
-- **Switching** server, token or sample mode bumps a generation counter and clears the queue;
-  in-flight work from the old source checks it and discards its results.
-- **Widgets** render from the cache and pull in the background when it is more than 15 minutes
-  old or writes are waiting.
+- **Reads** come from the canonical workspace (the server's last committed state, kept current by
+  snapshot and delta pulls) with the unconfirmed commands replayed on top. `domain/TaskLogic.kt`
+  turns that into a `Board`: each top-level task's bucket (ready, focused, napping, someday,
+  waiting, done), date labels and sort order. The board is rebuilt on every change and once a
+  minute, so naps and focus expire on screen without a sync.
+- **Writes** are guarded v2 commands. Each is queued with the revision it was made against and shown
+  at once; the queue is sent in order. A network or server error leaves it queued and stops the
+  flush; a refusal moves it to Settings → "needs attention" (Try again / Discard) instead of losing
+  it. A change made on another device meanwhile is reported as a conflict, not overwritten.
+- **Creating and completing** mint their ids on the phone (the task and command ids, and a repeating
+  task's successor), so a retry after a lost response replays the original result
+  ([stable creation](../shared/reliable-creation.md), [reliable completion](../shared/reliable-completion.md)).
+- **Switching** server, token or sample mode resets the engine and clears the queue; in-flight work
+  from the old source checks a generation counter and discards its results.
+- **Widgets** render from the same state and sync in the background when the last pull is more than
+  15 minutes old or writes are waiting.
 
-Files are written through a temp file and rename; the workspace cache goes through one ordered
-writer, so the newest snapshot always wins.
+Files are written through a temp file and rename.
 
 ## Out of scope for now
 
-- Most writes still use the legacy endpoints rather than guarded v2 commands, so a stale edit is
-  not detected as a conflict the way the PWA's queue detects it.
 - Routines lists repeating tasks; duties themselves aren't shown or edited.
 - No editing of titles, notes, links or subtasks yet; no project management.
 - The Ready now widget has no chips: Glance can't scroll horizontally.
