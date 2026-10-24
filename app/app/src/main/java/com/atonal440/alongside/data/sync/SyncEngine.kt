@@ -333,6 +333,12 @@ class SyncEngine(
                 dependents.forEach { retained += RetainedOp(id++, it, RetainedReason.Dependency(created, "Not sent because the task it depends on was rejected.")) }
                 queue = rest
             }
+            // Later commands on the same identity were guarded assuming this one would land. After a
+            // refusal those guards no longer mean anything (another device's write could even match
+            // one by coincidence and let a delete through), so they wait for an explicit retry.
+            val (stale, current) = queue.partition { later -> later.intent.writes.any { it in op.intent.writes } }
+            stale.forEach { retained += RetainedOp(id++, it, RetainedReason.Dependency(op.intent.taskId, "Not sent because an earlier change to the same task was refused.")) }
+            queue = current
             val deleted = (op.intent as? Intent.Delete)?.taskId
             if (deleted != null) {
                 // An undo deletes the successor before reopening; without that, both occurrences would be pending.

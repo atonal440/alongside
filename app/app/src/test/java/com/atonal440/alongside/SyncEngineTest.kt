@@ -185,6 +185,24 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `commands queued behind a conflicted one on the same task are held, not sent against a coincidental revision`() = runBlocking {
+        server.put("t_aaaaa")
+        val e = loaded()
+        e.sync()
+        e.commit(listOf(Intent.Focus("t_aaaaa", "2026-10-25T00:00:00Z"), Intent.Delete("t_aaaaa")))
+        assertEquals(listOf(1L, 2L), store.state!!.queue.map { it.base })
+        // Another device edits the task, so the focus conflicts and the delete's guess (2) now matches the server.
+        server.edit("t_aaaaa") { JsonObject(it + ("title" to JsonPrimitive("Edited elsewhere"))) }
+        e.sync()
+        assertEquals(listOf("Conflict", "Dependency"), e.retained.value.map { it.reason::class.simpleName })
+        assertEquals("Edited elsewhere", server.row("t_aaaaa")!!["title"]!!.jsonPrimitive.content)
+        assertEquals("Edited elsewhere", e.task("t_aaaaa")!!.title)
+        // Retrying both rebases them in order.
+        e.retryRetained(e.retained.value.map { it.id })
+        assertEquals(listOf(2L, 3L), store.state!!.queue.map { it.base })
+    }
+
+    @Test
     fun `a refused create retains the commands queued on its task`() = runBlocking {
         val e = loaded()
         e.sync()
