@@ -146,7 +146,7 @@ fun AlongsideApp(vm: AppViewModel) {
         if (showSettings) {
             SettingsScreen(
                 settings, board.ws.syncedAtMillis, firstRun = false, onSave = vm::saveSettings, onClose = { vm.openSettings(false) },
-                setAsideCount = setAside.size, onRetrySetAside = { vm.retrySetAside() }, onDiscardSetAside = vm::discardSetAside,
+                setAsideCount = setAside.size, onRetrySetAside = { vm.retrySetAside() }, onDiscardSetAside = { vm.discardSetAside(setAside) },
             )
         }
 

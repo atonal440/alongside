@@ -3,6 +3,7 @@ package com.atonal440.alongside.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.atonal440.alongside.data.PendingOp
 import com.atonal440.alongside.data.Repository
 import com.atonal440.alongside.data.Settings
 import com.atonal440.alongside.domain.Board
@@ -109,7 +110,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun retrySetAside() = viewModelScope.launch { repo.retrySetAside() }
-    fun discardSetAside() = repo.discardSetAside()
+    fun discardSetAside(seen: List<PendingOp>) = repo.discardSetAside(seen)
 
     fun saveSettings(settings: Settings) {
         repo.updateSettings(settings)

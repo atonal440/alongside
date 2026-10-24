@@ -368,21 +368,29 @@ class Repository private constructor(private val context: Context) {
     /** Put set-aside changes back at the end of the queue with a fresh count, and try them now. */
     suspend fun retrySetAside() {
         ensureLoaded()
-        val ops = _setAside.value
-        if (ops.isEmpty()) return
-        updateSetAside { emptyList() }
+        // One hold of the (reentrant) lock across collect, clear and requeue, so a change set aside
+        // by a background flush meanwhile is neither erased nor left behind.
+        val ops = synchronized(queueLock) {
+            val ops = _setAside.value
+            if (ops.isEmpty()) return
+            updateSetAside { emptyList() }
+            updateQueue { it + ops.map { op -> op.withServerFailures(0) } }
+            ops
+        }
         val now = Clock.now().toWire()
         publish(ops.fold(_workspace.value) { ws, op -> op.applyLocally(ws, now) })
-        updateQueue { it + ops.map { op -> op.withServerFailures(0) } }
         if (flush() && resyncNeeded) {
             resyncNeeded = false
             refresh()
         }
     }
 
-    /** Forget set-aside changes for good; the screen already shows the server's version. */
-    fun discardSetAside() {
-        updateSetAside { emptyList() }
+    /**
+     * Forget the set-aside changes the person was shown ([seen]); the screen already shows the
+     * server's version. Anything set aside since then stays, so it isn't discarded unseen.
+     */
+    fun discardSetAside(seen: List<PendingOp>) {
+        updateSetAside { ops -> ops.filterNot { it in seen } }
     }
 
     private fun updateSetAside(change: (List<PendingOp>) -> List<PendingOp>) = synchronized(queueLock) {
