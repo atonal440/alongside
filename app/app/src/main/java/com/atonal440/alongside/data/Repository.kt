@@ -117,7 +117,8 @@ class Repository private constructor(private val context: Context) {
 
     /** Undo for [complete]: reopen the task and drop the successor it spawned, if any. */
     suspend fun reopen(id: String, spawnedId: String?) {
-        write(*listOfNotNull<Intent>(Intent.Reopen(id), spawnedId?.let(Intent::Delete)).toTypedArray())
+        // The successor goes first, and the reopen waits on it, so a refused delete can't leave two pending copies.
+        write(*listOfNotNull<Intent>(spawnedId?.let(Intent::Delete), Intent.Reopen(id, spawnedId)).toTypedArray())
     }
 
     suspend fun setFocus(id: String, focused: Boolean) {

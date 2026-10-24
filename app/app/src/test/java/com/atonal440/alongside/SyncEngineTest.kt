@@ -222,11 +222,29 @@ class SyncEngineTest {
         e.commit(listOf(Intent.Complete("t_aaaaa", successor)))
         e.sync()
         assertEquals(1L, server.revision(successor))
-        e.commit(listOf(Intent.Reopen("t_aaaaa"), Intent.Delete(successor)))
+        e.commit(listOf(Intent.Delete(successor), Intent.Reopen("t_aaaaa", successor)))
         e.sync()
         assertTrue(e.retained.value.isEmpty())
         assertEquals("pending", e.task("t_aaaaa")!!.status)
         assertNull(e.task(successor))
+    }
+
+    @Test
+    fun `an undo whose successor delete is refused does not reopen the original`() = runBlocking {
+        server.put("t_aaaaa", recurrence = "FREQ=DAILY")
+        val e = loaded()
+        e.sync()
+        val successor = mintId("t")
+        e.commit(listOf(Intent.Complete("t_aaaaa", successor)))
+        e.sync()
+        // Another device edits the successor before the undo reaches the server.
+        server.edit(successor) { JsonObject(it + ("title" to JsonPrimitive("Edited"))) }
+        e.commit(listOf(Intent.Delete(successor), Intent.Reopen("t_aaaaa", successor)))
+        e.sync()
+        val kinds = e.retained.value.map { it.reason::class.simpleName }
+        assertEquals(listOf("Conflict", "Dependency"), kinds)
+        assertEquals("done", server.row("t_aaaaa")!!["status"]!!.jsonPrimitive.content)
+        assertEquals("Edited", e.task(successor)!!.title)
     }
 
     @Test

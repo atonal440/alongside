@@ -333,6 +333,13 @@ class SyncEngine(
                 dependents.forEach { retained += RetainedOp(id++, it, RetainedReason.Dependency(created, "Not sent because the task it depends on was rejected.")) }
                 queue = rest
             }
+            val deleted = (op.intent as? Intent.Delete)?.taskId
+            if (deleted != null) {
+                // An undo deletes the successor before reopening; without that, both occurrences would be pending.
+                val (dependents, rest) = queue.partition { (it.intent as? Intent.Reopen)?.spawnedId == deleted }
+                dependents.forEach { retained += RetainedOp(id++, it, RetainedReason.Dependency(deleted, "Not sent because the repeat it replaces couldn't be removed.")) }
+                queue = rest
+            }
             s.copy(nextId = id, queue = queue, retained = retained)
         }
         if (kept) {

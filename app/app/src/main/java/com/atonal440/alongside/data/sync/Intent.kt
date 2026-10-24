@@ -68,8 +68,12 @@ sealed interface Intent {
         override fun describe() = if (focusedUntil != null) "Focus a task" else "Unfocus a task"
     }
 
+    /**
+     * [spawnedId] is the successor an undo deletes first: the reopen is sent only if that delete
+     * was accepted, so a refused delete never leaves both occurrences pending.
+     */
     @Serializable @SerialName("task.reopen")
-    data class Reopen(override val taskId: String) : Intent {
+    data class Reopen(override val taskId: String, val spawnedId: String? = null) : Intent {
         override fun apply(task: Task, at: String) = task.copy(status = "pending", updated_at = at)
         override fun describe() = "Reopen a task"
     }
