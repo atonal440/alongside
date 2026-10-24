@@ -98,7 +98,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun nap(taskId: String, choice: NapChoice) = viewModelScope.launch { repo.nap(taskId, choice.until()) }
     fun wake(taskId: String) = viewModelScope.launch { repo.wake(taskId) }
     fun delete(taskId: String) = viewModelScope.launch {
-        _detail.update { stack -> stack.filterNot { it == taskId } }
+        // Leave the detail screen only when the delete is accepted; a refusal shows a message.
+        if (!repo.hasSubtasks(taskId)) _detail.update { stack -> stack.filterNot { it == taskId } }
         repo.delete(taskId)
     }
 

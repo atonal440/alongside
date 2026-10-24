@@ -195,9 +195,22 @@ class Repository private constructor(private val context: Context) {
         }))
     }
 
-    suspend fun delete(id: String) {
+    /**
+     * Deletes a task. The worker refuses to delete a task that has subtasks (done or not), so
+     * that is checked here first, as the PWA does, rather than queueing a delete that can't land.
+     * Returns false when refused.
+     */
+    suspend fun delete(id: String): Boolean {
+        ensureLoaded()
+        if (hasSubtasks(id)) {
+            _messages.tryEmit(SUBTASKS_BLOCK_DELETE)
+            return false
+        }
         mutate(PendingOp.Delete(id))
+        return true
     }
+
+    fun hasSubtasks(id: String) = _workspace.value.tasks.any { it.parent_id == id }
 
     suspend fun create(title: String, notes: String?, projectId: String?, plan: Boolean, due: LocalDate?) {
         mutate(
@@ -304,7 +317,16 @@ class Repository private constructor(private val context: Context) {
                 apply { ws -> ws.replace(row).let { if (op.spawnedId != null) it.remove(op.spawnedId) else it } }
             }
             is PendingOp.Delete -> {
-                ignoreMissing { api.deleteTask(op.taskId) }
+                try {
+                    ignoreMissing { api.deleteTask(op.taskId) }
+                } catch (e: ApiException) {
+                    // A subtask added elsewhere after this was queued makes the worker answer 5xx,
+                    // which would otherwise be retried forever at the head of the queue.
+                    if (e.status >= 500 && api.allTasks().any { it.parent_id == op.taskId }) {
+                        throw ApiException(409, SUBTASKS_BLOCK_DELETE)
+                    }
+                    throw e
+                }
                 apply { it.remove(op.taskId) }
             }
         }
@@ -451,6 +473,9 @@ class Repository private constructor(private val context: Context) {
     private fun String?.json() = this?.let { JsonPrimitive(it) } ?: JsonNull
 
     companion object {
+        /** Same wording as the PWA and the worker. */
+        const val SUBTASKS_BLOCK_DELETE = "This task has subtasks; delete or detach them first."
+
         @Volatile private var instance: Repository? = null
 
         fun get(context: Context): Repository = instance ?: synchronized(this) {
