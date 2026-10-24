@@ -166,6 +166,25 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `retrying a completion of a task that started repeating names a successor`() = runBlocking {
+        server.put("t_aaaaa")
+        val e = loaded()
+        e.sync()
+        e.commit(listOf(Intent.Complete("t_aaaaa", null)))
+        // Another device makes the task repeat first, so the completion is a revision conflict.
+        server.edit("t_aaaaa") { JsonObject(it + ("recurrence" to JsonPrimitive("FREQ=DAILY"))) }
+        e.sync()
+        val retained = e.retained.value.single()
+        assertTrue(retained.reason is RetainedReason.Conflict)
+        e.retryRetained(listOf(retained.id))
+        val retried = store.state!!.queue.single().intent as Intent.Complete
+        assertTrue(retried.successorId != null)
+        e.sync()
+        assertTrue(e.retained.value.isEmpty())
+        assertEquals(1L, server.revision(retried.successorId!!))
+    }
+
+    @Test
     fun `a refused create retains the commands queued on its task`() = runBlocking {
         val e = loaded()
         e.sync()

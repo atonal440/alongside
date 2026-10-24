@@ -172,7 +172,7 @@ class SyncEngine(
             val at = now().toWire()
             var next = state
             for (r in chosen) {
-                val intent = r.op.intent
+                val intent = rebased(r.op.intent)
                 val base = if (intent is Intent.Create) null else predictBase(canonical, next.landed + next.queue, intent.writes[0])
                 next = next.copy(nextId = next.nextId + 1, queue = next.queue + QueuedOp(next.nextId, mintId("c"), intent, base, at))
             }
@@ -180,6 +180,17 @@ class SyncEngine(
             persistState()
             publish()
         }
+    }
+
+    /**
+     * A completion queued while the task did not repeat has no successor id; if the task repeats now
+     * (another device changed it, which is what made the first attempt a conflict) the worker
+     * refuses a completion without one, so the rebased command names a successor.
+     */
+    private fun rebased(intent: Intent): Intent {
+        if (intent !is Intent.Complete || intent.successorId != null) return intent
+        val repeats = canonical?.let { runCatching { it.view }.getOrNull() }?.tasks?.firstOrNull { it.id == intent.taskId }?.recurrence != null
+        return if (repeats) intent.copy(successorId = mintId("t")) else intent
     }
 
     /** Forget refused commands; the screen already shows the server's version. */
