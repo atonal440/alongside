@@ -46,6 +46,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.atonal440.alongside.data.TaskLimits
 import com.atonal440.alongside.domain.Board
 import com.atonal440.alongside.domain.Clock
 import com.atonal440.alongside.domain.Filters
@@ -217,14 +218,20 @@ fun NewTaskSheet(
     var due by remember { mutableStateOf(DueChoice.None) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
-    val submit = { if (title.isNotBlank()) { onCreate(title, notes, project, plan, due.date()); onDismiss() } }
+    val titleTooLong = title.trim().length > TaskLimits.TITLE_MAX
+    val notesTooLong = notes.trim().length > TaskLimits.NOTES_MAX
+    val canAdd = title.isNotBlank() && !titleTooLong && !notesTooLong
+    // Only close once the capture is valid, so nothing typed is lost to a refusal later.
+    val submit = { if (canAdd) { onCreate(title, notes, project, plan, due.date()); onDismiss() } }
 
     AlongsideSheet(onDismiss) {
         Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 20.dp)) {
             Text("New task", style = Type.sheetTitle, color = c.ink, modifier = Modifier.padding(top = 8.dp, bottom = 12.dp))
             Field(title, { title = it }, "What needs doing?", Type.rowTitle.copy(fontSize = Type.note.fontSize), Modifier.focusRequester(focus))
+            if (titleTooLong) LimitNote("Titles can be up to ${TaskLimits.TITLE_MAX} characters (this one is ${title.trim().length}). Longer detail fits in the notes.")
             Spacer(Modifier.height(10.dp))
             Field(notes, { notes = it }, "Notes (optional)", Type.body, singleLine = false)
+            if (notesTooLong) LimitNote("Notes can be up to ${TaskLimits.NOTES_MAX} characters (these are ${notes.trim().length}).")
             Column(Modifier.verticalScroll(rememberScrollState()).padding(top = 18.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Column {
                     SheetLabel("When")
@@ -246,9 +253,14 @@ fun NewTaskSheet(
                     Segmented(listOf("Action", "Plan"), if (plan) 1 else 0) { plan = it == 1 }
                 }
             }
-            PrimaryButton("Add task", onClick = submit, enabled = title.isNotBlank(), modifier = Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 24.dp))
+            PrimaryButton("Add task", onClick = submit, enabled = canAdd, modifier = Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 24.dp))
         }
     }
+}
+
+@Composable
+private fun LimitNote(text: String) {
+    Text(text, style = Type.meta, color = LocalColors.current.urgentFg, modifier = Modifier.padding(top = 6.dp))
 }
 
 @Composable

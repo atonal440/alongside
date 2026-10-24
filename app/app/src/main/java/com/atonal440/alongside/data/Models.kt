@@ -71,6 +71,16 @@ data class TaskLink(
 @Serializable
 data class CompleteResult(val completed: Task, val next: Task? = null)
 
+/**
+ * Capture limits from `ProjectCreateValuesSchema` in shared/wire/commands.ts (which task creation
+ * shares). Checked in the form so an over-long capture is corrected there, not refused later.
+ * Lengths are UTF-16 units on both sides (Kotlin `String.length`, JS `string.length`).
+ */
+object TaskLimits {
+    const val TITLE_MAX = 200
+    const val NOTES_MAX = 10_000
+}
+
 /** Everything the app shows, as last read from the worker (or the sample set). */
 @Serializable
 data class Workspace(
