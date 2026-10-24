@@ -21,6 +21,9 @@ import java.security.SecureRandom
 sealed interface PendingOp {
     val taskId: String
 
+    /** Server errors (5xx, 408, 429) this op has hit in a row; network failures don't count. */
+    val serverFailures: Int
+
     fun applyLocally(ws: Workspace, now: String): Workspace
 
     /**
@@ -39,6 +42,7 @@ sealed interface PendingOp {
         val projectId: String?,
         val dueDate: String?,
         val sent: JsonObject? = null,
+        override val serverFailures: Int = 0,
     ) : PendingOp {
         override fun applyLocally(ws: Workspace, now: String): Workspace {
             if (ws.task(taskId) != null) return ws
@@ -54,7 +58,7 @@ sealed interface PendingOp {
 
     /** A legacy partial update; [body] holds only the fields it changes. */
     @Serializable @SerialName("patch")
-    data class Patch(override val taskId: String, val body: JsonObject) : PendingOp {
+    data class Patch(override val taskId: String, val body: JsonObject, override val serverFailures: Int = 0) : PendingOp {
         override fun applyLocally(ws: Workspace, now: String): Workspace {
             val task = ws.task(taskId) ?: return ws
             fun text(key: String, current: String?) =
@@ -84,6 +88,7 @@ sealed interface PendingOp {
         val commandId: String,
         val successorId: String?,
         val sent: JsonObject? = null,
+        override val serverFailures: Int = 0,
     ) : PendingOp {
         override fun applyLocally(ws: Workspace, now: String): Workspace {
             val task = ws.task(taskId) ?: return ws
@@ -92,7 +97,7 @@ sealed interface PendingOp {
     }
 
     @Serializable @SerialName("reopen")
-    data class Reopen(override val taskId: String, val spawnedId: String?) : PendingOp {
+    data class Reopen(override val taskId: String, val spawnedId: String?, override val serverFailures: Int = 0) : PendingOp {
         override fun applyLocally(ws: Workspace, now: String): Workspace {
             val reopened = ws.task(taskId)?.let { ws.replace(it.copy(status = "pending", updated_at = now)) } ?: ws
             return if (spawnedId != null) reopened.remove(spawnedId) else reopened
@@ -100,7 +105,7 @@ sealed interface PendingOp {
     }
 
     @Serializable @SerialName("delete")
-    data class Delete(override val taskId: String) : PendingOp {
+    data class Delete(override val taskId: String, override val serverFailures: Int = 0) : PendingOp {
         override fun applyLocally(ws: Workspace, now: String) = ws.remove(taskId)
     }
 }
@@ -112,6 +117,22 @@ val PendingOp.commandId: String?
         is PendingOp.Complete -> commandId
         else -> null
     }
+
+/** The same op with its server-error count set to [count]. */
+fun PendingOp.withServerFailures(count: Int): PendingOp = when (this) {
+    is PendingOp.Create -> copy(serverFailures = count)
+    is PendingOp.Patch -> copy(serverFailures = count)
+    is PendingOp.Complete -> copy(serverFailures = count)
+    is PendingOp.Reopen -> copy(serverFailures = count)
+    is PendingOp.Delete -> copy(serverFailures = count)
+}
+
+/**
+ * How many server errors in a row an op may hit before it is set aside. Network failures retry
+ * forever (nothing is wrong with the change); a server that keeps erroring on one change would
+ * otherwise block every write queued behind it.
+ */
+const val MAX_SERVER_FAILURES = 5
 
 /** Network trouble and server hiccups are worth retrying; a 4xx refusal is final. */
 fun Throwable.isTransient(): Boolean = when (this) {

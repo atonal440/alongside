@@ -6,7 +6,9 @@ import com.atonal440.alongside.data.PendingOp
 import com.atonal440.alongside.data.Settings
 import com.atonal440.alongside.data.Task
 import com.atonal440.alongside.data.Workspace
+import com.atonal440.alongside.data.MAX_SERVER_FAILURES
 import com.atonal440.alongside.data.mintId
+import com.atonal440.alongside.data.withServerFailures
 import kotlinx.serialization.json.JsonNull
 import com.atonal440.alongside.data.isTransient
 import kotlinx.serialization.builtins.ListSerializer
@@ -78,5 +80,17 @@ class PendingOpTest {
         assertEquals("2026-10-25T12:00:00Z", ws.tasks[0].due_date)
         assertTrue(Regex("^t_[0-9A-Za-z_-]{5,64}$").matches(create.taskId))
         assertTrue(Regex("^c_[0-9A-Za-z_-]{5,64}$").matches(create.commandId))
+    }
+
+    @Test
+    fun `server error counts survive the disk format, and older queue files still load`() {
+        val serializer = ListSerializer(PendingOp.serializer())
+        val counted = listOf(PendingOp.Delete("t_abcdef").withServerFailures(3))
+        val decoded = AlongsideApi.json.decodeFromString(serializer, AlongsideApi.json.encodeToString(serializer, counted))
+        assertEquals(3, decoded.single().serverFailures)
+        // Written before the count existed.
+        val old = AlongsideApi.json.decodeFromString(serializer, """[{"type":"delete","taskId":"t_abcdef"}]""")
+        assertEquals(0, old.single().serverFailures)
+        assertTrue(MAX_SERVER_FAILURES > 1)
     }
 }

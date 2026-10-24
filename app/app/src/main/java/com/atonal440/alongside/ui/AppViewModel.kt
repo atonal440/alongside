@@ -31,6 +31,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val repo = Repository.get(app)
 
     val settings = repo.settings
+    val setAside = repo.setAside
     val sync = repo.sync
     /** Naps end, focus lapses and windows open with no data change, so the board also rebuilds every minute. */
     private val minuteTicks = flow {
@@ -106,6 +107,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun create(title: String, notes: String?, projectId: String?, plan: Boolean, due: LocalDate?) = viewModelScope.launch {
         repo.create(title.trim(), notes?.trim()?.takeIf { it.isNotEmpty() }, projectId, plan, due)
     }
+
+    fun retrySetAside() = viewModelScope.launch { repo.retrySetAside() }
+    fun discardSetAside() = repo.discardSetAside()
 
     fun saveSettings(settings: Settings) {
         repo.updateSettings(settings)

@@ -152,6 +152,9 @@ fun SettingsScreen(
     firstRun: Boolean,
     onSave: (Settings) -> Unit,
     onClose: () -> Unit,
+    setAsideCount: Int = 0,
+    onRetrySetAside: () -> Unit = {},
+    onDiscardSetAside: () -> Unit = {},
 ) {
     val c = LocalColors.current
     var url by remember { mutableStateOf(current.serverUrl.ifBlank { "http://10.0.2.2:8787" }) }
@@ -179,6 +182,7 @@ fun SettingsScreen(
                     else -> "Not synced yet."
                 }
                 Text(status, style = Type.body, color = c.muted, modifier = Modifier.padding(top = 8.dp))
+                if (setAsideCount > 0) SetAsideCard(setAsideCount, onRetrySetAside, onDiscardSetAside)
             }
             Spacer(Modifier.height(24.dp))
             SettingField("Server", url, { url = it }, "https://alongside.example.workers.dev", KeyboardType.Uri)
@@ -207,6 +211,29 @@ fun SettingsScreen(
             } else if (!firstRun) {
                 OutlineButton("Keep using sample data", onClick = { onSave(current.copy(name = name)) }, modifier = Modifier.fillMaxWidth())
             }
+        }
+    }
+}
+
+/** Changes the server kept erroring on, set aside so the rest of the queue could go through. */
+@Composable
+private fun SetAsideCard(count: Int, onRetry: () -> Unit, onDiscard: () -> Unit) {
+    val c = LocalColors.current
+    Column(
+        Modifier.padding(top = 16.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(c.urgentBg).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            if (count == 1) "1 change couldn't be saved" else "$count changes couldn't be saved",
+            style = Type.rowTitle, color = c.urgentFg,
+        )
+        Text(
+            "The server kept answering with an error, so ${if (count == 1) "it was" else "they were"} set aside to let your other changes through.",
+            style = Type.body, color = c.urgentFg,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PrimaryButton("Try again", onClick = onRetry, modifier = Modifier.weight(1f))
+            OutlineButton("Discard", onClick = onDiscard)
         }
     }
 }

@@ -94,6 +94,7 @@ class AlongsideApi(baseUrl: String, private val token: String) {
         }.getOrNull()
         return when (code) {
             401 -> "The server didn't accept that token."
+            in 500..599 -> "The server ran into a problem."
             else -> detail ?: "The server answered $code."
         }
     }

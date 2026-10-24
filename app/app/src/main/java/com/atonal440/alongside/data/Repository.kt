@@ -52,6 +52,7 @@ class Repository private constructor(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val cacheFile = File(context.filesDir, "workspace.json")
     private val queueFile = File(context.filesDir, "pending_ops.json")
+    private val setAsideFile = File(context.filesDir, "set_aside_ops.json")
     private val opsSerializer = ListSerializer(PendingOp.serializer())
     private val writeLock = Mutex()
     private val queueLock = Any()
@@ -66,6 +67,10 @@ class Repository private constructor(private val context: Context) {
     val workspace: StateFlow<Workspace> = _workspace.asStateFlow()
 
     private val _queue = MutableStateFlow<List<PendingOp>>(emptyList())
+
+    /** Changes that kept failing with server errors, kept so they can be tried again or discarded. */
+    private val _setAside = MutableStateFlow<List<PendingOp>>(emptyList())
+    val setAside: StateFlow<List<PendingOp>> = _setAside.asStateFlow()
 
     private val _sync = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
     val sync: StateFlow<SyncStatus> = _sync.asStateFlow()
@@ -89,6 +94,7 @@ class Repository private constructor(private val context: Context) {
                 val cached = runCatching { AlongsideApi.json.decodeFromString<Workspace>(cacheFile.readText()) }.getOrNull()
                 val ops = runCatching { AlongsideApi.json.decodeFromString(opsSerializer, queueFile.readText()) }.getOrNull().orEmpty()
                 _queue.value = ops
+                _setAside.value = runCatching { AlongsideApi.json.decodeFromString(opsSerializer, setAsideFile.readText()) }.getOrNull().orEmpty()
                 if (cached != null && _workspace.value.tasks.isEmpty()) {
                     // The queue is saved synchronously but the cache asynchronously, so the cache can
                     // be older than the queue after a crash; lay the waiting ops back over it.
@@ -109,6 +115,7 @@ class Repository private constructor(private val context: Context) {
             // Writes queued for the old source don't belong to the new one.
             generation++
             updateQueue { emptyList() }
+            updateSetAside { emptyList() }
             _sync.value = SyncStatus.Idle
             publish(if (settings.sampleMode) SampleData.workspace() else Workspace())
             if (!settings.sampleMode) scope.launch { refresh() }
@@ -252,6 +259,24 @@ class Repository private constructor(private val context: Context) {
                 dropHead()
             } catch (e: IOException) {
                 if (gen != generation) return@withLock false
+                if (e is ApiException && e.isTransient()) {
+                    // The server answered with an error. Count it; after too many in a row, set the
+                    // change aside so the writes behind it aren't blocked.
+                    val head = _queue.value.firstOrNull() ?: op
+                    val failures = head.serverFailures + 1
+                    if (failures >= MAX_SERVER_FAILURES) {
+                        dropHead()
+                        updateSetAside { it + head.withServerFailures(failures) }
+                        val title = _workspace.value.task(op.taskId)?.title
+                        _messages.tryEmit(
+                            "Couldn't save ${title?.let { "a change to \u201c$it\u201d" } ?: "a change"} after $failures tries. " +
+                                "It's set aside in Settings.",
+                        )
+                        if (!restoreFromServer(api, op.taskId, gen)) resyncNeeded = true
+                        continue
+                    }
+                    updateQueue { ops -> if (ops.firstOrNull() == head) listOf(head.withServerFailures(failures)) + ops.drop(1) else ops }
+                }
                 if (e.isTransient()) {
                     val waiting = _queue.value.size
                     _sync.value = SyncStatus.Failed("${e.friendly()} ${if (waiting == 1) "1 change" else "$waiting changes"} will sync later.")
@@ -330,6 +355,32 @@ class Repository private constructor(private val context: Context) {
                 apply { it.remove(op.taskId) }
             }
         }
+    }
+
+    /** Put set-aside changes back at the end of the queue with a fresh count, and try them now. */
+    suspend fun retrySetAside() {
+        ensureLoaded()
+        val ops = _setAside.value
+        if (ops.isEmpty()) return
+        updateSetAside { emptyList() }
+        val now = Clock.now().toWire()
+        publish(ops.fold(_workspace.value) { ws, op -> op.applyLocally(ws, now) })
+        updateQueue { it + ops.map { op -> op.withServerFailures(0) } }
+        if (flush() && resyncNeeded) {
+            resyncNeeded = false
+            refresh()
+        }
+    }
+
+    /** Forget set-aside changes for good; the screen already shows the server's version. */
+    fun discardSetAside() {
+        updateSetAside { emptyList() }
+    }
+
+    private fun updateSetAside(change: (List<PendingOp>) -> List<PendingOp>) = synchronized(queueLock) {
+        val ops = change(_setAside.value)
+        _setAside.value = ops
+        writeAtomically(setAsideFile, AlongsideApi.json.encodeToString(opsSerializer, ops))
     }
 
     /** Apply [change] to the workspace, then lay the [waiting] ops back over it before publishing. */

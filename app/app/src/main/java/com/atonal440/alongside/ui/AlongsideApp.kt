@@ -73,6 +73,7 @@ fun AlongsideApp(vm: AppViewModel) {
     val showSettings by vm.showSettings.collectAsStateWithLifecycle()
     val sync by vm.sync.collectAsStateWithLifecycle()
     val newTaskRequested by vm.newTaskRequested.collectAsState()
+    val setAside by vm.setAside.collectAsStateWithLifecycle()
 
     var filtersOpen by remember { mutableStateOf(false) }
     var newTaskOpen by remember { mutableStateOf(false) }
@@ -143,7 +144,10 @@ fun AlongsideApp(vm: AppViewModel) {
         }
 
         if (showSettings) {
-            SettingsScreen(settings, board.ws.syncedAtMillis, firstRun = false, onSave = vm::saveSettings, onClose = { vm.openSettings(false) })
+            SettingsScreen(
+                settings, board.ws.syncedAtMillis, firstRun = false, onSave = vm::saveSettings, onClose = { vm.openSettings(false) },
+                setAsideCount = setAside.size, onRetrySetAside = { vm.retrySetAside() }, onDiscardSetAside = vm::discardSetAside,
+            )
         }
 
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp)) { data ->
