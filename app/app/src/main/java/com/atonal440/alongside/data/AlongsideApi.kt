@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -40,8 +41,10 @@ class AlongsideApi(baseUrl: String, private val token: String) {
 
     private suspend inline fun <reified T> call(method: String, path: String, body: JsonObject?): T =
         withContext(Dispatchers.IO) {
+            val url = (base + path).toHttpUrlOrNull()
+                ?: throw ApiException(0, "That server address isn't a valid http(s) URL.")
             val request = Request.Builder()
-                .url(base + path)
+                .url(url)
                 .header("Authorization", "Bearer $token")
                 .method(method, body?.toString()?.toRequestBody(JSON))
                 .build()

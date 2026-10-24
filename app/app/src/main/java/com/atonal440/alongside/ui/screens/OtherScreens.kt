@@ -157,6 +157,7 @@ fun SettingsScreen(
     var url by remember { mutableStateOf(current.serverUrl.ifBlank { "http://10.0.2.2:8787" }) }
     var token by remember { mutableStateOf(current.token) }
     var name by remember { mutableStateOf(current.name) }
+    val normalizedUrl = remember(url) { Settings.normalizeServerUrl(url) }
 
     Column(Modifier.fillMaxSize().background(c.ground).statusBarsPadding().navigationBarsPadding().imePadding()) {
         if (!firstRun) IconBtn(AppIcons.Back, "Back", onClose, Modifier.padding(start = 8.dp, top = 12.dp))
@@ -181,6 +182,12 @@ fun SettingsScreen(
             }
             Spacer(Modifier.height(24.dp))
             SettingField("Server", url, { url = it }, "https://alongside.example.workers.dev", KeyboardType.Uri)
+            if (url.isNotBlank() && normalizedUrl == null) {
+                Text(
+                    "That doesn't look like a web address. Try https://your-worker.workers.dev",
+                    style = Type.meta, color = c.urgentFg, modifier = Modifier.padding(bottom = 18.dp),
+                )
+            }
             SettingField("Access token", token, { token = it }, "Your AUTH_TOKEN", KeyboardType.Password, secret = true)
             SettingField("What should I call you?", name, { name = it }, "Optional", KeyboardType.Text)
             Text(
@@ -191,12 +198,12 @@ fun SettingsScreen(
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             PrimaryButton(
                 "Connect and sync",
-                enabled = url.isNotBlank() && token.isNotBlank(),
-                onClick = { onSave(Settings(url, token, name, sampleMode = false)) },
+                enabled = normalizedUrl != null && token.isNotBlank(),
+                onClick = { normalizedUrl?.let { onSave(Settings(it, token, name, sampleMode = false)) } },
                 modifier = Modifier.fillMaxWidth(),
             )
             if (!current.sampleMode) {
-                OutlineButton("Look around with sample data", onClick = { onSave(Settings(url, token, name, sampleMode = true)) }, modifier = Modifier.fillMaxWidth())
+                OutlineButton("Look around with sample data", onClick = { onSave(Settings(normalizedUrl ?: "", token, name, sampleMode = true)) }, modifier = Modifier.fillMaxWidth())
             } else if (!firstRun) {
                 OutlineButton("Keep using sample data", onClick = { onSave(current.copy(name = name)) }, modifier = Modifier.fillMaxWidth())
             }

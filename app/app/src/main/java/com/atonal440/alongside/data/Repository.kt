@@ -7,6 +7,7 @@ import com.atonal440.alongside.widget.AlongsideWidgets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -53,6 +54,8 @@ class Repository private constructor(private val context: Context) {
     private val queueFile = File(context.filesDir, "pending_ops.json")
     private val opsSerializer = ListSerializer(PendingOp.serializer())
     private val writeLock = Mutex()
+    private val queueLock = Any()
+    private val cacheWrites = Channel<Workspace>(Channel.CONFLATED)
     @Volatile private var loaded = false
     @Volatile private var generation = 0
 
@@ -72,6 +75,10 @@ class Repository private constructor(private val context: Context) {
 
     /** Successor ids spawned by recurring completions, kept for [complete]'s undo. */
     private val spawned = mutableMapOf<String, String>()
+
+    init {
+        startCacheWriter()
+    }
 
     private val api: AlongsideApi?
         get() = _settings.value.takeIf { it.isConnected && !it.sampleMode }?.let { AlongsideApi(it.serverUrl, it.token) }
@@ -99,7 +106,7 @@ class Repository private constructor(private val context: Context) {
         if (switchedSource) {
             // Writes queued for the old source don't belong to the new one.
             generation++
-            setQueue(emptyList())
+            updateQueue { emptyList() }
             _sync.value = SyncStatus.Idle
             publish(if (settings.sampleMode) SampleData.workspace() else Workspace())
             if (!settings.sampleMode) scope.launch { refresh() }
@@ -123,6 +130,13 @@ class Repository private constructor(private val context: Context) {
                 val projects = api.allProjects()
                 val links = api.links()
                 if (gen != generation) return
+                if (_queue.value.isNotEmpty()) {
+                    // Writes were queued while this pull was in flight; publishing it would hide
+                    // them. Their flush pulls again once they've landed.
+                    resyncNeeded = true
+                    _sync.value = SyncStatus.Idle
+                    return
+                }
                 publish(Workspace(tasks, projects, links, System.currentTimeMillis()))
                 _sync.value = SyncStatus.Idle
                 resyncNeeded = false
@@ -221,7 +235,7 @@ class Repository private constructor(private val context: Context) {
         ensureLoaded()
         publish(local(_workspace.value))
         if (api == null) return
-        setQueue(_queue.value + op)
+        updateQueue { it + op }
         if (flush() && resyncNeeded) {
             resyncNeeded = false
             refresh()
@@ -279,7 +293,7 @@ class Repository private constructor(private val context: Context) {
             is PendingOp.Create -> {
                 val row = api.createTask(op.body)
                 apply { it.remove(op.localId).upsert(row) }
-                if (gen == generation) setQueue(_queue.value.map { it.withTaskId(op.localId, row.id) })
+                if (gen == generation) updateQueue { ops -> ops.map { it.withTaskId(op.localId, row.id) } }
             }
             is PendingOp.Patch -> {
                 val row = api.updateTask(op.taskId, op.body)
@@ -287,7 +301,14 @@ class Repository private constructor(private val context: Context) {
             }
             is PendingOp.Complete -> {
                 val result = api.completeTask(op.taskId)
-                result.next?.let { next -> synchronized(spawned) { spawned[op.taskId] = next.id } }
+                result.next?.let { next ->
+                    synchronized(spawned) { spawned[op.taskId] = next.id }
+                    // An undo queued while offline didn't know the successor; give it the id so
+                    // replaying it deletes the copy this completion just spawned.
+                    if (gen == generation) updateQueue { ops ->
+                        ops.map { if (it is PendingOp.Reopen && it.taskId == op.taskId && it.spawnedId == null) it.copy(spawnedId = next.id) else it }
+                    }
+                }
                 apply { ws -> ws.replace(result.completed).let { w -> result.next?.let(w::upsert) ?: w } }
             }
             is PendingOp.Reopen -> {
@@ -315,18 +336,37 @@ class Repository private constructor(private val context: Context) {
         is PendingOp.Delete -> if (taskId == from) copy(taskId = to) else this
     }
 
-    private fun dropHead() = setQueue(_queue.value.drop(1))
+    private fun dropHead() = updateQueue { it.drop(1) }
 
-    private fun setQueue(ops: List<PendingOp>) {
+    /** Appends from [mutate] and drops from [flush] can interleave, so every change goes through one lock. */
+    private fun updateQueue(change: (List<PendingOp>) -> List<PendingOp>) = synchronized(queueLock) {
+        val ops = change(_queue.value)
         _queue.value = ops
-        runCatching { queueFile.writeText(AlongsideApi.json.encodeToString(opsSerializer, ops)) }
+        writeAtomically(queueFile, AlongsideApi.json.encodeToString(opsSerializer, ops))
     }
 
     private fun publish(ws: Workspace) {
         _workspace.value = ws
-        scope.launch(Dispatchers.IO) {
-            runCatching { cacheFile.writeText(AlongsideApi.json.encodeToString(Workspace.serializer(), ws)) }
+        cacheWrites.trySend(ws)
+    }
+
+    /** Writes the cache in publication order, keeping only the latest pending snapshot. */
+    private fun startCacheWriter() = scope.launch(Dispatchers.IO) {
+        for (ws in cacheWrites) {
+            writeAtomically(cacheFile, AlongsideApi.json.encodeToString(Workspace.serializer(), ws))
             AlongsideWidgets.updateAll(context)
+        }
+    }
+
+    /** Write to a sibling temp file, then rename over the target, so a reader never sees half a file. */
+    private fun writeAtomically(target: File, text: String) {
+        runCatching {
+            val temp = File(target.parentFile, target.name + ".tmp")
+            temp.writeText(text)
+            if (!temp.renameTo(target)) {
+                target.delete()
+                temp.renameTo(target)
+            }
         }
     }
 

@@ -3,12 +3,14 @@ package com.atonal440.alongside
 import com.atonal440.alongside.data.AlongsideApi
 import com.atonal440.alongside.data.ApiException
 import com.atonal440.alongside.data.PendingOp
+import com.atonal440.alongside.data.Settings
 import com.atonal440.alongside.data.isTransient
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
@@ -40,4 +42,12 @@ class PendingOpTest {
         assertFalse(ApiException(401, "token").isTransient())
     }
 
+    @Test
+    fun `server addresses are normalized or rejected before saving`() {
+        assertEquals("https://alongside.example.workers.dev", Settings.normalizeServerUrl(" alongside.example.workers.dev/ "))
+        assertEquals("http://10.0.2.2:8787", Settings.normalizeServerUrl("http://10.0.2.2:8787"))
+        assertNull(Settings.normalizeServerUrl(""))
+        assertNull(Settings.normalizeServerUrl("not a url"))
+        assertNull(Settings.normalizeServerUrl("ftp://example.com"))
+    }
 }
