@@ -4,7 +4,7 @@ tags: [overview]
 
 # Alongside — Documentation Overview
 
-Alongside is a lightweight, offline-first task manager built around conversational workflow with Claude. It consists of three main parts: a **Cloudflare Worker** backend (REST API + MCP endpoint + OAuth 2.1 server + iframe widget), a **React PWA** frontend (local-first with IndexedDB), and a **shared types/readiness** layer used by both.
+Alongside is a lightweight, offline-first task manager built around conversational workflow with Claude. It consists of four main parts: a **Cloudflare Worker** backend (REST API + MCP endpoint + OAuth 2.1 server + iframe widget), a **React PWA** frontend (local-first with IndexedDB), a native **Android app** with home-screen widgets (local-first with an on-device write queue; see [Android app](android/overview.md)), and a **shared types/readiness** layer used by the worker and PWA.
 
 The [power-user plan](plans/README.md) owns future work. Its first runtime
 foundation adds read-only capabilities, structured time resolution, and legacy
@@ -112,6 +112,8 @@ docs/
     domain/                ← worker/src/domain/* domain type scaffolding
     wire/                  ← worker/src/wire/* wire schema scaffolding
     storage/               ← worker/src/storage/* storage codec/apply scaffolding
+  android/
+    overview.md            ← app/: setup, screens, widgets, offline sync
   pwa/
     overview.md            ← PWA code structure and design principles
     app.md                 ← pwa/src/App.tsx
