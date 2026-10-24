@@ -46,6 +46,11 @@ Outcomes follow `docs/pwa/api/sync.md`:
   or set aside on the number of failures; at 25 attempts the person is told once that changes are
   not getting through.
 
+A cycle that stops early does not pull. A send whose reply was lost (a gateway 502 after the worker
+committed) is unresolved, and pulling would absorb its effect into the canonical copy while it is
+still queued, so the next write's predicted revision would count it twice. The next cycle replays it
+from the saved envelope, clears the queue, then pulls. (The PWA pulls regardless and has that gap.)
+
 Retrying a retained command (Settings → "Try again") queues a *new* command with a fresh id and a
 `base` predicted from the workspace as it is now, which is what turns a conflict into a rebase.
 Discard forgets it.
