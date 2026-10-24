@@ -293,7 +293,11 @@ class Repository private constructor(private val context: Context) {
                     completeEnvelope(op, revision, read.structuralRevision, successorId.takeIf { row.recurrence != null })
                 }
                 val completed = api.task(op.taskId)
-                val successor = successorId?.let { id -> runCatching { api.task(id) }.getOrNull() }
+                // Only a 404 means no successor was made. Any other failure keeps the completion
+                // queued; its saved envelope replays safely and the read is tried again.
+                val successor = successorId?.let { id ->
+                    try { api.task(id) } catch (e: ApiException) { if (e.status == 404) null else throw e }
+                }
                 apply { ws -> ws.replace(completed).let { w -> successor?.let(w::upsert) ?: w } }
             }
             is PendingOp.Reopen -> {

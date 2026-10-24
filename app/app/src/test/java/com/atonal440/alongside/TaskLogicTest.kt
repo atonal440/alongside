@@ -125,6 +125,22 @@ class TaskLogicTest {
     }
 
     @Test
+    fun `subtasks inherit the latest opening and the earliest deadline`() {
+        val opens = now.plusSeconds(86_400 * 2)
+        val ws = Workspace(
+            tasks = listOf(
+                task("parent") { copy(available_from = """{"kind":"instant","at":"$opens","timezone":"UTC"}""",
+                    deadline = """{"kind":"date","date":"2026-01-10","timezone":"UTC"}""") },
+                task("child") { copy(parent_id = "parent", deadline = """{"kind":"date","date":"2026-02-01","timezone":"UTC"}""") },
+            ),
+        )
+        val child = Board(ws, now).facts("child")!!
+        assertEquals(opens, child.opensAt)
+        assertTrue(child.isWaiting)
+        assertEquals(Instant.parse("2026-01-11T00:00:00Z"), child.deadline)
+    }
+
+    @Test
     fun `a timed deadline reads its date and time in its own zone`() {
         val point = parseTemporalPoint("""{"kind":"instant","at":"2026-10-25T01:00:00Z","timezone":"America/Los_Angeles"}""") as TemporalPoint.At
         assertEquals(LocalDate.of(2026, 10, 24), point.displayDate())

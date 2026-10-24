@@ -47,9 +47,28 @@ class TaskFacts(val task: Task, ws: Workspace, now: Instant) {
     val subtasksDone = subtasks.count { it.isDone }
     val target: Instant? = parseInstant(task.due_date)
     val targetAllDay = task.due_all_day ?: true
-    val deadlinePoint = parseTemporalPoint(task.deadline)
+    /**
+     * The task and its ancestors, nearest first; loop-safe and depth-bounded like
+     * `chainOf` in shared/readiness.ts.
+     */
+    private val chain: List<Task> = buildList {
+        add(task)
+        val seen = mutableSetOf(task.id)
+        var at = task.parent_id?.let(ws::task)
+        while (at != null && at.id !in seen && size <= 33) {
+            add(at)
+            seen += at.id
+            at = at.parent_id?.let(ws::task)
+        }
+    }
+
+    /**
+     * Hard date roles after inheritance, as `effectiveDates` in shared/readiness.ts: the earliest
+     * deadline and the latest opening among the task and its ancestors. Ties go to the nearest.
+     */
+    val deadlinePoint: TemporalPoint? = chain.mapNotNull { parseTemporalPoint(it.deadline) }.minByOrNull { it.deadlineBoundary() }
     val deadline: Instant? = deadlinePoint?.deadlineBoundary()
-    val opensAt: Instant? = parseTemporalPoint(task.available_from)?.openingBoundary()
+    val opensAt: Instant? = chain.mapNotNull { parseTemporalPoint(it.available_from)?.openingBoundary() }.maxOrNull()
     val deferUntil: Instant? = parseInstant(task.defer_until)
 
     val isDone = task.isDone
