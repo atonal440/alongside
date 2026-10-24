@@ -108,6 +108,9 @@ class SyncEngine(
                 if (saved != null && saved.source != newSource) store.clear()
                 state = saved?.takeIf { it.source == newSource } ?: SyncState(source = newSource)
                 canonical = if (sample != null) canonicalFromWorkspace(sample) else readCanonical(newSource)
+                // Landed commands the stored canonical copy already includes (a crash between the two writes).
+                val absorbed = canonical?.let { it.cursor != state.landedAt } == true
+                if (state.landed.isNotEmpty() && absorbed && sample == null) state = state.copy(landed = emptyList(), landedAt = null)
                 loaded = true
                 publish()
             }
@@ -235,7 +238,7 @@ class SyncEngine(
                 Sent.Applied -> {
                     // Held in `landed` until a pull has absorbed it, so the view and the revisions
                     // predicted for later writes keep counting it.
-                    if (!update(gen, republish = false) { s -> s.copy(queue = s.queue.filterNot { it.id == op.id }, landed = s.landed + op) }) return null
+                    if (!update(gen, republish = false) { s -> s.copy(queue = s.queue.filterNot { it.id == op.id }, landed = s.landed + op, landedAt = if (s.landed.isEmpty()) canonical?.cursor else s.landedAt) }) return null
                 }
                 is Sent.Refused -> if (!retain(op, sent, gen)) return null
                 is Sent.Transient -> {
@@ -341,7 +344,7 @@ class SyncEngine(
         synchronized(lock) {
             if (gen == generation) {
                 canonical = result.next
-                state = state.copy(landed = emptyList(), syncedAtMillis = now().toEpochMilli())
+                state = state.copy(landed = emptyList(), landedAt = null, syncedAtMillis = now().toEpochMilli())
                 persistState()
                 publish()
             }

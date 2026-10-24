@@ -259,6 +259,25 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `after a crash between the canonical write and the state write absorbed commands are not counted twice`() = runBlocking {
+        server.put("t_aaaaa")
+        val e = loaded()
+        e.sync()
+        val before = store.state!!
+        e.commit(listOf(Intent.Focus("t_aaaaa", "2026-10-25T00:00:00Z")))
+        e.sync()
+        // The pull saved the canonical file but the process died before the state that cleared `landed`.
+        assertTrue(store.state!!.queue.isEmpty())
+        val op = QueuedOp(99, "c_lost1", Intent.Focus("t_aaaaa", "2026-10-25T00:00:00Z"), 1, "2026-10-24T12:00:00Z")
+        store.state = before.copy(landed = listOf(op), landedAt = before.landedAt ?: SyncCursor(0, 1))
+        val restarted = loaded(engine())
+        restarted.commit(listOf(Intent.Reopen("t_aaaaa")))
+        assertEquals(server.revision("t_aaaaa"), store.state!!.queue.single().base)
+        restarted.sync()
+        assertTrue(restarted.retained.value.isEmpty())
+    }
+
+    @Test
     fun `predicted bases count the commands ahead`() {
         val image = SyncImage("task", "t_aaaaa", 4, row = server.taskRow("t_aaaaa"))
         val canonical = CanonicalWorkspace(SyncCursor(1, 2), mapOf(image.id to image))
