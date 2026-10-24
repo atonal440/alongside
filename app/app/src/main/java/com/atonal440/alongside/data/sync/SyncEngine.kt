@@ -212,8 +212,11 @@ class SyncEngine(
         _status.value = SyncStatus.Syncing
         val halt = flush(api, gen)
         if (gen != generation) return
-        // With the server unreachable a pull would only wait out the same timeout.
-        val pullError = if (halt != null && !halt.reachable) null else pull(api, gen)
+        // No pull while a send is unresolved: a command the server committed but whose reply was lost
+        // (a gateway 502 after the write, say) would be absorbed into the canonical copy while still
+        // queued, and the revision predicted for the next write would count it twice. Once the flush
+        // replays it and the queue is clear, the next cycle pulls.
+        val pullError = if (halt != null) null else pull(api, gen)
         if (gen != generation) return
         _status.value = when {
             halt != null -> {
@@ -225,12 +228,12 @@ class SyncEngine(
         }
     }
 
-    private class Halt(val message: String, val reachable: Boolean)
+    private class Halt(val message: String)
 
     private sealed interface Sent {
         data object Applied : Sent
         class Refused(val status: Int, val code: String?, val message: String, val currentRevision: Long?) : Sent
-        class Transient(val message: String, val reachable: Boolean) : Sent
+        class Transient(val message: String) : Sent
     }
 
     /** Sends queued commands in order. Returns why it stopped early, or null once the queue is empty. */
@@ -250,7 +253,7 @@ class SyncEngine(
                         stuckNoticeFired = true
                         _messages.tryEmit("Some changes aren't syncing — they may need to be redone.")
                     }
-                    return Halt(sent.message, sent.reachable)
+                    return Halt(sent.message)
                 }
             }
         }
@@ -284,15 +287,15 @@ class SyncEngine(
                 }
             }
             // Two structural conflicts in a row mean the graph is busy, not that the command is wrong.
-            return Sent.Transient("The server is busy.", reachable = true)
+            return Sent.Transient("The server is busy.")
         } catch (e: EnvelopeRefused) {
             return Sent.Refused(422, null, e.message.orEmpty(), null)
         } catch (e: ApiException) {
-            return if (e.isDurable()) Sent.Refused(e.status, e.code, e.message.orEmpty(), e.currentRevision) else Sent.Transient(e.friendly(), reachable = true)
+            return if (e.isDurable()) Sent.Refused(e.status, e.code, e.message.orEmpty(), e.currentRevision) else Sent.Transient(e.friendly())
         } catch (e: SyncContractException) {
-            return Sent.Transient("The server sent something this app couldn't read.", reachable = true)
+            return Sent.Transient("The server sent something this app couldn't read.")
         } catch (e: IOException) {
-            return Sent.Transient(e.friendly(), reachable = false)
+            return Sent.Transient(e.friendly())
         }
     }
 

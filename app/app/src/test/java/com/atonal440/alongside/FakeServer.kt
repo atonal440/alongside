@@ -31,6 +31,8 @@ class FakeServer : SyncApi {
     var loseNextResponse = false
     var resetNext = false
     var failNext: ApiException? = null
+    /** The write commits, then the gateway answers with this instead of the worker's reply. */
+    var failAfterApply: ApiException? = null
     var deltaRequests = 0
     var snapshotRequests = 0
     /** The graph moves right after the next entity read, so the envelope built from it is stale. */
@@ -155,6 +157,7 @@ class FakeServer : SyncApi {
         }
         receipts[commandId] = envelope
         applied += envelope
+        failAfterApply?.let { failAfterApply = null; throw it }
         if (loseNextResponse) { loseNextResponse = false; throw IOException("connection reset") }
     }
 }

@@ -123,6 +123,27 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `a command committed behind a gateway error is not counted twice by the next write`() = runBlocking {
+        server.put("t_aaaaa")
+        val e = loaded()
+        e.sync()
+        e.commit(listOf(Intent.Focus("t_aaaaa", "2026-10-25T00:00:00Z")))
+        server.failAfterApply = ApiException(502, "Bad gateway")
+        val deltasBefore = server.deltaRequests
+        e.sync()
+        // The server committed it, but the phone doesn't know, so it must not pull the result in yet.
+        assertEquals(2L, server.revision("t_aaaaa"))
+        assertEquals(deltasBefore, server.deltaRequests)
+        e.commit(listOf(Intent.Defer("t_aaaaa", "someday")))
+        assertEquals(listOf(1L, 2L), store.state!!.queue.map { it.base })
+        e.sync()
+        assertTrue(e.retained.value.isEmpty())
+        assertFalse(e.hasPendingWrites)
+        assertEquals("someday", e.task("t_aaaaa")!!.defer_kind)
+        assertEquals(3L, server.revision("t_aaaaa"))
+    }
+
+    @Test
     fun `a write made against a stale revision is retained as a conflict and retrying rebases it`() = runBlocking {
         server.put("t_aaaaa")
         val e = loaded()
