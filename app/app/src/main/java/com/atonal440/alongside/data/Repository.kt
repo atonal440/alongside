@@ -94,7 +94,10 @@ class Repository private constructor(private val context: Context) {
                 val cached = runCatching { AlongsideApi.json.decodeFromString<Workspace>(cacheFile.readText()) }.getOrNull()
                 val ops = runCatching { AlongsideApi.json.decodeFromString(opsSerializer, queueFile.readText()) }.getOrNull().orEmpty()
                 _queue.value = ops
-                _setAside.value = runCatching { AlongsideApi.json.decodeFromString(opsSerializer, setAsideFile.readText()) }.getOrNull().orEmpty()
+                val setAside = runCatching { AlongsideApi.json.decodeFromString(opsSerializer, setAsideFile.readText()) }.getOrNull().orEmpty()
+                // A crash mid-transfer can leave a change in both files; keep it only in the queue.
+                val queued = ops.map { it.withServerFailures(0) }.toSet()
+                _setAside.value = setAside.filterNot { it.withServerFailures(0) in queued }
                 if (cached != null && _workspace.value.tasks.isEmpty()) {
                     // The queue is saved synchronously but the cache asynchronously, so the cache can
                     // be older than the queue after a crash; lay the waiting ops back over it.
@@ -272,8 +275,11 @@ class Repository private constructor(private val context: Context) {
                         // for this task meanwhile can't be removed without being set aside.
                         synchronized(queueLock) {
                             val related = _queue.value.filter { it.taskId == head.taskId }
-                            updateQueue { ops -> ops.filterNot { it.taskId == head.taskId } }
+                            // Save the destination before removing from the source: a crash in
+                            // between leaves a duplicate (harmless, every op replays safely and
+                            // load drops it), never a change missing from both files.
                             updateSetAside { it + related.map { o -> if (o == head) o.withServerFailures(failures) else o } }
+                            updateQueue { ops -> ops.filterNot { it.taskId == head.taskId } }
                         }
                         val title = _workspace.value.task(op.taskId)?.title
                         _messages.tryEmit(
@@ -373,8 +379,9 @@ class Repository private constructor(private val context: Context) {
         val ops = synchronized(queueLock) {
             val ops = _setAside.value
             if (ops.isEmpty()) return
-            updateSetAside { emptyList() }
+            // Queue first, then clear: a crash in between leaves a duplicate, not a loss.
             updateQueue { it + ops.map { op -> op.withServerFailures(0) } }
+            updateSetAside { emptyList() }
             ops
         }
         val now = Clock.now().toWire()
