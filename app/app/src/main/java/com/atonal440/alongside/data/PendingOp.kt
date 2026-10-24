@@ -105,6 +105,14 @@ sealed interface PendingOp {
     }
 }
 
+/** The reliable command id of a create or complete; legacy ops have none. */
+val PendingOp.commandId: String?
+    get() = when (this) {
+        is PendingOp.Create -> commandId
+        is PendingOp.Complete -> commandId
+        else -> null
+    }
+
 /** Network trouble and server hiccups are worth retrying; a 4xx refusal is final. */
 fun Throwable.isTransient(): Boolean = when (this) {
     is ApiException -> status >= 500 || status == 408 || status == 429

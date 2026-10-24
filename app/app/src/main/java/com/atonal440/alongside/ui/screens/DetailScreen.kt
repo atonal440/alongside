@@ -244,7 +244,7 @@ private fun detailFacts(f: TaskFacts): List<Triple<ImageVector, String, String>>
     f.target?.let { add(Triple(AppIcons.Calendar, "Aiming for", dayAndTime(it, f.targetAllDay))) }
     f.deadlinePoint?.let { point ->
         val day = friendlyDay(point.displayDate(), withDayNumber = true)
-        add(Triple(AppIcons.Flag, "Deadline", if (point is TemporalPoint.At) "$day, ${friendlyTime(point.at)}" else day))
+        add(Triple(AppIcons.Flag, "Deadline", if (point is TemporalPoint.At) "$day, ${friendlyTime(point.at, point.zone)}" else day))
     }
     f.opensAt?.let { if (f.notYetOpen) add(Triple(AppIcons.Lock, "Opens", dayAndTime(it, false))) }
     if (f.isNapping) f.deferUntil?.let { add(Triple(AppIcons.Moon, "Napping until", dayAndTime(it, false))) }

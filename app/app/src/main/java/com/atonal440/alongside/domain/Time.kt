@@ -96,9 +96,9 @@ fun friendlyDay(date: LocalDate, withDayNumber: Boolean = false): String {
     }
 }
 
-/** "5 pm" or "5:30 pm". */
-fun friendlyTime(at: Instant): String {
-    val local = at.atZone(Clock.zone).toLocalTime()
+/** "5 pm" or "5:30 pm", in [zone] (the phone's by default; a date-role point passes its own). */
+fun friendlyTime(at: Instant, zone: ZoneId = Clock.zone): String {
+    val local = at.atZone(zone).toLocalTime()
     val text = if (local.minute == 0) {
         DateTimeFormatter.ofPattern("h a", Locale.getDefault()).format(local)
     } else {

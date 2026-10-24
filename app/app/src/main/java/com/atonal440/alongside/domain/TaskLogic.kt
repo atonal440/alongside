@@ -113,7 +113,7 @@ fun TaskFacts.dateLabel(short: Boolean = false): DateLabel? {
         if (days <= 7 || target == null) {
             val dayText = when {
                 days < 0 -> "passed ${friendlyDay(day)}"
-                point is TemporalPoint.At && days == 0L -> "today ${friendlyTime(point.at)}"
+                point is TemporalPoint.At && days == 0L -> "today ${friendlyTime(point.at, point.zone)}"
                 days == 0L -> "today"
                 else -> friendlyDay(day, withDayNumber = true)
             }

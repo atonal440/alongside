@@ -10,6 +10,8 @@ import com.atonal440.alongside.domain.INBOX
 import com.atonal440.alongside.domain.Show
 import com.atonal440.alongside.domain.TemporalPoint
 import com.atonal440.alongside.domain.deadlineBoundary
+import com.atonal440.alongside.domain.displayDate
+import com.atonal440.alongside.domain.friendlyTime
 import com.atonal440.alongside.domain.parseInstant
 import com.atonal440.alongside.domain.parseTemporalPoint
 import com.atonal440.alongside.domain.recurrenceLabel
@@ -120,5 +122,13 @@ class TaskLogicTest {
         assertEquals("Every 3 months", recurrenceLabel(task("x") { copy(recurrence = "RRULE:FREQ=MONTHLY;INTERVAL=3") }))
         assertEquals("Routine", recurrenceLabel(task("x") { copy(duty_id = "d_1") }))
         assertNull(recurrenceLabel(task("x")))
+    }
+
+    @Test
+    fun `a timed deadline reads its date and time in its own zone`() {
+        val point = parseTemporalPoint("""{"kind":"instant","at":"2026-10-25T01:00:00Z","timezone":"America/Los_Angeles"}""") as TemporalPoint.At
+        assertEquals(LocalDate.of(2026, 10, 24), point.displayDate())
+        // Some locales put a narrow no-break space before am/pm.
+        assertEquals("6 pm", friendlyTime(point.at, point.zone).replace(' ', ' '))
     }
 }

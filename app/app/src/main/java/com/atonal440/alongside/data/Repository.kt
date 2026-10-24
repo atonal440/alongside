@@ -87,9 +87,14 @@ class Repository private constructor(private val context: Context) {
             synchronized(this@Repository) {
                 if (loaded) return@withContext
                 val cached = runCatching { AlongsideApi.json.decodeFromString<Workspace>(cacheFile.readText()) }.getOrNull()
-                if (cached != null && _workspace.value.tasks.isEmpty()) _workspace.value = cached
-                val ops = runCatching { AlongsideApi.json.decodeFromString(opsSerializer, queueFile.readText()) }.getOrNull()
-                if (ops != null) _queue.value = ops
+                val ops = runCatching { AlongsideApi.json.decodeFromString(opsSerializer, queueFile.readText()) }.getOrNull().orEmpty()
+                _queue.value = ops
+                if (cached != null && _workspace.value.tasks.isEmpty()) {
+                    // The queue is saved synchronously but the cache asynchronously, so the cache can
+                    // be older than the queue after a crash; lay the waiting ops back over it.
+                    val now = Clock.now().toWire()
+                    _workspace.value = ops.fold(cached) { ws, op -> op.applyLocally(ws, now) }
+                }
                 loaded = true
             }
         }
@@ -303,9 +308,12 @@ class Repository private constructor(private val context: Context) {
         }
     }
 
-    /** Swap the queued op for the same task and kind with [updated] (to save its sent envelope). */
+    /**
+     * Swap the queued op with [updated]'s command id for [updated] (to save its sent envelope).
+     * Matching on the command id, not the task, keeps a second completion of the same task intact.
+     */
     private fun replaceQueued(updated: PendingOp) = updateQueue { ops ->
-        ops.map { if (it::class == updated::class && it.taskId == updated.taskId) updated else it }
+        ops.map { if (it.commandId != null && it.commandId == updated.commandId) updated else it }
     }
 
     /**
