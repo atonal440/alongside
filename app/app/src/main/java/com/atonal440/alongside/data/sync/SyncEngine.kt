@@ -340,13 +340,17 @@ class SyncEngine(
         }
         // A bootstrap or a change to something the app keeps is written out; a cursor that only
         // moved past entities it drops is not worth rewriting the file for (a replay is harmless).
-        if (result.persist && gen == generation) withContext(io) { store.saveCanonical(CanonicalFile(source, result.next.cursor, result.next.images.values.toList())) }
-        synchronized(lock) {
-            if (gen == generation) {
-                canonical = result.next
-                state = state.copy(landed = emptyList(), landedAt = null, syncedAtMillis = now().toEpochMilli())
-                persistState()
-                publish()
+        // The generation check, the file write and the swap share the lock `reset` takes, so a pull for
+        // the old source can never leave its workspace on disk under the new source's name.
+        withContext(io) {
+            synchronized(lock) {
+                if (gen == generation) {
+                    if (result.persist) store.saveCanonical(CanonicalFile(source, result.next.cursor, result.next.images.values.toList()))
+                    canonical = result.next
+                    state = state.copy(landed = emptyList(), landedAt = null, syncedAtMillis = now().toEpochMilli())
+                    persistState()
+                    publish()
+                }
             }
         }
         null
