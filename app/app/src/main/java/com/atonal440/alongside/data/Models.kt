@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 
 /**
@@ -38,6 +39,7 @@ data class Task(
     val focused_until: String? = null,
     val duty_id: String? = null,
     val parent_id: String? = null,
+    @Serializable(with = LenientDoubleSerializer::class)
     val position: Double? = null,
     val created_at: String = "",
     val updated_at: String = "",
@@ -101,5 +103,26 @@ object LenientBooleanSerializer : KSerializer<Boolean?> {
     @OptIn(ExperimentalSerializationApi::class)
     override fun serialize(encoder: Encoder, value: Boolean?) {
         if (value == null) encoder.encodeNull() else encoder.encodeBoolean(value)
+    }
+}
+
+/**
+ * `position` is a sort hint, not worth failing a whole sync over: anything that isn't a number
+ * reads as unpositioned. (A local database missing the column returns the literal string
+ * "position", because SQLite treats an unknown double-quoted identifier as a string.)
+ */
+object LenientDoubleSerializer : KSerializer<Double?> {
+    override val descriptor = PrimitiveSerialDescriptor("LenientDouble", PrimitiveKind.DOUBLE)
+
+    override fun deserialize(decoder: Decoder): Double? {
+        val element = (decoder as? JsonDecoder)?.decodeJsonElement() ?: return decoder.decodeDouble()
+        val primitive = element as? JsonPrimitive ?: return null
+        if (primitive is JsonNull || primitive.isString) return null
+        return primitive.doubleOrNull?.takeIf { it.isFinite() }
+    }
+
+    @OptIn(ExperimentalSerializationApi::class)
+    override fun serialize(encoder: Encoder, value: Double?) {
+        if (value == null) encoder.encodeNull() else encoder.encodeDouble(value)
     }
 }

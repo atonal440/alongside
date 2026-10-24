@@ -34,6 +34,10 @@ class TaskLogicTest {
             {"id":"t_3","title":"C","due_all_day":false,"created_at":"x","updated_at":"x"}]"""
         val rows = AlongsideApi.json.decodeFromString<List<Task>>(json)
         assertEquals(listOf(true, null, false), rows.map { it.due_all_day })
+        val positions = AlongsideApi.json.decodeFromString<List<Task>>(
+            """[{"id":"a","title":"A","position":2.5},{"id":"b","title":"B","position":"position"},{"id":"c","title":"C","position":null}]""",
+        ).map { it.position }
+        assertEquals(listOf(2.5, null, null), positions)
         assertTrue(rows[0].isPlan)
     }
 

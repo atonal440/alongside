@@ -142,7 +142,15 @@ private fun Tag(text: String, bg: androidx.glance.unit.ColorProvider, fg: androi
     )
 }
 
-private suspend fun loadedRepo(context: Context) = Repository.get(context).also { it.ensureLoaded() }
+/**
+ * Widgets render from the cache straight away and, when it's stale, pull from the worker in the
+ * background; the pull's publish then redraws them. The age check keeps the redraw that follows
+ * a pull from triggering another one.
+ */
+private suspend fun loadedRepo(context: Context) = Repository.get(context).also {
+    it.ensureLoaded()
+    it.refreshIfStale(maxAgeMillis = 15 * 60 * 1000L)
+}
 
 // ---------------------------------------------------------------------------------------------
 // Ready now: 4x2 shows the top three; taller sizes split into Today / This week with a footer.

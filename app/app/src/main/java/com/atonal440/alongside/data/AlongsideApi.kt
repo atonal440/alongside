@@ -2,6 +2,7 @@ package com.atonal440.alongside.data
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -47,7 +48,13 @@ class AlongsideApi(baseUrl: String, private val token: String) {
             client.newCall(request).execute().use { response ->
                 val text = response.body?.string().orEmpty()
                 if (!response.isSuccessful) throw ApiException(response.code, errorMessage(response.code, text))
-                json.decodeFromString<T>(text)
+                try {
+                    json.decodeFromString<T>(text)
+                } catch (e: SerializationException) {
+                    // A reply this client can't read is final, not a network blip; surface it
+                    // as an error instead of letting it crash the app.
+                    throw ApiException(0, "The server sent something this app couldn't read.")
+                }
             }
         }
 
