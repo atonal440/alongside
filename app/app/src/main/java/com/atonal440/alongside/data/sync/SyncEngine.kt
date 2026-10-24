@@ -170,9 +170,26 @@ class SyncEngine(
             val chosen = state.retained.filter { it.id in ids }.sortedBy { it.id }
             if (chosen.isEmpty()) return@withContext
             val at = now().toWire()
-            var next = state
+            // A completion that gains a successor on retry also has to be undone by an undo queued behind it,
+            // which was made when there was nothing to delete: delete the new successor, then reopen.
+            val successors = HashMap<String, String>()
+            val intents = ArrayList<Intent>()
             for (r in chosen) {
-                val intent = rebased(r.op.intent)
+                val before = r.op.intent
+                val intent = rebased(before)
+                if (before is Intent.Complete && before.successorId == null && intent is Intent.Complete && intent.successorId != null) {
+                    successors[intent.taskId] = intent.successorId
+                }
+                val spawned = successors[intent.taskId]
+                if (intent is Intent.Reopen && intent.spawnedId == null && spawned != null) {
+                    intents += Intent.Delete(spawned)
+                    intents += intent.copy(spawnedId = spawned)
+                } else {
+                    intents += intent
+                }
+            }
+            var next = state
+            for (intent in intents) {
                 val base = if (intent is Intent.Create) null else predictBase(canonical, next.landed + next.queue, intent.writes[0])
                 next = next.copy(nextId = next.nextId + 1, queue = next.queue + QueuedOp(next.nextId, mintId("c"), intent, base, at))
             }

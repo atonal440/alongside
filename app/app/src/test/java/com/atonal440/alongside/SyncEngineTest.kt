@@ -203,6 +203,25 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `retrying a complete-then-undo of a task that started repeating deletes the new successor`() = runBlocking {
+        server.put("t_aaaaa")
+        val e = loaded()
+        e.sync()
+        e.commit(listOf(Intent.Complete("t_aaaaa", null), Intent.Reopen("t_aaaaa")))
+        server.edit("t_aaaaa") { JsonObject(it + ("recurrence" to JsonPrimitive("FREQ=DAILY"))) }
+        e.sync()
+        assertEquals(listOf("Conflict", "Dependency"), e.retained.value.map { it.reason::class.simpleName })
+        e.retryRetained(e.retained.value.map { it.id })
+        val queued = store.state!!.queue.map { it.intent }
+        val successor = (queued[0] as Intent.Complete).successorId!!
+        assertEquals(listOf(Intent.Complete("t_aaaaa", successor), Intent.Delete(successor), Intent.Reopen("t_aaaaa", successor)), queued)
+        e.sync()
+        assertTrue(e.retained.value.isEmpty())
+        assertEquals("pending", e.task("t_aaaaa")!!.status)
+        assertNull(e.task(successor))
+    }
+
+    @Test
     fun `a refused create retains the commands queued on its task`() = runBlocking {
         val e = loaded()
         e.sync()
