@@ -265,8 +265,12 @@ class Repository private constructor(private val context: Context) {
                     val head = _queue.value.firstOrNull() ?: op
                     val failures = head.serverFailures + 1
                     if (failures >= MAX_SERVER_FAILURES) {
-                        dropHead()
-                        updateSetAside { it + head.withServerFailures(failures) }
+                        // Later changes to the same task depend on this one (a patch after a create
+                        // would 404 and be lost), so they go aside with it, in order. Other tasks'
+                        // changes stay queued and keep going.
+                        val related = synchronized(queueLock) { _queue.value.filter { it.taskId == head.taskId } }
+                        updateQueue { ops -> ops.filterNot { it.taskId == head.taskId } }
+                        updateSetAside { it + related.map { o -> if (o == head) o.withServerFailures(failures) else o } }
                         val title = _workspace.value.task(op.taskId)?.title
                         _messages.tryEmit(
                             "Couldn't save ${title?.let { "a change to \u201c$it\u201d" } ?: "a change"} after $failures tries. " +
