@@ -3,7 +3,7 @@ package com.atonal440.alongside.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.atonal440.alongside.data.PendingOp
+import com.atonal440.alongside.data.sync.RetainedOp
 import com.atonal440.alongside.data.Repository
 import com.atonal440.alongside.data.Settings
 import com.atonal440.alongside.domain.Board
@@ -32,7 +32,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val repo = Repository.get(app)
 
     val settings = repo.settings
-    val setAside = repo.setAside
+    val needsAttention = repo.needsAttention
     val sync = repo.sync
     /** Naps end, focus lapses and windows open with no data change, so the board also rebuilds every minute. */
     private val minuteTicks = flow {
@@ -109,8 +109,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.create(title.trim(), notes?.trim()?.takeIf { it.isNotEmpty() }, projectId, plan, due)
     }
 
-    fun retrySetAside() = viewModelScope.launch { repo.retrySetAside() }
-    fun discardSetAside(seen: List<PendingOp>) = repo.discardSetAside(seen)
+    fun retryNeedsAttention() = viewModelScope.launch { repo.retryNeedsAttention() }
+    fun discardNeedsAttention(seen: List<RetainedOp>) = viewModelScope.launch { repo.discardNeedsAttention(seen) }
 
     fun saveSettings(settings: Settings) {
         repo.updateSettings(settings)

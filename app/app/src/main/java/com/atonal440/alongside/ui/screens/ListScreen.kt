@@ -39,7 +39,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.atonal440.alongside.data.SyncStatus
+import com.atonal440.alongside.data.sync.SyncStatus
 import com.atonal440.alongside.domain.Board
 import com.atonal440.alongside.domain.Clock
 import com.atonal440.alongside.domain.Filters

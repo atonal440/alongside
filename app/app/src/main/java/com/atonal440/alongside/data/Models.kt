@@ -68,9 +68,6 @@ data class TaskLink(
     val link_type: String,
 )
 
-@Serializable
-data class CompleteResult(val completed: Task, val next: Task? = null)
-
 /**
  * Capture limits from `ProjectCreateValuesSchema` in shared/wire/commands.ts (which task creation
  * shares). Checked in the form so an over-long capture is corrected there, not refused later.

@@ -100,7 +100,10 @@ val TaskIdKey = ActionParameters.Key<String>("taskId")
 class CompleteTaskAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         val id = parameters[TaskIdKey] ?: return
-        Repository.get(context).complete(id)
+        val repo = Repository.get(context)
+        repo.complete(id)
+        // The process may be reclaimed once this returns, so send it now rather than in the background.
+        repo.refresh()
     }
 }
 

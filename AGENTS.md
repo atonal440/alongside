@@ -43,7 +43,7 @@ pwa/
 
 app/               Android app (Gradle project; open in Android Studio)
   app/src/main/java/com/atonal440/alongside/
-    data/          REST client, Repository, PendingOp write queue
+    data/          v2 REST client, Repository; data/sync/ is the port of the PWA sync engine
     domain/        Task buckets (Board), date labels, time helpers
     ui/            Compose screens, components, theme
     widget/        Glance widgets

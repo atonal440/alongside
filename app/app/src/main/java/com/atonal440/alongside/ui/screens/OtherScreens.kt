@@ -42,6 +42,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.atonal440.alongside.data.Settings
+import com.atonal440.alongside.data.sync.RetainedOp
 import com.atonal440.alongside.domain.Board
 import com.atonal440.alongside.domain.Clock
 import com.atonal440.alongside.domain.INBOX
@@ -152,9 +153,9 @@ fun SettingsScreen(
     firstRun: Boolean,
     onSave: (Settings) -> Unit,
     onClose: () -> Unit,
-    setAsideCount: Int = 0,
-    onRetrySetAside: () -> Unit = {},
-    onDiscardSetAside: () -> Unit = {},
+    needsAttention: List<RetainedOp> = emptyList(),
+    onRetryNeedsAttention: () -> Unit = {},
+    onDiscardNeedsAttention: () -> Unit = {},
 ) {
     val c = LocalColors.current
     var url by remember { mutableStateOf(current.serverUrl.ifBlank { "http://10.0.2.2:8787" }) }
@@ -182,7 +183,7 @@ fun SettingsScreen(
                     else -> "Not synced yet."
                 }
                 Text(status, style = Type.body, color = c.muted, modifier = Modifier.padding(top = 8.dp))
-                if (setAsideCount > 0) SetAsideCard(setAsideCount, onRetrySetAside, onDiscardSetAside)
+                if (needsAttention.isNotEmpty()) NeedsAttentionCard(needsAttention, onRetryNeedsAttention, onDiscardNeedsAttention)
             }
             Spacer(Modifier.height(24.dp))
             SettingField("Server", url, { url = it }, "https://alongside.example.workers.dev", KeyboardType.Uri)
@@ -215,22 +216,23 @@ fun SettingsScreen(
     }
 }
 
-/** Changes the server kept erroring on, set aside so the rest of the queue could go through. */
+/** Changes the server refused, kept so the person's intent isn't lost: try them again as new changes, or discard. */
 @Composable
-private fun SetAsideCard(count: Int, onRetry: () -> Unit, onDiscard: () -> Unit) {
+private fun NeedsAttentionCard(ops: List<RetainedOp>, onRetry: () -> Unit, onDiscard: () -> Unit) {
     val c = LocalColors.current
+    val count = ops.size
     Column(
         Modifier.padding(top = 16.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(c.urgentBg).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            if (count == 1) "1 change couldn't be saved" else "$count changes couldn't be saved",
+            if (count == 1) "1 change needs attention" else "$count changes need attention",
             style = Type.rowTitle, color = c.urgentFg,
         )
-        Text(
-            "The server kept answering with an error, so ${if (count == 1) "it was" else "they were"} set aside to let your other changes through.",
-            style = Type.body, color = c.urgentFg,
-        )
+        ops.take(3).forEach { r ->
+            Text("${r.op.intent.describe()}: ${r.reason.message}", style = Type.body, color = c.urgentFg)
+        }
+        if (count > 3) Text("and ${count - 3} more", style = Type.meta, color = c.urgentFg)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PrimaryButton("Try again", onClick = onRetry, modifier = Modifier.weight(1f))
             OutlineButton("Discard", onClick = onDiscard)
