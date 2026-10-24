@@ -60,20 +60,20 @@ class Repository private constructor(private val context: Context) {
         engine.load(sourceKey(s), if (s.sampleMode) SampleData.workspace() else null)
     }
 
-    fun updateSettings(settings: Settings) {
+    suspend fun updateSettings(settings: Settings) {
         val old = _settings.value
         val switchedSource = settings.sampleMode != old.sampleMode ||
             settings.serverUrl.trim() != old.serverUrl || settings.token.trim() != old.token
         Settings.save(context, settings)
-        _settings.value = Settings.load(context)
-        if (switchedSource) {
-            // Writes queued for the old source don't belong to the new one.
-            val now = _settings.value
-            scope.launch {
-                engine.reset(sourceKey(now), if (now.sampleMode) SampleData.workspace() else null)
-                if (now.isConnected && !now.sampleMode) engine.sync()
-            }
+        val saved = Settings.load(context)
+        if (!switchedSource) {
+            _settings.value = saved
+            return
         }
+        // Writes queued for the old source don't belong to the new one. The new settings become
+        // visible in the same step as the reset, so a sync can't pair the new server with the old queue.
+        engine.reset(sourceKey(saved), if (saved.sampleMode) SampleData.workspace() else null) { _settings.value = saved }
+        if (saved.isConnected && !saved.sampleMode) engine.sync()
     }
 
     /** Sends queued writes, then pulls. */

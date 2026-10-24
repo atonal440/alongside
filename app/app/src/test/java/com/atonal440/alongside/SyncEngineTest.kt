@@ -7,6 +7,7 @@ import com.atonal440.alongside.data.sync.MemorySyncStore
 import com.atonal440.alongside.data.sync.QueuedOp
 import com.atonal440.alongside.data.sync.RetainedReason
 import com.atonal440.alongside.data.sync.SyncContractException
+import com.atonal440.alongside.data.sync.SyncApi
 import com.atonal440.alongside.data.sync.SyncCursor
 import com.atonal440.alongside.data.sync.SyncEngine
 import com.atonal440.alongside.data.sync.SyncImage
@@ -237,6 +238,23 @@ class SyncEngineTest {
         e.commit(listOf(Intent.Reopen("t_aaaaa")))
         e.reset("https://other.example")
         assertFalse(e.hasPendingWrites)
+        assertTrue(e.workspace.value.tasks.isEmpty())
+    }
+
+    @Test
+    fun `a queue made for one server is never sent to the server switched to`() = runBlocking {
+        val old = FakeServer().also { it.put("t_aaaaa") }
+        val next = FakeServer()
+        var current: SyncApi = old
+        val e = SyncEngine(MemorySyncStore(), { current }, { Instant.parse("2026-10-24T12:00:30Z") }, Dispatchers.Unconfined)
+        e.load("https://old.example")
+        e.sync()
+        old.offline = true
+        e.commit(listOf(Intent.Create("t_newnew", "Fig", null, "action")))
+        e.reset("https://next.example") { current = next }
+        e.sync()
+        assertTrue(next.applied.isEmpty())
+        assertTrue(old.applied.isEmpty())
         assertTrue(e.workspace.value.tasks.isEmpty())
     }
 

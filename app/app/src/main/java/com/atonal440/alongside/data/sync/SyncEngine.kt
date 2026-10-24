@@ -114,10 +114,15 @@ class SyncEngine(
         }
     }
 
-    /** Drops everything stored for the old source; in-flight work from it gives up. */
-    suspend fun reset(newSource: String, sample: Workspace? = null) = withContext(io) {
+    /**
+     * Drops everything stored for the old source; in-flight work from it gives up. [onReset] runs
+     * under the same lock, so whatever makes [apiFactory] answer for the new source changes
+     * together with the state: no cycle can pair the new server with the old queue.
+     */
+    suspend fun reset(newSource: String, sample: Workspace? = null, onReset: () -> Unit = {}) = withContext(io) {
         synchronized(lock) {
             generation++
+            onReset()
             runCatching { store.clear() }
             source = newSource
             state = SyncState(source = newSource)
@@ -195,8 +200,9 @@ class SyncEngine(
     }
 
     private suspend fun cycle() {
-        val api = apiFactory() ?: return
-        val gen = generation
+        // Read together with the generation, so the pair always belongs to the same source.
+        val (api, gen) = synchronized(lock) { apiFactory() to generation }
+        if (api == null) return
         _status.value = SyncStatus.Syncing
         val halt = flush(api, gen)
         if (gen != generation) return

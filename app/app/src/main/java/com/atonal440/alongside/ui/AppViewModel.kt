@@ -113,8 +113,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun discardNeedsAttention(seen: List<RetainedOp>) = viewModelScope.launch { repo.discardNeedsAttention(seen) }
 
     fun saveSettings(settings: Settings) {
-        repo.updateSettings(settings)
         _showSettings.value = false
-        viewModelScope.launch { repo.refresh() }
+        viewModelScope.launch {
+            repo.updateSettings(settings)
+            repo.refresh()
+        }
     }
 }
