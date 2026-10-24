@@ -18,8 +18,9 @@ import java.io.IOException
 
 /** A small in-memory worker: revisions per identity, a change log, receipts and injectable failures. */
 class FakeServer : SyncApi {
-    var epoch = 1L
-    var seq = 1L
+    // A fresh worker starts at epoch 0 and sequence 0, and revisions are valid from 0.
+    var epoch = 0L
+    var seq = 0L
     var structural = 1L
     private class Entry(var revision: Long, var row: JsonObject?)
     private val entries = LinkedHashMap<String, Entry>()

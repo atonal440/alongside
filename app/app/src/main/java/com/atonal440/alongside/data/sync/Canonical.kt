@@ -92,7 +92,7 @@ object SyncWire {
         val obj = element as? JsonObject ?: bad("A sync cursor is missing.")
         val epoch = obj.long("epoch")
         val sequence = obj.long("sequence")
-        if (epoch == null || sequence == null || epoch < 1 || sequence < 1) bad("A sync cursor is malformed.")
+        if (epoch == null || sequence == null || epoch < 0 || sequence < 0) bad("A sync cursor is malformed.")
         return SyncCursor(epoch, sequence)
     }
 
@@ -102,7 +102,7 @@ object SyncWire {
         val entity = obj.str("entity") ?: bad("A sync entity has no kind.")
         if (entity !in KEPT) return null
         val key = obj.str("key") ?: bad("A $entity image has no key.")
-        val revision = obj.long("revision")?.takeIf { it >= 1 } ?: bad("$entity:$key has no valid revision.")
+        val revision = obj.long("revision")?.takeIf { it >= 0 } ?: bad("$entity:$key has no valid revision.")
         val deletedAt = obj.str("deletedAt")
         val row = when (val raw = obj["row"]) {
             null, JsonNull -> null
