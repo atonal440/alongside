@@ -76,8 +76,11 @@ class TaskFacts(val task: Task, ws: Workspace, now: Instant) {
     val isNapping = !isDone && task.defer_kind == "until" && deferUntil != null && deferUntil > now
     val isDeferred = isSomeday || isNapping
     val isFocused = !isDone && !isDeferred && parseInstant(task.focused_until)?.let { it > now } == true
-    val isBlocked = ws.links.any { link ->
-        link.link_type == "blocks" && link.to_task_id == task.id && ws.task(link.from_task_id)?.isDone == false
+    /** An unfinished prerequisite of the task or any ancestor blocks it, as in shared/readiness.ts. */
+    val isBlocked = chain.any { member ->
+        ws.links.any { link ->
+            link.link_type == "blocks" && link.to_task_id == member.id && ws.task(link.from_task_id)?.isDone == false
+        }
     }
     val notYetOpen = opensAt != null && opensAt > now
     val isWaiting = !isDone && !isDeferred && (isBlocked || notYetOpen)

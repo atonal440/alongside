@@ -244,10 +244,11 @@ class Repository private constructor(private val context: Context) {
                     _sync.value = SyncStatus.Failed("${e.friendly()} ${if (waiting == 1) "1 change" else "$waiting changes"} will sync later.")
                     return@withLock false
                 }
-                // Refused for good: forget it and re-sync so the screen stops showing it.
+                // Refused for good: forget it and put the task back the way the server has it now,
+                // so the screen stops showing the refused change even if a later op is stuck.
                 dropHead()
-                resyncNeeded = true
                 _messages.tryEmit(e.friendly())
+                if (!restoreFromServer(api, op.taskId, gen)) resyncNeeded = true
             }
         }
         true
@@ -260,10 +261,7 @@ class Repository private constructor(private val context: Context) {
      */
     private suspend fun execute(api: AlongsideApi, op: PendingOp, gen: Int) {
         fun apply(change: (Workspace) -> Workspace) {
-            if (gen != generation) return
-            val now = Clock.now().toWire()
-            val waiting = _queue.value.drop(1)
-            publish(waiting.fold(change(_workspace.value)) { ws, later -> later.applyLocally(ws, now) })
+            if (gen == generation) publishOverQueue(_queue.value.drop(1), change)
         }
         when (op) {
             is PendingOp.Create -> {
@@ -310,6 +308,29 @@ class Repository private constructor(private val context: Context) {
                 apply { it.remove(op.taskId) }
             }
         }
+    }
+
+    /** Apply [change] to the workspace, then lay the [waiting] ops back over it before publishing. */
+    private fun publishOverQueue(waiting: List<PendingOp>, change: (Workspace) -> Workspace) {
+        val now = Clock.now().toWire()
+        publish(waiting.fold(change(_workspace.value)) { ws, later -> later.applyLocally(ws, now) })
+    }
+
+    /**
+     * After a refusal, re-read the task and show the server's version under whatever is still
+     * queued. Returns false when the read itself fails, so the caller falls back to a full re-sync.
+     */
+    private suspend fun restoreFromServer(api: AlongsideApi, taskId: String, gen: Int): Boolean {
+        val row = try {
+            api.task(taskId)
+        } catch (e: ApiException) {
+            if (e.status != 404) return false
+            null
+        } catch (e: IOException) {
+            return false
+        }
+        if (gen == generation) publishOverQueue(_queue.value) { ws -> if (row != null) ws.upsert(row) else ws.remove(taskId) }
+        return true
     }
 
     /**

@@ -141,6 +141,17 @@ class TaskLogicTest {
     }
 
     @Test
+    fun `a blocker on a parent makes its subtasks wait`() {
+        val ws = Workspace(
+            tasks = listOf(task("first"), task("parent"), task("child") { copy(parent_id = "parent") }),
+            links = listOf(TaskLink("first", "parent", "blocks")),
+        )
+        val child = Board(ws, now).facts("child")!!
+        assertTrue(child.isBlocked)
+        assertTrue(child.isWaiting)
+    }
+
+    @Test
     fun `a timed deadline reads its date and time in its own zone`() {
         val point = parseTemporalPoint("""{"kind":"instant","at":"2026-10-25T01:00:00Z","timezone":"America/Los_Angeles"}""") as TemporalPoint.At
         assertEquals(LocalDate.of(2026, 10, 24), point.displayDate())
