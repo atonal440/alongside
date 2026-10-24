@@ -21,7 +21,7 @@ A lightweight task manager built around conversational workflow. Tasks live in a
 ## Architecture
 
 ```text
-Assistant client / MCP        PWA / browser
+Assistant client / MCP        PWA / browser, Android app
         |                         |
         | /mcp JSON-RPC           | /api/* REST
         v                         v
@@ -115,6 +115,13 @@ pwa/
   src/utils/       Queueing, task-flow, design helpers, link maps
   src/sw.ts        Workbox service worker
 
+app/               Android app (Kotlin, Compose, Glance widgets)
+  app/src/main/java/com/atonal440/alongside/
+    data/          REST client, repository, offline write queue
+    domain/        Task buckets, date labels, time helpers
+    ui/            Compose screens and theme
+    widget/        Home-screen widgets
+
 docs/              Per-file and architecture docs
 ```
 
@@ -167,6 +174,7 @@ Per-file documentation lives in `docs/`. When adding, removing, or significantly
 
 - `CLAUDE.md` and `AGENTS.md` for assistant-specific working instructions
 - `docs/overview.md` for architecture and data flow
+- `docs/android/overview.md` for the Android app: setup, widgets, offline sync
 - `docs/mcp-tools.md` for MCP tool reference
 - `docs/api.md` for REST API reference
 - `alongside-design.md` for design philosophy and behavioral spec
