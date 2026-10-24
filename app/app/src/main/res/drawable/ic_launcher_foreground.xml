@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Alongside mark: a big pebble with a check and a small companion pebble tucked beside it.
+     Kept in sync with ui/components/Components.kt AlongsideMark. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:pivotX="54" android:pivotY="56" android:scaleX="0.84" android:scaleY="0.84" android:translateY="-2">
+        <group android:pivotX="48" android:pivotY="53" android:rotation="-8">
+            <path android:pathData="M48.88,34C60.54,34 70,43.36 70,54.9C70,64.34 59.17,72 45.8,72C34.86,72 26,63.15 26,52.24C26,42.17 36.24,34 48.88,34Z" android:fillColor="#1F1B3A"/>
+            <path android:pathData="M38,53l6.5,6.5L57,46" android:strokeColor="#CFC5F5" android:strokeWidth="5" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+        </group>
+        <group android:pivotX="72" android:pivotY="69" android:rotation="14">
+            <path android:pathData="M72.44,59C78.27,59 83,63.92 83,70C83,74.97 77.58,79 70.9,79C65.43,79 61,74.34 61,68.6C61,63.3 66.12,59 72.44,59Z" android:strokeColor="#CFC5F5" android:strokeWidth="6"/>
+            <path android:pathData="M72.44,59C78.27,59 83,63.92 83,70C83,74.97 77.58,79 70.9,79C65.43,79 61,74.34 61,68.6C61,63.3 66.12,59 72.44,59Z" android:fillColor="#FF8A4C"/>
+        </group>
+    </group>
+</vector>
