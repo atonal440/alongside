@@ -14,7 +14,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -30,7 +32,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val settings = repo.settings
     val sync = repo.sync
-    val board: StateFlow<Board> = repo.workspace.map { Board(it) }
+    /** Naps end, focus lapses and windows open with no data change, so the board also rebuilds every minute. */
+    private val minuteTicks = flow {
+        while (true) {
+            emit(Unit)
+            delay(60_000)
+        }
+    }
+
+    val board: StateFlow<Board> = combine(repo.workspace, minuteTicks) { ws, _ -> Board(ws) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, Board(repo.workspace.value))
 
     private val _filters = MutableStateFlow(Filters())

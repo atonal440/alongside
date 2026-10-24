@@ -21,14 +21,14 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.File
 import java.io.IOException
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneOffset
-import java.util.UUID
 
 sealed interface SyncStatus {
     data object Idle : SyncStatus
@@ -161,79 +161,55 @@ class Repository private constructor(private val context: Context) {
     /** Marks a task done. Returns the successor id when a recurring task spawned one. */
     suspend fun complete(id: String): String? {
         ensureLoaded()
-        val before = _workspace.value.task(id) ?: return null
-        val done = before.copy(status = "done", focused_until = null, updated_at = Clock.now().toWire())
-        mutate(PendingOp.Complete(id)) { it.replace(done) }
+        if (_workspace.value.task(id) == null) return null
+        mutate(PendingOp.Complete(id))
         return synchronized(spawned) { spawned.remove(id) }
     }
 
     /** Undo for [complete]: reopen the task and drop the successor it spawned, if any. */
     suspend fun reopen(id: String, spawnedId: String?) {
-        val before = _workspace.value.task(id) ?: return
-        mutate(PendingOp.Reopen(id, spawnedId)) { ws ->
-            ws.replace(before.copy(status = "pending")).let { if (spawnedId != null) it.remove(spawnedId) else it }
-        }
+        mutate(PendingOp.Reopen(id, spawnedId))
     }
 
     suspend fun setFocus(id: String, focused: Boolean) {
         val until = if (focused) Clock.endOfToday().toWire() else null
-        patch(id, buildJsonObject { put("focused_until", until.json()) }) { it.copy(focused_until = until) }
+        mutate(PendingOp.Patch(id, buildJsonObject { put("focused_until", until.json()) }))
     }
 
     /** Snoozes a task until [until], or to someday when null. */
     suspend fun nap(id: String, until: Instant?) {
-        val kind = if (until == null) "someday" else "until"
-        val untilText = until?.toWire()
-        patch(id, buildJsonObject {
-            put("defer_kind", kind)
-            put("defer_until", untilText.json())
+        mutate(PendingOp.Patch(id, buildJsonObject {
+            put("defer_kind", if (until == null) "someday" else "until")
+            put("defer_until", until?.toWire().json())
             put("focused_until", JsonNull)
-        }) { it.copy(defer_kind = kind, defer_until = untilText, focused_until = null) }
+        }))
     }
 
     suspend fun wake(id: String) {
-        patch(id, buildJsonObject {
+        mutate(PendingOp.Patch(id, buildJsonObject {
             put("defer_kind", "none")
             put("defer_until", JsonNull)
-        }) { it.copy(defer_kind = "none", defer_until = null) }
+        }))
     }
 
     suspend fun delete(id: String) {
-        mutate(PendingOp.Delete(id)) { it.remove(id) }
+        mutate(PendingOp.Delete(id))
     }
 
     suspend fun create(title: String, notes: String?, projectId: String?, plan: Boolean, due: LocalDate?) {
-        val now = Clock.now().toWire()
-        val draft = Task(
-            id = LOCAL_ID_PREFIX + UUID.randomUUID(),
-            title = title,
-            notes = notes,
-            project_id = projectId,
-            task_type = if (plan) "plan" else "action",
-            due_date = due?.atTime(12, 0)?.atZone(ZoneOffset.UTC)?.toInstant()?.toWire(),
-            due_all_day = due?.let { true },
-            created_at = now,
-            updated_at = now,
+        mutate(
+            PendingOp.Create(
+                taskId = mintId("t"), commandId = mintId("c"), title = title, notes = notes,
+                taskType = if (plan) "plan" else "action", projectId = projectId, dueDate = due?.toString(),
+            ),
         )
-        val body = buildJsonObject {
-            put("title", title)
-            notes?.let { put("notes", it) }
-            put("project_id", projectId.json())
-            put("task_type", draft.task_type)
-            due?.let { put("due_date", it.toString()) }
-        }
-        mutate(PendingOp.Create(draft.id, body)) { it.upsert(draft) }
     }
 
-    private suspend fun patch(id: String, body: JsonObject, local: (Task) -> Task) {
-        val before = _workspace.value.task(id) ?: return
-        mutate(PendingOp.Patch(id, body)) { it.replace(local(before)) }
-    }
-
-    /** Applies [local] straight away, queues [op] when connected (sample mode stops here), and tries to send it. */
-    private suspend fun mutate(op: PendingOp, local: (Workspace) -> Workspace) {
+    /** Shows [op] straight away, queues it when connected (sample mode stops here), and tries to send it. */
+    private suspend fun mutate(op: PendingOp) {
         ensureLoaded()
-        publish(local(_workspace.value))
+        if (_workspace.value.task(op.taskId) == null && op !is PendingOp.Create) return
+        publish(op.applyLocally(_workspace.value, Clock.now().toWire()))
         if (api == null) return
         updateQueue { it + op }
         if (flush() && resyncNeeded) {
@@ -254,7 +230,6 @@ class Repository private constructor(private val context: Context) {
         while (true) {
             if (gen != generation) return@withLock false
             val op = _queue.value.firstOrNull() ?: break
-            if (op.isOrphaned()) { dropHead(); continue }
             try {
                 execute(api, op, gen)
                 if (gen != generation) return@withLock false
@@ -275,25 +250,29 @@ class Repository private constructor(private val context: Context) {
         true
     }
 
-    /** An op aimed at a task created offline whose create was refused: nothing to apply it to. */
-    private fun PendingOp.isOrphaned(): Boolean = when (this) {
-        is PendingOp.Create -> false
-        is PendingOp.Patch -> taskId.startsWith(LOCAL_ID_PREFIX)
-        is PendingOp.Complete -> taskId.startsWith(LOCAL_ID_PREFIX)
-        is PendingOp.Reopen -> taskId.startsWith(LOCAL_ID_PREFIX)
-        is PendingOp.Delete -> taskId.startsWith(LOCAL_ID_PREFIX)
-    }
-
-    /** Runs one op and folds the server's answer into the workspace (unless the source changed). */
+    /**
+     * Runs one op and folds the server's answer into the workspace (unless the source changed).
+     * The ops still queued behind it are laid back over the answer, so replying to an earlier
+     * change never undoes a later one that hasn't been sent yet.
+     */
     private suspend fun execute(api: AlongsideApi, op: PendingOp, gen: Int) {
         fun apply(change: (Workspace) -> Workspace) {
-            if (gen == generation) publish(change(_workspace.value))
+            if (gen != generation) return
+            val now = Clock.now().toWire()
+            val waiting = _queue.value.drop(1)
+            publish(waiting.fold(change(_workspace.value)) { ws, later -> later.applyLocally(ws, now) })
         }
         when (op) {
             is PendingOp.Create -> {
-                val row = api.createTask(op.body)
-                apply { it.remove(op.localId).upsert(row) }
-                if (gen == generation) updateQueue { ops -> ops.map { it.withTaskId(op.localId, row.id) } }
+                sendCreate(api, op, gen)
+                if (op.projectId != null || op.dueDate != null) {
+                    api.updateTask(op.taskId, buildJsonObject {
+                        if (op.projectId != null) put("project_id", op.projectId)
+                        if (op.dueDate != null) put("due_date", op.dueDate)
+                    })
+                }
+                val row = api.task(op.taskId)
+                apply { it.upsert(row) }
             }
             is PendingOp.Patch -> {
                 val row = api.updateTask(op.taskId, op.body)
@@ -312,9 +291,11 @@ class Repository private constructor(private val context: Context) {
                 apply { ws -> ws.replace(result.completed).let { w -> result.next?.let(w::upsert) ?: w } }
             }
             is PendingOp.Reopen -> {
-                if (op.spawnedId != null) ignoreMissing { api.deleteTask(op.spawnedId) }
+                // Read the queue again: a replayed completion may have filled in the successor.
+                val spawnedId = (_queue.value.firstOrNull() as? PendingOp.Reopen)?.spawnedId ?: op.spawnedId
+                if (spawnedId != null) ignoreMissing { api.deleteTask(spawnedId) }
                 val row = api.updateTask(op.taskId, buildJsonObject { put("status", "pending") })
-                apply { ws -> ws.replace(row).let { if (op.spawnedId != null) it.remove(op.spawnedId) else it } }
+                apply { ws -> ws.replace(row).let { if (spawnedId != null) it.remove(spawnedId) else it } }
             }
             is PendingOp.Delete -> {
                 ignoreMissing { api.deleteTask(op.taskId) }
@@ -323,17 +304,57 @@ class Repository private constructor(private val context: Context) {
         }
     }
 
+    /**
+     * Sends a create the way the PWA does: the envelope is built once, saved into the queued op
+     * before the first send, and resent unchanged on every retry, so a lost response replays the
+     * original result. Only a structural conflict, which proves nothing was applied, rebuilds it,
+     * once; a second one in a row is treated as a busy server and retried later.
+     */
+    private suspend fun sendCreate(api: AlongsideApi, initial: PendingOp.Create, gen: Int) {
+        var op = initial
+        for (attempt in 0..1) {
+            val envelope = op.sent.takeIf { attempt == 0 } ?: run {
+                val structuralRevision = api.structuralRevision(op.taskId)
+                buildCreateEnvelope(op, structuralRevision).also { built ->
+                    op = op.copy(sent = built)
+                    if (gen == generation) updateQueue { ops -> ops.map { if (it is PendingOp.Create && it.taskId == op.taskId) op else it } }
+                }
+            }
+            try {
+                api.applyChanges(envelope)
+                return
+            } catch (e: ApiException) {
+                if (e.code != "structural_conflict") throw e
+                if (attempt == 1) throw ApiException(503, "The server is busy. Trying again later.")
+                op = op.copy(sent = null)
+            }
+        }
+    }
+
+    private fun buildCreateEnvelope(op: PendingOp.Create, structuralRevision: Long) = buildJsonObject {
+        put("contractVersion", 2)
+        put("commandId", op.commandId)
+        put("actor", "user")
+        put("commands", buildJsonArray {
+            add(buildJsonObject {
+                put("kind", "task.create")
+                put("id", op.taskId)
+                put("expectedRevision", JsonNull)
+                put("expectedStructuralRevision", structuralRevision)
+                put("values", buildJsonObject {
+                    put("title", op.title)
+                    put("notes", op.notes.json())
+                    put("kickoffNote", JsonNull)
+                    put("taskType", op.taskType)
+                    put("project", JsonNull)
+                })
+            })
+        })
+    }
+
     /** Deleting something already gone is a success. */
     private suspend fun ignoreMissing(block: suspend () -> Unit) {
         try { block() } catch (e: ApiException) { if (e.status != 404) throw e }
-    }
-
-    private fun PendingOp.withTaskId(from: String, to: String): PendingOp = when (this) {
-        is PendingOp.Create -> this
-        is PendingOp.Patch -> if (taskId == from) copy(taskId = to) else this
-        is PendingOp.Complete -> if (taskId == from) copy(taskId = to) else this
-        is PendingOp.Reopen -> if (taskId == from) copy(taskId = to) else this
-        is PendingOp.Delete -> if (taskId == from) copy(taskId = to) else this
     }
 
     private fun dropHead() = updateQueue { it.drop(1) }

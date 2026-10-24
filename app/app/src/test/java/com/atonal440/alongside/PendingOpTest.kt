@@ -4,6 +4,10 @@ import com.atonal440.alongside.data.AlongsideApi
 import com.atonal440.alongside.data.ApiException
 import com.atonal440.alongside.data.PendingOp
 import com.atonal440.alongside.data.Settings
+import com.atonal440.alongside.data.Task
+import com.atonal440.alongside.data.Workspace
+import com.atonal440.alongside.data.mintId
+import kotlinx.serialization.json.JsonNull
 import com.atonal440.alongside.data.isTransient
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.buildJsonObject
@@ -20,8 +24,9 @@ class PendingOpTest {
     @Test
     fun `the write queue round-trips through its disk format`() {
         val ops = listOf(
-            PendingOp.Create("local_1", buildJsonObject { put("title", "Buy reeds") }),
-            PendingOp.Patch("local_1", buildJsonObject { put("defer_kind", "someday") }),
+            PendingOp.Create("t_abcdef", "c_abcdef", "Buy reeds", null, "action", "p_1", "2026-10-25",
+                sent = buildJsonObject { put("commandId", "c_abcdef") }),
+            PendingOp.Patch("t_abcdef", buildJsonObject { put("defer_kind", "someday") }),
             PendingOp.Complete("t_2"),
             PendingOp.Reopen("t_2", spawnedId = "t_3"),
             PendingOp.Delete("t_4"),
@@ -49,5 +54,29 @@ class PendingOpTest {
         assertNull(Settings.normalizeServerUrl(""))
         assertNull(Settings.normalizeServerUrl("not a url"))
         assertNull(Settings.normalizeServerUrl("ftp://example.com"))
+    }
+
+    @Test
+    fun `queued ops laid over a server reply keep later changes`() {
+        val now = "2026-10-24T12:00:00Z"
+        val server = Workspace(tasks = listOf(Task("t_abcdef", "Fig", focused_until = "2026-10-25T00:00:00Z")))
+        // Focus landed on the server; the nap behind it is still queued.
+        val nap = PendingOp.Patch("t_abcdef", buildJsonObject {
+            put("defer_kind", "until"); put("defer_until", "2026-10-26T09:00:00Z"); put("focused_until", JsonNull)
+        })
+        val shown = nap.applyLocally(server, now).task("t_abcdef")!!
+        assertEquals("until", shown.defer_kind)
+        assertEquals("2026-10-26T09:00:00Z", shown.defer_until)
+        assertNull(shown.focused_until)
+    }
+
+    @Test
+    fun `an offline create shows up once and minted ids match the worker's shape`() {
+        val create = PendingOp.Create(mintId("t"), mintId("c"), "Fig", null, "action", null, "2026-10-25")
+        val ws = create.applyLocally(create.applyLocally(Workspace(), "2026-10-24T12:00:00Z"), "2026-10-24T12:00:00Z")
+        assertEquals(1, ws.tasks.size)
+        assertEquals("2026-10-25T12:00:00Z", ws.tasks[0].due_date)
+        assertTrue(Regex("^t_[0-9A-Za-z_-]{5,64}$").matches(create.taskId))
+        assertTrue(Regex("^c_[0-9A-Za-z_-]{5,64}$").matches(create.commandId))
     }
 }
