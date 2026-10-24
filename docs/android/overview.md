@@ -63,8 +63,12 @@ Compose UI / widgets ──► Repository ──► PendingOp queue (pending_ops
   sort order. The board is rebuilt on every change and once a minute, so naps and focus expire on
   screen without a sync.
 - **Writes** are `PendingOp`s (`data/PendingOp.kt`). Each one is applied locally straight away,
-  appended to `pending_ops.json`, and sent in order. A network failure, 5xx, 408 or 429 leaves it
-  queued for the next attempt; a 4xx drops it and re-syncs so the screen stops showing it. A pull
+  appended to `pending_ops.json`, and sent in order. A network failure leaves it queued for the
+  next attempt, however long that takes. A server error (5xx, 408, 429) also leaves it queued, but
+  after `MAX_SERVER_FAILURES` (5) in a row it is set aside in `set_aside_ops.json` so the writes
+  behind it can go through; Settings then offers Try again (back to the end of the queue with a
+  fresh count) or Discard. A 4xx drops the op and re-reads the task so the screen stops showing it;
+  deleting a task with subtasks is refused before it is queued, as the worker would refuse it. A pull
   is only published when the queue is empty, and after each server reply the ops still waiting
   are laid back over it, so an earlier answer never undoes a later change.
 - **Creating** uses the reliable `task.create` command
