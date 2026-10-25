@@ -28,14 +28,14 @@ Design against the PWA's canonical-workspace model first
 ([`docs/pwa/sync/canonical-workspace.md`](../pwa/sync/canonical-workspace.md));
 write the model down before coding.
 
-- [ ] **PWA: hold later commands on the same identity after a refusal.**
+- [x] **PWA: hold later commands on the same identity after a refusal.**
   After a durable refusal (e.g. `revision_conflict`), `flushQueue` keeps going
   and a later command's predicted base can match by coincidence (focus then
   delete a task at rev 1; another device edits it to rev 2; focus conflicts,
   delete's base 2 matches and deletes unseen changes). Retain every later
   command whose `intentWrites` overlap as `{kind:'dependency'}`, as
   `dropDependentOps` already does for a refused create.
-- [ ] **PWA: skip the pull while a send is unresolved.** After a transient
+- [x] **PWA: skip the pull while a send is unresolved.** After a transient
   failure post-commit (gateway 502/504) the flush halts but
   `refreshFromCanonical` still pulls, absorbing the command into canonical while
   it is still queued; `predictBase` then double counts and the next edit is

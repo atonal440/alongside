@@ -10,6 +10,7 @@ import type { RetainedReason } from './retainedOps';
 import type { PendingOp } from './pendingOps';
 import { isDurableFailure } from './result';
 import { messageFromResult, referencesTaskId, ATTEMPTS_CAP } from './syncPolicy';
+import { intentTaskId, intentWrites } from '../sync/intent';
 import { idbRetainOp } from '../idb/retainedOps';
 import {
   idbGetPendingOps, idbDeletePendingOp, idbPutPendingOp,
@@ -50,6 +51,23 @@ async function dropDependentOps(taskId: string, dependsOn: string): Promise<Set<
     }
   }
   return skipped;
+}
+
+// Retain (then remove from the queue) every later command that writes an identity the refused command
+// wrote. Their guards were predicted assuming the refused one would land, so after a refusal they no
+// longer mean anything: another device's write could even match one by coincidence and let a delete
+// through. They wait for an explicit retry instead.
+async function holdSameIdentityOps(refused: CommandOp, skipped: Set<number>): Promise<void> {
+  const written = new Set(intentWrites(refused.intent));
+  const dependsOn = intentTaskId(refused.intent) ?? [...written][0]!;
+  const pending = await idbGetPendingOps();
+  for (const op of pending) {
+    if (op.op !== 'command' || op.id === undefined || op.id === refused.id || skipped.has(op.id)) continue;
+    if (op.id < (refused.id ?? 0) || !intentWrites(op.intent).some(identity => written.has(identity))) continue;
+    await idbRetainOp(op, { kind: 'dependency', dependsOn, message: 'Not sent because an earlier change to the same task was refused.' });
+    await idbDeletePendingOp(op.id);
+    skipped.add(op.id);
+  }
 }
 
 // The task whose row and the aggregate revision to ask the server about before building a command.
@@ -220,6 +238,7 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
         const newSkipped = await dropDependentOps(createdId, createdId);
         for (const id of newSkipped) skippedIds.add(id);
       }
+      if (op.op === 'command') await holdSameIdentityOps(op, skippedIds);
       continue;
     }
 

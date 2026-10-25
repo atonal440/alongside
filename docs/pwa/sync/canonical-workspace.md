@@ -154,6 +154,17 @@ identity it was made against.
 - **Outcomes.** Success drops the op. `revision_conflict` retains it as a `conflict` with the
   server's current revision; other 4xx are retained as `rejected`; a refused create retains the
   commands queued on its task as dependencies; 5xx/network/426 keep it queued and halt the flush.
+- **After a refusal.** Every later queued command that writes an identity the refused one wrote is
+  retained too, as a `dependency` ("an earlier change to the same task was refused"), and not sent. Its
+  `base` was predicted assuming the refused command would land, so it no longer means anything, and
+  another device's write could make it match by coincidence (focus, then delete, a task at rev 1; a
+  second device edits it to rev 2; the focus conflicts and the delete's base 2 would match and delete
+  unseen changes). They wait for an explicit retry, which predicts a fresh base.
+- **Unresolved sends.** When the flush halts (5xx, network, 426) the sync cycle does not pull: a
+  command the server committed whose reply was lost (a gateway 502/504 after the write) would be
+  absorbed into canonical while still queued, `predictBase` would count it twice, and the next edit
+  would be retained as a false conflict. The cycle shows the stored workspace with the queue replayed
+  (`loadView`) and the next cycle, after the queued command replays from its saved envelope, pulls.
 - **Rebase.** Retrying a retained command makes a new command (new ID, `base` predicted from the
   workspace as it is now), which is what resolves a conflict. For edits, **Review** works on the
   intent's fields exactly as it did for legacy edits, and "Retry selected" re-queues only those.

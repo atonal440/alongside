@@ -49,7 +49,7 @@ Outcomes follow `docs/pwa/api/sync.md`:
 A cycle that stops early does not pull. A send whose reply was lost (a gateway 502 after the worker
 committed) is unresolved, and pulling would absorb its effect into the canonical copy while it is
 still queued, so the next write's predicted revision would count it twice. The next cycle replays it
-from the saved envelope, clears the queue, then pulls. (The PWA pulls regardless and has that gap.)
+from the saved envelope, clears the queue, then pulls. (The PWA does the same: `useSync` skips the pull when the flush halted.)
 
 Retrying a retained command (Settings → "Try again") queues a *new* command with a fresh id and a
 `base` predicted from the workspace as it is now, which is what turns a conflict into a rebase.

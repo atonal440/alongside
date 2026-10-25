@@ -108,4 +108,18 @@ describe('flushing reliable commands', () => {
     expect(await idbGetPendingOps()).toHaveLength(2);
     expect(await idbGetRetainedOps()).toEqual([]);
   });
+
+  it('after a revision conflict, later commands on the same task are retained, not sent', async () => {
+    await queue({ kind: 'task.focus', id: 't_abc001', focusedUntil: '2026-10-05T12:00:00Z' }, 1, 'c_cmd0001');
+    await queue({ kind: 'task.delete', id: 't_abc001' }, 2, 'c_cmd0002');
+    await queue({ kind: 'task.reopen', id: 't_abc002' }, 1, 'c_cmd0003');
+    entity(entityBody('t_abc001', 2));
+    changes(409, error('revision_conflict', { currentEntity: entityBody('t_abc001', 2) }));
+    entity(entityBody('t_abc002', 1));
+    changes(200, applied('c_cmd0003', 't_abc002', 1, {}));
+    expect(await flushPendingOps(config)).toMatchObject({ flushed: 1, halted: false });
+    expect(bodies('/api/v2/changes').map(b => b.commandId)).toEqual(['c_cmd0001', 'c_cmd0003']);
+    expect(await idbGetPendingOps()).toEqual([]);
+    expect((await idbGetRetainedOps()).map(r => [r.op.op === 'command' ? r.op.intent.kind : '', r.reason.kind])).toEqual([['task.focus', 'conflict'], ['task.delete', 'dependency']]);
+  });
 });
