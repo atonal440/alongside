@@ -27,18 +27,25 @@ beforeEach(() => {
 
 describe('useSync', () => {
   it('pulls after a flush that completed', async () => {
-    flushPendingOps.mockResolvedValue({ flushed: 1, rejected: [], halted: false });
+    flushPendingOps.mockResolvedValue({ flushed: 1, rejected: [], halted: false, unrecorded: false });
     renderHook(() => useSync(), { wrapper });
     await waitFor(() => expect(dispatch).toHaveBeenCalledWith({ type: 'SET_SYNC_STATUS', status: 'online' }));
     expect(refreshFromCanonical).toHaveBeenCalledTimes(1);
   });
 
   it('does not pull while a send is unresolved, but still shows the stored view with the queue replayed', async () => {
-    flushPendingOps.mockResolvedValue({ flushed: 0, rejected: [], halted: true });
+    flushPendingOps.mockResolvedValue({ flushed: 0, rejected: [], halted: true, unrecorded: false });
     renderHook(() => useSync(), { wrapper });
     await waitFor(() => expect(dispatch).toHaveBeenCalledWith({ type: 'SET_SYNC_STATUS', status: 'offline' }));
     expect(refreshFromCanonical).not.toHaveBeenCalled();
     expect(loadView).toHaveBeenCalledWith('http://localhost:8787');
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_DATA', tasks: [], projects: [], links: [] });
+  });
+
+  it('still pulls when a halted flush accepted an op that left no ledger entry', async () => {
+    flushPendingOps.mockResolvedValue({ flushed: 1, rejected: [], halted: true, unrecorded: true });
+    renderHook(() => useSync(), { wrapper });
+    await waitFor(() => expect(refreshFromCanonical).toHaveBeenCalledTimes(1));
+    expect(loadView).not.toHaveBeenCalled();
   });
 });

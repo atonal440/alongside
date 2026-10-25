@@ -30,8 +30,9 @@ export function useSync() {
         const flush = await flushPendingOps(config);
         // No pull while a send is unresolved: a command the server committed but whose reply was lost
         // would be absorbed into the canonical copy while still queued, and the revision predicted for
-        // the next write would count it twice. The next cycle pulls once the queue has flushed.
-        const result = flush.halted ? await localView(config.apiBase) : await refreshFromCanonical(config);
+        // the next write would count it twice. The next cycle pulls once the queue has flushed. (If an
+        // accepted op left no ledger entry, only a pull can show it, so pull anyway.)
+        const result = flush.halted && !flush.unrecorded ? await localView(config.apiBase) : await refreshFromCanonical(config);
 
         if (result.online && result.tasks) {
           dispatch({

@@ -22,6 +22,8 @@ export interface FlushSummary {
   flushed: number;
   rejected: string[];
   halted: boolean;
+  /** An accepted op left the queue without a ledger entry (legacy op, unreadable response), so only a pull can reconcile it. */
+  unrecorded: boolean;
 }
 
 // Surfaced once per app session when an op sits wedged at the attempts cap.
@@ -85,11 +87,12 @@ function revisionsWritten(result: ChangesResult): Record<string, number> {
 // The server accepted this op. A command stays in the landed ledger until a pull absorbs it, so the view
 // and the revisions predicted for later writes keep counting it if the flush then halts and the pull is
 // skipped; legacy ops have no such bookkeeping.
-async function settleAccepted(op: PendingOp, accepted: ChangesResult | null): Promise<void> {
+async function settleAccepted(op: PendingOp, accepted: ChangesResult | null): Promise<boolean> {
   // Without a readable response there is nothing to match canonical against, so the op just leaves the
-  // queue (the next pull absorbs it, as before).
-  if (op.op === 'command' && op.id !== undefined && accepted) await idbLandOp(op, revisionsWritten(accepted));
-  else await idbDeletePendingOp(op.id!);
+  // queue and only a pull can reconcile it; the caller is told so it does not skip that pull.
+  if (op.op === 'command' && op.id !== undefined && accepted) { await idbLandOp(op, revisionsWritten(accepted)); return true; }
+  await idbDeletePendingOp(op.id!);
+  return false;
 }
 
 // The task whose row and the aggregate revision to ask the server about before building a command.
@@ -172,6 +175,7 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
   let flushed = 0;
   const rejected: string[] = [];
   let halted = false;
+  let unrecorded = false;
   const skippedIds = new Set<number>();
 
   for (let i = 0; i < ops.length; i++) {
@@ -192,6 +196,7 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
       // 2xx response whose body failed the schema check. The server has already
       // applied the write — drop the op to prevent retry duplication.
       console.error('[sync] contract violation on queued op; dropping', op.op);
+      unrecorded = true;
       await settleAccepted(live, null);
       if (op.op === 'task.create') {
         const raw = result.raw as Record<string, unknown> | undefined;
@@ -238,7 +243,7 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
           ops[j] = rebindTaskId(ops[j]!, oldId, newId);
         }
       } else {
-        await settleAccepted(live, op.op === 'command' ? result.value as ChangesResult : null);
+        if (!await settleAccepted(live, op.op === 'command' ? result.value as ChangesResult : null)) unrecorded = true;
       }
       flushed++;
       continue;
@@ -278,5 +283,5 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
     break;
   }
 
-  return { flushed, rejected, halted };
+  return { flushed, rejected, halted, unrecorded };
 }
