@@ -51,7 +51,7 @@ async function commit(intents: Intent[], config: ApiConfig, dispatch: Dispatch<A
   if (intents.length > 0) {
     const workspace = (await currentWorkspace(config.apiBase)) ?? { entities: new Map() };
     for (const intent of intents) {
-      const base = intent.kind === 'task.create' ? null : predictBase(workspace, await opsAhead(), intentWrites(intent)[0]!);
+      const base = intent.kind === 'task.create' ? null : predictBase(workspace, await opsAhead(workspace), intentWrites(intent)[0]!);
       await idbQueueOp({ op: 'command', commandId: genId('c'), intent, base });
     }
   }

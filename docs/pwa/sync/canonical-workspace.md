@@ -167,13 +167,15 @@ identity it was made against.
   (`loadView`) and the next cycle, after the queued command replays from its saved envelope, pulls.
 - **Landed ledger.** Skipping the pull would otherwise lose commands that succeeded earlier in the same
   flush (they leave the queue but canonical has not seen them). IDB v8 adds `landed_ops`: an accepted
-  command moves from the queue to the ledger in one transaction. `opsAhead` (`sync/ledger.ts`) reads
-  the ledger followed by the queue in one snapshot; the view replays it and `predictBase` counts it.
-  `refreshFromCanonical` records which commands had landed before its pull began and clears exactly
-  those after the pull succeeds, so a command a concurrent cycle lands mid-pull waits for the next
-  pull. A crash between a pull's commit and that clear leaves the entries counted twice until the next
-  successful pull (at worst one false conflict, retried from Needs attention). Logout clears the
-  ledger. This mirrors Android's `landed` list.
+  command moves from the queue to the ledger in one transaction, together with the revision the server
+  gave each identity it wrote (from the response's `changes`). `opsAhead(canonical)` (`sync/ledger.ts`)
+  reads the ledger and queue in one snapshot and returns the queue plus every landed command canonical
+  has not caught up to, i.e. some written identity is still below its recorded revision. Revisions only
+  grow, so this is exact: a pull that overlaps the landing, a crash before the ledger is tidied, or a
+  concurrent cycle can neither double count a command nor hide one. The view replays that list and
+  `predictBase` counts it. `refreshFromCanonical` deletes entries once canonical shows them (and those
+  with an unreadable response that landed before the pull began); logout clears the ledger. This
+  mirrors Android's `landed` list.
 - **Rebase.** Retrying a retained command makes a new command (new ID, `base` predicted from the
   workspace as it is now), which is what resolves a conflict. For edits, **Review** works on the
   intent's fields exactly as it did for legacy edits, and "Retry selected" re-queues only those.

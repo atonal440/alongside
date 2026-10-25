@@ -135,8 +135,13 @@ describe('flushing reliable commands', () => {
     changes(503, { error: 'down' });
     expect(await flushPendingOps(config)).toMatchObject({ flushed: 1, halted: true });
     expect((await idbGetPendingOps()).map(o => o.op === 'command' ? o.commandId : '')).toEqual(['c_cmd0002']);
-    expect((await idbGetLandedOps()).map(o => o.op === 'command' ? o.commandId : '')).toEqual(['c_cmd0001']);
+    expect((await idbGetLandedOps()).map(l => l.op.op === 'command' ? l.op.commandId : '')).toEqual(['c_cmd0001']);
     // The next write is predicted against canonical (rev 1) plus the landed focus and the queued reopen.
-    expect(predictBase({ entities: new Map([['task:t_abc001', { revision: 1 } as never]]) }, await opsAhead(), 'task:t_abc001')).toBe(3);
+    const canonical = { entities: new Map([['task:t_abc001', { revision: 1 } as never]]) };
+    expect(predictBase(canonical, await opsAhead(canonical), 'task:t_abc001')).toBe(3);
+    // Once canonical has caught up with the landed focus (rev 2) it is no longer counted twice.
+    const caughtUp = { entities: new Map([['task:t_abc001', { revision: 2 } as never]]) };
+    expect(predictBase(caughtUp, await opsAhead(caughtUp), 'task:t_abc001')).toBe(3);
+    expect((await idbGetLandedOps())[0]).toMatchObject({ revisions: { 'task:t_abc001': 2 } });
   });
 });

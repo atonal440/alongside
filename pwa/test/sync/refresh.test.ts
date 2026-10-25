@@ -38,7 +38,7 @@ describe('refreshFromCanonical', () => {
 
   it('a failed pull keeps the landed ledger; a successful one clears it', async () => {
     await idbQueueOp({ op: 'command', commandId: 'c_land001', intent: { kind: 'task.focus', id: 't_aaaaa1', focusedUntil: '2026-10-05T12:00:00Z' }, base: 1 });
-    await idbLandOp((await idbGetPendingOps())[0]!);
+    await idbLandOp((await idbGetPendingOps())[0]!, { 'task:t_aaaaa1': 2 });
     stub.networkError({ method: 'GET', path: '/api/v2/sync/snapshot' });
     expect(await refreshFromCanonical(config)).toEqual({ online: false });
     expect(await idbGetLandedOps()).toHaveLength(1);

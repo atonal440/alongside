@@ -49,7 +49,7 @@ async function requeue(op: PendingOp, apiBase: string): Promise<void> {
   if (op.op !== 'command') { await idbQueueOp(payloadOf(op)); return; }
   const workspace = (await currentWorkspace(apiBase)) ?? { entities: new Map() };
   const identity = intentWrites(op.intent)[0]!;
-  const base = op.intent.kind === 'task.create' ? null : predictBase(workspace, await opsAhead(), identity);
+  const base = op.intent.kind === 'task.create' ? null : predictBase(workspace, await opsAhead(workspace), identity);
   await idbQueueOp({ op: 'command', commandId: genId('c'), intent: op.intent, base });
 }
 
