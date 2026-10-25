@@ -28,14 +28,14 @@ Design against the PWA's canonical-workspace model first
 ([`docs/pwa/sync/canonical-workspace.md`](../pwa/sync/canonical-workspace.md));
 write the model down before coding.
 
-- [ ] **PWA: hold later commands on the same identity after a refusal.**
+- [x] **PWA: hold later commands on the same identity after a refusal.**
   After a durable refusal (e.g. `revision_conflict`), `flushQueue` keeps going
   and a later command's predicted base can match by coincidence (focus then
   delete a task at rev 1; another device edits it to rev 2; focus conflicts,
   delete's base 2 matches and deletes unseen changes). Retain every later
   command whose `intentWrites` overlap as `{kind:'dependency'}`, as
   `dropDependentOps` already does for a refused create.
-- [ ] **PWA: skip the pull while a send is unresolved.** After a transient
+- [x] **PWA: skip the pull while a send is unresolved.** After a transient
   failure post-commit (gateway 502/504) the flush halts but
   `refreshFromCanonical` still pulls, absorbing the command into canonical while
   it is still queued; `predictBase` then double counts and the next edit is
@@ -45,12 +45,19 @@ write the model down before coding.
   tests, and update the canonical-workspace doc. The Android fixes are the
   reference (`app/.../data/sync/SyncEngine.kt`, `retain`, `cycle`;
   [`docs/android/sync.md`](../android/sync.md)).
-- [ ] **Worker: make the snapshot tolerate over-long legacy text.** The worker
+- [x] **Worker: make the snapshot tolerate over-long legacy text.** The worker
   validates its own snapshot, so one row over the cap made
   `/api/v2/sync/snapshot` return 500 and broke sync for both clients (happened
   in production with 7.8k–10k character kickoff notes against the 2,000 cap).
   Caps live in `shared/wire/rows.ts` and only bind new writes. Degrade (clamp,
   skip with a warning, or pass through) instead of failing wholesale.
+  Done by passing through: the row schemas now read text up to `ROW_TEXT_READ_MAX`
+  (`shared/wire/rows.ts`) while commands, REST and forms keep the real caps. Clamping would
+  have truncated the note permanently on the next unrelated edit, since a content command
+  resends the row's other text fields. Editing such a task's other fields is refused by the
+  write cap (retained for review) until the text is trimmed.
+  The v1 import keeps the write caps (`taskRowWriteEntries`, `ProjectRowWriteSchema`); the v2
+  export/restore codec reads with the relaxed caps so a backup of such a workspace still restores.
 - [~] **Android sync port (#87, branch `android-pwa-sync`).** Engine port and
   its review rounds are committed; confirm the PR is merged, then drop it from
   this list. Its docs ([`android/sync.md`](../android/sync.md)) still say "the

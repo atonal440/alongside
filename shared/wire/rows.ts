@@ -33,6 +33,13 @@ export const PROJECT_TITLE_MAX = 200;
 export const PROJECT_NOTES_MAX = 10_000;
 export const PROJECT_KICKOFF_MAX = 2_000;
 
+// The caps above bind new writes (commands, REST, forms). Reading a stored row must accept what
+// is already there: rows written before a cap existed or tightened (production had 7.8k-10k
+// character kickoff notes against the 2,000 cap) would otherwise make the worker's own snapshot
+// fail validation and break sync for every client. This is only a sanity ceiling, well inside
+// D1's 2 MB row limit.
+export const ROW_TEXT_READ_MAX = 1_000_000;
+
 // Validates non-empty bounded text without trimming; the title in a stored row
 // is already clean — trimming would silently corrupt a round-trip.
 function rowTitleSchema<const Max extends number>(max: Max) {
@@ -50,52 +57,69 @@ function rowTitleSchema<const Max extends number>(max: Max) {
 // duty_id is a plain nullable string for now — the branded DutyId parser lands
 // in Stage 3 (`docs/plans/duties/stage-3-duty-domain-and-ops.md`), which should
 // tighten this to `v.nullable(DutyIdSchema)`. No duty ever sets it in Stage 1.
-export const taskRowEntries = {
-  id: TaskIdSchema,
-  title: rowTitleSchema(TASK_TITLE_MAX),
-  notes: v.nullable(boundedStringSchema(TASK_NOTES_MAX)),
-  status: TaskStatusSchema,
-  due_date: v.nullable(DueDateTimeSchema),
-  // Null on legacy rows (predates this column); treated as all-day (true)
-  // wherever read — see shared/schema.ts's due_all_day comment.
-  due_all_day: v.nullable(v.boolean()),
-  recurrence: v.nullable(RruleSchema),
-  created_at: IsoDateTimeSchema,
-  updated_at: IsoDateTimeSchema,
-  defer_until: v.nullable(IsoDateTimeSchema),
-  defer_kind: DeferKindSchema,
-  task_type: TaskTypeSchema,
-  project_id: v.nullable(ProjectIdSchema),
-  kickoff_note: v.nullable(boundedStringSchema(TASK_KICKOFF_MAX)),
-  session_log: v.nullable(boundedStringSchema(TASK_SESSION_LOG_MAX)),
-  focused_until: v.nullable(IsoDateTimeSchema),
-  duty_id: v.nullable(v.string()),
-  occurrence_at: v.nullable(IsoDateTimeMinuteSchema),
-  // Absent in images written before date roles existed; read as unset.
-  available_from: v.optional(v.nullable(TemporalPointTextSchema), null),
-  deadline: v.optional(v.nullable(TemporalPointTextSchema), null),
-  // Hierarchy; absent in images written before it existed.
-  parent_id: v.optional(v.nullable(TaskIdSchema), null),
-  position: v.optional(v.nullable(v.pipe(v.number(), v.finite())), null),
-};
+function makeTaskRowEntries(text: { notes: number; kickoff: number; sessionLog: number }) {
+  return {
+    id: TaskIdSchema,
+    title: rowTitleSchema(TASK_TITLE_MAX),
+    notes: v.nullable(boundedStringSchema(text.notes)),
+    status: TaskStatusSchema,
+    due_date: v.nullable(DueDateTimeSchema),
+    // Null on legacy rows (predates this column); treated as all-day (true)
+    // wherever read — see shared/schema.ts's due_all_day comment.
+    due_all_day: v.nullable(v.boolean()),
+    recurrence: v.nullable(RruleSchema),
+    created_at: IsoDateTimeSchema,
+    updated_at: IsoDateTimeSchema,
+    defer_until: v.nullable(IsoDateTimeSchema),
+    defer_kind: DeferKindSchema,
+    task_type: TaskTypeSchema,
+    project_id: v.nullable(ProjectIdSchema),
+    kickoff_note: v.nullable(boundedStringSchema(text.kickoff)),
+    session_log: v.nullable(boundedStringSchema(text.sessionLog)),
+    focused_until: v.nullable(IsoDateTimeSchema),
+    duty_id: v.nullable(v.string()),
+    occurrence_at: v.nullable(IsoDateTimeMinuteSchema),
+    // Absent in images written before date roles existed; read as unset.
+    available_from: v.optional(v.nullable(TemporalPointTextSchema), null),
+    deadline: v.optional(v.nullable(TemporalPointTextSchema), null),
+    // Hierarchy; absent in images written before it existed.
+    parent_id: v.optional(v.nullable(TaskIdSchema), null),
+    position: v.optional(v.nullable(v.pipe(v.number(), v.finite())), null),
+  };
+}
+
+/** Reads accept text already stored; see ROW_TEXT_READ_MAX. */
+export const taskRowEntries = makeTaskRowEntries({ notes: ROW_TEXT_READ_MAX, kickoff: ROW_TEXT_READ_MAX, sessionLog: ROW_TEXT_READ_MAX });
+/** Rows arriving as new writes (the v1 import) keep the write caps. */
+export const taskRowWriteEntries = makeTaskRowEntries({ notes: TASK_NOTES_MAX, kickoff: TASK_KICKOFF_MAX, sessionLog: TASK_SESSION_LOG_MAX });
 
 export const TaskRowSchema = v.pipe(
   v.object(taskRowEntries),
   v.transform((row): Task => ({ ...row })),
 );
 
-export const projectRowEntries = {
-  id: ProjectIdSchema,
-  title: rowTitleSchema(PROJECT_TITLE_MAX),
-  notes: v.nullable(boundedStringSchema(PROJECT_NOTES_MAX)),
-  kickoff_note: v.nullable(boundedStringSchema(PROJECT_KICKOFF_MAX)),
-  status: ProjectStatusSchema,
-  created_at: IsoDateTimeSchema,
-  updated_at: IsoDateTimeSchema,
-};
+function makeProjectRowEntries(text: { notes: number; kickoff: number }) {
+  return {
+    id: ProjectIdSchema,
+    title: rowTitleSchema(PROJECT_TITLE_MAX),
+    notes: v.nullable(boundedStringSchema(text.notes)),
+    kickoff_note: v.nullable(boundedStringSchema(text.kickoff)),
+    status: ProjectStatusSchema,
+    created_at: IsoDateTimeSchema,
+    updated_at: IsoDateTimeSchema,
+  };
+}
+export const projectRowEntries = makeProjectRowEntries({ notes: ROW_TEXT_READ_MAX, kickoff: ROW_TEXT_READ_MAX });
+export const projectRowWriteEntries = makeProjectRowEntries({ notes: PROJECT_NOTES_MAX, kickoff: PROJECT_KICKOFF_MAX });
 
 export const ProjectRowSchema = v.pipe(
   v.object(projectRowEntries),
+  v.transform((row): Project => ({ ...row })),
+);
+
+/** A project row arriving as a new write (the v1 import). */
+export const ProjectRowWriteSchema = v.pipe(
+  v.object(projectRowWriteEntries),
   v.transform((row): Project => ({ ...row })),
 );
 
@@ -111,7 +135,7 @@ export const TaskLinkRowSchema = v.pipe(
 /** A duty (recurring series). The calendar columns (rrule, dtstart, timezone) never change after creation. */
 export const DutyRowSchema = v.strictObject({
   id: DutyIdSchema, title: taskRowEntries.title,
-  notes: v.nullable(boundedStringSchema(10_000)), kickoff_note: v.nullable(boundedStringSchema(2_000)),
+  notes: v.nullable(boundedStringSchema(ROW_TEXT_READ_MAX)), kickoff_note: v.nullable(boundedStringSchema(ROW_TEXT_READ_MAX)),
   task_type: TaskTypeSchema, project_id: v.nullable(ProjectIdSchema), rrule: SeriesRruleSchema,
   dtstart: MinuteInstantSchema, timezone: v.nullable(TimezoneSchema),
   status: v.picklist(['active', 'paused', 'ended']), catch_up: v.picklist(['next', 'all']),

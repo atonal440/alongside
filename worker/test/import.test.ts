@@ -125,6 +125,14 @@ describe('import payload parsing', () => {
     expect(invalid.ok).toBe(false);
   });
 
+  it('keeps the write caps on imported text even though stored rows may read past them', () => {
+    expect(parseImport(exportPayload({ projects: [projectRow({ kickoff_note: 'x'.repeat(2_001) })] })).ok).toBe(false);
+    expect(parseImport(exportPayload({ projects: [projectRow({ notes: 'x'.repeat(10_001) })] })).ok).toBe(false);
+    expect(parseImport(exportPayload({ tasks: [taskRow({ kickoff_note: 'x'.repeat(2_001) })] })).ok).toBe(false);
+    expect(parseImport(exportPayload({ tasks: [taskRow({ session_log: 'x'.repeat(10_001) })] })).ok).toBe(false);
+    expect(parseImport(exportPayload({ projects: [projectRow({ kickoff_note: 'x'.repeat(2_000) })] })).ok).toBe(true);
+  });
+
   it('normalizes legacy snoozed_until task rows into current defer fields', () => {
     const { defer_kind: _deferKind, defer_until: _deferUntil, ...legacyTask } = taskRow({
       project_id: 'p_abc12',

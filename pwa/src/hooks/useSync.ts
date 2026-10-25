@@ -1,9 +1,16 @@
 import { useEffect } from 'react';
 import { useAppState } from './useAppState';
 import { flushPendingOps } from '../api/sync';
-import { refreshFromCanonical } from '../sync/refresh';
+import { refreshFromCanonical, type RefreshResult } from '../sync/refresh';
+import { loadView } from '../sync/view';
 import { consumeUpgradeRequired } from '../api/client';
 import { registerSyncCallback } from '../context/actions';
+
+// The stored workspace with the queue replayed, for a cycle that must not pull.
+async function localView(source: string): Promise<RefreshResult> {
+  const view = await loadView(source);
+  return { online: true, tasks: view.tasks, projects: view.projects, links: view.links };
+}
 
 export function useSync() {
   const { state, dispatch } = useAppState();
@@ -21,7 +28,11 @@ export function useSync() {
       dispatch({ type: 'SET_SYNC_STATUS', status: 'syncing' });
       try {
         const flush = await flushPendingOps(config);
-        const result = await refreshFromCanonical(config);
+        // No pull while a send is unresolved: a command the server committed but whose reply was lost
+        // would be absorbed into the canonical copy while still queued, and the revision predicted for
+        // the next write would count it twice. The next cycle pulls once the queue has flushed. (If an
+        // accepted op left no ledger entry, only a pull can show it, so pull anyway.)
+        const result = flush.halted && !flush.unrecorded ? await localView(config.apiBase) : await refreshFromCanonical(config);
 
         if (result.online && result.tasks) {
           dispatch({

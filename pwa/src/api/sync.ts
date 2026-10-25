@@ -6,11 +6,14 @@ import { api } from './endpoints';
 import { buildEnvelope, type CommandOp } from '../sync/envelope';
 import { parseCommandEnvelope, type CommandEnvelope } from '@shared/wire/commands';
 import { parseProjectId, parseTaskId } from '@shared/parse';
+import type { ChangesResult } from '@shared/wire/commands';
 import type { RetainedReason } from './retainedOps';
 import type { PendingOp } from './pendingOps';
 import { isDurableFailure } from './result';
 import { messageFromResult, referencesTaskId, ATTEMPTS_CAP } from './syncPolicy';
+import { intentTaskId, intentWrites } from '../sync/intent';
 import { idbRetainOp } from '../idb/retainedOps';
+import { idbLandOp } from '../idb/landedOps';
 import {
   idbGetPendingOps, idbDeletePendingOp, idbPutPendingOp,
 } from '../idb/pendingOps';
@@ -19,6 +22,17 @@ export interface FlushSummary {
   flushed: number;
   rejected: string[];
   halted: boolean;
+  /** An accepted op left the queue without a ledger entry (legacy op, unreadable response), so only a pull can reconcile it. */
+  unrecorded: boolean;
+}
+
+// Set when an accepted op left the queue with no ledger entry; stays set until a pull succeeds, so a
+// reconciliation pull that fails (or a later flush that halts) does not forget it. Not persisted: it only
+// concerns legacy ops and unreadable responses, and a reload pulls from scratch anyway.
+let _unreconciled = false;
+
+export function markReconciled(): void {
+  _unreconciled = false;
 }
 
 // Surfaced once per app session when an op sits wedged at the attempts cap.
@@ -50,6 +64,44 @@ async function dropDependentOps(taskId: string, dependsOn: string): Promise<Set<
     }
   }
   return skipped;
+}
+
+// Retain (then remove from the queue) every later command that writes an identity the refused command
+// wrote. Their guards were predicted assuming the refused one would land, so after a refusal they no
+// longer mean anything: another device's write could even match one by coincidence and let a delete
+// through. They wait for an explicit retry instead.
+async function holdSameIdentityOps(refused: CommandOp, skipped: Set<number>): Promise<void> {
+  const written = new Set(intentWrites(refused.intent));
+  const dependsOn = intentTaskId(refused.intent) ?? [...written][0]!;
+  const pending = await idbGetPendingOps();
+  for (const op of pending) {
+    if (op.op !== 'command' || op.id === undefined || op.id === refused.id || skipped.has(op.id)) continue;
+    if (op.id < (refused.id ?? 0) || !intentWrites(op.intent).some(identity => written.has(identity))) continue;
+    await idbRetainOp(op, { kind: 'dependency', dependsOn, message: 'Not sent because an earlier change to the same task was refused.' });
+    await idbDeletePendingOp(op.id);
+    skipped.add(op.id);
+  }
+}
+
+// The revision the server gave each identity the command wrote, so a later read can tell exactly when
+// canonical has caught up with it.
+function revisionsWritten(result: ChangesResult): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const change of result.changes) {
+    if (change.entity === 'task' || change.entity === 'project' || change.entity === 'link' || change.entity === 'duty') out[`${change.entity}:${change.id}`] = change.after.revision;
+  }
+  return out;
+}
+
+// The server accepted this op. A command stays in the landed ledger until a pull absorbs it, so the view
+// and the revisions predicted for later writes keep counting it if the flush then halts and the pull is
+// skipped; legacy ops have no such bookkeeping.
+async function settleAccepted(op: PendingOp, accepted: ChangesResult | null): Promise<boolean> {
+  // Without a readable response there is nothing to match canonical against, so the op just leaves the
+  // queue and only a pull can reconcile it; the caller is told so it does not skip that pull.
+  if (op.op === 'command' && op.id !== undefined && accepted) { await idbLandOp(op, revisionsWritten(accepted)); return true; }
+  await idbDeletePendingOp(op.id!);
+  return false;
 }
 
 // The task whose row and the aggregate revision to ask the server about before building a command.
@@ -152,7 +204,8 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
       // 2xx response whose body failed the schema check. The server has already
       // applied the write — drop the op to prevent retry duplication.
       console.error('[sync] contract violation on queued op; dropping', op.op);
-      await idbDeletePendingOp(op.id!);
+      _unreconciled = true;
+      await settleAccepted(live, null);
       if (op.op === 'task.create') {
         const raw = result.raw as Record<string, unknown> | undefined;
         const serverId = typeof raw?.['id'] === 'string' ? raw['id'] : null;
@@ -169,6 +222,7 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
 
     if (result.kind === 'ok') {
       if (op.op === 'task.create') {
+        _unreconciled = true;
         // Parse the server row BEFORE deleting the op so that a validation
         // failure doesn't leave the op gone with no rebinding done.
         const parsed = parseTaskRow(result.value);
@@ -198,7 +252,7 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
           ops[j] = rebindTaskId(ops[j]!, oldId, newId);
         }
       } else {
-        await idbDeletePendingOp(op.id!);
+        if (!await settleAccepted(live, op.op === 'command' ? result.value as ChangesResult : null)) _unreconciled = true;
       }
       flushed++;
       continue;
@@ -220,6 +274,7 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
         const newSkipped = await dropDependentOps(createdId, createdId);
         for (const id of newSkipped) skippedIds.add(id);
       }
+      if (op.op === 'command') await holdSameIdentityOps(op, skippedIds);
       continue;
     }
 
@@ -237,5 +292,5 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
     break;
   }
 
-  return { flushed, rejected, halted };
+  return { flushed, rejected, halted, unrecorded: _unreconciled };
 }

@@ -18,8 +18,9 @@ import {
 } from '../parse';
 import {
   ProjectRowSchema,
+  ProjectRowWriteSchema,
   TaskLinkRowSchema,
-  taskRowEntries,
+  taskRowWriteEntries,
 } from '@shared/wire/rows';
 
 export { ProjectRowSchema, TaskLinkRowSchema };
@@ -50,7 +51,7 @@ function inferLegacyDueAllDay(dueDate: string | null, dueAllDay: boolean | null)
 // pre-due_all_day exports (defaults null, read as all-day).
 const ImportTaskRowSchema = v.pipe(
   v.object({
-    ...taskRowEntries,
+    ...taskRowWriteEntries,
     defer_until: v.optional(v.nullable(IsoDateTimeSchema), null),
     defer_kind: v.optional(DeferKindSchema),
     snoozed_until: v.optional(v.nullable(IsoDateTimeSchema), null),
@@ -114,7 +115,7 @@ export const ActionLogRowSchema = v.pipe(
 export const ImportV1Schema = v.object({
   version: v.literal(1),
   exported_at: IsoDateTimeSchema,
-  projects: v.array(ProjectRowSchema),
+  projects: v.array(ProjectRowWriteSchema),
   tasks: v.array(ImportTaskRowSchema),
   links: v.array(TaskLinkRowSchema),
   preferences: v.record(v.string(), v.string()),

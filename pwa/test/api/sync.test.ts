@@ -3,7 +3,7 @@ import 'fake-indexeddb/auto';
 import { resetIdb } from '../helpers/idb';
 import { makeTask } from '../helpers/fixtures';
 import { installFetchStub } from '../helpers/fetchStub';
-import { flushPendingOps, _resetStuckNotice } from '../../src/api/sync';
+import { flushPendingOps, markReconciled, _resetStuckNotice } from '../../src/api/sync';
 import { ATTEMPTS_CAP } from '../../src/api/syncPolicy';
 import type { ApiConfig } from '../../src/api/client';
 import { idbQueueOp, idbGetPendingOps } from '../../src/idb/pendingOps';
@@ -19,6 +19,7 @@ beforeEach(async () => {
   closeDb();
   await resetIdb();
   _resetStuckNotice();
+  markReconciled();
 });
 
 afterEach(() => {
@@ -123,6 +124,27 @@ describe('flushPendingOps — basic outcomes', () => {
     expect(ops).toHaveLength(1);
     expect(ops[0]!.op).toBe('task.delete');
     expect((ops[0] as Extract<PendingOp, { op: 'task.delete' }>).taskId).toBe('t_secnd01');
+  });
+});
+
+describe('flushPendingOps — unrecorded acceptance', () => {
+  test('an accepted legacy op is flagged until a pull succeeds, even across later flushes', async () => {
+    const stub = installFetchStub();
+    await idbQueueOp({ op: 'task.update', taskId: 't_abc001', body: { title: 'A' } });
+    stub.respondWith({ method: 'PATCH', path: '/api/tasks' }, { type: 'json', status: 200, body: makeTask({ id: 't_abc001', title: 'A' }) });
+    expect(await flushPendingOps(config)).toMatchObject({ flushed: 1, unrecorded: true });
+    expect(await flushPendingOps(config)).toMatchObject({ flushed: 0, unrecorded: true });
+    markReconciled();
+    expect(await flushPendingOps(config)).toMatchObject({ unrecorded: false });
+    stub.restore();
+  });
+
+  test('an accepted legacy create is flagged too', async () => {
+    const stub = installFetchStub();
+    await idbQueueOp({ op: 'task.create', localId: 't_local01', body: { title: 'New' } });
+    stub.respondWith({ method: 'POST', path: '/api/tasks' }, { type: 'json', status: 200, body: makeTask({ id: 't_srv0001', title: 'New' }) });
+    expect(await flushPendingOps(config)).toMatchObject({ flushed: 1, unrecorded: true });
+    stub.restore();
   });
 });
 

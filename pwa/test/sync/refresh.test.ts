@@ -5,9 +5,10 @@ import { closeDb } from '../../src/idb/db';
 import { resetPullCache } from '../../src/sync/pull';
 import { refreshFromCanonical } from '../../src/sync/refresh';
 import { loadView } from '../../src/sync/view';
-import { idbQueueOp } from '../../src/idb/pendingOps';
+import { idbQueueOp, idbGetPendingOps } from '../../src/idb/pendingOps';
+import { idbLandOp, idbGetLandedOps } from '../../src/idb/landedOps';
 import { installFetchStub, type FetchStub } from '../helpers/fetchStub';
-import { config, projectImage, snapshot, taskImage } from '../helpers/syncFixtures';
+import { config, page, projectImage, snapshot, taskImage } from '../helpers/syncFixtures';
 
 let stub: FetchStub;
 beforeEach(async () => { closeDb(); await resetIdb(); resetPullCache(); stub = installFetchStub(); });
@@ -33,6 +34,23 @@ describe('refreshFromCanonical', () => {
     const result = await refreshFromCanonical(config);
     expect(result.tasks?.map(t => t.id).sort()).toEqual(['t_local0a', 't_local0b', 't_remote1']);
     expect(result.tasks?.find(t => t.id === 't_local0a')?.notes).toBe('edited');
+  });
+
+  it('a failed pull keeps the landed ledger; the ledger is tidied one successful pull after canonical shows it', async () => {
+    await idbQueueOp({ op: 'command', commandId: 'c_land001', intent: { kind: 'task.focus', id: 't_aaaaa1', focusedUntil: '2026-10-05T12:00:00Z' }, base: 1 });
+    await idbLandOp((await idbGetPendingOps())[0]!, { 'task:t_aaaaa1': 2 });
+    stub.networkError({ method: 'GET', path: '/api/v2/sync/snapshot' });
+    expect(await refreshFromCanonical(config)).toEqual({ online: false });
+    expect(await idbGetLandedOps()).toHaveLength(1);
+    expect((await loadView(config.apiBase)).tasks).toEqual([]);
+    snap([taskImage('t_aaaaa1', 2)]);
+    expect((await refreshFromCanonical(config)).online).toBe(true);
+    // Canonical now shows the focus, so it is no longer replayed, but the entry is only tidied on the next pull.
+    expect(await idbGetLandedOps()).toHaveLength(1);
+    expect((await loadView(config.apiBase)).tasks[0]?.focused_until).toBeNull();
+    stub.respondWith({ method: 'POST', path: '/api/v2/sync/delta' }, { type: 'json', status: 200, body: page(3, 3, 3, false, []).raw });
+    expect((await refreshFromCanonical(config)).online).toBe(true);
+    expect(await idbGetLandedOps()).toEqual([]);
   });
 
   it('offline reports offline', async () => {

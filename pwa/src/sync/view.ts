@@ -1,7 +1,7 @@
 import { currentWorkspace } from './pull';
 import { overlayPendingOps, type OverlayView } from './overlay';
 import type { CanonicalWorkspace } from './canonical';
-import { idbGetPendingOps } from '../idb/pendingOps';
+import { opsAhead } from './ledger';
 
 const EMPTY: Pick<CanonicalWorkspace, 'entities'> = { entities: new Map() };
 
@@ -11,6 +11,6 @@ const EMPTY: Pick<CanonicalWorkspace, 'entities'> = { entities: new Map() };
  * optimistic write; `refreshFromCanonical` produces the same shape after a pull.
  */
 export async function loadView(source: string): Promise<OverlayView> {
-  const workspace = (await currentWorkspace(source)) ?? EMPTY;
-  return overlayPendingOps(workspace, await idbGetPendingOps());
+  const stored = await currentWorkspace(source);
+  return overlayPendingOps(stored ?? EMPTY, await opsAhead(stored));
 }

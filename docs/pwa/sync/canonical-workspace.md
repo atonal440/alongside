@@ -154,6 +154,28 @@ identity it was made against.
 - **Outcomes.** Success drops the op. `revision_conflict` retains it as a `conflict` with the
   server's current revision; other 4xx are retained as `rejected`; a refused create retains the
   commands queued on its task as dependencies; 5xx/network/426 keep it queued and halt the flush.
+- **After a refusal.** Every later queued command that writes an identity the refused one wrote is
+  retained too, as a `dependency` ("an earlier change to the same task was refused"), and not sent. Its
+  `base` was predicted assuming the refused command would land, so it no longer means anything, and
+  another device's write could make it match by coincidence (focus, then delete, a task at rev 1; a
+  second device edits it to rev 2; the focus conflicts and the delete's base 2 would match and delete
+  unseen changes). They wait for an explicit retry, which predicts a fresh base.
+- **Unresolved sends.** When the flush halts (5xx, network, 426) the sync cycle does not pull: a
+  command the server committed whose reply was lost (a gateway 502/504 after the write) would be
+  absorbed into canonical while still queued, `predictBase` would count it twice, and the next edit
+  would be retained as a false conflict. The cycle shows the stored workspace with the queue replayed
+  (`loadView`) and the next cycle, after the queued command replays from its saved envelope, pulls.
+- **Landed ledger.** Skipping the pull would otherwise lose commands that succeeded earlier in the same
+  flush (they leave the queue but canonical has not seen them). IDB v8 adds `landed_ops`: an accepted
+  command moves from the queue to the ledger in one transaction, together with the revision the server
+  gave each identity it wrote (from the response's `changes`). `opsAhead(canonical)` (`sync/ledger.ts`)
+  reads the ledger and queue in one snapshot and returns the queue plus every landed command canonical
+  has not caught up to, i.e. some written identity is still below its recorded revision. Revisions only
+  grow, so this is exact: a pull that overlaps the landing, a crash before the ledger is tidied, or a
+  concurrent cycle can neither double count a command nor hide one. The view replays that list and
+  `predictBase` counts it. `refreshFromCanonical` deletes entries one pull after canonical shows them (so
+  a reader holding an older canonical read still finds the entry); logout clears the ledger. A command
+  whose response can't be read just leaves the queue, as before. This mirrors Android's `landed` list.
 - **Rebase.** Retrying a retained command makes a new command (new ID, `base` predicted from the
   workspace as it is now), which is what resolves a conflict. For edits, **Review** works on the
   intent's fields exactly as it did for legacy edits, and "Retry selected" re-queues only those.

@@ -1,5 +1,5 @@
 const IDB_NAME = 'alongside';
-const IDB_VERSION = 7;
+const IDB_VERSION = 8;
 
 let _db: IDBDatabase | null = null;
 
@@ -81,6 +81,10 @@ export function getDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains('canonical_entities')) {
         db.createObjectStore('canonical_entities', { keyPath: 'id' });
+      }
+      // v8: commands the server accepted whose effect no pull has absorbed yet (see sync/ledger.ts).
+      if (!db.objectStoreNames.contains('landed_ops')) {
+        db.createObjectStore('landed_ops', { keyPath: 'id' });
       }
       // v6: durably refused commands retained with diagnostics instead of dropped.
       if (!db.objectStoreNames.contains('retained_ops')) {
