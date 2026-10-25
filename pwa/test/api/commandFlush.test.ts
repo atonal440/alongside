@@ -8,6 +8,9 @@ import { flushPendingOps, _resetStuckNotice } from '../../src/api/sync';
 import { idbGetPendingOps, idbQueueOp } from '../../src/idb/pendingOps';
 import { idbGetRetainedOps } from '../../src/idb/retainedOps';
 import type { Intent } from '../../src/sync/intent';
+import { idbGetLandedOps } from '../../src/idb/landedOps';
+import { opsAhead } from '../../src/sync/ledger';
+import { predictBase } from '../../src/sync/base';
 
 let stub: FetchStub;
 beforeEach(async () => { closeDb(); await resetIdb(); _resetStuckNotice(); stub = installFetchStub(); });
@@ -121,5 +124,19 @@ describe('flushing reliable commands', () => {
     expect(bodies('/api/v2/changes').map(b => b.commandId)).toEqual(['c_cmd0001', 'c_cmd0003']);
     expect(await idbGetPendingOps()).toEqual([]);
     expect((await idbGetRetainedOps()).map(r => [r.op.op === 'command' ? r.op.intent.kind : '', r.reason.kind])).toEqual([['task.focus', 'conflict'], ['task.delete', 'dependency']]);
+  });
+
+  it('an accepted command stays in the landed ledger when a later send halts, so nothing is forgotten without a pull', async () => {
+    await queue({ kind: 'task.focus', id: 't_abc001', focusedUntil: '2026-10-05T12:00:00Z' }, 1, 'c_cmd0001');
+    await queue({ kind: 'task.reopen', id: 't_abc001' }, 2, 'c_cmd0002');
+    entity(entityBody('t_abc001', 1));
+    changes(200, applied('c_cmd0001', 't_abc001', 1, { focused_until: '2026-10-05T12:00:00Z' }));
+    entity(entityBody('t_abc001', 2));
+    changes(503, { error: 'down' });
+    expect(await flushPendingOps(config)).toMatchObject({ flushed: 1, halted: true });
+    expect((await idbGetPendingOps()).map(o => o.op === 'command' ? o.commandId : '')).toEqual(['c_cmd0002']);
+    expect((await idbGetLandedOps()).map(l => l.op.op === 'command' ? l.op.commandId : '')).toEqual(['c_cmd0001']);
+    // The next write is predicted against canonical (rev 1) plus the landed focus and the queued reopen.
+    expect(predictBase({ entities: new Map([['task:t_abc001', { revision: 1 } as never]]) }, await opsAhead(null), 'task:t_abc001')).toBe(3);
   });
 });

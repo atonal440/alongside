@@ -56,6 +56,8 @@ write the model down before coding.
   have truncated the note permanently on the next unrelated edit, since a content command
   resends the row's other text fields. Editing such a task's other fields is refused by the
   write cap (retained for review) until the text is trimmed.
+  The v1 import keeps the write caps (`taskRowWriteEntries`, `ProjectRowWriteSchema`); the v2
+  export/restore codec reads with the relaxed caps so a backup of such a workspace still restores.
 - [~] **Android sync port (#87, branch `android-pwa-sync`).** Engine port and
   its review rounds are committed; confirm the PR is merged, then drop it from
   this list. Its docs ([`android/sync.md`](../android/sync.md)) still say "the

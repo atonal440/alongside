@@ -224,6 +224,6 @@ describe('v6 → v7 migration', () => {
   test('a fresh install never creates the legacy stores', async () => {
     const { getDB } = await import('../../src/idb/db');
     const db = await getDB();
-    expect([...db.objectStoreNames].sort()).toEqual(['canonical_entities', 'canonical_meta', 'pending_ops', 'retained_ops']);
+    expect([...db.objectStoreNames].sort()).toEqual(['canonical_entities', 'canonical_meta', 'landed_ops', 'pending_ops', 'retained_ops']);
   });
 });

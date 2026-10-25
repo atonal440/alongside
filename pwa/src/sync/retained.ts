@@ -6,7 +6,8 @@ import { genId } from '../utils/genId';
 import type { PendingOp, PendingOpPayload } from '../api/pendingOps';
 import type { RetainedOp } from '../api/retainedOps';
 import { idbDeleteRetainedOp, idbGetRetainedOps } from '../idb/retainedOps';
-import { idbGetPendingOps, idbQueueOp } from '../idb/pendingOps';
+import { idbQueueOp } from '../idb/pendingOps';
+import { opsAhead } from './ledger';
 
 /** One-line description of the intent a retained op preserves. */
 export function describeRetainedOp(retained: RetainedOp): string {
@@ -48,7 +49,7 @@ async function requeue(op: PendingOp, apiBase: string): Promise<void> {
   if (op.op !== 'command') { await idbQueueOp(payloadOf(op)); return; }
   const workspace = (await currentWorkspace(apiBase)) ?? { entities: new Map() };
   const identity = intentWrites(op.intent)[0]!;
-  const base = op.intent.kind === 'task.create' ? null : predictBase(workspace, await idbGetPendingOps(), identity);
+  const base = op.intent.kind === 'task.create' ? null : predictBase(workspace, await opsAhead(workspace), identity);
   await idbQueueOp({ op: 'command', commandId: genId('c'), intent: op.intent, base });
 }
 

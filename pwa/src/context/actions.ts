@@ -3,7 +3,8 @@ import type { Task, TaskLink } from '../types';
 import type { AppAction } from './reducer';
 import type { ApiConfig } from '../api/client';
 import type { IsoDateTime, NonEmptyString } from '@shared/parse';
-import { idbGetPendingOps, idbQueueOp } from '../idb/pendingOps';
+import { idbQueueOp } from '../idb/pendingOps';
+import { opsAhead } from '../sync/ledger';
 import { loadView } from '../sync/view';
 import { currentWorkspace } from '../sync/pull';
 import { predictBase } from '../sync/base';
@@ -50,7 +51,7 @@ async function commit(intents: Intent[], config: ApiConfig, dispatch: Dispatch<A
   if (intents.length > 0) {
     const workspace = (await currentWorkspace(config.apiBase)) ?? { entities: new Map() };
     for (const intent of intents) {
-      const base = intent.kind === 'task.create' ? null : predictBase(workspace, await idbGetPendingOps(), intentWrites(intent)[0]!);
+      const base = intent.kind === 'task.create' ? null : predictBase(workspace, await opsAhead(workspace), intentWrites(intent)[0]!);
       await idbQueueOp({ op: 'command', commandId: genId('c'), intent, base });
     }
   }

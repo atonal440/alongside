@@ -4,6 +4,7 @@ import { projectColor } from '../../utils/design';
 import { isReady } from '@shared/readiness';
 import type { AppState } from '../../context/reducer';
 import { idbClearPendingOps } from '../../idb/pendingOps';
+import { idbClearLandedOps } from '../../idb/landedOps';
 import { idbClearRetainedOps } from '../../idb/retainedOps';
 import { idbClearCanonical } from '../../idb/canonical';
 import { RetainedOps } from './RetainedOps';
@@ -18,6 +19,7 @@ const VIEWS: { id: AppState['currentView']; label: string }[] = [
 async function clearLocalAppData(): Promise<void> {
   await Promise.all([
     idbClearPendingOps(),
+    idbClearLandedOps(),
     idbClearRetainedOps(),
     idbClearCanonical().finally(resetPullCache),
   ]);
