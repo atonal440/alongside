@@ -167,11 +167,13 @@ identity it was made against.
   (`loadView`) and the next cycle, after the queued command replays from its saved envelope, pulls.
 - **Landed ledger.** Skipping the pull would otherwise lose commands that succeeded earlier in the same
   flush (they leave the queue but canonical has not seen them). IDB v8 adds `landed_ops`: an accepted
-  command moves from the queue to the ledger in one transaction, with the canonical cursor it landed
-  at. `opsAhead` (`sync/ledger.ts`) is the ledger followed by the queue; the view replays it and
-  `predictBase` counts it. The ledger is cleared after a successful pull, and a landed command also
-  counts as absorbed once the stored cursor is past its landing cursor, which covers a crash between a
-  pull's commit and the clear. Logout clears it. This mirrors Android's `landed` list.
+  command moves from the queue to the ledger in one transaction. `opsAhead` (`sync/ledger.ts`) reads
+  the ledger followed by the queue in one snapshot; the view replays it and `predictBase` counts it.
+  `refreshFromCanonical` records which commands had landed before its pull began and clears exactly
+  those after the pull succeeds, so a command a concurrent cycle lands mid-pull waits for the next
+  pull. A crash between a pull's commit and that clear leaves the entries counted twice until the next
+  successful pull (at worst one false conflict, retried from Needs attention). Logout clears the
+  ledger. This mirrors Android's `landed` list.
 - **Rebase.** Retrying a retained command makes a new command (new ID, `base` predicted from the
   workspace as it is now), which is what resolves a conflict. For edits, **Review** works on the
   intent's fields exactly as it did for legacy edits, and "Retry selected" re-queues only those.

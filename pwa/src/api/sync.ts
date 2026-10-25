@@ -13,7 +13,6 @@ import { messageFromResult, referencesTaskId, ATTEMPTS_CAP } from './syncPolicy'
 import { intentTaskId, intentWrites } from '../sync/intent';
 import { idbRetainOp } from '../idb/retainedOps';
 import { idbLandOp } from '../idb/landedOps';
-import { idbReadCanonicalCursor } from '../idb/canonical';
 import {
   idbGetPendingOps, idbDeletePendingOp, idbPutPendingOp,
 } from '../idb/pendingOps';
@@ -75,8 +74,8 @@ async function holdSameIdentityOps(refused: CommandOp, skipped: Set<number>): Pr
 // The server accepted this op. A command stays in the landed ledger until a pull absorbs it, so the view
 // and the revisions predicted for later writes keep counting it if the flush then halts and the pull is
 // skipped; legacy ops have no such bookkeeping.
-async function settleAccepted(op: PendingOp, config: ApiConfig): Promise<void> {
-  if (op.op === 'command' && op.id !== undefined) await idbLandOp(op, await idbReadCanonicalCursor(config.apiBase));
+async function settleAccepted(op: PendingOp): Promise<void> {
+  if (op.op === 'command' && op.id !== undefined) await idbLandOp(op);
   else await idbDeletePendingOp(op.id!);
 }
 
@@ -180,7 +179,7 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
       // 2xx response whose body failed the schema check. The server has already
       // applied the write — drop the op to prevent retry duplication.
       console.error('[sync] contract violation on queued op; dropping', op.op);
-      await settleAccepted(live, config);
+      await settleAccepted(live);
       if (op.op === 'task.create') {
         const raw = result.raw as Record<string, unknown> | undefined;
         const serverId = typeof raw?.['id'] === 'string' ? raw['id'] : null;
@@ -226,7 +225,7 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
           ops[j] = rebindTaskId(ops[j]!, oldId, newId);
         }
       } else {
-        await settleAccepted(live, config);
+        await settleAccepted(live);
       }
       flushed++;
       continue;

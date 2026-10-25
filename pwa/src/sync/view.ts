@@ -12,5 +12,5 @@ const EMPTY: Pick<CanonicalWorkspace, 'entities'> = { entities: new Map() };
  */
 export async function loadView(source: string): Promise<OverlayView> {
   const stored = await currentWorkspace(source);
-  return overlayPendingOps(stored ?? EMPTY, await opsAhead(stored));
+  return overlayPendingOps(stored ?? EMPTY, await opsAhead());
 }
