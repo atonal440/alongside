@@ -3,6 +3,7 @@ import type { ApiConfig } from '../api/client';
 import { idbClearLandedOps, idbGetLandedOps } from '../idb/landedOps';
 import { isAbsorbed, opsAhead } from './ledger';
 import { currentWorkspace } from './pull';
+import { markReconciled } from '../api/sync';
 import { pullWorkspace } from './pull';
 import { overlayPendingOps } from './overlay';
 
@@ -25,6 +26,7 @@ export async function refreshFromCanonical(config: ApiConfig): Promise<RefreshRe
   const tidy = (await idbGetLandedOps()).filter(entry => isAbsorbed(entry, before)).flatMap(({ op }) => (op.id === undefined ? [] : [op.id]));
   const outcome = await pullWorkspace(config, { fresh: true });
   if (outcome.kind === 'failed') return { online: false };
+  markReconciled();
   try {
     await idbClearLandedOps(tidy);
     const view = overlayPendingOps(outcome.workspace, await opsAhead(outcome.workspace));

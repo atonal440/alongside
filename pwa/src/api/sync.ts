@@ -26,6 +26,15 @@ export interface FlushSummary {
   unrecorded: boolean;
 }
 
+// Set when an accepted op left the queue with no ledger entry; stays set until a pull succeeds, so a
+// reconciliation pull that fails (or a later flush that halts) does not forget it. Not persisted: it only
+// concerns legacy ops and unreadable responses, and a reload pulls from scratch anyway.
+let _unreconciled = false;
+
+export function markReconciled(): void {
+  _unreconciled = false;
+}
+
 // Surfaced once per app session when an op sits wedged at the attempts cap.
 let _stuckNoticeFired = false;
 
@@ -175,7 +184,6 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
   let flushed = 0;
   const rejected: string[] = [];
   let halted = false;
-  let unrecorded = false;
   const skippedIds = new Set<number>();
 
   for (let i = 0; i < ops.length; i++) {
@@ -196,7 +204,7 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
       // 2xx response whose body failed the schema check. The server has already
       // applied the write — drop the op to prevent retry duplication.
       console.error('[sync] contract violation on queued op; dropping', op.op);
-      unrecorded = true;
+      _unreconciled = true;
       await settleAccepted(live, null);
       if (op.op === 'task.create') {
         const raw = result.raw as Record<string, unknown> | undefined;
@@ -214,6 +222,7 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
 
     if (result.kind === 'ok') {
       if (op.op === 'task.create') {
+        _unreconciled = true;
         // Parse the server row BEFORE deleting the op so that a validation
         // failure doesn't leave the op gone with no rebinding done.
         const parsed = parseTaskRow(result.value);
@@ -243,7 +252,7 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
           ops[j] = rebindTaskId(ops[j]!, oldId, newId);
         }
       } else {
-        if (!await settleAccepted(live, op.op === 'command' ? result.value as ChangesResult : null)) unrecorded = true;
+        if (!await settleAccepted(live, op.op === 'command' ? result.value as ChangesResult : null)) _unreconciled = true;
       }
       flushed++;
       continue;
@@ -283,5 +292,5 @@ async function flushQueue(config: ApiConfig): Promise<FlushSummary> {
     break;
   }
 
-  return { flushed, rejected, halted, unrecorded };
+  return { flushed, rejected, halted, unrecorded: _unreconciled };
 }
