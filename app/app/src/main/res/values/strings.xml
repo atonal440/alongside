@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Alongside</string>
+    <string name="widget_ready_label">Ready now</string>
+    <string name="widget_ready_description">What\'s ready, with a check for each. Stretch it taller for today and what\'s next.</string>
+    <string name="widget_focus_label">Focus</string>
+    <string name="widget_focus_description">The one task you\'re focused on, with a check.</string>
+    <string name="widget_today_label">Today</string>
+    <string name="widget_today_description">How much of today is done.</string>
+</resources>

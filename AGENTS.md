@@ -4,10 +4,11 @@ This file is the canonical agent instruction file for Alongside. `CLAUDE.md` int
 
 ## What This Is
 
-Alongside is a lightweight task manager built around conversational workflow. It has two main surfaces:
+Alongside is a lightweight task manager built around conversational workflow. It has three main surfaces:
 
 - A Cloudflare Worker backend with D1 storage, REST endpoints, MCP tools, OAuth routes, and widget UI routes.
 - A React + Vite + TypeScript PWA that is offline-first and syncs through the worker REST API.
+- A Kotlin + Jetpack Compose Android app in `app/` with Glance home-screen widgets, also offline-first over the worker REST API. See `docs/android/overview.md`.
 
 `shared/schema.ts` is the source of truth for database schema and shared row types.
 
@@ -39,6 +40,13 @@ pwa/
   src/components/  Layout, common UI, task cards, views
   src/utils/       Queueing, task flow, design helpers, link maps
   src/sw.ts        Workbox service worker
+
+app/               Android app (Gradle project; open in Android Studio)
+  app/src/main/java/com/atonal440/alongside/
+    data/          v2 REST client, Repository; data/sync/ is the port of the PWA sync engine
+    domain/        Task buckets (Board), date labels, time helpers
+    ui/            Compose screens, components, theme
+    widget/        Glance widgets
 ```
 
 ## Local Dev
@@ -129,6 +137,12 @@ cd pwa
 npm run typecheck
 npm run test
 npm run build
+```
+
+```sh
+# Android (from app/, using Android Studio's bundled JDK as JAVA_HOME)
+./gradlew :app:testDebugUnitTest
+./gradlew :app:assembleDebug
 ```
 
 Run `wrangler deploy --dry-run` before merging worker changes that touch `wrangler.toml`, `shared/schema.ts`, migrations, or dependencies. It catches bundling/resolution failures typecheck can miss.
