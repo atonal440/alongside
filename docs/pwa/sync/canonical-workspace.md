@@ -173,9 +173,9 @@ identity it was made against.
   has not caught up to, i.e. some written identity is still below its recorded revision. Revisions only
   grow, so this is exact: a pull that overlaps the landing, a crash before the ledger is tidied, or a
   concurrent cycle can neither double count a command nor hide one. The view replays that list and
-  `predictBase` counts it. `refreshFromCanonical` deletes entries once canonical shows them (and those
-  with an unreadable response that landed before the pull began); logout clears the ledger. This
-  mirrors Android's `landed` list.
+  `predictBase` counts it. `refreshFromCanonical` deletes entries one pull after canonical shows them (so
+  a reader holding an older canonical read still finds the entry); logout clears the ledger. A command
+  whose response can't be read just leaves the queue, as before. This mirrors Android's `landed` list.
 - **Rebase.** Retrying a retained command makes a new command (new ID, `base` predicted from the
   workspace as it is now), which is what resolves a conflict. For edits, **Review** works on the
   intent's fields exactly as it did for legacy edits, and "Retry selected" re-queues only those.

@@ -8,10 +8,10 @@ type Canonical = Pick<CanonicalWorkspace, 'entities'>;
  * Whether canonical already reflects an accepted command: every identity it wrote is at (or past) the
  * revision the server gave it. Revisions only grow, so this is exact and stateless: a pull that ran
  * while the command landed, a crash before the ledger was tidied, or a concurrent cycle cannot make the
- * command count twice or vanish. A command whose response was unreadable can't be proven absorbed.
+ * command count twice or vanish.
  */
 export function isAbsorbed({ revisions }: LandedOp, canonical: Canonical | null): boolean {
-  if (revisions === null || canonical === null) return false;
+  if (canonical === null) return false;
   return Object.entries(revisions).every(([identity, revision]) => (canonical.entities.get(identity)?.revision ?? 0) >= revision);
 }
 

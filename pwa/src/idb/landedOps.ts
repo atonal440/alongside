@@ -3,9 +3,9 @@ import { getDB } from './db';
 
 /**
  * A command the server accepted. `revisions` maps each identity it wrote (`task:t_…`, `link:[…]`) to the
- * revision the server gave it; null when the response was unreadable, so absorption can't be proven.
+ * revision the server gave it, which is how a reader can tell exactly when canonical has caught up.
  */
-export interface LandedOp { op: PendingOp; revisions: Record<string, number> | null }
+export interface LandedOp { op: PendingOp; revisions: Record<string, number> }
 
 const parseRevisions = (value: unknown): Record<string, number> | null => {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
@@ -17,11 +17,12 @@ const parseRevisions = (value: unknown): Record<string, number> | null => {
 const parseLanded = (raw: unknown[]): LandedOp[] => raw.flatMap(item => {
   const record = (typeof item === 'object' && item !== null ? item : {}) as { op?: unknown; revisions?: unknown };
   const parsed = parsePendingOp(record.op);
-  if (!parsed.ok) {
-    console.warn('[idb] malformed landed op skipped', item, parsed.error);
+  const revisions = parseRevisions(record.revisions);
+  if (!parsed.ok || revisions === null) {
+    console.warn('[idb] malformed landed op skipped', item, parsed.ok ? 'bad revisions' : parsed.error);
     return [];
   }
-  return [{ op: parsed.value, revisions: parseRevisions(record.revisions) }];
+  return [{ op: parsed.value, revisions }];
 });
 
 const parseQueue = (raw: unknown[]): PendingOp[] => raw.flatMap(item => {
@@ -34,7 +35,7 @@ const parseQueue = (raw: unknown[]): PendingOp[] => raw.flatMap(item => {
 });
 
 /** Move an accepted command from the queue to the ledger in one transaction, so it is never in both or neither. */
-export async function idbLandOp(op: PendingOp, revisions: Record<string, number> | null): Promise<void> {
+export async function idbLandOp(op: PendingOp, revisions: Record<string, number>): Promise<void> {
   if (op.id === undefined) throw new Error('Only a stored op can land.');
   const id = op.id;
   const db = await getDB();

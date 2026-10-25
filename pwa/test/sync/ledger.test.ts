@@ -9,7 +9,7 @@ import { opsAhead } from '../../src/sync/ledger';
 beforeEach(async () => { closeDb(); await resetIdb(); });
 
 const at = (revision: number) => ({ entities: new Map([['task:t_abc001', { revision } as never]]) });
-const land = async (commandId: string, revisions: Record<string, number> | null = { 'task:t_abc001': 2 }) => {
+const land = async (commandId: string, revisions: Record<string, number> = { 'task:t_abc001': 2 }) => {
   await idbQueueOp({ op: 'command', commandId, intent: { kind: 'task.reopen', id: 't_abc001' }, base: 1 });
   const op = (await idbGetPendingOps()).find(o => o.op === 'command' && o.commandId === commandId)!;
   await idbLandOp(op, revisions);
@@ -34,13 +34,6 @@ describe('landed ledger', () => {
     expect(ids(await opsAhead({ entities: new Map() }) as never)).toEqual(['c_one0001', 'c_two0002']);
   });
 
-  it('a command whose response was unreadable is kept until the ledger is cleared', async () => {
-    await land('c_one0001', null);
-    expect(ids(await opsAhead(at(99)) as never)).toEqual(['c_one0001']);
-    await idbClearLandedOps();
-    expect(await opsAhead(at(99))).toEqual([]);
-  });
-
   it('clears only the entries it is told about', async () => {
     const first = await land('c_one0001');
     await land('c_two0002');
@@ -48,7 +41,7 @@ describe('landed ledger', () => {
     expect(ids(await opsAhead(at(1)) as never)).toEqual(['c_two0002']);
   });
 
-  it('skips a malformed record and reads malformed revisions as unprovable', async () => {
+  it('skips malformed records, including ones with unreadable revisions', async () => {
     await land('c_one0001');
     const db = await getDB();
     await new Promise<void>((resolve, reject) => {
@@ -59,8 +52,6 @@ describe('landed ledger', () => {
       tx.onerror = () => reject(tx.error);
     });
     const landed = await idbGetLandedOps();
-    expect(landed.map(l => l.op.op === 'command' ? l.op.commandId : '')).toEqual(['c_one0001', 'c_bad0001']);
-    expect(landed[1]!.revisions).toBeNull();
-    expect(ids(await opsAhead(at(2)) as never)).toEqual(['c_bad0001']);
+    expect(landed.map(l => l.op.op === 'command' ? l.op.commandId : '')).toEqual(['c_one0001']);
   });
 });

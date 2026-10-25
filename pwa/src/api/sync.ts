@@ -86,7 +86,9 @@ function revisionsWritten(result: ChangesResult): Record<string, number> {
 // and the revisions predicted for later writes keep counting it if the flush then halts and the pull is
 // skipped; legacy ops have no such bookkeeping.
 async function settleAccepted(op: PendingOp, accepted: ChangesResult | null): Promise<void> {
-  if (op.op === 'command' && op.id !== undefined) await idbLandOp(op, accepted && revisionsWritten(accepted));
+  // Without a readable response there is nothing to match canonical against, so the op just leaves the
+  // queue (the next pull absorbs it, as before).
+  if (op.op === 'command' && op.id !== undefined && accepted) await idbLandOp(op, revisionsWritten(accepted));
   else await idbDeletePendingOp(op.id!);
 }
 
