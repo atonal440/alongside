@@ -236,3 +236,17 @@ it('bootstraps previously advertised preferences and retired log names without r
   expect(feed(sql)).toEqual([]);
  }finally{sql.close();}
 });
+
+describe('legacy over-long text', () => {
+ it('does not break the snapshot or the entity read',async()=>{
+  const {sql,d1}=sqliteD1('fresh');const db=new DB(d1);
+  sql.exec(`${taskInsert()}; ${projectInsert}`);
+  const long='x'.repeat(9_954);
+  sql.prepare('UPDATE tasks SET kickoff_note=?,notes=? WHERE id=?').run(long,long,'t_first1');
+  sql.prepare('UPDATE projects SET kickoff_note=? WHERE id=?').run(long,'p_first1');
+  const snapshot=await db.getWorkspaceSnapshot();
+  const task=snapshot.entities.find(e=>e.entity==='task'&&e.key==='t_first1');
+  expect(task?.row).toMatchObject({kickoff_note:long,notes:long});
+  expect((await db.getEntitySnapshot({entity:'task',id:'t_first1'} as never)).row).toMatchObject({kickoff_note:long});
+ });
+});

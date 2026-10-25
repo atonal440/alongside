@@ -45,12 +45,17 @@ write the model down before coding.
   tests, and update the canonical-workspace doc. The Android fixes are the
   reference (`app/.../data/sync/SyncEngine.kt`, `retain`, `cycle`;
   [`docs/android/sync.md`](../android/sync.md)).
-- [ ] **Worker: make the snapshot tolerate over-long legacy text.** The worker
+- [x] **Worker: make the snapshot tolerate over-long legacy text.** The worker
   validates its own snapshot, so one row over the cap made
   `/api/v2/sync/snapshot` return 500 and broke sync for both clients (happened
   in production with 7.8k–10k character kickoff notes against the 2,000 cap).
   Caps live in `shared/wire/rows.ts` and only bind new writes. Degrade (clamp,
   skip with a warning, or pass through) instead of failing wholesale.
+  Done by passing through: the row schemas now read text up to `ROW_TEXT_READ_MAX`
+  (`shared/wire/rows.ts`) while commands, REST and forms keep the real caps. Clamping would
+  have truncated the note permanently on the next unrelated edit, since a content command
+  resends the row's other text fields. Editing such a task's other fields is refused by the
+  write cap (retained for review) until the text is trimmed.
 - [~] **Android sync port (#87, branch `android-pwa-sync`).** Engine port and
   its review rounds are committed; confirm the PR is merged, then drop it from
   this list. Its docs ([`android/sync.md`](../android/sync.md)) still say "the

@@ -33,6 +33,13 @@ export const PROJECT_TITLE_MAX = 200;
 export const PROJECT_NOTES_MAX = 10_000;
 export const PROJECT_KICKOFF_MAX = 2_000;
 
+// The caps above bind new writes (commands, REST, forms). Reading a stored row must accept what
+// is already there: rows written before a cap existed or tightened (production had 7.8k-10k
+// character kickoff notes against the 2,000 cap) would otherwise make the worker's own snapshot
+// fail validation and break sync for every client. This is only a sanity ceiling, well inside
+// D1's 2 MB row limit.
+export const ROW_TEXT_READ_MAX = 1_000_000;
+
 // Validates non-empty bounded text without trimming; the title in a stored row
 // is already clean — trimming would silently corrupt a round-trip.
 function rowTitleSchema<const Max extends number>(max: Max) {
@@ -53,7 +60,7 @@ function rowTitleSchema<const Max extends number>(max: Max) {
 export const taskRowEntries = {
   id: TaskIdSchema,
   title: rowTitleSchema(TASK_TITLE_MAX),
-  notes: v.nullable(boundedStringSchema(TASK_NOTES_MAX)),
+  notes: v.nullable(boundedStringSchema(ROW_TEXT_READ_MAX)),
   status: TaskStatusSchema,
   due_date: v.nullable(DueDateTimeSchema),
   // Null on legacy rows (predates this column); treated as all-day (true)
@@ -66,8 +73,8 @@ export const taskRowEntries = {
   defer_kind: DeferKindSchema,
   task_type: TaskTypeSchema,
   project_id: v.nullable(ProjectIdSchema),
-  kickoff_note: v.nullable(boundedStringSchema(TASK_KICKOFF_MAX)),
-  session_log: v.nullable(boundedStringSchema(TASK_SESSION_LOG_MAX)),
+  kickoff_note: v.nullable(boundedStringSchema(ROW_TEXT_READ_MAX)),
+  session_log: v.nullable(boundedStringSchema(ROW_TEXT_READ_MAX)),
   focused_until: v.nullable(IsoDateTimeSchema),
   duty_id: v.nullable(v.string()),
   occurrence_at: v.nullable(IsoDateTimeMinuteSchema),
@@ -87,8 +94,8 @@ export const TaskRowSchema = v.pipe(
 export const projectRowEntries = {
   id: ProjectIdSchema,
   title: rowTitleSchema(PROJECT_TITLE_MAX),
-  notes: v.nullable(boundedStringSchema(PROJECT_NOTES_MAX)),
-  kickoff_note: v.nullable(boundedStringSchema(PROJECT_KICKOFF_MAX)),
+  notes: v.nullable(boundedStringSchema(ROW_TEXT_READ_MAX)),
+  kickoff_note: v.nullable(boundedStringSchema(ROW_TEXT_READ_MAX)),
   status: ProjectStatusSchema,
   created_at: IsoDateTimeSchema,
   updated_at: IsoDateTimeSchema,
@@ -111,7 +118,7 @@ export const TaskLinkRowSchema = v.pipe(
 /** A duty (recurring series). The calendar columns (rrule, dtstart, timezone) never change after creation. */
 export const DutyRowSchema = v.strictObject({
   id: DutyIdSchema, title: taskRowEntries.title,
-  notes: v.nullable(boundedStringSchema(10_000)), kickoff_note: v.nullable(boundedStringSchema(2_000)),
+  notes: v.nullable(boundedStringSchema(ROW_TEXT_READ_MAX)), kickoff_note: v.nullable(boundedStringSchema(ROW_TEXT_READ_MAX)),
   task_type: TaskTypeSchema, project_id: v.nullable(ProjectIdSchema), rrule: SeriesRruleSchema,
   dtstart: MinuteInstantSchema, timezone: v.nullable(TimezoneSchema),
   status: v.picklist(['active', 'paused', 'ended']), catch_up: v.picklist(['next', 'all']),
