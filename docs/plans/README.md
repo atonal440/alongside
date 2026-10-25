@@ -1,5 +1,8 @@
 # Implementation plans
 
+Start with the [roadmap checklist](roadmap-checklist.md): everything still to
+do, across the plans below, the Android docs and the ideas file.
+
 ## Current product direction
 
 - [Power-user todo model and LLM tools](power-user-todo.md): proposed task,
