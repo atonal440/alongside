@@ -435,4 +435,22 @@ class SyncEngineTest {
         assertEquals("3", move["project"]!!.jsonObject["expectedRevision"]!!.jsonPrimitive.content)
         try { env(Intent.Reopen("t_aaaaa"), null); fail("a command with no base is refused") } catch (_: com.atonal440.alongside.data.sync.EnvelopeRefused) {}
     }
+
+    @Test
+    fun `a due-date change keeps the server's repeat rule unless it sets one`() {
+        val row = com.atonal440.alongside.data.AlongsideApi.json.decodeFromJsonElement(com.atonal440.alongside.data.Task.serializer(), server.taskRow("t_aaaaa", recurrence = "FREQ=DAILY"))
+        val ctx = com.atonal440.alongside.data.sync.BuildContext(row, structuralRevision = 7, projectRevision = 3)
+        fun values(intent: Intent) = com.atonal440.alongside.data.sync.buildEnvelope(QueuedOp(1, "c_abcde", intent, 2, "t"), ctx)["commands"]!!.jsonArray.single().jsonObject["values"]!!.jsonObject
+
+        val kept = values(Intent.SetDue("t_aaaaa", "2026-11-01T12:00:00Z", dueAllDay = true))
+        assertEquals("FREQ=DAILY", kept["recurrence"]!!.jsonPrimitive.content)
+
+        val set = values(Intent.SetDue("t_aaaaa", "2026-11-01T09:00:00Z", dueAllDay = false, recurrence = "FREQ=WEEKLY;BYDAY=SU", setsRecurrence = true))
+        assertEquals("FREQ=WEEKLY;BYDAY=SU", set["recurrence"]!!.jsonPrimitive.content)
+        assertEquals("false", set["dueAllDay"]!!.jsonPrimitive.content)
+
+        val task = com.atonal440.alongside.data.AlongsideApi.json.decodeFromJsonElement(com.atonal440.alongside.data.Task.serializer(), server.taskRow("t_aaaaa"))
+        assertEquals("FREQ=WEEKLY", Intent.SetDue("t_aaaaa", "2026-11-01T12:00:00Z", true, "FREQ=WEEKLY", setsRecurrence = true).apply(task, "now").recurrence)
+        assertEquals(task.recurrence, Intent.SetDue("t_aaaaa", "2026-11-01T12:00:00Z", true).apply(task, "now").recurrence)
+    }
 }

@@ -8,6 +8,7 @@ import com.atonal440.alongside.data.sync.SyncEngine
 import com.atonal440.alongside.data.sync.SyncStatus
 import com.atonal440.alongside.data.sync.mintId
 import com.atonal440.alongside.domain.Clock
+import com.atonal440.alongside.domain.dueSchedule
 import com.atonal440.alongside.domain.toWire
 import com.atonal440.alongside.widget.AlongsideWidgets
 import kotlinx.coroutines.CoroutineScope
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 
 /**
  * The one source of truth for the app and its widgets: a thin Android wrapper over [SyncEngine],
@@ -151,14 +153,27 @@ class Repository private constructor(private val context: Context) {
 
     fun hasSubtasks(id: String) = workspace.value.tasks.any { it.parent_id == id }
 
-    suspend fun create(title: String, notes: String?, projectId: String?, plan: Boolean, due: LocalDate?) {
+    suspend fun create(
+        title: String,
+        notes: String?,
+        projectId: String?,
+        plan: Boolean,
+        due: LocalDate?,
+        dueTime: LocalTime? = null,
+        recurrence: String? = null,
+    ) {
         val id = mintId("t")
         // Project and due date are their own commands, each guarded by the revision the create gives the task.
+        // A time makes the due date a local instant instead of an all-day date; a repeat rides with the due date
+        // and, being date-only, drops the time (see dueSchedule).
         write(
             *listOfNotNull<Intent>(
                 Intent.Create(id, title, notes, if (plan) "plan" else "action"),
                 projectId?.let { Intent.SetProject(id, it) },
-                due?.let { Intent.SetDue(id, "${it}T12:00:00Z", dueAllDay = true) },
+                due?.let {
+                    val s = dueSchedule(it, dueTime, recurrence, Clock.zone)
+                    Intent.SetDue(id, s.dueDate, dueAllDay = s.allDay, recurrence = s.recurrence, setsRecurrence = s.recurrence != null)
+                },
             ).toTypedArray(),
         )
     }

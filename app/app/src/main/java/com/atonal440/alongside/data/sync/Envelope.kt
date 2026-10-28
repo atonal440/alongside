@@ -72,7 +72,7 @@ fun buildEnvelope(op: QueuedOp, ctx: BuildContext): JsonObject {
                 put("values", buildJsonObject {
                     put("dueDate", intent.dueDate)
                     put("dueAllDay", intent.dueAllDay)
-                    put("recurrence", row.recurrence.json())
+                    put("recurrence", (if (intent.setsRecurrence) intent.recurrence else row.recurrence).json())
                 })
             }
             is Intent.Defer -> buildJsonObject {

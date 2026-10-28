@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,13 +47,20 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.atonal440.alongside.data.TaskLimits
+import com.atonal440.alongside.data.ai.ModelAvailability
+import com.atonal440.alongside.data.ai.OnDeviceQuickAdd
 import com.atonal440.alongside.domain.Board
 import com.atonal440.alongside.domain.Clock
 import com.atonal440.alongside.domain.Filters
 import com.atonal440.alongside.domain.INBOX
 import com.atonal440.alongside.domain.Kind
 import com.atonal440.alongside.domain.NapChoice
+import com.atonal440.alongside.domain.QuickAddParser
+import com.atonal440.alongside.domain.friendlyDay
+import com.atonal440.alongside.domain.recurrenceLabel
 import com.atonal440.alongside.domain.Order
 import com.atonal440.alongside.domain.Show
 import com.atonal440.alongside.domain.When
@@ -64,6 +72,9 @@ import com.atonal440.alongside.ui.theme.LocalColors
 import com.atonal440.alongside.ui.theme.Type
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.time.temporal.TemporalAdjusters
 
 private fun <T> Set<T>.toggle(item: T) = if (item in this) this - item else this + item
@@ -201,56 +212,181 @@ private enum class DueChoice(val label: String) {
     }
 }
 
+/** What one "Fill in" run did, kept on screen so a misread can be judged on the phone. */
+private class SmartRun(
+    val parserMillis: Double,
+    val spans: List<String>,
+    val approx: Boolean,
+    val modelMillis: Long? = null,
+    val attempts: Int = 0,
+    val raw: String = "",
+    val note: String? = null,
+)
+
+private val timeLabel = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
+
 /** Quick capture: a title is enough; everything else is optional. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun NewTaskSheet(
     board: Board,
     initialProject: String?,
-    onCreate: (title: String, notes: String?, projectId: String?, plan: Boolean, due: LocalDate?) -> Unit,
+    quickAdd: OnDeviceQuickAdd,
+    onCreate: (title: String, notes: String?, projectId: String?, plan: Boolean, due: LocalDate?, dueTime: LocalTime?, recurrence: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val c = LocalColors.current
+    val scope = rememberCoroutineScope()
+    var said by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var project by remember { mutableStateOf(initialProject?.takeIf { it != INBOX }) }
     var plan by remember { mutableStateOf(false) }
     var due by remember { mutableStateOf(DueChoice.None) }
+    // Filled in from the sentence: an exact day, a time of day and a repeat rule, each dismissable.
+    var customDue by remember { mutableStateOf<LocalDate?>(null) }
+    var dueTime by remember { mutableStateOf<LocalTime?>(null) }
+    var recurrence by remember { mutableStateOf<String?>(null) }
+    var timeNote by remember { mutableStateOf<String?>(null) }
+    var availability by remember { mutableStateOf<Pair<ModelAvailability, String?>?>(null) }
+    var downloadLine by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var run by remember { mutableStateOf<SmartRun?>(null) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
+    LaunchedEffect(Unit) { availability = quickAdd.availability() }
+    // A download started elsewhere (or before the sheet opened) finishes on its own; keep looking until it does.
+    LaunchedEffect(availability?.first) {
+        while (availability?.first == ModelAvailability.Downloading) {
+            delay(3_000)
+            availability = quickAdd.availability()
+        }
+    }
     val titleTooLong = title.trim().length > TaskLimits.TITLE_MAX
     val notesTooLong = notes.trim().length > TaskLimits.NOTES_MAX
     val canAdd = title.isNotBlank() && !titleTooLong && !notesTooLong
+    val effectiveDue = customDue ?: due.date()
     // Only close once the capture is valid, so nothing typed is lost to a refusal later.
-    val submit = { if (canAdd) { onCreate(title, notes, project, plan, due.date()); onDismiss() } }
+    val submit = {
+        if (canAdd) {
+            onCreate(title, notes, project, plan, effectiveDue, dueTime.takeIf { effectiveDue != null }, recurrence.takeIf { effectiveDue != null })
+            onDismiss()
+        }
+    }
+
+    // The parser answers at once; the model then fills in title, notes and kind from what is left of the sentence.
+    val fill: () -> Unit = fill@{
+        if (said.isBlank() || busy) return@fill
+        val t0 = System.nanoTime()
+        val parsed = QuickAddParser.parse(said.trim())
+        val parserMillis = (System.nanoTime() - t0) / 1_000_000.0
+        customDue = parsed.date
+        // A repeat is date-only in the worker, so a time that came with one is left out rather than refused later.
+        dueTime = parsed.time.takeIf { parsed.recurrence == null }
+        timeNote = parsed.time?.takeIf { parsed.recurrence != null }?.let { "Repeats are date-only for now, so ${it.format(timeLabel)} was left out." }
+        recurrence = parsed.recurrence
+        title = parsed.rest
+        notes = ""
+        plan = false
+        val spans = parsed.spans.map { "${it.kind}: ${it.text}" }
+        val ready = availability?.first == ModelAvailability.Available
+        if (parsed.rest.isBlank() || !ready) {
+            val note = if (parsed.rest.isBlank()) "Nothing left for the model." else "On-device model not ready; the parser filled what it could."
+            run = SmartRun(parserMillis, spans, parsed.approx, note = note)
+            return@fill
+        }
+        run = SmartRun(parserMillis, spans, parsed.approx, note = "Asking the model…")
+        busy = true
+        val titleAtStart = title
+        val notesAtStart = notes
+        val planAtStart = plan
+        scope.launch {
+            val outcome = quickAdd.interpret(parsed.rest)
+            // The fields stay editable while the model thinks; keep anything the person changed in the meantime.
+            outcome.fields?.let { f ->
+                if (title == titleAtStart) title = f.title
+                if (notes == notesAtStart) notes = f.notes.orEmpty()
+                if (plan == planAtStart) plan = f.plan
+            }
+            run = SmartRun(parserMillis, spans, parsed.approx, outcome.millis, outcome.attempts, outcome.raw, outcome.error)
+            busy = false
+        }
+    }
 
     AlongsideSheet(onDismiss) {
         Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 20.dp)) {
             Text("New task", style = Type.sheetTitle, color = c.ink, modifier = Modifier.padding(top = 8.dp, bottom = 12.dp))
-            Field(title, { title = it }, "What needs doing?", Type.rowTitle.copy(fontSize = Type.note.fontSize), Modifier.focusRequester(focus))
-            if (titleTooLong) LimitNote("Titles can be up to ${TaskLimits.TITLE_MAX} characters (this one is ${title.trim().length}). Longer detail fits in the notes.")
-            Spacer(Modifier.height(10.dp))
-            Field(notes, { notes = it }, "Notes (optional)", Type.body, singleLine = false)
-            if (notesTooLong) LimitNote("Notes can be up to ${TaskLimits.NOTES_MAX} characters (these are ${notes.trim().length}).")
-            Column(Modifier.verticalScroll(rememberScrollState()).padding(top = 18.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                Column {
-                    SheetLabel("When")
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        DueChoice.entries.forEach { d -> FilterChip(d.label, selected = due == d, height = 40.dp, sheetStyle = true, onClick = { due = d }) }
+            Column(Modifier.verticalScroll(rememberScrollState()).weight(1f, fill = false)) {
+                SheetLabel("Say it your way")
+                Field(said, { said = it }, "water plants every sunday at 9am", Type.body, Modifier.focusRequester(focus))
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(if (busy) "Thinking…" else "Fill in", selected = false, height = 40.dp, sheetStyle = true, onClick = fill)
+                    when (availability?.first) {
+                        null -> Text("Checking the on-device model…", style = Type.meta, color = c.muted)
+                        ModelAvailability.Available -> Text("Gemini Nano ready", style = Type.meta, color = c.muted)
+                        ModelAvailability.Downloadable -> FilterChip("Download model", selected = false, height = 40.dp, sheetStyle = true, onClick = {
+                            scope.launch {
+                                runCatching { quickAdd.download().collect { downloadLine = it } }.onFailure { downloadLine = it.message }
+                                availability = quickAdd.availability()
+                            }
+                        })
+                        ModelAvailability.Downloading -> Text("Model is downloading…", style = Type.meta, color = c.muted)
+                        ModelAvailability.Unavailable -> Text("No on-device model (${availability?.second ?: "unsupported"}). Dates and repeats still work.", style = Type.meta, color = c.muted)
                     }
                 }
-                Column {
-                    SheetLabel("Project")
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip("Inbox", selected = project == null, height = 40.dp, sheetStyle = true, onClick = { project = null })
-                        board.ws.projects.filter { it.isActive }.forEach { p ->
-                            FilterChip(p.title, selected = project == p.id, height = 40.dp, sheetStyle = true, leading = { ProjectDot(p.id, 9.dp) }, onClick = { project = p.id })
+                downloadLine?.let { Text(it, style = Type.meta, color = c.muted, modifier = Modifier.padding(top = 4.dp)) }
+                run?.let { r ->
+                    Text(
+                        buildString {
+                            append("parser ${"%.1f".format(r.parserMillis)} ms")
+                            r.modelMillis?.let { append(" · model $it ms · ${r.attempts} ${if (r.attempts == 1) "try" else "tries"}") }
+                            if (r.spans.isNotEmpty()) append("\ncut: ${r.spans.joinToString("; ")}")
+                            r.note?.let { append("\n$it") }
+                            if (r.raw.isNotBlank()) append("\nraw: ${r.raw.trim().replace(Regex("\\s+"), " ")}")
+                        },
+                        style = Type.meta, color = c.muted, modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
+                Field(title, { title = it }, "What needs doing?", Type.rowTitle.copy(fontSize = Type.note.fontSize))
+                if (titleTooLong) LimitNote("Titles can be up to ${TaskLimits.TITLE_MAX} characters (this one is ${title.trim().length}). Longer detail fits in the notes.")
+                Spacer(Modifier.height(10.dp))
+                Field(notes, { notes = it }, "Notes (optional)", Type.body, singleLine = false)
+                if (notesTooLong) LimitNote("Notes can be up to ${TaskLimits.NOTES_MAX} characters (these are ${notes.trim().length}).")
+                Column(Modifier.padding(top = 18.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Column {
+                        SheetLabel("When")
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            customDue?.let { d ->
+                                FilterChip(friendlyDay(d, withDayNumber = true), selected = true, height = 40.dp, sheetStyle = true, onClick = { customDue = null; dueTime = null; recurrence = null })
+                            }
+                            DueChoice.entries.forEach { d ->
+                                FilterChip(d.label, selected = due == d && customDue == null, height = 40.dp, sheetStyle = true, onClick = { due = d; customDue = null })
+                            }
+                        }
+                        if (effectiveDue != null && (dueTime != null || recurrence != null)) {
+                            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                dueTime?.let { t -> FilterChip(t.format(timeLabel), selected = true, height = 40.dp, sheetStyle = true, onClick = { dueTime = null }) }
+                                recurrence?.let { r -> FilterChip(recurrenceLabel(r) ?: "Repeats", selected = true, height = 40.dp, sheetStyle = true, onClick = { recurrence = null }) }
+                            }
+                        }
+                        // Outside the chip row: a date-only guess ("next week", "this weekend") has no time or repeat chip.
+                        if (effectiveDue != null) timeNote?.let { Text(it, style = Type.meta, color = c.muted, modifier = Modifier.padding(top = 6.dp)) }
+                        if (effectiveDue != null && run?.approx == true) Text("Guessed from a vague phrase; check it, and tap a chip to drop it.", style = Type.meta, color = c.muted, modifier = Modifier.padding(top = 6.dp))
+                    }
+                    Column {
+                        SheetLabel("Project")
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip("Inbox", selected = project == null, height = 40.dp, sheetStyle = true, onClick = { project = null })
+                            board.ws.projects.filter { it.isActive }.forEach { p ->
+                                FilterChip(p.title, selected = project == p.id, height = 40.dp, sheetStyle = true, leading = { ProjectDot(p.id, 9.dp) }, onClick = { project = p.id })
+                            }
                         }
                     }
-                }
-                Column {
-                    SheetLabel("Kind")
-                    Segmented(listOf("Action", "Plan"), if (plan) 1 else 0) { plan = it == 1 }
+                    Column {
+                        SheetLabel("Kind")
+                        Segmented(listOf("Action", "Plan"), if (plan) 1 else 0) { plan = it == 1 }
+                    }
                 }
             }
             PrimaryButton("Add task", onClick = submit, enabled = canAdd, modifier = Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 24.dp))
