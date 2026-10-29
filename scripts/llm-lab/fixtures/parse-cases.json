@@ -141,6 +141,9 @@
     {"in":"call mom biweekly on mondays","date":"2026-10-26","time":null,"recurrence":"FREQ=WEEKLY;INTERVAL=2;BYDAY=MO","rest":"call mom"},
     {"in":"call mom every tuesday starting tomorrow","date":"2026-10-27","time":null,"recurrence":"FREQ=WEEKLY;BYDAY=TU","rest":"call mom"},
     {"in":"call mom on 5 may 2028","date":"2028-05-05","time":null,"recurrence":null,"rest":"call mom"},
-    {"in":"party 15 nov 2026","date":"2026-11-15","time":null,"recurrence":null,"rest":"party"}
+    {"in":"party 15 nov 2026","date":"2026-11-15","time":null,"recurrence":null,"rest":"party"},
+    {"in":"pay rent every 2nd tuesday","date":"2026-11-10","time":null,"recurrence":"FREQ=MONTHLY;BYDAY=2TU","rest":"pay rent"},
+    {"in":"book club every 3rd friday","date":"2026-11-20","time":null,"recurrence":"FREQ=MONTHLY;BYDAY=3FR","rest":"book club"},
+    {"in":"file receipts every 15th","date":"2026-11-15","time":null,"recurrence":"FREQ=MONTHLY;BYMONTHDAY=15","rest":"file receipts"}
   ]
 }
