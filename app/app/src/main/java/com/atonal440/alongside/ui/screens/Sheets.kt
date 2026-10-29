@@ -232,7 +232,7 @@ fun NewTaskSheet(
     board: Board,
     initialProject: String?,
     quickAdd: OnDeviceQuickAdd,
-    onCreate: (title: String, notes: String?, projectId: String?, plan: Boolean, due: LocalDate?, dueTime: LocalTime?, recurrence: String?) -> Unit,
+    onCreate: (title: String, notes: String?, projectId: String?, plan: Boolean, due: LocalDate?, dueTime: LocalTime?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val c = LocalColors.current
@@ -247,7 +247,6 @@ fun NewTaskSheet(
     var customDue by remember { mutableStateOf<LocalDate?>(null) }
     var dueTime by remember { mutableStateOf<LocalTime?>(null) }
     var recurrence by remember { mutableStateOf<String?>(null) }
-    var timeNote by remember { mutableStateOf<String?>(null) }
     var availability by remember { mutableStateOf<Pair<ModelAvailability, String?>?>(null) }
     var downloadLine by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -269,7 +268,7 @@ fun NewTaskSheet(
     // Only close once the capture is valid, so nothing typed is lost to a refusal later.
     val submit = {
         if (canAdd) {
-            onCreate(title, notes, project, plan, effectiveDue, dueTime.takeIf { effectiveDue != null }, recurrence.takeIf { effectiveDue != null })
+            onCreate(title, notes, project, plan, effectiveDue, dueTime.takeIf { effectiveDue != null })
             onDismiss()
         }
     }
@@ -281,9 +280,7 @@ fun NewTaskSheet(
         val parsed = QuickAddParser.parse(said.trim())
         val parserMillis = (System.nanoTime() - t0) / 1_000_000.0
         customDue = parsed.date
-        // A repeat is date-only in the worker, so a time that came with one is left out rather than refused later.
-        dueTime = parsed.time.takeIf { parsed.recurrence == null }
-        timeNote = parsed.time?.takeIf { parsed.recurrence != null }?.let { "Repeats are date-only for now, so ${it.format(timeLabel)} was left out." }
+        dueTime = parsed.time
         recurrence = parsed.recurrence
         title = parsed.rest
         notes = ""
@@ -371,7 +368,8 @@ fun NewTaskSheet(
                             }
                         }
                         // Outside the chip row: a date-only guess ("next week", "this weekend") has no time or repeat chip.
-                        if (effectiveDue != null) timeNote?.let { Text(it, style = Type.meta, color = c.muted, modifier = Modifier.padding(top = 6.dp)) }
+                        // New repeats are duties, which the app cannot create yet, so the task is made for the first occurrence only.
+                        if (effectiveDue != null && recurrence != null) Text("Repeats aren't saved yet: this makes one task, for the first time.", style = Type.meta, color = c.muted, modifier = Modifier.padding(top = 6.dp))
                         if (effectiveDue != null && run?.approx == true) Text("Guessed from a vague phrase; check it, and tap a chip to drop it.", style = Type.meta, color = c.muted, modifier = Modifier.padding(top = 6.dp))
                     }
                     Column {

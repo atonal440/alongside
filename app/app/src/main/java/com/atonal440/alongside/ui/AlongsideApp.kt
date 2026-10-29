@@ -159,7 +159,7 @@ fun AlongsideApp(vm: AppViewModel) {
     if (newTaskOpen) NewTaskSheet(
         board, initialProject = filters.projects.singleOrNull(),
         quickAdd = vm.quickAdd,
-        onCreate = { title, notes, project, plan, due, dueTime, recurrence -> vm.create(title, notes, project, plan, due, dueTime, recurrence) },
+        onCreate = { title, notes, project, plan, due, dueTime -> vm.create(title, notes, project, plan, due, dueTime) },
         onDismiss = { newTaskOpen = false },
     )
     napFor?.let { id ->

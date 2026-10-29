@@ -37,22 +37,10 @@ sealed interface Intent {
         override fun describe() = "Move task to a project"
     }
 
-    /**
-     * Sets the due date. The task's repeat rule is kept as the server has it, unless [setsRecurrence] says
-     * this change also sets it to [recurrence] (a quick-add that read "every sunday").
-     */
+    /** Sets the due date; the task's repeat rule is kept as the server has it. */
     @Serializable @SerialName("task.schedule")
-    data class SetDue(
-        override val taskId: String,
-        val dueDate: String,
-        val dueAllDay: Boolean,
-        val recurrence: String? = null,
-        val setsRecurrence: Boolean = false,
-    ) : Intent {
-        override fun apply(task: Task, at: String) = task.copy(
-            due_date = dueDate, due_all_day = dueAllDay, updated_at = at,
-            recurrence = if (setsRecurrence) recurrence else task.recurrence,
-        )
+    data class SetDue(override val taskId: String, val dueDate: String, val dueAllDay: Boolean) : Intent {
+        override fun apply(task: Task, at: String) = task.copy(due_date = dueDate, due_all_day = dueAllDay, updated_at = at)
         override fun describe() = "Change due date"
     }
 
