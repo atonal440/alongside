@@ -27,12 +27,10 @@ data class TapeDraft(
     val plan: Boolean = false,
     val date: LocalDate? = null,
     val time: LocalTime? = null,
-    /** iCalendar RRULE body, as the parser writes it. Date-only in the worker, so it never coexists with [time]. */
+    /** iCalendar RRULE body, as the parser writes it. Shown but not saved: new series belong to duties, which the app cannot create yet. */
     val recurrence: String? = null,
     /** The date, time or repeat was a guess from a vague phrase ("morning", "next week"): flag it for a check. */
     val approx: Boolean = false,
-    /** A time the sentence gave alongside a repeat, left out because the worker's repeat is date-only. */
-    val droppedTime: LocalTime? = null,
     val projectId: String? = null,
     /** What future-you needs when picking the task up; the most prominent field on the detail screen. */
     val kickoff: String = "",
@@ -106,7 +104,7 @@ data class TapeDraft(
     fun remove(line: TapeLine): TapeDraft {
         val cleared = when (line) {
             TapeLine.What -> this
-            TapeLine.When -> copy(date = null, time = null, recurrence = null, approx = false, droppedTime = null)
+            TapeLine.When -> copy(date = null, time = null, recurrence = null, approx = false)
             TapeLine.Notes -> copy(notes = "")
             TapeLine.Project -> copy(projectId = null)
             TapeLine.Kickoff -> copy(kickoff = "")
@@ -118,18 +116,13 @@ data class TapeDraft(
 
     fun withDate(day: LocalDate): TapeDraft = copy(date = day, approx = false)
 
-    /** A time and a repeat exclude each other (the worker's repeat is date-only); the one chosen last wins. */
-    fun withTime(at: LocalTime?): TapeDraft = copy(time = at, recurrence = if (at != null) null else recurrence, droppedTime = null, approx = false)
-
-    fun withRecurrence(rule: String?): TapeDraft = copy(recurrence = rule, time = if (rule != null) null else time, droppedTime = null)
+    fun withTime(at: LocalTime?): TapeDraft = copy(time = at, approx = false)
 
     private fun withSchedule(parsed: QuickAddParser.Parsed): TapeDraft = copy(
         date = parsed.date,
-        // A repeat is date-only in the worker, so a time that came with one is set aside rather than refused later.
-        time = parsed.time.takeIf { parsed.recurrence == null },
+        time = parsed.time,
         recurrence = parsed.recurrence,
         approx = parsed.approx,
-        droppedTime = parsed.time.takeIf { parsed.recurrence != null },
     )
 
     private fun print(line: TapeLine): TapeDraft = copy(printed = if (line in printed) printed else printed + line, skipped = skipped - line)

@@ -113,13 +113,16 @@ rule('rec', `(?:on\\s+)?(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+and\\s+(?:the\
   (m) => ({ rec: { freq: 'MONTHLY', interval: 1, bymonthday: [+m[1], +m[2]] } }));
 rule('rec', `(?:(?:every|each)\\s+month|monthly)\\s+on\\s+the\\s+${ordinal}\\b`,
   (m) => ({ rec: { freq: 'MONTHLY', interval: 1, bymonthday: [+m[1]] } }));
-rule('rec', `(?:every|each)\\s+(\\d{1,2})(?:st|nd|rd|th)\\b(?!\\s+(?:of|day|week|month))`,
+rule('rec', `(?:every|each)\\s+(\\d{1,2})(?:st|nd|rd|th)\\b(?!\\s+(?:of|day|week|month|(?:${WD_ANY})\\b))`,
   (m) => ({ rec: { freq: 'MONTHLY', interval: 1, bymonthday: [+m[1]] } }));
 rule('rec', `(?:on\\s+)?the\\s+last\\s+day\\s+of\\s+(?:every|each)\\s+month\\b`,
   () => ({ rec: { freq: 'MONTHLY', interval: 1, bymonthday: [-1] } }));
-rule('rec', `(?:every|each)\\s+(first|second|third|fourth|last)\\s+(${WD_ANY})(?:\\s+of\\s+the\\s+month)?\\b`,
-  (m) => ({ rec: { freq: 'MONTHLY', interval: 1, nth: { n: { first: 1, second: 2, third: 3, fourth: 4, last: -1 }[m[1].toLowerCase()], wd: wdIndex(m[2]) },
-    byday: [`${{ first: 1, second: 2, third: 3, fourth: 4, last: -1 }[m[1].toLowerCase()]}${RR_DAY[wdIndex(m[2])]}`] } }));
+rule('rec', `(?:every|each)\\s+(first|second|third|fourth|last|\\d{1,2}(?:st|nd|rd|th))\\s+(${WD_ANY})(?:\\s+of\\s+the\\s+month)?\\b`, (m) => {
+  const word = m[1].toLowerCase();
+  const n = { first: 1, second: 2, third: 3, fourth: 4, last: -1 }[word] ?? parseInt(word, 10);
+  if (!(n === -1 || (n >= 1 && n <= 5))) return null; // a month has at most five of a weekday
+  return { rec: { freq: 'MONTHLY', interval: 1, nth: { n, wd: wdIndex(m[2]) }, byday: [`${n}${RR_DAY[wdIndex(m[2])]}`] } };
+});
 rule('rec', `(?:every|each)\\s+other\\s+(${WD_ANY})\\b`,
   (m) => ({ rec: { freq: 'WEEKLY', interval: 2, byday: [RR_DAY[wdIndex(m[1])]] } }));
 rule('rec', `(?:every|each)\\s+(\\d+|other|two|three|four)\\s+(day|week|month|year)s?(?:\\s+on\\s+(${wdList}(?:(?:\\s*,\\s*|\\s+and\\s+)${wdList})*))?\\b`, (m) => {

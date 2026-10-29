@@ -160,8 +160,7 @@ fun AlongsideApp(vm: AppViewModel) {
         board, initialProject = filters.projects.singleOrNull(),
         quickAdd = vm.quickAdd,
         onCreate = { d ->
-            // A time or repeat only means something on a day, and the draft keeps them off each other.
-            vm.create(d.title, d.notes, d.projectId, d.plan, d.date, d.time.takeIf { d.date != null }, d.recurrence.takeIf { d.date != null }, d.kickoff, d.availableFrom, d.waitingOn)
+            vm.create(d.title, d.notes, d.projectId, d.plan, d.date, d.time.takeIf { d.date != null }, d.kickoff, d.availableFrom, d.waitingOn)
         },
         onDismiss = { newTaskOpen = false },
     )

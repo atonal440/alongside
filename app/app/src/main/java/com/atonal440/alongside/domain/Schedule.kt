@@ -5,15 +5,13 @@ import java.time.LocalTime
 import java.time.ZoneId
 
 /** A due date in the spelling the worker stores: an instant, plus whether only the day matters. */
-data class DueSchedule(val dueDate: String, val allDay: Boolean, val recurrence: String?)
+data class DueSchedule(val dueDate: String, val allDay: Boolean)
 
 /**
- * Turns a picked day, an optional time and an optional repeat into what the worker accepts. The legacy repeat
- * is date-only: a timed due date together with a repeat is refused (`recurrenceFromRow` in the worker), so a
- * repeat wins and the time is left out. A date without a time is noon UTC and all-day, like every other
- * date-only due date the app writes.
+ * Turns a picked day and an optional time into what the worker accepts. A date without a time is noon UTC and
+ * all-day, like every other date-only due date the app writes; a time makes a local instant.
  */
-fun dueSchedule(day: LocalDate, time: LocalTime?, recurrence: String?, zone: ZoneId): DueSchedule {
-    if (time == null || recurrence != null) return DueSchedule("${day}T12:00:00Z", allDay = true, recurrence = recurrence)
-    return DueSchedule(day.atTime(time).atZone(zone).toInstant().toWire(), allDay = false, recurrence = null)
+fun dueSchedule(day: LocalDate, time: LocalTime?, zone: ZoneId): DueSchedule {
+    if (time == null) return DueSchedule("${day}T12:00:00Z", allDay = true)
+    return DueSchedule(day.atTime(time).atZone(zone).toInstant().toWire(), allDay = false)
 }

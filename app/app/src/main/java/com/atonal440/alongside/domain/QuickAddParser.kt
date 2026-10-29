@@ -241,12 +241,15 @@ object QuickAddParser {
             monthly(m.g(1)!!.toInt(), m.g(2)!!.toInt())
         }
         rec("""(?:(?:every|each)\s+month|monthly)\s+on\s+the\s+$ORDINAL\b""") { m -> monthly(m.g(1)!!.toInt()) }
-        rec("""(?:every|each)\s+(\d{1,2})(?:st|nd|rd|th)\b(?!\s+(?:of|day|week|month))""") { m -> monthly(m.g(1)!!.toInt()) }
+        // "every 15th" is a day of the month only when no weekday follows ("every 2nd tuesday" is the nth weekday).
+        rec("""(?:every|each)\s+(\d{1,2})(?:st|nd|rd|th)\b(?!\s+(?:of|day|week|month|(?:$WD_ANY)\b))""") { m -> monthly(m.g(1)!!.toInt()) }
         rec("""(?:on\s+)?the\s+last\s+day\s+of\s+(?:every|each)\s+month\b""") { monthly(-1) }
-        rec("""(?:every|each)\s+(first|second|third|fourth|last)\s+($WD_ANY)(?:\s+of\s+the\s+month)?\b""") { m ->
-            val n = NTH_WORD.getValue(m.g(1)!!.lowercase())
+        rec("""(?:every|each)\s+(first|second|third|fourth|last|\d{1,2}(?:st|nd|rd|th))\s+($WD_ANY)(?:\s+of\s+the\s+month)?\b""") { m ->
+            val word = m.g(1)!!.lowercase()
+            val n = NTH_WORD[word] ?: word.dropLast(2).toInt()
             val wd = wdIndex(m.g(2)!!)
-            Hit(rec = Rec("MONTHLY", byday = listOf("$n${RR_DAY[wd]}"), nth = n to wd))
+            // A month has at most five of a weekday.
+            if (n != -1 && n !in 1..5) null else Hit(rec = Rec("MONTHLY", byday = listOf("$n${RR_DAY[wd]}"), nth = n to wd))
         }
         rec("""(?:every|each)\s+other\s+($WD_ANY)\b""") { m -> Hit(rec = Rec("WEEKLY", interval = 2, byday = listOf(RR_DAY[wdIndex(m.g(1)!!)]))) }
         rec("""(?:every|each)\s+(\d+|other|two|three|four)\s+(day|week|month|year)s?(?:\s+on\s+($WD_LIST(?:(?:\s*,\s*|\s+and\s+)$WD_LIST)*))?\b""") { m ->

@@ -126,8 +126,6 @@ private class QuickAddRun(
 
 private val timeLabel = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
 
-private val repeatChoices = listOf("Never" to null, "Daily" to "FREQ=DAILY", "Weekly" to "FREQ=WEEKLY", "Monthly" to "FREQ=MONTHLY")
-
 private fun quickDays(): List<Pair<String, LocalDate>> {
     val today = Clock.today()
     return listOf(
@@ -429,7 +427,6 @@ private fun WhenCard(draft: TapeDraft, onChange: (TapeDraft) -> Unit, onRemove: 
     val c = LocalColors.current
     var datePicker by remember { mutableStateOf(false) }
     var timePicker by remember { mutableStateOf(false) }
-    var repeatOpen by remember { mutableStateOf(false) }
     var daysOpen by remember { mutableStateOf(false) }
     val day = draft.date
 
@@ -437,17 +434,13 @@ private fun WhenCard(draft: TapeDraft, onChange: (TapeDraft) -> Unit, onRemove: 
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(day?.let { friendlyDay(it, withDayNumber = true) } ?: "Pick a day", selected = true, height = 36.dp, sheetStyle = true, showCheck = false, onClick = { daysOpen = !daysOpen })
             FilterChip(draft.time?.format(timeLabel) ?: "Add a time", selected = draft.time != null, height = 36.dp, sheetStyle = true, showCheck = false, onClick = { timePicker = true })
-            FilterChip(
-                draft.recurrence?.let { recurrenceLabel(it) ?: "Repeats" } ?: "Repeat", selected = draft.recurrence != null, height = 36.dp, sheetStyle = true, showCheck = false,
-                leading = { Icon(AppIcons.Repeat, null, Modifier.size(18.dp), tint = c.ink) },
-                onClick = { repeatOpen = !repeatOpen },
-            )
-        }
-        if (repeatOpen) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                repeatChoices.forEach { (label, rule) ->
-                    FilterChip(label, selected = draft.recurrence == rule, height = 36.dp, onClick = { onChange(draft.withRecurrence(rule)); repeatOpen = false })
-                }
+            // Read-only: the sentence's repeat is shown, but a series cannot be saved from here yet.
+            draft.recurrence?.let { rule ->
+                FilterChip(
+                    recurrenceLabel(rule) ?: "Repeats", selected = false, height = 36.dp,
+                    leading = { Icon(AppIcons.Repeat, null, Modifier.size(18.dp), tint = c.ink) },
+                    onClick = {},
+                )
             }
         }
         // Tapping the day opens the shortcuts, with the full calendar as the last of them.
@@ -457,7 +450,7 @@ private fun WhenCard(draft: TapeDraft, onChange: (TapeDraft) -> Unit, onRemove: 
                 FilterChip("Pick a date…", selected = false, height = 32.dp, onClick = { datePicker = true; daysOpen = false })
             }
         }
-        draft.droppedTime?.let { Text("Repeats are date-only for now, so ${it.format(timeLabel)} was left out.", style = Type.meta, color = c.muted) }
+        if (draft.recurrence != null) Text("Repeats aren't saved yet, so this makes one task for the first date.", style = Type.meta, color = c.muted)
         if (draft.approx) Text("Guessed from a vague phrase; check it.", style = Type.meta, color = c.muted)
     }
 

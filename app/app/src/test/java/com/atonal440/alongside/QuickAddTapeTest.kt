@@ -52,23 +52,12 @@ class QuickAddTapeTest {
         assertTrue(TapeLine.When in answered.printed)
     }
 
-    @Test fun `a repeat sets the time aside`() {
+    @Test fun `a repeat is kept for display and its time is kept too`() {
         val d = TapeDraft().printWhat(parse("water plants every sunday at 9am"))
         assertEquals("FREQ=WEEKLY;BYDAY=SU", d.recurrence)
-        assertNull(d.time)
-        assertEquals(LocalTime.of(9, 0), d.droppedTime)
-    }
-
-    @Test fun `choosing a time drops the repeat and choosing a repeat drops the time`() {
-        val repeating = TapeDraft().printWhat(parse("water plants every sunday"))
-        val timed = repeating.withTime(LocalTime.of(8, 30))
-        assertNull(timed.recurrence)
-        assertEquals(LocalTime.of(8, 30), timed.time)
-        val back = timed.withRecurrence("FREQ=DAILY")
-        assertNull(back.time)
-        assertEquals("FREQ=DAILY", back.recurrence)
-        // Clearing one leaves the other alone.
-        assertEquals("FREQ=DAILY", back.withTime(null).recurrence)
+        assertEquals(LocalTime.of(9, 0), d.time)
+        assertEquals(LocalTime.of(8, 30), d.withTime(LocalTime.of(8, 30)).time)
+        assertEquals("FREQ=WEEKLY;BYDAY=SU", d.withTime(null).recurrence)
     }
 
     @Test fun `the model fills title notes and kind but never overwrites an edit`() {

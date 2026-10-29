@@ -114,13 +114,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         plan: Boolean,
         due: LocalDate?,
         dueTime: LocalTime? = null,
-        recurrence: String? = null,
         kickoffNote: String? = null,
         availableFrom: LocalDate? = null,
         waitingOn: List<String> = emptyList(),
     ) = viewModelScope.launch {
         repo.create(
-            title.trim(), notes?.trim()?.takeIf { it.isNotEmpty() }, projectId, plan, due, dueTime, recurrence,
+            title.trim(), notes?.trim()?.takeIf { it.isNotEmpty() }, projectId, plan, due, dueTime,
             kickoffNote?.trim()?.takeIf { it.isNotEmpty() }, availableFrom, waitingOn,
         )
     }
