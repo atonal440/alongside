@@ -13,9 +13,13 @@ import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse } from './nlparse.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
+// LLM_PREPASS=1 reads each entry's cut-out text and repeat from the parser's spec table (the Kotlin parser is the only
+// implementation), so entries that are not in that table are sent to the model whole.
+const specFile = join(here, '..', '..', 'app', 'app', 'src', 'test', 'resources', 'quickadd-parse-cases.json');
+const spec = new Map(JSON.parse(readFileSync(specFile, 'utf8')).cases.map((c) => [c.in, c]));
+const preParsed = (input) => { const c = spec.get(input); return c ? { rest: c.rest, recurrence: c.recurrence } : null; };
 const root = process.env.ALONGSIDE_AI_DIR ?? join(homedir(), 'ai');
 const modelName = process.argv[2] ?? 'gemma-3n-E2B-it-Q4_0.gguf';
 const model = join(root, 'models', modelName);
@@ -126,7 +130,7 @@ try {
     for (const c of cases) {
       const t0 = performance.now();
       // LLM_PREPASS=1: the deterministic parser takes dates and recurrence out first; the model sees the rest.
-      const pre = prepass ? parse(c.in) : null;
+      const pre = prepass ? preParsed(c.in) : null;
       const r = await strategies[mode](pre ? pre.rest : c.in);
       if (pre && r.value) r.value.recurrence = pre.recurrence;
       ms += performance.now() - t0; calls += r.calls;

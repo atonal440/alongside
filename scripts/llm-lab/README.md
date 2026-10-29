@@ -6,11 +6,9 @@ Models and binaries stay out of the repo. By default they live in `~/ai` (`ALONG
 
 | File | What it is |
 | --- | --- |
-| `nlparse.mjs` | Deterministic date, time and recurrence parser (JS prototype of `QuickAddParser.kt`). `node scripts/llm-lab/nlparse.mjs "water plants every sunday at 9am"` |
-| `fixtures/parse-cases.json` | The parser's test table, shared with the Kotlin test |
-| `nlparse.test.mjs` | `node --test scripts/llm-lab/nlparse.test.mjs` |
 | `run.mjs` | Scores model strategies (one grammar-constrained JSON call, one unconstrained call with a retry, one question per field) on title, recurrence, kind and notes |
 | `cases.json`, `cases-hard.json` | Inputs with expected non-date fields for `run.mjs` |
+| (app test resources) `quickadd-parse-cases.json` | The Kotlin parser's spec table; `LLM_PREPASS=1` reads each entry's leftover text and repeat from it |
 | `prompt.txt`, `fields.txt` | The prompt pieces `run.mjs` assembles |
 
 ```sh
