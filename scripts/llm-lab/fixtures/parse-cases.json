@@ -176,6 +176,8 @@
     {"in":"renew every 1000000 years starting today at 9am","date":"2026-10-28","time":"09:00","recurrence":null,"rest":"renew every 1000000 years","now":"2026-10-28T10:00"},
     {"in":"call tomorrow at half past 8pm","date":"2026-10-26","time":"20:30","recurrence":null,"rest":"call"},
     {"in":"call tomorrow quarter to 8pm","date":"2026-10-26","time":"19:45","recurrence":null,"rest":"call"},
-    {"in":"call tomorrow quarter past 12am","date":"2026-10-26","time":"00:15","recurrence":null,"rest":"call"}
+    {"in":"call tomorrow quarter past 12am","date":"2026-10-26","time":"00:15","recurrence":null,"rest":"call"},
+    {"in":"call tomorrow morning at half past 8","date":"2026-10-26","time":"08:30","recurrence":null,"rest":"call"},
+    {"in":"call tonight at quarter past 9","date":"2026-10-25","time":"21:15","recurrence":null,"rest":"call"}
   ]
 }

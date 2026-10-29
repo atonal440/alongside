@@ -455,7 +455,7 @@ object QuickAddParser {
             else Hit(time = "${pad(h)}:${m.g(3)}")
         }
         // "half past 8pm", "quarter to 8pm": an offset on a clock that already says am or pm.
-        time("""\b(half\s+past|quarter\s+past|quarter\s+to)\s+(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)(?![a-z])""") { m ->
+        time("""\b(?:at\s+)?(half\s+past|quarter\s+past|quarter\s+to)\s+(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)(?![a-z])""") { m ->
             val h = m.g(2)!!.toInt()
             if (h < 1 || h > 12) null
             else {
@@ -465,7 +465,7 @@ object QuickAddParser {
             }
         }
         // "half past 7 in the morning", "quarter to 8 in the evening": the offset and the day part settle one hour together.
-        time("""\b(half\s+past|quarter\s+past|quarter\s+to)\s+(\d{1,2})\s+(?:in\s+the\s+)?(morning|afternoon|evening|night)\b""") { m ->
+        time("""\b(?:at\s+)?(half\s+past|quarter\s+past|quarter\s+to)\s+(\d{1,2})\s+(?:in\s+the\s+)?(morning|afternoon|evening|night)\b""") { m ->
             val h = m.g(2)!!.toInt()
             if (h < 1 || h > 12) null
             else {
@@ -483,10 +483,10 @@ object QuickAddParser {
         time("""\b(?:at\s+)?(\d{1,2})\s*o['’]?clock\b""") { m ->
             m.g(1)!!.toInt().takeIf { it in 1..12 }?.let { Hit(time = "${pad(bareHour(it))}:00", approx = true, amb = it to 0) }
         }
-        time("""\bhalf\s+past\s+(\d{1,2})\b""") { m ->
+        time("""\b(?:at\s+)?half\s+past\s+(\d{1,2})\b""") { m ->
             m.g(1)!!.toInt().takeIf { it in 1..12 }?.let { Hit(time = "${pad(bareHour(it))}:30", approx = true, amb = it to 30) }
         }
-        time("""\bquarter\s+(past|to)\s+(\d{1,2})\b""") { m ->
+        time("""\b(?:at\s+)?quarter\s+(past|to)\s+(\d{1,2})\b""") { m ->
             val h = m.g(2)!!.toInt()
             if (h < 1 || h > 12) null
             else if (m.g(1)!!.lowercase() == "past") Hit(time = "${pad(bareHour(h))}:15", approx = true, amb = h to 15)

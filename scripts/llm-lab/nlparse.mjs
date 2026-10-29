@@ -246,13 +246,13 @@ rule('time', `\\b(at\\s+)?([01]?\\d|2[0-3]):([0-5]\\d)\\b(?!\\s*(?:am|pm|a\\.m|p
   return m[1] && h >= 1 && h <= 11 && m[2].length === (h < 10 ? 1 : 2) ? { time: `${pad(bareHour(h))}:${m[3]}`, approx: true, amb: { h, min: +m[3] } } : { time: `${pad(h)}:${m[3]}` };
 });
 // "half past 8pm", "quarter to 8pm": an offset on a clock that already says am or pm.
-rule('time', `\\b(half\\s+past|quarter\\s+past|quarter\\s+to)\\s+(\\d{1,2})\\s*(a\\.?m\\.?|p\\.?m\\.?)(?![a-z])`, (m) => {
+rule('time', `\\b(?:at\\s+)?(half\\s+past|quarter\\s+past|quarter\\s+to)\\s+(\\d{1,2})\\s*(a\\.?m\\.?|p\\.?m\\.?)(?![a-z])`, (m) => {
   const h = +m[2]; if (h < 1 || h > 12) return null;
   const offset = /^half/i.test(m[1]) ? 30 : /past/i.test(m[1]) ? 15 : -15;
   return { time: hhmm(((h % 12) * 60 + (/^p/i.test(m[3]) ? 720 : 0) + offset + 1440) % 1440) };
 });
 // "half past 7 in the morning", "quarter to 8 in the evening": the offset and the day part settle one hour together.
-rule('time', `\\b(half\\s+past|quarter\\s+past|quarter\\s+to)\\s+(\\d{1,2})\\s+(?:in\\s+the\\s+)?(morning|afternoon|evening|night)\\b`, (m) => {
+rule('time', `\\b(?:at\\s+)?(half\\s+past|quarter\\s+past|quarter\\s+to)\\s+(\\d{1,2})\\s+(?:in\\s+the\\s+)?(morning|afternoon|evening|night)\\b`, (m) => {
   const h = +m[2]; if (h < 1 || h > 12) return null;
   const offset = /^half/i.test(m[1]) ? 30 : /past/i.test(m[1]) ? 15 : -15;
   return { time: hhmm((dayPartHour(h, m[3].toLowerCase()) * 60 + offset + 1440) % 1440) };
@@ -264,8 +264,8 @@ rule('time', `\\b(?:at\\s+)?(?<![:\\d])(\\d{1,2})(?::([0-5]\\d))?\\s+(?:in\\s+th
   return { time: hhmm(dayPartHour(h, m[3].toLowerCase()) * 60 + +(m[2] ?? 0)) };
 });
 rule('time', `\\b(?:at\\s+)?(\\d{1,2})\\s*o['\u2019]?clock\\b`, (m) => (+m[1] >= 1 && +m[1] <= 12 ? { time: `${pad(bareHour(+m[1]))}:00`, approx: true, amb: { h: +m[1], min: 0 } } : null));
-rule('time', `\\bhalf\\s+past\\s+(\\d{1,2})\\b`, (m) => (+m[1] >= 1 && +m[1] <= 12 ? { time: `${pad(bareHour(+m[1]))}:30`, approx: true, amb: { h: +m[1], min: 30 } } : null));
-rule('time', `\\bquarter\\s+(past|to)\\s+(\\d{1,2})\\b`, (m) => {
+rule('time', `\\b(?:at\\s+)?half\\s+past\\s+(\\d{1,2})\\b`, (m) => (+m[1] >= 1 && +m[1] <= 12 ? { time: `${pad(bareHour(+m[1]))}:30`, approx: true, amb: { h: +m[1], min: 30 } } : null));
+rule('time', `\\b(?:at\\s+)?quarter\\s+(past|to)\\s+(\\d{1,2})\\b`, (m) => {
   const h = +m[2]; if (h < 1 || h > 12) return null;
   // Resolve the named hour first ("quarter to 8" is 07:45, as "at 8" is the morning), then step back a quarter.
   return m[1].toLowerCase() === 'past' ? { time: `${pad(bareHour(h))}:15`, approx: true, amb: { h, min: 15 } }
