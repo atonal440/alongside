@@ -279,7 +279,7 @@ fun QuickAddSheet(
         Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 16.dp)) {
             QuickAddHeader(debug) { debug = !debug }
             Column(
-                Modifier.weight(1f, fill = false).graphicsLayer {
+                Modifier.weight(1f, fill = false).heightIn(min = 180.dp).graphicsLayer {
                     translationY = tear.value
                     rotationZ = (tear.value / 70f).coerceAtMost(5f)
                     alpha = 1f - (tear.value / 900f).coerceIn(0f, 0.9f)
@@ -632,7 +632,7 @@ private fun Composer(
         if (active == null) {
             Text(
                 if (draft.canTear) "That's everything. Pull the sheet to add the task." else "Give it a title to add it.",
-                style = Type.body, color = c.muted,
+                style = Type.body, color = c.muted, modifier = Modifier.padding(top = 8.dp),
             )
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -647,7 +647,7 @@ private fun Composer(
         }
         if (active == TapeLine.Project) {
             FlowRow(
-                Modifier.heightIn(max = 168.dp).verticalScroll(rememberScrollState()),
+                Modifier.heightIn(max = 116.dp).verticalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 FilterChip("Inbox", selected = false, height = 40.dp, sheetStyle = true, onClick = { onProject(null) })
@@ -671,8 +671,8 @@ private fun Composer(
             }
             if (active == TapeLine.Waiting) {
                 if (candidates.isEmpty()) Text("No open tasks match.", style = Type.meta, color = c.muted)
-                FlowRow(Modifier.heightIn(max = 168.dp).verticalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    candidates.forEach { t -> FilterChip(t.title, selected = false, height = 40.dp, sheetStyle = true, onClick = { onWaiting(t.id) }) }
+                FlowRow(Modifier.heightIn(max = 116.dp).verticalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    candidates.forEach { t -> FilterChip(t.title, selected = false, height = 36.dp, sheetStyle = true, onClick = { onWaiting(t.id) }) }
                 }
             }
             if (missed) Text("I couldn't find a day in that. Try \"friday\" or \"in 3 days\".", style = Type.meta, color = c.muted)
