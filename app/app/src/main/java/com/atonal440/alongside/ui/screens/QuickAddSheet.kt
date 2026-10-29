@@ -278,8 +278,8 @@ fun QuickAddSheet(
             ) {
                 Column(
                     Modifier.weight(1f, fill = false).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(c.soft)
-                        .verticalScroll(tapeScroll).padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                        .verticalScroll(tapeScroll).padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (draft.printed.isEmpty()) {
                         Text(
@@ -332,7 +332,7 @@ private fun QuickAddHeader(debug: Boolean, onToggleDebug: () -> Unit) {
     val c = LocalColors.current
     Text(
         "New task", style = Type.sheetTitle, color = c.ink,
-        modifier = Modifier.padding(top = 8.dp, bottom = 12.dp)
+        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
             .combinedClickable(onClick = {}, onLongClick = onToggleDebug, onLongClickLabel = if (debug) "Hide timings and raw model reply" else "Show timings and raw model reply"),
     )
 }
@@ -348,13 +348,17 @@ private fun Printed(content: @Composable () -> Unit) {
 private fun TapeCard(label: String, onRemove: (() -> Unit)? = null, content: @Composable () -> Unit) {
     val c = LocalColors.current
     val shape = RoundedCornerShape(16.dp)
-    Column(Modifier.fillMaxWidth().clip(shape).background(c.card).border(1.dp, c.line, shape).padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 14.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    Column(Modifier.fillMaxWidth().clip(shape).background(c.card).border(1.dp, c.line, shape).padding(start = 14.dp, end = 4.dp, top = 2.dp, bottom = 10.dp)) {
+        Row(Modifier.height(36.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label.uppercase(), style = Type.section, color = c.muted, modifier = Modifier.weight(1f))
-            if (onRemove != null) IconBtn(AppIcons.Close, "Remove $label", onRemove, size = 16.dp, tint = c.muted)
-            else Box(Modifier.height(48.dp))
+            if (onRemove != null) {
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onRemove).semantics { contentDescription = "Remove $label" },
+                    contentAlignment = Alignment.Center,
+                ) { Icon(AppIcons.Close, null, Modifier.size(16.dp), tint = c.muted) }
+            }
         }
-        Column(Modifier.padding(end = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
+        Column(Modifier.padding(end = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
     }
 }
 
@@ -363,11 +367,11 @@ private fun TapeCard(label: String, onRemove: (() -> Unit)? = null, content: @Co
 private fun WhatCard(draft: TapeDraft, busy: Boolean, onChange: (TapeDraft) -> Unit) {
     val c = LocalColors.current
     TapeCard("What") {
-        Field(draft.title, { onChange(draft.copy(title = it)) }, "What needs doing?", Type.rowTitle.copy(fontSize = Type.note.fontSize), singleLine = false)
+        Field(draft.title, { onChange(draft.copy(title = it)) }, "What needs doing?", Type.rowTitle.copy(fontSize = Type.note.fontSize), singleLine = false, minLines = 1)
         if (draft.titleTooLong) LimitNote("Titles can be up to ${TaskLimits.TITLE_MAX} characters (this one is ${draft.title.trim().length}). Longer detail fits in the notes.")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            FilterChip("Action", selected = !draft.plan, height = 40.dp, sheetStyle = true, onClick = { onChange(draft.copy(plan = false)) })
-            FilterChip("Plan", selected = draft.plan, height = 40.dp, sheetStyle = true, onClick = { onChange(draft.copy(plan = true)) })
+            FilterChip("Action", selected = !draft.plan, height = 36.dp, sheetStyle = true, showCheck = false, onClick = { onChange(draft.copy(plan = false)) })
+            FilterChip("Plan", selected = draft.plan, height = 36.dp, sheetStyle = true, showCheck = false, onClick = { onChange(draft.copy(plan = true)) })
             if (busy) Text("Asking the on-device model…", style = Type.meta, color = c.muted)
         }
     }
@@ -380,14 +384,15 @@ private fun WhenCard(draft: TapeDraft, onChange: (TapeDraft) -> Unit, onRemove: 
     var datePicker by remember { mutableStateOf(false) }
     var timePicker by remember { mutableStateOf(false) }
     var repeatOpen by remember { mutableStateOf(false) }
+    var daysOpen by remember { mutableStateOf(false) }
     val day = draft.date
 
     TapeCard("When", onRemove) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(day?.let { friendlyDay(it, withDayNumber = true) } ?: "Pick a day", selected = true, height = 40.dp, sheetStyle = true, onClick = { datePicker = true })
-            FilterChip(draft.time?.format(timeLabel) ?: "Add a time", selected = draft.time != null, height = 40.dp, sheetStyle = true, onClick = { timePicker = true })
+            FilterChip(day?.let { friendlyDay(it, withDayNumber = true) } ?: "Pick a day", selected = true, height = 36.dp, sheetStyle = true, showCheck = false, onClick = { daysOpen = !daysOpen })
+            FilterChip(draft.time?.format(timeLabel) ?: "Add a time", selected = draft.time != null, height = 36.dp, sheetStyle = true, showCheck = false, onClick = { timePicker = true })
             FilterChip(
-                draft.recurrence?.let { recurrenceLabel(it) ?: "Repeats" } ?: "Repeat", selected = draft.recurrence != null, height = 40.dp, sheetStyle = true,
+                draft.recurrence?.let { recurrenceLabel(it) ?: "Repeats" } ?: "Repeat", selected = draft.recurrence != null, height = 36.dp, sheetStyle = true, showCheck = false,
                 leading = { Icon(AppIcons.Repeat, null, Modifier.size(18.dp), tint = c.ink) },
                 onClick = { repeatOpen = !repeatOpen },
             )
@@ -399,8 +404,12 @@ private fun WhenCard(draft: TapeDraft, onChange: (TapeDraft) -> Unit, onRemove: 
                 }
             }
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            quickDays().forEach { (label, date) -> FilterChip(label, selected = day == date, height = 36.dp, onClick = { onChange(draft.withDate(date)) }) }
+        // Tapping the day opens the shortcuts, with the full calendar as the last of them.
+        if (daysOpen) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                quickDays().forEach { (label, date) -> FilterChip(label, selected = day == date, height = 32.dp, onClick = { onChange(draft.withDate(date)); daysOpen = false }) }
+                FilterChip("Pick a date…", selected = false, height = 32.dp, onClick = { datePicker = true; daysOpen = false })
+            }
         }
         draft.droppedTime?.let { Text("Repeats are date-only for now, so ${it.format(timeLabel)} was left out.", style = Type.meta, color = c.muted) }
         if (draft.approx) Text("Guessed from a vague phrase; check it.", style = Type.meta, color = c.muted)
@@ -449,9 +458,9 @@ private fun NotesCard(draft: TapeDraft, onChange: (TapeDraft) -> Unit, onRemove:
 private fun ProjectCard(draft: TapeDraft, board: Board, onPick: (String?) -> Unit, onRemove: () -> Unit) {
     TapeCard("Project", onRemove) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip("Inbox", selected = draft.projectId == null, height = 40.dp, sheetStyle = true, onClick = { onPick(null) })
+            FilterChip("Inbox", selected = draft.projectId == null, height = 36.dp, sheetStyle = true, onClick = { onPick(null) })
             board.ws.projects.filter { it.isActive }.forEach { p ->
-                FilterChip(p.title, selected = draft.projectId == p.id, height = 40.dp, sheetStyle = true, leading = { ProjectDot(p.id, 9.dp) }, onClick = { onPick(p.id) })
+                FilterChip(p.title, selected = draft.projectId == p.id, height = 36.dp, sheetStyle = true, leading = { ProjectDot(p.id, 9.dp) }, onClick = { onPick(p.id) })
             }
         }
     }
@@ -472,8 +481,8 @@ private fun NotBeforeCard(draft: TapeDraft, onChange: (TapeDraft) -> Unit, onRem
     val day = draft.availableFrom
     TapeCard("Not before", onRemove) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(day?.let { friendlyDay(it, withDayNumber = true) } ?: "Pick a day", selected = true, height = 40.dp, sheetStyle = true, onClick = { picker = true })
-            quickDays().forEach { (label, date) -> FilterChip(label, selected = day == date, height = 36.dp, onClick = { onChange(draft.withAvailableFrom(date)) }) }
+            FilterChip(day?.let { friendlyDay(it, withDayNumber = true) } ?: "Pick a day", selected = true, height = 36.dp, sheetStyle = true, onClick = { picker = true })
+            quickDays().forEach { (label, date) -> FilterChip(label, selected = day == date, height = 32.dp, onClick = { onChange(draft.withAvailableFrom(date)) }) }
         }
     }
     if (picker) {
@@ -531,7 +540,7 @@ private fun TearLine(tear: Animatable<Float, *>, onRelease: () -> Unit, onCancel
     val c = LocalColors.current
     val scope = rememberCoroutineScope()
     Box(
-        Modifier.fillMaxWidth().height(52.dp)
+        Modifier.fillMaxWidth().height(44.dp)
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onVerticalDrag = { change, dy -> change.consume(); scope.launch { tear.snapTo((tear.value + dy).coerceAtLeast(0f)) } },
@@ -546,7 +555,7 @@ private fun TearLine(tear: Animatable<Float, *>, onRelease: () -> Unit, onCancel
             drawLine(c.muted, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), strokeWidth = 3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 12f)))
         }
         Row(
-            Modifier.clip(RoundedCornerShape(12.dp)).background(c.lavender).padding(horizontal = 14.dp, vertical = 8.dp),
+            Modifier.clip(RoundedCornerShape(12.dp)).background(c.lavender).padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Icon(AppIcons.ChevronRight, null, Modifier.size(16.dp).rotate(90f), tint = c.ink)
@@ -576,7 +585,7 @@ private fun Composer(
     onDownload: () -> Unit,
 ) {
     val c = LocalColors.current
-    Column(Modifier.padding(top = 14.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.padding(top = 2.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         // The model can still add notes, which would move the next question on under a half-typed answer.
         if (busy) {
             Text("Reading what you said…", style = Type.body, color = c.muted)
@@ -593,7 +602,7 @@ private fun Composer(
                 if (active != TapeLine.What) {
                     Text(
                         "Skip", style = Type.label, color = c.muted,
-                        modifier = Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onSkip).padding(horizontal = 12.dp, vertical = 16.dp),
+                        modifier = Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onSkip).padding(horizontal = 12.dp, vertical = 12.dp),
                     )
                 }
             }
@@ -615,7 +624,7 @@ private fun Composer(
                 }
                 if (active != TapeLine.Waiting) {
                     Box(
-                        Modifier.size(52.dp).clip(CircleShape).background(c.peach)
+                        Modifier.size(48.dp).clip(CircleShape).background(c.peach)
                             .clickable(enabled = input.isNotBlank(), role = Role.Button, onClick = onSubmit)
                             .semantics { contentDescription = "Print" },
                         contentAlignment = Alignment.Center,
@@ -663,7 +672,7 @@ private fun optionalLabel(line: TapeLine) = when (line) {
 private fun DashedChip(text: String, onClick: () -> Unit) {
     val c = LocalColors.current
     Box(
-        Modifier.height(40.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onClick).drawBehind {
+        Modifier.height(36.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onClick).drawBehind {
             drawRoundRect(c.muted, style = Stroke(width = 3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f))), cornerRadius = CornerRadius(12.dp.toPx()))
         }.padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center,

@@ -219,6 +219,7 @@ fun FilterChip(
     height: Dp = 36.dp,
     leading: @Composable (() -> Unit)? = null,
     sheetStyle: Boolean = false,
+    showCheck: Boolean = true,
 ) {
     val c = LocalColors.current
     val bg = when {
@@ -243,7 +244,7 @@ fun FilterChip(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (selected && sheetStyle) Icon(AppIcons.Check, null, Modifier.size(18.dp), tint = fg)
+        if (selected && sheetStyle && showCheck) Icon(AppIcons.Check, null, Modifier.size(18.dp), tint = fg)
         leading?.invoke()
         Text(text, style = Type.label, color = fg, maxLines = 1)
         if (count != null) Text("$count", style = Type.tag, color = fg.copy(alpha = if (sheetStyle) 0.75f else 0.7f))

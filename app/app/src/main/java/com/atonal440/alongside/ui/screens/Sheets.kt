@@ -212,16 +212,17 @@ internal fun Field(
     style: TextStyle,
     modifier: Modifier = Modifier,
     singleLine: Boolean = true,
+    minLines: Int = if (singleLine) 1 else 2,
     imeAction: ImeAction = ImeAction.Default,
     onImeAction: (() -> Unit)? = null,
 ) {
     val c = LocalColors.current
     Box(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.soft).padding(horizontal = 16.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.soft).padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         if (value.isEmpty()) Text(placeholder, style = style, color = c.muted)
         BasicTextField(
-            value, onChange, singleLine = singleLine, minLines = if (singleLine) 1 else 2,
+            value, onChange, singleLine = singleLine, minLines = minLines,
             textStyle = style.copy(color = c.ink), cursorBrush = SolidColor(c.ink),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = imeAction),
             keyboardActions = KeyboardActions(onAny = { onImeAction?.invoke() }),
