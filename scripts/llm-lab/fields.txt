@@ -1,0 +1,7 @@
+
+Fields:
+- title: short imperative phrase, without date or time words.
+- recurrence: an iCalendar RRULE like "FREQ=WEEKLY;BYDAY=MO" when the task repeats, otherwise null.
+- notes: extra detail that does not belong in the title, otherwise null.
+- task_type: "plan" if the task is a goal that needs breaking down, otherwise "action".
+Do not output any date; dates are handled elsewhere.

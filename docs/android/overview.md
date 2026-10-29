@@ -78,6 +78,15 @@ wrapper over `data/sync/SyncEngine.kt`, which is a port of the PWA's sync engine
 
 Files are written through a temp file and rename.
 
+## Quick add with the on-device model (experiment)
+
+The New task sheet has a "Say it your way" field. **Fill in** runs two stages on the phone:
+
+1. `domain/QuickAddParser.kt` is a deterministic parser for dates, times of day and repeats ("tomorrow at 5pm", "every other thursday", "the 1st and 15th of every month"). It resolves against the phone's local clock into a local date, an optional local time and an RRULE, and cuts those phrases out of the text. A small model is unreliable at calendar arithmetic, so it never does any. Vague phrases ("morning", "next week", "at 5") set `approx` and the sheet says it guessed. Its spec is the table of cases in `app/app/src/test/resources/quickadd-parse-cases.json`; every fixed phrasing gets a row.
+2. `data/ai/OnDeviceQuickAdd.kt` sends what is left to Gemini Nano through the ML Kit GenAI Prompt API (beta, AICore) and reads title, notes and kind (action or plan) from a JSON reply. It retries once if the reply does not parse. The model can be missing, downloading or unsupported; the sheet reports that and the parser still fills date, time and repeat.
+
+The sheet shows the parser and model timings, the phrases that were cut, and the raw model reply, so a misread can be judged on a real device. A time makes the due date a local instant (not all-day). Repeats are parsed and shown, but not saved: new series belong to duties (`duty.create`, see `docs/worker/duties.md`), which the app cannot create yet, so a sentence with a repeat makes one task for its first occurrence and the sheet says so. Wiring `duty.create` into the sync layer is the next step; it keeps times and can carry COUNT and UNTIL, which the legacy date-only repeat cannot. The prompt lab that picked this design is in `scripts/llm-lab/` (see its README).
+
 ## Out of scope for now
 
 - Routines lists repeating tasks; duties themselves aren't shown or edited.

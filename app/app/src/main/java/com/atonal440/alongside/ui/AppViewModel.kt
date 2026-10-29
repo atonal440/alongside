@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.atonal440.alongside.data.sync.RetainedOp
 import com.atonal440.alongside.data.Repository
 import com.atonal440.alongside.data.Settings
+import com.atonal440.alongside.data.ai.OnDeviceQuickAdd
 import com.atonal440.alongside.domain.Board
 import com.atonal440.alongside.domain.Filters
 import com.atonal440.alongside.domain.NapChoice
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.LocalTime
 
 enum class Tab { Tasks, Projects, Routines }
 
@@ -105,9 +107,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.delete(taskId)
     }
 
-    fun create(title: String, notes: String?, projectId: String?, plan: Boolean, due: LocalDate?) = viewModelScope.launch {
-        repo.create(title.trim(), notes?.trim()?.takeIf { it.isNotEmpty() }, projectId, plan, due)
+    fun create(
+        title: String,
+        notes: String?,
+        projectId: String?,
+        plan: Boolean,
+        due: LocalDate?,
+        dueTime: LocalTime? = null,
+    ) = viewModelScope.launch {
+        repo.create(title.trim(), notes?.trim()?.takeIf { it.isNotEmpty() }, projectId, plan, due, dueTime)
     }
+
+    /** The on-device model behind the "Say it your way" field on the new-task sheet. */
+    val quickAdd = OnDeviceQuickAdd()
 
     fun retryNeedsAttention() = viewModelScope.launch { repo.retryNeedsAttention() }
     fun discardNeedsAttention(seen: List<RetainedOp>) = viewModelScope.launch { repo.discardNeedsAttention(seen) }

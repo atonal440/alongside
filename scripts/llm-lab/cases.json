@@ -1,0 +1,18 @@
+[
+  { "in": "call mom tomorrow at 5pm", "title": ["call", "mom"], "recurrence": null, "task_type": "action", "notes": false },
+  { "in": "pay rent on the 1st of every month", "title": ["pay", "rent"], "recurrence": "FREQ=MONTHLY;BYMONTHDAY=1", "task_type": "action", "notes": false },
+  { "in": "buy oat milk", "title": ["buy", "oat", "milk"], "recurrence": null, "task_type": "action", "notes": false },
+  { "in": "dentist next tuesday morning, bring insurance card", "title": ["dentist"], "recurrence": null, "task_type": "action", "notes": true },
+  { "in": "plan the garden redesign by end of march", "title": ["garden", "redesign"], "recurrence": null, "task_type": "plan", "notes": false },
+  { "in": "water plants every sunday at 9am", "title": ["water", "plants"], "recurrence": "FREQ=WEEKLY;BYDAY=SU", "task_type": "action", "notes": false },
+  { "in": "email Priya the Q3 numbers friday", "title": ["email", "priya", "q3", "numbers"], "recurrence": null, "task_type": "action", "notes": false },
+  { "in": "take out the trash every monday and thursday", "title": ["trash"], "recurrence": "FREQ=WEEKLY;BYDAY=MO,TH", "task_type": "action", "notes": false },
+  { "in": "renew passport, need two photos and the old one", "title": ["renew", "passport"], "recurrence": null, "task_type": "action", "notes": true },
+  { "in": "stretch every day", "title": ["stretch"], "recurrence": "FREQ=DAILY", "task_type": "action", "notes": false },
+  { "in": "figure out moving to portland in the spring", "title": ["portland"], "recurrence": null, "task_type": "plan", "notes": false },
+  { "in": "file taxes by april 15", "title": ["file", "taxes"], "recurrence": null, "task_type": "action", "notes": false },
+  { "in": "birthday gift for dad, he likes fishing, due the 3rd", "title": ["gift", "dad"], "recurrence": null, "task_type": "action", "notes": true },
+  { "in": "clean the gutters every other week", "title": ["clean", "gutters"], "recurrence": "FREQ=WEEKLY;INTERVAL=2", "task_type": "action", "notes": false },
+  { "in": "finish quarterly report by 3pm today", "title": ["finish", "quarterly", "report"], "recurrence": null, "task_type": "action", "notes": false },
+  { "in": "research and pick a new laptop", "title": ["laptop"], "recurrence": null, "task_type": "plan", "notes": false }
+]

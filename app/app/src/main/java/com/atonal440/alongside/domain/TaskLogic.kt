@@ -158,6 +158,11 @@ fun TaskFacts.dateLabel(short: Boolean = false): DateLabel? {
 /** "Every 3 days", "Weekly", "Every 2 months"; null for unreadable rules. Duty instances read "Routine". */
 fun recurrenceLabel(task: Task): String? {
     val rule = task.recurrence ?: return if (task.duty_id != null) "Routine" else null
+    return recurrenceLabel(rule)
+}
+
+/** The same wording for a bare RRULE string. */
+fun recurrenceLabel(rule: String): String? {
     val parts = rule.removePrefix("RRULE:").split(';').associate {
         val (k, v) = it.split('=', limit = 2).let { p -> p[0] to p.getOrElse(1) { "" } }
         k.uppercase() to v
