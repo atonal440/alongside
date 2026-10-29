@@ -216,6 +216,8 @@ rule('date', `\\b(?:on\\s+)?(?:the\\s+)?${ordinal}\\s+(?:of\\s+)?(${MONTH})(?:,?
 rule('date', `\\b(\\d{1,2})/(\\d{1,2})(?:/(\\d{2,4}))?\\b(?!\\s*(?:cups?|tsp|tbsp|teaspoons?|tablespoons?|oz|ounces?|lbs?|pounds?|inch(?:es)?|miles?|of|full|empty))`, (m, c) => {
   const mo = +m[1] - 1, d = +m[2];
   if (mo > 11 || d < 1 || d > 31) return null;
+  // A proper fraction (1/2, 3/4, 1/8) is a quantity unless a date cue comes first: "take 1/2 tablet" but "pay by 1/4".
+  if (!m[3] && +m[1] < d && [2, 3, 4, 8].includes(d) && !/\b(?:on|by|due|before|until|from|starting|after)\s+$/i.test(m.input.slice(0, m.index))) return null;
   return { date: m[3] ? explicitDate(+m[3] < 100 ? 2000 + +m[3] : +m[3], mo, d) : nextMonthDay(c.today, mo, d) };
 });
 // Only when the ordinal ends the phrase: "the 2nd draft" and "the 7th street cafe" are not dates.

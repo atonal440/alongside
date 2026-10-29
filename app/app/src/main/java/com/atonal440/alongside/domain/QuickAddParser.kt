@@ -32,7 +32,7 @@ object QuickAddParser {
     data class Span(val kind: String, val text: String)
 
     fun parse(text: String, now: LocalDateTime = LocalDateTime.now()): Parsed {
-        val ctx = Ctx(now.toLocalDate(), now.hour * 60 + now.minute)
+        val ctx = Ctx(now.toLocalDate(), now.hour * 60 + now.minute, text)
 
         val found = ArrayList<Found>()
         for ((order, rule) in rules.withIndex()) {
@@ -155,7 +155,7 @@ object QuickAddParser {
         val amb: Pair<Int, Int>? = null,
     )
 
-    private class Ctx(val today: LocalDate, val nowMin: Int)
+    private class Ctx(val today: LocalDate, val nowMin: Int, val text: String)
     private class Found(val kind: Kind, val start: Int, val end: Int, val text: String, val hit: Hit, val order: Int)
     private class Cut(val start: Int, val end: Int)
     private class Rule(val kind: Kind, source: String, val fn: (MatchResult, Ctx) -> Hit?) {
@@ -181,6 +181,7 @@ object QuickAddParser {
     private val NTH_WORD = mapOf("first" to 1, "second" to 2, "third" to 3, "fourth" to 4, "last" to -1)
 
     private val dangling = Regex("""(?:\s*,|\s+(?:on|at|by|due|before|until|from|starting|each))+\s*$""", RegexOption.IGNORE_CASE)
+    private val dateCue = Regex("""\b(?:on|by|due|before|until|from|starting|after)\s+$""", RegexOption.IGNORE_CASE)
     private val whitespace = Regex("""\s+""")
     private val spaceBeforePunct = Regex("""\s+([,.;!?])""")
     private val edgePunct = Regex("""^[\s,.;:!—–-]+|[\s,.;:!—–-]+$""")
@@ -425,7 +426,9 @@ object QuickAddParser {
         date("""\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b(?!\s*(?:cups?|tsp|tbsp|teaspoons?|tablespoons?|oz|ounces?|lbs?|pounds?|inch(?:es)?|miles?|of|full|empty))""") { m, c ->
             val mo = m.g(1)!!.toInt() - 1
             val d = m.g(2)!!.toInt()
-            if (mo > 11 || d < 1 || d > 31) null
+            // A proper fraction (1/2, 3/4, 1/8) is a quantity unless a date cue comes first: "take 1/2 tablet" but "pay by 1/4".
+            val quantity = m.g(3) == null && m.g(1)!!.toInt() < d && d in listOf(2, 3, 4, 8) && !dateCue.containsMatchIn(c.text.substring(0, m.range.first))
+            if (mo > 11 || d < 1 || d > 31 || quantity) null
             else {
                 val year = m.g(3)?.toInt()?.let { if (it < 100) 2000 + it else it }
                 Hit(date = if (year != null) explicitDate(year, mo, d) else nextMonthDay(c.today, mo, d))

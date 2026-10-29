@@ -178,6 +178,9 @@
     {"in":"call tomorrow quarter to 8pm","date":"2026-10-26","time":"19:45","recurrence":null,"rest":"call"},
     {"in":"call tomorrow quarter past 12am","date":"2026-10-26","time":"00:15","recurrence":null,"rest":"call"},
     {"in":"call tomorrow morning at half past 8","date":"2026-10-26","time":"08:30","recurrence":null,"rest":"call"},
-    {"in":"call tonight at quarter past 9","date":"2026-10-25","time":"21:15","recurrence":null,"rest":"call"}
+    {"in":"call tonight at quarter past 9","date":"2026-10-25","time":"21:15","recurrence":null,"rest":"call"},
+    {"in":"take 1/2 tablet tomorrow at 9am","date":"2026-10-26","time":"09:00","recurrence":null,"rest":"take 1/2 tablet"},
+    {"in":"buy 1/2 gallon milk tomorrow","date":"2026-10-26","time":null,"recurrence":null,"rest":"buy 1/2 gallon milk"},
+    {"in":"pay the bill by 1/4","date":"2027-01-04","time":null,"recurrence":null,"rest":"pay the bill"}
   ]
 }
