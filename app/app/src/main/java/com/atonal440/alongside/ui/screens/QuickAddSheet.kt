@@ -1,0 +1,556 @@
+package com.atonal440.alongside.ui.screens
+
+import android.text.format.DateFormat
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.dp
+import com.atonal440.alongside.data.TaskLimits
+import com.atonal440.alongside.data.ai.ModelAvailability
+import com.atonal440.alongside.data.ai.OnDeviceQuickAdd
+import com.atonal440.alongside.domain.Board
+import com.atonal440.alongside.domain.Clock
+import com.atonal440.alongside.domain.INBOX
+import com.atonal440.alongside.domain.QuickAddParser
+import com.atonal440.alongside.domain.TapeDraft
+import com.atonal440.alongside.domain.TapeLine
+import com.atonal440.alongside.domain.friendlyDay
+import com.atonal440.alongside.domain.recurrenceLabel
+import com.atonal440.alongside.ui.components.AppIcons
+import com.atonal440.alongside.ui.components.FilterChip
+import com.atonal440.alongside.ui.components.IconBtn
+import com.atonal440.alongside.ui.components.ProjectDot
+import com.atonal440.alongside.ui.theme.LocalColors
+import com.atonal440.alongside.ui.theme.Type
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.temporal.TemporalAdjusters
+import java.util.Locale
+
+/** What the last "say it" run did, kept for the debug card so a misread can be judged on a real device. */
+private class QuickAddRun(
+    val parserMillis: Double,
+    val spans: List<String>,
+    val modelMillis: Long? = null,
+    val attempts: Int = 0,
+    val raw: String = "",
+    val note: String? = null,
+)
+
+private val timeLabel = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
+
+private val repeatChoices = listOf("Never" to null, "Daily" to "FREQ=DAILY", "Weekly" to "FREQ=WEEKLY", "Monthly" to "FREQ=MONTHLY")
+
+private fun quickDays(): List<Pair<String, LocalDate>> {
+    val today = Clock.today()
+    return listOf(
+        "Today" to today,
+        "Tomorrow" to today.plusDays(1),
+        "Weekend" to today.with(TemporalAdjusters.nextOrSame(DayOfWeek.SATURDAY)),
+        "Next week" to today.with(TemporalAdjusters.next(DayOfWeek.MONDAY)),
+    )
+}
+
+private fun question(line: TapeLine) = when (line) {
+    TapeLine.What -> "What needs doing? Say it your way."
+    TapeLine.When -> "When? A day, a time or a repeat."
+    TapeLine.Notes -> "Anything to remember about it?"
+    TapeLine.Project -> "Which project does it belong to?"
+}
+
+private fun example(line: TapeLine) = when (line) {
+    TapeLine.What -> "water plants every sunday at 9am"
+    TapeLine.When -> "friday at 5pm"
+    else -> "a note to future you"
+}
+
+/**
+ * Quick capture as a sheet that grows one element at a time. Saying what the task is prints its title card, and
+ * whatever the parser and the on-device model found (a day, a time, a repeat, notes) prints below it already
+ * filled in, to be tapped and corrected. Each optional question after that prints its own element when
+ * answered or goes away when passed on. The sheet can be torn off, and so added, at any point there is a title.
+ * The element order and rules are in [TapeDraft]; this file is the screen for it.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun QuickAddSheet(
+    board: Board,
+    initialProject: String?,
+    quickAdd: OnDeviceQuickAdd,
+    onCreate: (title: String, notes: String?, projectId: String?, plan: Boolean, due: LocalDate?, dueTime: LocalTime?, recurrence: String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val c = LocalColors.current
+    val scope = rememberCoroutineScope()
+    val presetProject = initialProject?.takeIf { it != INBOX }
+    val projects = remember(board) { board.ws.projects.filter { it.isActive } }
+    var draft by remember { mutableStateOf(TapeDraft()) }
+    var input by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var whenMissed by remember { mutableStateOf(false) }
+    var availability by remember { mutableStateOf<Pair<ModelAvailability, String?>?>(null) }
+    var downloadLine by remember { mutableStateOf<String?>(null) }
+    var debug by remember { mutableStateOf(false) }
+    var run by remember { mutableStateOf<QuickAddRun?>(null) }
+    val tear = remember { Animatable(0f) }
+    var tearing by remember { mutableStateOf(false) }
+    val tapeScroll = rememberScrollState()
+
+    LaunchedEffect(Unit) { availability = quickAdd.availability() }
+    // A download started elsewhere (or before the sheet opened) finishes on its own; keep looking until it does.
+    LaunchedEffect(availability?.first) {
+        while (availability?.first == ModelAvailability.Downloading) {
+            delay(3_000)
+            availability = quickAdd.availability()
+        }
+    }
+    LaunchedEffect(draft.printed.size) {
+        // One frame for the new element to be measured, then bring it into view.
+        withFrameNanos { }
+        tapeScroll.animateScrollTo(tapeScroll.maxValue)
+    }
+
+    val pending = draft.pending(hasProjects = projects.isNotEmpty())
+
+    // The parser answers at once; the model then fills in title, notes and kind from what is left of the sentence.
+    fun sayWhat(text: String) {
+        val t0 = System.nanoTime()
+        val parsed = QuickAddParser.parse(text)
+        val parserMillis = (System.nanoTime() - t0) / 1_000_000.0
+        var next = TapeDraft().printWhat(parsed)
+        if (presetProject != null) next = next.printProject(presetProject)
+        draft = next
+        input = ""
+        val spans = parsed.spans.map { "${it.kind}: ${it.text}" }
+        val ready = availability?.first == ModelAvailability.Available
+        if (parsed.rest.isBlank() || !ready) {
+            val note = if (parsed.rest.isBlank()) "Nothing left for the model." else "On-device model not ready; the parser filled what it could."
+            run = QuickAddRun(parserMillis, spans, note = note)
+            return
+        }
+        run = QuickAddRun(parserMillis, spans, note = "Asking the model…")
+        busy = true
+        val titleAtStart = next.title
+        val notesAtStart = next.notes
+        val planAtStart = next.plan
+        scope.launch {
+            val outcome = quickAdd.interpret(parsed.rest)
+            outcome.fields?.let { draft = draft.withModel(it, titleAtStart, notesAtStart, planAtStart) }
+            run = QuickAddRun(parserMillis, spans, outcome.millis, outcome.attempts, outcome.raw, outcome.error)
+            busy = false
+        }
+    }
+
+    fun submit() {
+        val text = input.trim()
+        if (text.isEmpty() || busy) return
+        when (pending) {
+            TapeLine.What -> sayWhat(text)
+            TapeLine.When -> {
+                val next = draft.printWhen(QuickAddParser.parse(text))
+                whenMissed = next == draft
+                if (!whenMissed) { draft = next; input = "" }
+            }
+            TapeLine.Notes -> { draft = draft.printNotes(text); input = "" }
+            else -> Unit
+        }
+    }
+
+    // Only a valid capture tears off, so nothing typed is lost to a refusal later.
+    fun tearOff() {
+        if (!draft.canTear || tearing) return
+        tearing = true
+        scope.launch {
+            tear.animateTo(1400f, tween(240))
+            val d = draft
+            val due = d.date
+            onCreate(d.title, d.notes, d.projectId, d.plan, due, d.time.takeIf { due != null }, d.recurrence.takeIf { due != null })
+            onDismiss()
+        }
+    }
+
+    fun springBack() { scope.launch { tear.animateTo(0f, spring(stiffness = Spring.StiffnessMedium)) } }
+
+    AlongsideSheet(onDismiss) {
+        Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 20.dp)) {
+            QuickAddHeader(debug) { debug = !debug }
+            Column(
+                Modifier.weight(1f, fill = false).graphicsLayer {
+                    translationY = tear.value
+                    rotationZ = (tear.value / 70f).coerceAtMost(5f)
+                    alpha = 1f - (tear.value / 900f).coerceIn(0f, 0.9f)
+                },
+            ) {
+                Column(
+                    Modifier.weight(1f, fill = false).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(c.soft)
+                        .verticalScroll(tapeScroll).padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    if (draft.printed.isEmpty()) {
+                        Text(
+                            "Say it however it comes. What I find prints here, already filled in, and you can fix any of it.",
+                            style = Type.body, color = c.muted, modifier = Modifier.padding(4.dp),
+                        )
+                    }
+                    draft.printed.forEach { line ->
+                        key(line) {
+                            Printed {
+                                when (line) {
+                                    TapeLine.What -> WhatCard(draft, busy, onChange = { draft = it })
+                                    TapeLine.When -> WhenCard(draft, onChange = { draft = it }, onRemove = { draft = draft.remove(TapeLine.When) })
+                                    TapeLine.Notes -> NotesCard(draft, onChange = { draft = it }, onRemove = { draft = draft.remove(TapeLine.Notes) })
+                                    TapeLine.Project -> ProjectCard(draft, board, onPick = { draft = draft.printProject(it) }, onRemove = { draft = draft.remove(TapeLine.Project) })
+                                }
+                            }
+                        }
+                    }
+                    if (debug) run?.let { DebugCard(it) }
+                }
+                if (draft.canTear) TearLine(tear, onRelease = { if (tear.value > 90f) tearOff() else springBack() }, onCancel = ::springBack, onTearByAction = ::tearOff)
+            }
+            Composer(
+                pending = pending, draft = draft, input = input, onInput = { input = it; whenMissed = false },
+                onSubmit = ::submit, onSkip = { pending?.let { draft = draft.skip(it); input = ""; whenMissed = false } },
+                projects = board.ws.projects.filter { it.isActive }, onProject = { draft = draft.printProject(it) },
+                whenMissed = whenMissed, busy = busy,
+                availability = availability, downloadLine = downloadLine,
+                onDownload = {
+                    scope.launch {
+                        runCatching { quickAdd.download().collect { downloadLine = it } }.onFailure { downloadLine = it.message }
+                        availability = quickAdd.availability()
+                    }
+                },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun QuickAddHeader(debug: Boolean, onToggleDebug: () -> Unit) {
+    val c = LocalColors.current
+    Text(
+        "New task", style = Type.sheetTitle, color = c.ink,
+        modifier = Modifier.padding(top = 8.dp, bottom = 12.dp)
+            .combinedClickable(onClick = {}, onLongClick = onToggleDebug, onLongClickLabel = if (debug) "Hide timings and raw model reply" else "Show timings and raw model reply"),
+    )
+}
+
+/** A new element slides up out of the text box when it is first printed. */
+@Composable
+private fun Printed(content: @Composable () -> Unit) {
+    val state = remember { MutableTransitionState(false).apply { targetState = true } }
+    AnimatedVisibility(state, enter = fadeIn(tween(180)) + slideInVertically(tween(260)) { it / 3 } + expandVertically(tween(260))) { content() }
+}
+
+@Composable
+private fun TapeCard(label: String, onRemove: (() -> Unit)? = null, content: @Composable () -> Unit) {
+    val c = LocalColors.current
+    val shape = RoundedCornerShape(16.dp)
+    Column(Modifier.fillMaxWidth().clip(shape).background(c.card).border(1.dp, c.line, shape).padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label.uppercase(), style = Type.section, color = c.muted, modifier = Modifier.weight(1f))
+            if (onRemove != null) IconBtn(AppIcons.Close, "Remove $label", onRemove, size = 16.dp, tint = c.muted)
+            else Box(Modifier.height(48.dp))
+        }
+        Column(Modifier.padding(end = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WhatCard(draft: TapeDraft, busy: Boolean, onChange: (TapeDraft) -> Unit) {
+    val c = LocalColors.current
+    TapeCard("What") {
+        Field(draft.title, { onChange(draft.copy(title = it)) }, "What needs doing?", Type.rowTitle.copy(fontSize = Type.note.fontSize), singleLine = false)
+        if (draft.titleTooLong) LimitNote("Titles can be up to ${TaskLimits.TITLE_MAX} characters (this one is ${draft.title.trim().length}). Longer detail fits in the notes.")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            FilterChip("Action", selected = !draft.plan, height = 40.dp, sheetStyle = true, onClick = { onChange(draft.copy(plan = false)) })
+            FilterChip("Plan", selected = draft.plan, height = 40.dp, sheetStyle = true, onClick = { onChange(draft.copy(plan = true)) })
+            if (busy) Text("Asking the on-device model…", style = Type.meta, color = c.muted)
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun WhenCard(draft: TapeDraft, onChange: (TapeDraft) -> Unit, onRemove: () -> Unit) {
+    val c = LocalColors.current
+    var datePicker by remember { mutableStateOf(false) }
+    var timePicker by remember { mutableStateOf(false) }
+    var repeatOpen by remember { mutableStateOf(false) }
+    val day = draft.date
+
+    TapeCard("When", onRemove) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(day?.let { friendlyDay(it, withDayNumber = true) } ?: "Pick a day", selected = true, height = 40.dp, sheetStyle = true, onClick = { datePicker = true })
+            FilterChip(draft.time?.format(timeLabel) ?: "Add a time", selected = draft.time != null, height = 40.dp, sheetStyle = true, onClick = { timePicker = true })
+            FilterChip(
+                draft.recurrence?.let { recurrenceLabel(it) ?: "Repeats" } ?: "Repeat", selected = draft.recurrence != null, height = 40.dp, sheetStyle = true,
+                leading = { Icon(AppIcons.Repeat, null, Modifier.size(18.dp), tint = c.ink) },
+                onClick = { repeatOpen = !repeatOpen },
+            )
+        }
+        if (repeatOpen) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeatChoices.forEach { (label, rule) ->
+                    FilterChip(label, selected = draft.recurrence == rule, height = 36.dp, onClick = { onChange(draft.withRecurrence(rule)); repeatOpen = false })
+                }
+            }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            quickDays().forEach { (label, date) -> FilterChip(label, selected = day == date, height = 36.dp, onClick = { onChange(draft.withDate(date)) }) }
+        }
+        draft.droppedTime?.let { Text("Repeats are date-only for now, so ${it.format(timeLabel)} was left out.", style = Type.meta, color = c.muted) }
+        if (draft.approx) Text("Guessed from a vague phrase; check it.", style = Type.meta, color = c.muted)
+    }
+
+    if (datePicker) {
+        val state = rememberDatePickerState(initialSelectedDateMillis = (day ?: Clock.today()).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
+        DatePickerDialog(
+            onDismissRequest = { datePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { ms -> onChange(draft.withDate(Instant.ofEpochMilli(ms).atZone(ZoneOffset.UTC).toLocalDate())) }
+                    datePicker = false
+                }) { Text("Set day") }
+            },
+            dismissButton = { TextButton(onClick = { datePicker = false }) { Text("Cancel") } },
+        ) { DatePicker(state) }
+    }
+    if (timePicker) {
+        val start = draft.time ?: LocalTime.of(9, 0)
+        val state = rememberTimePickerState(start.hour, start.minute, DateFormat.is24HourFormat(LocalContext.current))
+        AlertDialog(
+            onDismissRequest = { timePicker = false },
+            text = { TimePicker(state) },
+            confirmButton = { TextButton(onClick = { onChange(draft.withTime(LocalTime.of(state.hour, state.minute))); timePicker = false }) { Text("Set time") } },
+            dismissButton = {
+                Row {
+                    if (draft.time != null) TextButton(onClick = { onChange(draft.withTime(null)); timePicker = false }) { Text("No time") }
+                    TextButton(onClick = { timePicker = false }) { Text("Cancel") }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun NotesCard(draft: TapeDraft, onChange: (TapeDraft) -> Unit, onRemove: () -> Unit) {
+    TapeCard("Notes", onRemove) {
+        Field(draft.notes, { onChange(draft.copy(notes = it)) }, "Notes", Type.body, singleLine = false)
+        if (draft.notesTooLong) LimitNote("Notes can be up to ${TaskLimits.NOTES_MAX} characters (these are ${draft.notes.trim().length}).")
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ProjectCard(draft: TapeDraft, board: Board, onPick: (String?) -> Unit, onRemove: () -> Unit) {
+    TapeCard("Project", onRemove) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip("Inbox", selected = draft.projectId == null, height = 40.dp, sheetStyle = true, onClick = { onPick(null) })
+            board.ws.projects.filter { it.isActive }.forEach { p ->
+                FilterChip(p.title, selected = draft.projectId == p.id, height = 40.dp, sheetStyle = true, leading = { ProjectDot(p.id, 9.dp) }, onClick = { onPick(p.id) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun DebugCard(run: QuickAddRun) {
+    TapeCard("Under the hood") {
+        Text(
+            buildString {
+                append("parser ${"%.1f".format(run.parserMillis)} ms")
+                run.modelMillis?.let { append(" · model $it ms · ${run.attempts} ${if (run.attempts == 1) "try" else "tries"}") }
+                if (run.spans.isNotEmpty()) append("\ncut: ${run.spans.joinToString("; ")}")
+                run.note?.let { append("\n$it") }
+                if (run.raw.isNotBlank()) append("\nraw: ${run.raw.trim().replace(Regex("\\s+"), " ")}")
+            },
+            style = Type.meta, color = LocalColors.current.muted,
+        )
+    }
+}
+
+/**
+ * The perforation under the newest element. Dragging it down tears the sheet off and adds the task; the same
+ * action is exposed to accessibility services, since a drag is not always possible.
+ */
+@Composable
+private fun TearLine(tear: Animatable<Float, *>, onRelease: () -> Unit, onCancel: () -> Unit, onTearByAction: () -> Unit) {
+    val c = LocalColors.current
+    val scope = rememberCoroutineScope()
+    Box(
+        Modifier.fillMaxWidth().height(52.dp)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onVerticalDrag = { change, dy -> change.consume(); scope.launch { tear.snapTo((tear.value + dy).coerceAtLeast(0f)) } },
+                    onDragEnd = onRelease,
+                    onDragCancel = onCancel,
+                )
+            }
+            .semantics(mergeDescendants = true) { contentDescription = "Tear off and add the task"; onClick("Add the task") { onTearByAction(); true } },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.fillMaxWidth().height(2.dp)) {
+            drawLine(c.muted, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), strokeWidth = 3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 12f)))
+        }
+        Row(
+            Modifier.clip(RoundedCornerShape(12.dp)).background(c.lavender).padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(AppIcons.ChevronRight, null, Modifier.size(16.dp).rotate(90f), tint = c.ink)
+            Text("Pull to tear off and add", style = Type.label, color = c.ink)
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Composer(
+    pending: TapeLine?,
+    draft: TapeDraft,
+    input: String,
+    onInput: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onSkip: () -> Unit,
+    projects: List<com.atonal440.alongside.data.Project>,
+    onProject: (String?) -> Unit,
+    whenMissed: Boolean,
+    busy: Boolean,
+    availability: Pair<ModelAvailability, String?>?,
+    downloadLine: String?,
+    onDownload: () -> Unit,
+) {
+    val c = LocalColors.current
+    Column(Modifier.padding(top = 14.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // The model can still add notes, which would move the next question on under a half-typed answer.
+        if (busy) {
+            Text("Reading what you said…", style = Type.body, color = c.muted)
+            return@Column
+        }
+        if (pending == null) {
+            Text(
+                if (draft.canTear) "That's everything. Pull the sheet to add the task." else "Give it a title to add it.",
+                style = Type.body, color = c.muted,
+            )
+            return@Column
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(question(pending), style = Type.label, color = c.ink, modifier = Modifier.weight(1f))
+            if (pending != TapeLine.What) {
+                Text(
+                    "Skip", style = Type.label, color = c.muted,
+                    modifier = Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onSkip).padding(horizontal = 12.dp, vertical = 16.dp),
+                )
+            }
+        }
+        if (pending == TapeLine.Project) {
+            FlowRow(
+                Modifier.heightIn(max = 168.dp).verticalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip("Inbox", selected = false, height = 40.dp, sheetStyle = true, onClick = { onProject(null) })
+                projects.forEach { p -> FilterChip(p.title, selected = false, height = 40.dp, sheetStyle = true, leading = { ProjectDot(p.id, 9.dp) }, onClick = { onProject(p.id) }) }
+            }
+            return@Column
+        }
+        val focus = remember { FocusRequester() }
+        LaunchedEffect(pending) { focus.requestFocus() }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) {
+                Field(input, onInput, example(pending), Type.body, Modifier.focusRequester(focus), imeAction = ImeAction.Send, onImeAction = onSubmit)
+            }
+            Box(
+                Modifier.size(52.dp).clip(CircleShape).background(c.peach)
+                    .clickable(enabled = input.isNotBlank() && !busy, role = Role.Button, onClick = onSubmit)
+                    .semantics { contentDescription = "Print" },
+                contentAlignment = Alignment.Center,
+            ) { Icon(AppIcons.Back, null, Modifier.size(22.dp).rotate(90f), tint = c.onPeach) }
+        }
+        if (whenMissed) Text("I couldn't find a day in that. Try \"friday\" or \"in 3 days\".", style = Type.meta, color = c.muted)
+        if (pending == TapeLine.What) {
+            when (availability?.first) {
+                null -> Text("Checking the on-device model…", style = Type.meta, color = c.muted)
+                ModelAvailability.Available -> Text("Gemini Nano ready", style = Type.meta, color = c.muted)
+                ModelAvailability.Downloadable -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip("Download model", selected = false, height = 40.dp, sheetStyle = true, onClick = onDownload)
+                    downloadLine?.let { Text(it, style = Type.meta, color = c.muted) }
+                }
+                ModelAvailability.Downloading -> Text("Model is downloading…", style = Type.meta, color = c.muted)
+                ModelAvailability.Unavailable -> Text("No on-device model (${availability.second ?: "unsupported"}). Dates and repeats still work.", style = Type.meta, color = c.muted)
+            }
+        }
+    }
+}
