@@ -97,7 +97,9 @@ What the stages find prints as ordinary app UI, already filled in, and each piec
 
 The element order and rules (what is asked next, how the model result merges, the time/repeat exclusion) are `domain/QuickAddTape.kt`, covered by `QuickAddTapeTest`. Long-press the "New task" title to print an "Under the hood" element with the parser and model timings, the phrases that were cut and the raw model reply, so a misread can be judged on a real device.
 
-Only fields `Repository.create` can already send are on the sheet. A kickoff note, deadline, not-before date, subtasks and waiting-on have no create command yet; they need new sync intents first.
+Three more sections are never asked for. Once the task has a title the text box offers dashed **+ Kickoff note**, **+ Not before** and **+ Waiting on** chips (hidden while an answer is half typed); each prints a card when answered. Waiting on is a search over open tasks and each pick adds a row, and a row's X stops waiting on it.
+
+They are written through three sync intents (`data/sync/Intent.kt`): the kickoff note rides in `task.create`; **not before** is `Intent.SetAvailableFrom`, a `task.dates.set` that replaces availability and deadline together, so the envelope sends the server's current deadline back unchanged (and refuses if it cannot read it); **waiting on** is `Intent.Block`, a `link.add` of type `blocks` from the blocker to the new task, guarded by the link's own revision (null for a link never seen). All three show in the optimistic view at once. Deadline and subtasks are still not on the sheet.
 
 A time makes the due date a local instant (not all-day). A repeat is written with the due date as a `task.legacy-schedule.set` value, and because the worker's legacy repeat is date-only (a timed due date with a repeat is refused), a repeat wins and the time is left out; the sheet says so (`domain/Schedule.kt`). The worker's legacy recurrence profile still decides whether the rule itself is accepted. The prompt lab that picked this design is in `scripts/llm-lab/` (see its README).
 
