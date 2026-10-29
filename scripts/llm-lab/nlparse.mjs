@@ -28,6 +28,10 @@ const WD_FULL = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday';
 const WD_ANY = `${WD_FULL}|mon|tues?|wed|thu(?:rs?)?|fri|sat|sun`;
 const MONTH = 'january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec';
 const NUM_WORD = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+const HOUR_WORD = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+const HOUR = '\\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve';
+const hourOf = (s) => (Number.isNaN(Number(s)) ? HOUR_WORD[s.toLowerCase()] : Number(s)); // "0" is a number, not a missing word
+const LIST_SEP = '(?:\\s*,\\s*(?:and\\s+)?|\\s+and\\s+|\\s*&\\s*)';
 const PART_OF_DAY = { morning: '09:00', afternoon: '14:00', evening: '18:00', night: '21:00' };
 
 // Dates are UTC-midnight Date objects used purely as calendar arithmetic.
@@ -123,14 +127,68 @@ const recognizers = [];
 const rule = (kind, source, fn) => recognizers.push({ kind, re: new RegExp(/^(\\b|\(\?<=)/.test(source) ? source : `\\b${source}`, 'gi'), fn });
 
 // ---- recurrence ----
+// Phrases of one repeat are merged only when they agree. A constraint-free cadence ("every 2 weeks", "biweekly") lends its
+// interval to a constrained phrase ("on wednesdays"); two constrained phrases must share an interval and a kind of day list
+// ("mondays and on fridays"). Anything else ("every monday and every other friday", "every 15th and every second tuesday",
+// a second day part) stays in the text rather than being silently dropped.
+const constrained = (r) => !!(r.byday || r.bymonthday || r.nth);
+function compatible(m, r) {
+  if (constrained(m) && constrained(r)) {
+    if (m.interval !== r.interval || m.nth || r.nth) return false;
+    return !!m.byday === !!r.byday && !!m.bymonthday === !!r.bymonthday;
+  }
+  const [c, f] = constrained(m) ? [m, r] : [r, m];
+  return c.interval === 1 || c.interval === f.interval;
+}
+function mergeInto(m, r) {
+  const nthSrc = m.nth ? m : r.nth ? r : null;
+  return { ...m, interval: Math.max(m.interval, r.interval), byday: nthSrc ? nthSrc.byday : unionOf(m.byday, r.byday),
+    bymonthday: unionOf(m.bymonthday, r.bymonthday), nth: nthSrc?.nth };
+}
+// Two phrases describe one repeat only if the text between them agrees: day lists and day parts need nothing but connectors
+// ("on mondays and on fridays", "every morning on weekdays"), a bare cadence may sit anywhere in the same sentence
+// ("weekly review on fridays"). Dates and times between them ("starting tomorrow", "at 7") do not break the link.
+const CONNECTORS = /^(?:\s|,|&|and|on|starting|from|at|each)*$/i;
+function mergeRecs(base, recs, text, others) {
+  let m = { ...base.data.rec };
+  const joined = [];
+  const group = [base];
+  let partJoined = !!base.data.partName;
+  const connected = (f) => group.some((g) => {
+    const [x, y] = g.start < f.start ? [g, f] : [f, g];
+    let gap = text.slice(x.end, y.start);
+    for (const o of others) if (o.start >= x.end && o.end <= y.start) gap = gap.replace(text.slice(o.start, o.end), '');
+    const strict = g.data.partName || f.data.partName || (constrained(g.data.rec) && constrained(f.data.rec));
+    return strict ? CONNECTORS.test(gap) : !/[.;!?]/.test(gap);
+  });
+  for (const f of recs) {
+    if (f === base) continue;
+    if (f.data.partName) { // a second day part stays in the text
+      if (!partJoined && connected(f)) { partJoined = true; joined.push(f); group.push(f); }
+      continue;
+    }
+    if (f.data.rec.freq !== m.freq || !compatible(m, f.data.rec) || !connected(f)) continue;
+    joined.push(f);
+    group.push(f);
+    m = mergeInto(m, f.data.rec);
+  }
+  return { rec: m, joined };
+}
+const unionOf = (...lists) => { const all = lists.flatMap((l) => l ?? []); return all.length ? [...new Set(all)] : undefined; };
+// "daily except weekends": a day list that something is excluded from is not the repeat's own day list.
+const excluded = (m) => /\b(?:except|excluding|but\s+not|not\s+on|besides)\s+(?:on\s+)?(?:the\s+)?$/i.test(m.input.slice(0, m.index));
+const ORDINAL_WORD = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10, fifteenth: 15, twentieth: 20, thirtieth: 30 };
+const monthlyDay = (...days) => (days.every((d) => d >= 1 && d <= 31) ? { rec: { freq: 'MONTHLY', interval: 1, bymonthday: days } } : null);
 rule('rec', `(?:on\\s+)?(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)\\s+of\\s+(?:every|each)\\s+month\\b`,
-  (m) => ({ rec: { freq: 'MONTHLY', interval: 1, bymonthday: [+m[1]] } }));
+  (m) => monthlyDay(+m[1]));
 rule('rec', `(?:on\\s+)?(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+and\\s+(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)\\s+of\\s+(?:every|each)\\s+month\\b`,
-  (m) => ({ rec: { freq: 'MONTHLY', interval: 1, bymonthday: [+m[1], +m[2]] } }));
+  (m) => monthlyDay(+m[1], +m[2]));
 rule('rec', `(?:(?:every|each)\\s+month|monthly)\\s+on\\s+the\\s+${ordinal}\\b`,
-  (m) => ({ rec: { freq: 'MONTHLY', interval: 1, bymonthday: [+m[1]] } }));
+  (m) => monthlyDay(+m[1]));
 rule('rec', `(?:every|each)\\s+(\\d{1,2})(?:st|nd|rd|th)\\b(?!\\s+(?:of|day|week|month|(?:${WD_ANY})\\b))`,
-  (m) => ({ rec: { freq: 'MONTHLY', interval: 1, bymonthday: [+m[1]] } }));
+  (m) => monthlyDay(+m[1]));
+rule('rec', `(?:on\\s+)?the\\s+(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|fifteenth|twentieth|thirtieth)\\s+of\\s+(?:every|each)\\s+month\\b`,
+  (m) => monthlyDay(ORDINAL_WORD[m[1].toLowerCase()]));
 rule('rec', `(?:on\\s+)?the\\s+last\\s+day\\s+of\\s+(?:every|each)\\s+month\\b`,
   () => ({ rec: { freq: 'MONTHLY', interval: 1, bymonthday: [-1] } }));
 rule('rec', `(?:every|each)\\s+(first|second|third|fourth|last|\\d{1,2}(?:st|nd|rd|th))\\s+(${WD_ANY})(?:\\s+of\\s+the\\s+month)?\\b`, (m) => {
@@ -141,25 +199,33 @@ rule('rec', `(?:every|each)\\s+(first|second|third|fourth|last|\\d{1,2}(?:st|nd|
 });
 rule('rec', `(?:every|each)\\s+other\\s+(${WD_ANY})\\b`,
   (m) => ({ rec: { freq: 'WEEKLY', interval: 2, byday: [RR_DAY[wdIndex(m[1])]] } }));
-rule('rec', `(?:every|each)\\s+(\\d+|other|two|three|four)\\s+(day|week|month|year)s?(?:\\s+on\\s+(${wdList}(?:(?:\\s*,\\s*|\\s+and\\s+)${wdList})*))?\\b`, (m) => {
+rule('rec', `(?:every|each)\\s+(\\d+|other|two|three|four)\\s+(day|week|month|year)s?(?:\\s+on\\s+(${wdList}(?:${LIST_SEP}${wdList})*)|\\s+on\\s+the\\s+(\\d{1,2})(?:st|nd|rd|th))?\\b`, (m) => {
   const freq = { day: 'DAILY', week: 'WEEKLY', month: 'MONTHLY', year: 'YEARLY' }[m[2].toLowerCase()];
   const byday = freq === 'WEEKLY' && m[3] ? [...new Set([...m[3].matchAll(new RegExp(`\\b(${WD_ANY})`, 'gi'))].map((x) => RR_DAY[wdIndex(x[1])]))] : undefined;
   const interval = m[1].toLowerCase() === 'other' ? 2 : +m[1] || NUM_WORD[m[1].toLowerCase()];
   // The worker allows up to 999; nothing a person says needs more than 99, and it keeps the first-occurrence search short.
   if (!(interval >= 1 && interval <= 99)) return null;
-  return { rec: { freq, byday, interval } };
+  // "every 2 months on the 31st": the day of the month belongs to a monthly interval only.
+  if (m[4] && (freq !== 'MONTHLY' || +m[4] < 1 || +m[4] > 31)) return null;
+  return { rec: { freq, byday, interval, bymonthday: m[4] ? [+m[4]] : undefined } };
 });
 rule('rec', `\\b(weekday|weekend)s\\b`,
-  (m) => ({ rec: { freq: 'WEEKLY', interval: 1, byday: m[1].toLowerCase() === 'weekday' ? ['MO', 'TU', 'WE', 'TH', 'FR'] : ['SA', 'SU'] } }));
+  (m) => excluded(m) ? null : ({ rec: { freq: 'WEEKLY', interval: 1, byday: m[1].toLowerCase() === 'weekday' ? ['MO', 'TU', 'WE', 'TH', 'FR'] : ['SA', 'SU'] } }));
 // "gym mon wed fri": two or more abbreviations in a row, no "every" needed.
 rule('rec', `\\b(?:mon|tues?|wed|thu(?:rs?)?|fri|sat|sun)(?:(?:\\s*,\\s*|\\s+)(?:mon|tues?|wed|thu(?:rs?)?|fri|sat|sun))+\\b`,
   (m) => ({ rec: { freq: 'WEEKLY', interval: 1, byday: [...new Set([...m[0].matchAll(/[a-z]+/gi)].map((x) => RR_DAY[wdIndex(x[0])]))] } }));
+// "every Monday-Friday", "every monday to thursday": a run of days, inclusive, wrapping past Sunday if need be.
+rule('rec', `(?:every|each)\\s+(${WD_ANY})\\s*(?:-|\u2013|to|through|thru)\\s*(${WD_ANY})\\b`, (m) => {
+  const days = [];
+  for (let i = wdIndex(m[1]); ; i = (i + 1) % 7) { days.push(RR_DAY[i]); if (i === wdIndex(m[2]) || days.length > 7) break; }
+  return { rec: { freq: 'WEEKLY', interval: 1, byday: days } };
+});
 rule('rec', `(?:every|each)\\s+(weekday|weekend)s?\\b`,
   (m) => ({ rec: { freq: 'WEEKLY', interval: 1, byday: m[1].toLowerCase() === 'weekday' ? ['MO', 'TU', 'WE', 'TH', 'FR'] : ['SA', 'SU'] } }));
-rule('rec', `(?:every|each)\\s+${wdList}(?:(?:\\s*,\\s*|\\s+and\\s+|\\s*&\\s*)(?:every\\s+)?${wdList})*\\b`,
+rule('rec', `(?:every|each)\\s+${wdList}(?:${LIST_SEP}(?:every\\s+)?${wdList})*\\b`,
   (m) => ({ rec: { freq: 'WEEKLY', interval: 1, byday: [...new Set([...m[0].matchAll(new RegExp(`\\b(${WD_ANY})`, 'gi'))].map((x) => RR_DAY[wdIndex(x[1])]))] } }));
-rule('rec', `\\b(?:on\\s+)?(?:${WD_FULL})s(?:(?:\\s*,\\s*|\\s+and\\s+|\\s*&\\s*)(?:${WD_FULL})s)*\\b`,
-  (m) => ({ rec: { freq: 'WEEKLY', interval: 1, byday: [...new Set([...m[0].matchAll(new RegExp(`\\b(${WD_FULL})`, 'gi'))].map((x) => RR_DAY[wdIndex(x[1])]))] } }));
+rule('rec', `\\b(?:on\\s+)?(?:${WD_FULL})s(?:${LIST_SEP}(?:${WD_FULL})s)*\\b`,
+  (m) => excluded(m) ? null : ({ rec: { freq: 'WEEKLY', interval: 1, byday: [...new Set([...m[0].matchAll(new RegExp(`\\b(${WD_FULL})`, 'gi'))].map((x) => RR_DAY[wdIndex(x[1])]))] } }));
 rule('rec', `(?:every|each)\\s+(morning|afternoon|evening|night)\\b`,
   (m) => ({ rec: { freq: 'DAILY', interval: 1 }, time: PART_OF_DAY[m[1].toLowerCase()], approx: true, partName: m[1].toLowerCase() }));
 rule('rec', `(?:every|each)\\s+(day|week|month|year)\\b`,
@@ -170,19 +236,35 @@ rule('rec', `\\b(daily|weekly|monthly|yearly|annually|biweekly|fortnightly)\\b`,
 
 // ---- dates ----
 rule('date', `\\bday\\s+after\\s+tomorrow\\b`, (_, c) => ({ date: addDays(c.today, 2) }));
-rule('date', `\\bto?m{1,2}o?r{1,2}ow\\b`, (_, c) => ({ date: addDays(c.today, 1) }));
+rule('date', `\\b(?:to?m{1,2}o?r{1,2}ow|tmr|tmrw|tmw|2morrow|2moro)\\b`, (_, c) => ({ date: addDays(c.today, 1) }));
 rule('date', `\\btoday\\b`, (_, c) => ({ date: c.today }));
 rule('date', `\\b(?:eod|cob)\\b`, (_, c) => ({ date: c.today }));
+// "this morning" is today even when the 09:00 default has passed.
+rule('date', `\\bthis\\s+(morning|afternoon|evening)\\b`, (m, c) => ({ date: c.today, time: PART_OF_DAY[m[1].toLowerCase()], timeApprox: true, partName: m[1].toLowerCase() }));
 rule('date', `\\btonight\\b`, (_, c) => ({ date: c.today, time: '20:00', timeApprox: true, partName: 'night' }));
 rule('date', `\\b(?:(next|this|coming)\\s+)?(${WD_FULL})\\b`,
   (m, c) => ({ date: weekdayDate(c.today, wdIndex(m[2]), { next: 'nextWeek', this: 'onOrAfter', coming: 'after' }[(m[1] ?? '').toLowerCase()] ?? 'after') }));
 rule('date', `\\b(tues|thurs?|thu|weds?|fri)\\b`, (m, c) => ({ date: weekdayDate(c.today, wdIndex(m[1]), 'after') }));
+// "mon" is also a word, so it only counts as Monday before a time or at the end: "dentist mon at 2pm".
+rule('date', `\\bmon\\b(?=\\s+(?:at|morning|afternoon|evening|night)\\b|\\s*$)`, (_, c) => ({ date: weekdayDate(c.today, 1, 'after') }));
 rule('date', `\\b(?:on|next|this)\\s+(${WD_ANY})\\b`,
   (m, c) => ({ date: weekdayDate(c.today, wdIndex(m[1]), /^next/i.test(m[0]) ? 'nextWeek' : /^this/i.test(m[0]) ? 'onOrAfter' : 'after') }));
 rule('date', `\\b(this|next)\\s+weekend\\b`,
   (m, c) => ({ date: weekdayDate(c.today, 6, m[1].toLowerCase() === 'next' ? 'nextWeek' : 'onOrAfter'), approx: true }));
-rule('date', `\\bin\\s+(\\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten)\\s+(minute|hour|day|week|month)s?\\b`, (m, c) => {
-  const n = +m[1] || NUM_WORD[m[1].toLowerCase()], unit = m[2].toLowerCase();
+// "in 1 hour 30 minutes", "in an hour and 15 minutes": one span, so the minutes are not left behind.
+// "in an hour and a half", "in half an hour".
+rule('date', `\\bin\\s+(?:an?\\s+|one\\s+)hour\\s+and\\s+a\\s+half\\b`, (_, c) => { const t = c.nowMin + 90; return { date: addDays(c.today, Math.floor(t / 1440)), time: hhmm(t % 1440) }; });
+rule('date', `\\bin\\s+half\\s+an\\s+hour\\b`, (_, c) => { const t = c.nowMin + 30; return { date: addDays(c.today, Math.floor(t / 1440)), time: hhmm(t % 1440) }; });
+rule('date', `\\bin\\s+(\\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten)\\s+(?:hours?|hrs?)\\s+(?:and\\s+)?(\\d+)\\s+(?:minutes?|mins?)\\b`, (m, c) => {
+  const h = +m[1] || NUM_WORD[m[1].toLowerCase()], mi = +m[2];
+  if (!(h >= 1 && h <= 2000 && mi <= 59 && h * 60 + mi <= 100000)) return null;
+  const t = c.nowMin + h * 60 + mi;
+  return { date: addDays(c.today, Math.floor(t / 1440)), time: hhmm(t % 1440) };
+});
+rule('date', `\\bin\\s+(\\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten)\\s+(minute|min|hour|hr|day|week|month)s?\\b`, (m, c) => {
+  const n = +m[1] || NUM_WORD[m[1].toLowerCase()];
+  const unit = m[2].toLowerCase() === 'min' ? 'minute' : m[2].toLowerCase() === 'hr' ? 'hour' : m[2].toLowerCase();
+  if (!(n >= 1 && n <= 100000)) return null;
   if (unit === 'minute' || unit === 'hour') {
     const t = c.nowMin + n * (unit === 'hour' ? 60 : 1);
     return { date: addDays(c.today, Math.floor(t / 1440)), time: hhmm(t % 1440) };
@@ -208,12 +290,15 @@ rule('date', `\\b(?:the\\s+)?end\\s+of\\s+(?:the\\s+)?(day|week|month|year|${MON
   const k = monthIndex(u), d = mk(y, k + 1, 0);
   return { date: d >= c.today ? d : mk(y + 1, k + 1, 0) };
 });
-rule('date', `\\b(\\d{4})-(\\d{2})-(\\d{2})(?:T(\\d{2}):(\\d{2}))?(?!\\d)`, (m) => ({ date: explicitDate(+m[1], +m[2] - 1, +m[3]), time: m[4] ? `${m[4]}:${m[5]}` : undefined }));
-rule('date', `\\b(?:on\\s+)?(?:the\\s+)?(${MONTH})\\.?\\s+${ordinal}(?:,?\\s+(\\d{4}))?\\b(?!\\s*(?::\\d|am\\b|pm\\b))`,
+rule('date', `\\b(\\d{4})-(\\d{2})-(\\d{2})(?:T(\\d{2}):(\\d{2}))?(?!\\d)`, (m) => {
+  if (m[4] && (+m[4] > 23 || +m[5] > 59)) return null; // 25:00 is not a time, so this is not a timestamp
+  return { date: explicitDate(+m[1], +m[2] - 1, +m[3]), time: m[4] ? `${m[4]}:${m[5]}` : undefined };
+});
+rule('date', `\\b(?:on\\s+)?(?:(?:${WD_ANY})\\.?,?\\s+)?(?:the\\s+)?(${MONTH})\\.?\\s+${ordinal}(?:,?\\s+(\\d{4}))?\\b(?!\\s*(?::\\d|am\\b|pm\\b))`,
   (m, c) => ({ date: m[3] ? explicitDate(+m[3], monthIndex(m[1]), +m[2]) : nextMonthDay(c.today, monthIndex(m[1]), +m[2]) }));
-rule('date', `\\b(?:on\\s+)?(?:the\\s+)?${ordinal}\\s+(?:of\\s+)?(${MONTH})(?:,?\\s+(\\d{4}))?\\b`,
+rule('date', `\\b(?:on\\s+)?(?:(?:${WD_ANY})\\.?,?\\s+)?(?:the\\s+)?${ordinal}\\s+(?:of\\s+)?(${MONTH})(?:,?\\s+(\\d{4}))?\\b`,
   (m, c) => ({ date: m[3] ? explicitDate(+m[3], monthIndex(m[2]), +m[1]) : nextMonthDay(c.today, monthIndex(m[2]), +m[1]) }));
-rule('date', `\\b(\\d{1,2})/(\\d{1,2})(?:/(\\d{2,4}))?\\b(?!\\s*(?:cups?|tsp|tbsp|teaspoons?|tablespoons?|oz|ounces?|lbs?|pounds?|inch(?:es)?|miles?|of|full|empty))`, (m, c) => {
+rule('date', `\\b(\\d{1,2})/(\\d{1,2})(?:/(\\d{2,4}))?\\b(?!-[a-z])(?!\\s*(?:cups?|tsp|tbsp|teaspoons?|tablespoons?|oz|ounces?|lbs?|pounds?|inch(?:es)?|miles?|of|full|empty))`, (m, c) => {
   const mo = +m[1] - 1, d = +m[2];
   if (mo > 11 || d < 1 || d > 31) return null;
   // A proper fraction (1/2, 3/4, 1/8) is a quantity unless a date cue comes first: "take 1/2 tablet" but "pay by 1/4".
@@ -240,48 +325,60 @@ const clock = (h, min, ap) => {
   if (h < 1 || h > 12 || min > 59) return null;
   return `${pad((h % 12) + (/^p/i.test(ap) ? 12 : 0))}:${pad(min)}`;
 };
-rule('time', `\\b(?:at\\s+)?(\\d{1,2})(?::(\\d{2}))?\\s*(a\\.?m\\.?|p\\.?m\\.?)(?![a-z])`,
-  (m) => { const t = clock(+m[1], +(m[2] ?? 0), m[3]); return t && { time: t }; });
+rule('time', `\\b(?:at\\s+)?(${HOUR})(?::(\\d{2}))?\\s*(a\\.?m\\.?|p\\.?m\\.?)(?![a-z])`,
+  (m) => { const t = clock(hourOf(m[1]), +(m[2] ?? 0), m[3]); return t && { time: t }; });
 rule('time', `\\b(at\\s+)?([01]?\\d|2[0-3]):([0-5]\\d)\\b(?!\\s*(?:am|pm|a\\.m|p\\.m))`, (m) => {
   const h = +m[2];
-  // "at 5:30" is the afternoon; "17:30", "09:00" and a bare "5:30" are taken literally.
-  return m[1] && h >= 1 && h <= 11 && m[2].length === (h < 10 ? 1 : 2) ? { time: `${pad(bareHour(h))}:${m[3]}`, approx: true, amb: { h, min: +m[3] } } : { time: `${pad(h)}:${m[3]}` };
+  const clockLike = h >= 1 && h <= 12 && m[2].length === (h < 10 ? 1 : 2); // no leading zero: could be 12-hour
+  // "at 5:30" is the afternoon; "17:30", "09:00" and a bare "5:30" are taken literally, but a bare "7:30" still lets a day
+  // part beside it settle the hour ("evening 7:30" is 19:30).
+  if (m[1] && clockLike && h <= 11) return { time: `${pad(bareHour(h))}:${m[3]}`, approx: true, amb: { h, min: +m[3] } };
+  return { time: `${pad(h)}:${m[3]}`, ...(clockLike ? { amb: { h, min: +m[3] } } : {}) };
 });
 // "half past 8pm", "quarter to 8pm": an offset on a clock that already says am or pm.
-rule('time', `\\b(?:at\\s+)?(half\\s+past|quarter\\s+past|quarter\\s+to)\\s+(\\d{1,2})\\s*(a\\.?m\\.?|p\\.?m\\.?)(?![a-z])`, (m) => {
-  const h = +m[2]; if (h < 1 || h > 12) return null;
+rule('time', `\\b(?:at\\s+)?(half\\s+past|quarter\\s+past|quarter\\s+to)\\s+(${HOUR})\\s*(a\\.?m\\.?|p\\.?m\\.?)(?![a-z])`, (m) => {
+  const h = hourOf(m[2]); if (h < 1 || h > 12) return null;
   const offset = /^half/i.test(m[1]) ? 30 : /past/i.test(m[1]) ? 15 : -15;
   return { time: hhmm(((h % 12) * 60 + (/^p/i.test(m[3]) ? 720 : 0) + offset + 1440) % 1440) };
 });
 // "half past 7 in the morning", "quarter to 8 in the evening": the offset and the day part settle one hour together.
-rule('time', `\\b(?:at\\s+)?(half\\s+past|quarter\\s+past|quarter\\s+to)\\s+(\\d{1,2})\\s+(?:in\\s+the\\s+)?(morning|afternoon|evening|night)\\b`, (m) => {
-  const h = +m[2]; if (h < 1 || h > 12) return null;
+rule('time', `\\b(?:at\\s+)?(half\\s+past|quarter\\s+past|quarter\\s+to)\\s+(${HOUR})\\s+(?:in\\s+the\\s+)?(morning|afternoon|evening|night)\\b`, (m) => {
+  const h = hourOf(m[2]); if (h < 1 || h > 12) return null;
   const offset = /^half/i.test(m[1]) ? 30 : /past/i.test(m[1]) ? 15 : -15;
   return { time: hhmm((dayPartHour(h, m[3].toLowerCase()) * 60 + offset + 1440) % 1440) };
 });
 // A clock and its day part as one phrase: "6 in the morning", "at 7:05 in the evening", "at 12:30 in the morning" (00:30).
 // The lookbehind keeps it from matching the minutes of "7:05" on their own.
-rule('time', `\\b(?:at\\s+)?(?<![:\\d])(\\d{1,2})(?::([0-5]\\d))?\\s+(?:in\\s+the\\s+)?(morning|afternoon|evening|night)\\b`, (m) => {
-  const h = +m[1]; if (h < 1 || h > 12) return null;
+rule('time', `\\b(?:at\\s+)?(?<![:\\d])(${HOUR})(?::([0-5]\\d))?\\s+(?:in\\s+the\\s+)?(morning|afternoon|evening|night)\\b`, (m) => {
+  const h = hourOf(m[1]); if (h < 1 || h > 12) return null;
+  // A spelled-out hour needs a clock cue ("at seven in the evening"), or "two night lights" becomes 02:00.
+  if (Number.isNaN(Number(m[1])) && !/^at\b/i.test(m[0]) && !/\bin\s+the\b/i.test(m[0])) return null;
   return { time: hhmm(dayPartHour(h, m[3].toLowerCase()) * 60 + +(m[2] ?? 0)) };
 });
-rule('time', `\\b(?:at\\s+)?(\\d{1,2})\\s*o['\u2019]?clock\\b`, (m) => (+m[1] >= 1 && +m[1] <= 12 ? { time: `${pad(bareHour(+m[1]))}:00`, approx: true, amb: { h: +m[1], min: 0 } } : null));
-rule('time', `\\b(?:at\\s+)?half\\s+past\\s+(\\d{1,2})\\b`, (m) => (+m[1] >= 1 && +m[1] <= 12 ? { time: `${pad(bareHour(+m[1]))}:30`, approx: true, amb: { h: +m[1], min: 30 } } : null));
-rule('time', `\\b(?:at\\s+)?quarter\\s+(past|to)\\s+(\\d{1,2})\\b`, (m) => {
-  const h = +m[2]; if (h < 1 || h > 12) return null;
+rule('time', `\\b(?:at\\s+)?(${HOUR})\\s*o['\u2019]?clock\\b`, (m) => (hourOf(m[1]) >= 1 && hourOf(m[1]) <= 12 ? { time: `${pad(bareHour(hourOf(m[1])))}:00`, approx: true, amb: { h: hourOf(m[1]), min: 0 } } : null));
+rule('time', `\\b(?:at\\s+)?half\\s+past\\s+(${HOUR})\\b`, (m) => (hourOf(m[1]) >= 1 && hourOf(m[1]) <= 12 ? { time: `${pad(bareHour(hourOf(m[1])))}:30`, approx: true, amb: { h: hourOf(m[1]), min: 30 } } : null));
+rule('time', `\\b(?:at\\s+)?quarter\\s+(past|to)\\s+(${HOUR})\\b`, (m) => {
+  const h = hourOf(m[2]); if (h < 1 || h > 12) return null;
   // Resolve the named hour first ("quarter to 8" is 07:45, as "at 8" is the morning), then step back a quarter.
   return m[1].toLowerCase() === 'past' ? { time: `${pad(bareHour(h))}:15`, approx: true, amb: { h, min: 15 } }
     : { time: hhmm((bareHour(h) * 60 - 15 + 1440) % 1440), approx: true, amb: { h, min: -15 } };
 });
 rule('time', `(?<=\\b(?:tomorrow|tonight|today|${WD_FULL})\\s)night\\b`, () => ({ time: PART_OF_DAY.night, approx: true, part: true, partName: 'night' }));
-rule('time', `\\bat\\s+(\\d{1,2})\\b(?!\\s*(?:st|nd|rd|th|:|/|am|pm|\\d))`, (m) => {
-  const h = +m[1]; if (h < 1 || h > 12) return null;
+rule('time', `\\bat\\s+(\\d{1,2})\\b(?!\\s*(?:(?:st|nd|rd|th|am|pm)\\b|:|/|\\d))`, (m) => {
+  const h = hourOf(m[1]); if (h < 1 || h > 12) return null;
+  return { time: `${pad(bareHour(h))}:00`, approx: true, amb: { h, min: 0 } };
+});
+// A spelled-out hour needs a clock-like continuation: "lunch at one tomorrow" is 13:00, "at one point tomorrow" is not a time.
+rule('time', `\\bat\\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\b(?=\\s*(?:$|[,.;:!?)]|\\s(?:tomorrow|today|tonight|on|in|and|this|next|every|each|morning|afternoon|evening|night|o'?clock)\\b))`, (m) => {
+  const h = hourOf(m[1]);
   return { time: `${pad(bareHour(h))}:00`, approx: true, amb: { h, min: 0 } };
 });
 rule('time', `\\b(?:at\\s+)?(noon|midday|midnight)\\b`, (m) => ({ time: /midnight/i.test(m[1]) ? '00:00' : '12:00' }));
 rule('time', `\\b(?:in\\s+the\\s+)?(morning|afternoon|evening)\\b`, (m) => ({ time: PART_OF_DAY[m[1].toLowerCase()], approx: true, part: true, partName: m[1].toLowerCase() }));
 
 const DANGLING = /(?:\s*,|\s+(?:on|at|by|due|before|until|from|starting|each))+\s*$/i;
+// A phrase that joined an earlier repeat also takes the "and" that linked them ("on mondays and on fridays").
+const DANGLING_JOINED = /(?:\s*,|\s+(?:on|at|by|due|before|until|from|starting|each|and))+\s*$/i;
 
 export function parse(text, opts = {}) {
   const nowStr = opts.now ?? (() => {
@@ -305,31 +402,49 @@ export function parse(text, opts = {}) {
 
   // One of each kind; later dates and times stay in the text for the model to see. Recurrence prefers the
   // span that names days ("on fridays") over a generic one ("weekly"); leftover generic ones are cut.
+  // Repeat phrases that describe one repeat are merged: "every 2 weeks ... on wednesdays", "every morning on weekdays",
+  // "biweekly on mondays". The base is the most specific one; the rest of its frequency (and any generic or day-part one) joins it.
   const recs = picked.filter((f) => f.kind === 'rec');
-  const recPick = recs.find((f) => !f.data.anchorless) ?? recs[0];
+  const partRec = recs.find((f) => f.data.partName);
+  const base = recs.find((f) => !f.data.anchorless && !f.data.partName) ?? partRec ?? recs[0];
+  const { rec, joined } = base ? mergeRecs(base, recs, text, picked.filter((f) => f.kind !== 'rec')) : { rec: null, joined: [] };
+  // A day part that did not join the repeat ("... every morning" far from it) stays in the text and does not set the time.
+  const activePart = partRec && (partRec === base || joined.includes(partRec)) ? partRec : undefined;
   // The first time phrase wins. A clock time beside a day part refines it: "afternoon at 4pm" is 16:00 and "morning at 7" is
   // 07:00, with only that day part consumed. A later, unrelated time ("tomorrow morning, dinner at 7pm") stays in the text.
   const times = picked.filter((f) => f.kind === 'time');
-  const firstDate = picked.find((f) => f.kind === 'date');
-  const adjacent = (a, b) => { const [x, y] = a.start < b.start ? [a, b] : [b, a]; return /^[\s,]*$/.test(text.slice(x.end, y.start)); };
+  // "daily until november 1": a date after "until" ends a repeat; it is not where the repeat starts.
+  const untilBound = (f) => !!base && /\b(?:until|till|through|thru)\s+$/i.test(text.slice(0, f.start));
+  const firstDate = picked.find((f) => f.kind === 'date' && !untilBound(f));
+  const dates = picked.filter((f) => f.kind === 'date');
+  // Two phrases are "beside" each other when only spaces and commas separate them, or one date phrase and no comma:
+  // "at 7 tomorrow morning" counts, "tomorrow morning, friday at 7pm" does not.
+  const adjacent = (a, b) => {
+    const [x, y] = a.start < b.start ? [a, b] : [b, a];
+    const gap = text.slice(x.end, y.start);
+    const inside = dates.filter((d) => d.start >= x.end && d.end <= y.start);
+    if (!inside.length) return /^[\s,]*$/.test(gap);
+    if (gap.includes(',') || inside.length > 1) return false;
+    return /^\s*$/.test(gap.replace(text.slice(inside[0].start, inside[0].end), ''));
+  };
   const head = times[0];
   const partner = head ? times.find((f) => f !== head && !!f.data.part !== !!head.data.part && adjacent(f, head)) : undefined;
   const firstTime = partner && head.data.part ? partner : head;
   const dayPart = partner ? (head.data.part ? head : partner) : undefined;
-  const used = picked.filter((f) => f === firstDate || f === firstTime || f === recPick || (f.kind === 'rec' && f.data.anchorless) || f === dayPart);
-  // A generic phrase beside a specific one still counts: "biweekly on mondays" keeps its interval.
-  const generic = recs.filter((f) => f !== recPick && f.data.anchorless && f.data.rec.freq === recPick?.data.rec.freq);
-  const rec = recPick ? { ...recPick.data.rec, interval: Math.max(recPick.data.rec.interval, ...generic.map((f) => f.data.rec.interval)) } : null;
+  const used = picked.filter((f) => f === firstDate || f === firstTime || f === base || joined.includes(f) || f === dayPart);
   let date = firstDate?.data.date ?? null;
-  let time = firstTime?.data.time ?? firstDate?.data.time ?? recPick?.data.time ?? null;
+  let time = firstTime?.data.time ?? firstDate?.data.time ?? (activePart ?? base)?.data.time ?? null;
   // "every morning at 7" and "tonight at 9": a day part carried by a repeat or a date span settles the hour the same way.
-  const partOwner = [recPick, firstDate].find((f) => f?.data.partName && firstTime && !firstTime.data.part && adjacent(f, firstTime));
+  // The merged repeat counts as one phrase: "every morning on weekdays at 7" is 07:00 though "on weekdays" sits between.
+  const recGroup = base ? [base, ...joined] : [];
+  const nearTime = (f) => (f === activePart ? recGroup.some((g) => adjacent(g, firstTime)) : adjacent(f, firstTime));
+  const partOwner = [activePart, firstDate].find((f) => f?.data.partName && firstTime && !firstTime.data.part && nearTime(f));
   const partName = dayPart?.data.partName ?? partOwner?.data.partName;
   const resolvedByDayPart = !!(partName && firstTime?.data.amb);
   if (resolvedByDayPart) time = hhmm((dayPartHour(firstTime.data.amb.h, partName) * 60 + firstTime.data.amb.min + 1440) % 1440);
   // A repeat's own default time ("every morning" is 09:00) is only a guess when no clock time was given.
-  const approx = [firstDate, resolvedByDayPart ? null : firstTime, firstTime ? null : recPick].some((f) => f?.data.approx)
-    || !!recPick?.data.anchorless || (!firstTime && !!firstDate?.data.timeApprox);
+  const approx = [firstDate, resolvedByDayPart ? null : firstTime, firstTime ? null : (activePart ?? base)].some((f) => f?.data.approx)
+    || !!base?.data.anchorless || (!firstTime && !!firstDate?.data.timeApprox);
 
   const afterNow = (d) => +d > +ctx.today || time == null || +time.slice(0, 2) * 60 + +time.slice(3) > ctx.nowMin;
   if (rec) {
@@ -348,9 +463,11 @@ export function parse(text, opts = {}) {
   } else if (!date && time) {
     date = afterNow(ctx.today) ? ctx.today : addDays(ctx.today, 1);
   }
+  // "tonight at 1am" is after midnight: the next calendar day, not the hour that has already passed.
+  if (firstDate?.data.partName === 'night' && !rec && date && time && +time.slice(0, 2) < 6) date = addDays(date, 1);
 
-  const cuts = used.map((f) => ({ start: f.start, end: f.end })).map((c) => {
-    const m = DANGLING.exec(text.slice(0, c.start));
+  const cuts = used.map((f) => ({ start: f.start, end: f.end, joined: joined.includes(f) })).map((c) => {
+    const m = (c.joined ? DANGLING_JOINED : DANGLING).exec(text.slice(0, c.start));
     return m ? { start: c.start - m[0].length, end: c.end } : c;
   }).sort((a, b) => a.start - b.start);
   let rest = '', at = 0;
