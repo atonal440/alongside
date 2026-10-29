@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -48,6 +49,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -83,10 +86,13 @@ private fun <T> Set<T>.toggle(item: T) = if (item in this) this - item else this
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun AlongsideSheet(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+/** [sideMargin] leaves a gap each side of the phone, for a sheet that should read as a narrower strip. */
+internal fun AlongsideSheet(onDismiss: () -> Unit, sideMargin: Dp = 0.dp, content: @Composable () -> Unit) {
     val c = LocalColors.current
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetMaxWidth = if (sideMargin > 0.dp) minOf(BottomSheetDefaults.SheetMaxWidth, screenWidth - sideMargin * 2) else BottomSheetDefaults.SheetMaxWidth,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = c.surface,
         scrimColor = c.scrim,

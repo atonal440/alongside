@@ -266,8 +266,8 @@ fun QuickAddSheet(
 
     fun springBack() { scope.launch { tear.animateTo(0f, spring(stiffness = Spring.StiffnessMedium)) } }
 
-    AlongsideSheet(onDismiss) {
-        Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 20.dp)) {
+    AlongsideSheet(onDismiss, sideMargin = 22.dp) {
+        Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 16.dp)) {
             QuickAddHeader(debug) { debug = !debug }
             Column(
                 Modifier.weight(1f, fill = false).graphicsLayer {
@@ -662,7 +662,7 @@ private fun Composer(
 }
 
 private fun optionalLabel(line: TapeLine) = when (line) {
-    TapeLine.Kickoff -> "Kickoff note"
+    TapeLine.Kickoff -> "Kickoff"
     TapeLine.NotBefore -> "Not before"
     else -> "Waiting on"
 }
