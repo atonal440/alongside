@@ -12,15 +12,14 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 import java.time.LocalDateTime
 
 /**
- * Runs the table shared with the JS prototype (`scripts/llm-lab/fixtures/parse-cases.json`), so the two
- * parsers cannot drift apart unnoticed. Gradle runs unit tests from the module directory (`app/app`).
+ * Runs the spec table (`src/test/resources/quickadd-parse-cases.json`): each row is an input, the clock it is parsed
+ * at, and the expected date, time, repeat and leftover text. The lab (`scripts/llm-lab`) reads the same file.
  */
 class QuickAddParserTest {
-    private val fixture = Json.parseToJsonElement(File("../../scripts/llm-lab/fixtures/parse-cases.json").readText()).jsonObject
+    private val fixture = Json.parseToJsonElement(checkNotNull(javaClass.classLoader.getResource("quickadd-parse-cases.json")).readText()).jsonObject
     private val defaultNow = LocalDateTime.parse(fixture.getValue("now").jsonPrimitive.content)
 
     private fun JsonObject.str(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content

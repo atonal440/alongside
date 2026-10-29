@@ -6,8 +6,8 @@ import java.time.LocalTime
 
 /**
  * Deterministic date, time and recurrence extraction for quick-add text, so the on-device model never
- * does calendar arithmetic. A line-for-line port of `scripts/llm-lab/nlparse.mjs`; both run the cases in
- * `scripts/llm-lab/fixtures/parse-cases.json`, so change them together.
+ * does calendar arithmetic. The cases in `app/app/src/test/resources/quickadd-parse-cases.json` are its spec: add a case
+ * for every phrasing you fix.
  *
  * A table of regexes ([rules]) each claims a span and says what it means. Overlaps go to the longest span.
  * The claimed spans are cut out of the text, which leaves [Parsed.rest] for the model. Everything resolves
@@ -401,16 +401,23 @@ object QuickAddParser {
             if (n != -1 && n !in 1..5) null else Hit(rec = Rec("MONTHLY", byday = listOf("$n${RR_DAY[wd]}"), nth = n to wd))
         }
         rec("""(?:every|each)\s+other\s+($WD_ANY)\b""") { m -> Hit(rec = Rec("WEEKLY", interval = 2, byday = listOf(RR_DAY[wdIndex(m.g(1)!!)]))) }
-        rec("""(?:every|each)\s+(\d+|other|two|three|four)\s+(day|week|month|year)s?(?:\s+on\s+($WD_LIST(?:$LIST_SEP$WD_LIST)*)|\s+on\s+the\s+(\d{1,2})(?:st|nd|rd|th))?\b""") { m ->
+        // "every 2 weeks on wednesdays": the weekday list belongs to a weekly interval only.
+        rec("""(?:every|each)\s+(\d+|other|two|three|four)\s+weeks?(?:\s+on\s+($WD_LIST(?:$LIST_SEP$WD_LIST)*))?\b""") { m ->
+            val word = m.g(1)!!.lowercase()
+            val interval = if (word == "other") 2 else word.toIntOrNull() ?: NUM_WORD[word]
+            // The worker allows up to 999; nothing a person says needs more than 99, and it keeps the first-occurrence search short.
+            if (interval == null || interval < 1 || interval > 99) null
+            else Hit(rec = Rec("WEEKLY", interval, byday = m.g(2)?.let { bydayOf(it, WD_ANY) }))
+        }
+        // "every 2 months on the 31st": the day of the month belongs to a monthly interval only.
+        rec("""(?:every|each)\s+(\d+|other|two|three|four)\s+(day|month|year)s?(?:\s+on\s+the\s+(\d{1,2})(?:st|nd|rd|th))?\b""") { m ->
             val freq = FREQ_OF_UNIT.getValue(m.g(2)!!.lowercase())
             val word = m.g(1)!!.lowercase()
             val interval = if (word == "other") 2 else word.toIntOrNull() ?: NUM_WORD[word]
-            val dom = m.g(4)?.toInt()
-            // The worker allows up to 999; nothing a person says needs more than 99, and it keeps the first-occurrence search short.
+            val dom = m.g(3)?.toInt()
             if (interval == null || interval < 1 || interval > 99) null
-            // "every 2 months on the 31st": the day of the month belongs to a monthly interval only.
             else if (dom != null && (freq != "MONTHLY" || dom !in 1..31)) null
-            else Hit(rec = Rec(freq, interval, byday = if (freq == "WEEKLY") m.g(3)?.let { bydayOf(it, WD_ANY) } else null, bymonthday = dom?.let { listOf(it) }))
+            else Hit(rec = Rec(freq, interval, bymonthday = dom?.let { listOf(it) }))
         }
         rule(Kind.REC, """\b(weekday|weekend)s\b""") { m, c ->
             if (excluded(m, c)) return@rule null
@@ -613,9 +620,9 @@ object QuickAddParser {
         // The lookbehind keeps it from matching the minutes of "7:05" on their own.
         time("""\b(?:at\s+)?(?<![:\d])($HOUR)(?::([0-5]\d))?\s+(?:in\s+the\s+)?(morning|afternoon|evening|night)\b""") { m ->
             val h = hourOf(m.g(1)!!)
-            // A spelled-out hour needs a clock cue ("at seven in the evening"), or "two night lights" becomes 02:00.
-            val spelled = m.g(1)!!.toIntOrNull() == null
-            if (h < 1 || h > 12 || (spelled && !m.value.startsWith("at", true) && !inThe.containsMatchIn(m.value))) null
+            // A bare number needs a clock cue ("at 7 in the evening", "6 in the morning", "7:05 evening"), or "2 night lights"
+            // and "3 evening dresses" become times.
+            if (h < 1 || h > 12 || (m.g(2) == null && !m.value.startsWith("at", true) && !inThe.containsMatchIn(m.value))) null
             else Hit(time = hhmm(dayPartHour(h, m.g(3)!!.lowercase()) * 60 + (m.g(2)?.toInt() ?: 0)))
         }
         time("""\b(?:at\s+)?($HOUR)\s*o['’]?clock\b""") { m ->
