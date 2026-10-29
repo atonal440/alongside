@@ -154,7 +154,7 @@ rule('date', `\\bday\\s+after\\s+tomorrow\\b`, (_, c) => ({ date: addDays(c.toda
 rule('date', `\\bto?m{1,2}o?r{1,2}ow\\b`, (_, c) => ({ date: addDays(c.today, 1) }));
 rule('date', `\\btoday\\b`, (_, c) => ({ date: c.today }));
 rule('date', `\\b(?:eod|cob)\\b`, (_, c) => ({ date: c.today }));
-rule('date', `\\btonight\\b`, (_, c) => ({ date: c.today, time: '20:00', approx: true }));
+rule('date', `\\btonight\\b`, (_, c) => ({ date: c.today, time: '20:00', timeApprox: true, partName: 'night' }));
 rule('date', `\\b(?:(next|this|coming)\\s+)?(${WD_FULL})\\b`,
   (m, c) => ({ date: weekdayDate(c.today, wdIndex(m[2]), { next: 'nextWeek', this: 'onOrAfter', coming: 'after' }[(m[1] ?? '').toLowerCase()] ?? 'after') }));
 rule('date', `\\b(tues|thurs?|thu|weds?|fri)\\b`, (m, c) => ({ date: weekdayDate(c.today, wdIndex(m[1]), 'after') }));
@@ -287,13 +287,14 @@ export function parse(text, opts = {}) {
   const rec = recPick ? { ...recPick.data.rec, interval: Math.max(recPick.data.rec.interval, ...generic.map((f) => f.data.rec.interval)) } : null;
   let date = firstDate?.data.date ?? null;
   let time = firstTime?.data.time ?? firstDate?.data.time ?? recPick?.data.time ?? null;
-  // "every morning at 7": the day part sits inside the repeat span and settles the hour the same way.
-  const partName = dayPart?.data.partName
-    ?? (recPick?.data.partName && firstTime && !firstTime.data.part && adjacent(recPick, firstTime) ? recPick.data.partName : undefined);
+  // "every morning at 7" and "tonight at 9": a day part carried by a repeat or a date span settles the hour the same way.
+  const partOwner = [recPick, firstDate].find((f) => f?.data.partName && firstTime && !firstTime.data.part && adjacent(f, firstTime));
+  const partName = dayPart?.data.partName ?? partOwner?.data.partName;
   const resolvedByDayPart = !!(partName && firstTime?.data.amb);
   if (resolvedByDayPart) time = hhmm((dayPartHour(firstTime.data.amb.h, partName) * 60 + firstTime.data.amb.min + 1440) % 1440);
   // A repeat's own default time ("every morning" is 09:00) is only a guess when no clock time was given.
-  const approx = [firstDate, resolvedByDayPart ? null : firstTime, firstTime ? null : recPick].some((f) => f?.data.approx) || !!recPick?.data.anchorless;
+  const approx = [firstDate, resolvedByDayPart ? null : firstTime, firstTime ? null : recPick].some((f) => f?.data.approx)
+    || !!recPick?.data.anchorless || (!firstTime && !!firstDate?.data.timeApprox);
 
   const afterNow = (d) => +d > +ctx.today || time == null || +time.slice(0, 2) * 60 + +time.slice(3) > ctx.nowMin;
   if (rec) {

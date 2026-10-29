@@ -73,14 +73,16 @@ object QuickAddParser {
         var date = firstDate?.hit?.date
         var time = firstTime?.hit?.time ?: firstDate?.hit?.time ?: recPick?.hit?.time
         val amb = firstTime?.hit?.amb
-        // "every morning at 7": the day part sits inside the repeat span and settles the hour the same way.
-        val partName = dayPart?.hit?.partName
-            ?: if (recPick?.hit?.partName != null && firstTime != null && !firstTime.hit.part && adjacent(recPick, firstTime)) recPick.hit.partName else null
+        // "every morning at 7" and "tonight at 9": a day part carried by a repeat or a date span settles the hour the same way.
+        val partOwner = listOfNotNull(recPick, firstDate).firstOrNull {
+            it.hit.partName != null && firstTime != null && !firstTime.hit.part && adjacent(it, firstTime)
+        }
+        val partName = dayPart?.hit?.partName ?: partOwner?.hit?.partName
         val resolvedByDayPart = partName != null && amb != null
         if (partName != null && amb != null) time = hhmm((dayPartHour(amb.first, partName) * 60 + amb.second + 1440) % 1440)
         // A repeat's own default time ("every morning" is 09:00) is only a guess when no clock time was given.
         val approx = listOfNotNull(firstDate, if (resolvedByDayPart) null else firstTime, if (firstTime != null) null else recPick)
-            .any { it.hit.approx } || recPick?.hit?.anchorless == true
+            .any { it.hit.approx } || recPick?.hit?.anchorless == true || (firstTime == null && firstDate?.hit?.timeApprox == true)
 
         val timeMin = time?.let { it.substring(0, 2).toInt() * 60 + it.substring(3).toInt() }
         fun afterNow(d: LocalDate) = d.isAfter(ctx.today) || timeMin == null || timeMin > ctx.nowMin
@@ -141,6 +143,8 @@ object QuickAddParser {
         /** A part of the day ("afternoon"), which a clock time in the same phrase overrides. */
         val part: Boolean = false,
         val partName: String? = null,
+        /** The hit carries a default time ("tonight" is 20:00) that is only a guess when no clock time was given. */
+        val timeApprox: Boolean = false,
         /** An ambiguous clock hour as typed (1 to 12) and its minutes, so a day part beside it can settle am or pm. */
         val amb: Pair<Int, Int>? = null,
     )
@@ -324,7 +328,7 @@ object QuickAddParser {
         date("""\bto?m{1,2}o?r{1,2}ow\b""") { _, c -> Hit(date = c.today.plusDays(1)) }
         date("""\btoday\b""") { _, c -> Hit(date = c.today) }
         date("""\b(?:eod|cob)\b""") { _, c -> Hit(date = c.today) }
-        date("""\btonight\b""") { _, c -> Hit(date = c.today, time = "20:00", approx = true) }
+        date("""\btonight\b""") { _, c -> Hit(date = c.today, time = "20:00", timeApprox = true, partName = "night") }
         date("""\b(?:(next|this|coming)\s+)?($WD_FULL)\b""") { m, c ->
             val mode = when (m.g(1)?.lowercase()) { "next" -> Mode.NEXT_WEEK; "this" -> Mode.ON_OR_AFTER; else -> Mode.AFTER }
             Hit(date = weekdayDate(c.today, wdIndex(m.g(2)!!), mode))
