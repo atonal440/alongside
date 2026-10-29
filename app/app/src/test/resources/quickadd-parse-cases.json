@@ -223,6 +223,7 @@
     {"in":"take meds daily except weekends","date":"2026-10-25","time":null,"recurrence":"FREQ=DAILY","rest":"take meds except weekends"},
     {"in":"take pills daily until November 1","date":"2026-10-25","time":null,"recurrence":"FREQ=DAILY","rest":"take pills until November 1"},
     {"in":"buy 2 night lights tomorrow","date":"2026-10-26","time":null,"recurrence":null,"rest":"buy 2 night lights"},
-    {"in":"review every 2 months on mondays starting november 1 2026 at 9am","date":"2026-11-01","time":"09:00","recurrence":"FREQ=MONTHLY;INTERVAL=2","rest":"review on mondays"}
+    {"in":"review every 2 months on mondays starting november 1 2026 at 9am","date":"2026-11-01","time":"09:00","recurrence":"FREQ=MONTHLY;INTERVAL=2","rest":"review on mondays"},
+    {"in":"call this evening about the meeting at 9am","date":"2026-10-25","time":"18:00","recurrence":null,"rest":"call about the meeting at 9am"}
   ]
 }

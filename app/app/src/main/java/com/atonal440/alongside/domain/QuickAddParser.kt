@@ -76,7 +76,9 @@ object QuickAddParser {
         }
         val head = times.firstOrNull()
         val partner = head?.let { h -> times.firstOrNull { it !== h && it.hit.part != h.hit.part && adjacent(it, h) } }
-        val firstTime = if (partner != null && head.hit.part) partner else head
+        val pairedTime = if (partner != null && head.hit.part) partner else head
+        // "call this evening about the meeting at 9am": a clock far from a day part carried by the date is another detail; it stays in the text.
+        val firstTime = if (pairedTime != null && firstDate?.hit?.partName != null && !pairedTime.hit.part && !adjacent(firstDate, pairedTime)) null else pairedTime
         val dayPart = if (partner != null) (if (head.hit.part) head else partner) else null
         val used = picked.filter { it === firstDate || it === firstTime || it === base || it in joined || it === dayPart }
         var date = firstDate?.hit?.date
