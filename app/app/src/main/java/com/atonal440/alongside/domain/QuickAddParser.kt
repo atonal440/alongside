@@ -52,15 +52,30 @@ object QuickAddParser {
         // span that names days ("on fridays") over a generic one ("weekly"); leftover generic ones are cut.
         val recs = picked.filter { it.kind == Kind.REC }
         val recPick = recs.firstOrNull { !it.hit.anchorless } ?: recs.firstOrNull()
+        // The first time phrase wins. A clock time beside a day part refines it: "afternoon at 4pm" is 16:00 and "morning at 7" is
+        // 07:00, with only that day part consumed. A later, unrelated time ("tomorrow morning, dinner at 7pm") stays in the text.
+        val times = picked.filter { it.kind == Kind.TIME }
         val firstDate = picked.firstOrNull { it.kind == Kind.DATE }
-        val firstTime = picked.firstOrNull { it.kind == Kind.TIME }
-        val used = picked.filter { it === firstDate || it === firstTime || it === recPick || (it.kind == Kind.REC && it.hit.anchorless) }
+        fun adjacent(a: Found, b: Found): Boolean {
+            val (x, y) = if (a.start < b.start) a to b else b to a
+            return text.substring(x.end, y.start).all { it.isWhitespace() || it == ',' }
+        }
+        val head = times.firstOrNull()
+        val partner = head?.let { h -> times.firstOrNull { it !== h && it.hit.part != h.hit.part && adjacent(it, h) } }
+        val firstTime = if (partner != null && head.hit.part) partner else head
+        val dayPart = if (partner != null) (if (head.hit.part) head else partner) else null
+        val used = picked.filter {
+            it === firstDate || it === firstTime || it === recPick || (it.kind == Kind.REC && it.hit.anchorless) || it === dayPart
+        }
         // A generic phrase beside a specific one still counts: "biweekly on mondays" keeps its interval.
         val generic = recs.filter { it !== recPick && it.hit.anchorless && it.hit.rec?.freq == recPick?.hit?.rec?.freq }
         val rec = recPick?.hit?.rec?.let { r -> r.copy(interval = maxOf(r.interval, generic.maxOfOrNull { it.hit.rec?.interval ?: 1 } ?: 1)) }
         var date = firstDate?.hit?.date
-        val time = firstTime?.hit?.time ?: firstDate?.hit?.time ?: recPick?.hit?.time
-        val approx = used.any { it.hit.approx } || recPick?.hit?.anchorless == true
+        var time = firstTime?.hit?.time ?: firstDate?.hit?.time ?: recPick?.hit?.time
+        val amb = firstTime?.hit?.amb
+        val resolvedByDayPart = dayPart != null && amb != null
+        if (dayPart != null && amb != null) time = hhmm((dayPartHour(amb.first, dayPart.hit.partName) * 60 + amb.second + 1440) % 1440)
+        val approx = listOfNotNull(firstDate, if (resolvedByDayPart) null else firstTime, recPick).any { it.hit.approx } || recPick?.hit?.anchorless == true
 
         val timeMin = time?.let { it.substring(0, 2).toInt() * 60 + it.substring(3).toInt() }
         fun afterNow(d: LocalDate) = d.isAfter(ctx.today) || timeMin == null || timeMin > ctx.nowMin
@@ -118,6 +133,11 @@ object QuickAddParser {
         val approx: Boolean = false,
         val rec: Rec? = null,
         val anchorless: Boolean = false,
+        /** A part of the day ("afternoon"), which a clock time in the same phrase overrides. */
+        val part: Boolean = false,
+        val partName: String? = null,
+        /** An ambiguous clock hour as typed (1 to 12) and its minutes, so a day part beside it can settle am or pm. */
+        val amb: Pair<Int, Int>? = null,
     )
 
     private class Ctx(val today: LocalDate, val nowMin: Int)
@@ -220,6 +240,13 @@ object QuickAddParser {
 
     // Nobody says "at 5" meaning 5am; 8 to 11 are the morning hours.
     private fun bareHour(h: Int) = if (h in 8..11) h else h % 12 + 12
+
+    // With a day part beside it the hour is no longer a guess: "morning at 7" is 07:00 and "evening at 7" is 19:00.
+    private fun dayPartHour(h: Int, part: String?) = when (part) {
+        "morning" -> h % 12
+        "night" -> if (h == 12) 0 else if (h >= 6) h + 12 else h
+        else -> if (h == 12) 12 else h + 12
+    }
 
     private fun clock(h: Int, min: Int, ap: String): String? {
         if (h < 1 || h > 12 || min > 59) return null
@@ -390,7 +417,7 @@ object QuickAddParser {
         time("""\b(at\s+)?([01]?\d|2[0-3]):([0-5]\d)\b(?!\s*(?:am|pm|a\.m|p\.m))""") { m ->
             val h = m.g(2)!!.toInt()
             // "at 5:30" is the afternoon; "17:30", "09:00" and a bare "5:30" are taken literally.
-            if (m.g(1) != null && h in 1..11 && m.g(2)!!.length == (if (h < 10) 1 else 2)) Hit(time = "${pad(bareHour(h))}:${m.g(3)}", approx = true)
+            if (m.g(1) != null && h in 1..11 && m.g(2)!!.length == (if (h < 10) 1 else 2)) Hit(time = "${pad(bareHour(h))}:${m.g(3)}", approx = true, amb = h to m.g(3)!!.toInt())
             else Hit(time = "${pad(h)}:${m.g(3)}")
         }
         time("""\b(\d{1,2})\s+(?:in\s+the\s+)?(morning|afternoon|evening)\b""") { m ->
@@ -399,23 +426,23 @@ object QuickAddParser {
             else Hit(time = "${pad(if (m.g(2)!!.lowercase() == "morning") h % 12 else h % 12 + 12)}:00")
         }
         time("""\b(?:at\s+)?(\d{1,2})\s*o['’]?clock\b""") { m ->
-            m.g(1)!!.toInt().takeIf { it in 1..12 }?.let { Hit(time = "${pad(bareHour(it))}:00", approx = true) }
+            m.g(1)!!.toInt().takeIf { it in 1..12 }?.let { Hit(time = "${pad(bareHour(it))}:00", approx = true, amb = it to 0) }
         }
         time("""\bhalf\s+past\s+(\d{1,2})\b""") { m ->
-            m.g(1)!!.toInt().takeIf { it in 1..12 }?.let { Hit(time = "${pad(bareHour(it))}:30", approx = true) }
+            m.g(1)!!.toInt().takeIf { it in 1..12 }?.let { Hit(time = "${pad(bareHour(it))}:30", approx = true, amb = it to 30) }
         }
         time("""\bquarter\s+(past|to)\s+(\d{1,2})\b""") { m ->
             val h = m.g(2)!!.toInt()
             if (h < 1 || h > 12) null
-            else if (m.g(1)!!.lowercase() == "past") Hit(time = "${pad(bareHour(h))}:15", approx = true)
+            else if (m.g(1)!!.lowercase() == "past") Hit(time = "${pad(bareHour(h))}:15", approx = true, amb = h to 15)
             // Resolve the named hour first ("quarter to 8" is 07:45, as "at 8" is the morning), then step back a quarter.
-            else Hit(time = hhmm((bareHour(h) * 60 - 15 + 1440) % 1440), approx = true)
+            else Hit(time = hhmm((bareHour(h) * 60 - 15 + 1440) % 1440), approx = true, amb = h to -15)
         }
-        time("""(?<=\b(?:tomorrow|tonight|today|$WD_FULL)\s)night\b""") { Hit(time = PART_OF_DAY.getValue("night"), approx = true) }
+        time("""(?<=\b(?:tomorrow|tonight|today|$WD_FULL)\s)night\b""") { Hit(time = PART_OF_DAY.getValue("night"), approx = true, part = true, partName = "night") }
         time("""\bat\s+(\d{1,2})\b(?!\s*(?:st|nd|rd|th|:|/|am|pm|\d))""") { m ->
-            m.g(1)!!.toInt().takeIf { it in 1..12 }?.let { Hit(time = "${pad(bareHour(it))}:00", approx = true) }
+            m.g(1)!!.toInt().takeIf { it in 1..12 }?.let { Hit(time = "${pad(bareHour(it))}:00", approx = true, amb = it to 0) }
         }
         time("""\b(?:at\s+)?(noon|midday|midnight)\b""") { m -> Hit(time = if (m.g(1)!!.lowercase() == "midnight") "00:00" else "12:00") }
-        time("""\b(?:in\s+the\s+)?(morning|afternoon|evening)\b""") { m -> Hit(time = PART_OF_DAY.getValue(m.g(1)!!.lowercase()), approx = true) }
+        time("""\b(?:in\s+the\s+)?(morning|afternoon|evening)\b""") { m -> Hit(time = PART_OF_DAY.getValue(m.g(1)!!.lowercase()), approx = true, part = true, partName = m.g(1)!!.lowercase()) }
     }
 }

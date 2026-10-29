@@ -213,6 +213,8 @@ rule('date', `\\b(?:on\\s+)?the\\s+(\\d{1,2})(?:st|nd|rd|th)\\b(?=\\s*(?:$|[,.;:
 // ---- times ----
 // Nobody says "at 5" meaning 5am; 8 to 11 are the morning hours.
 const bareHour = (h) => (h >= 8 && h <= 11 ? h : (h % 12) + 12);
+// With a day part beside it the hour is no longer a guess: "morning at 7" is 07:00 and "evening at 7" is 19:00.
+const dayPartHour = (h, part) => (part === 'morning' ? h % 12 : part === 'night' ? (h === 12 ? 0 : h >= 6 ? h + 12 : h) : h === 12 ? 12 : h + 12);
 const clock = (h, min, ap) => {
   if (h < 1 || h > 12 || min > 59) return null;
   return `${pad((h % 12) + (/^p/i.test(ap) ? 12 : 0))}:${pad(min)}`;
@@ -222,26 +224,27 @@ rule('time', `\\b(?:at\\s+)?(\\d{1,2})(?::(\\d{2}))?\\s*(a\\.?m\\.?|p\\.?m\\.?)(
 rule('time', `\\b(at\\s+)?([01]?\\d|2[0-3]):([0-5]\\d)\\b(?!\\s*(?:am|pm|a\\.m|p\\.m))`, (m) => {
   const h = +m[2];
   // "at 5:30" is the afternoon; "17:30", "09:00" and a bare "5:30" are taken literally.
-  return m[1] && h >= 1 && h <= 11 && m[2].length === (h < 10 ? 1 : 2) ? { time: `${pad(bareHour(h))}:${m[3]}`, approx: true } : { time: `${pad(h)}:${m[3]}` };
+  return m[1] && h >= 1 && h <= 11 && m[2].length === (h < 10 ? 1 : 2) ? { time: `${pad(bareHour(h))}:${m[3]}`, approx: true, amb: { h, min: +m[3] } } : { time: `${pad(h)}:${m[3]}` };
 });
 rule('time', `\\b(\\d{1,2})\\s+(?:in\\s+the\\s+)?(morning|afternoon|evening)\\b`, (m) => {
   const h = +m[1]; if (h < 1 || h > 12) return null;
   return { time: `${pad(m[2].toLowerCase() === 'morning' ? h % 12 : (h % 12) + 12)}:00` };
 });
-rule('time', `\\b(?:at\\s+)?(\\d{1,2})\\s*o['\u2019]?clock\\b`, (m) => (+m[1] >= 1 && +m[1] <= 12 ? { time: `${pad(bareHour(+m[1]))}:00`, approx: true } : null));
-rule('time', `\\bhalf\\s+past\\s+(\\d{1,2})\\b`, (m) => (+m[1] >= 1 && +m[1] <= 12 ? { time: `${pad(bareHour(+m[1]))}:30`, approx: true } : null));
+rule('time', `\\b(?:at\\s+)?(\\d{1,2})\\s*o['\u2019]?clock\\b`, (m) => (+m[1] >= 1 && +m[1] <= 12 ? { time: `${pad(bareHour(+m[1]))}:00`, approx: true, amb: { h: +m[1], min: 0 } } : null));
+rule('time', `\\bhalf\\s+past\\s+(\\d{1,2})\\b`, (m) => (+m[1] >= 1 && +m[1] <= 12 ? { time: `${pad(bareHour(+m[1]))}:30`, approx: true, amb: { h: +m[1], min: 30 } } : null));
 rule('time', `\\bquarter\\s+(past|to)\\s+(\\d{1,2})\\b`, (m) => {
   const h = +m[2]; if (h < 1 || h > 12) return null;
   // Resolve the named hour first ("quarter to 8" is 07:45, as "at 8" is the morning), then step back a quarter.
-  return m[1].toLowerCase() === 'past' ? { time: `${pad(bareHour(h))}:15`, approx: true } : { time: hhmm((bareHour(h) * 60 - 15 + 1440) % 1440), approx: true };
+  return m[1].toLowerCase() === 'past' ? { time: `${pad(bareHour(h))}:15`, approx: true, amb: { h, min: 15 } }
+    : { time: hhmm((bareHour(h) * 60 - 15 + 1440) % 1440), approx: true, amb: { h, min: -15 } };
 });
-rule('time', `(?<=\\b(?:tomorrow|tonight|today|${WD_FULL})\\s)night\\b`, () => ({ time: PART_OF_DAY.night, approx: true }));
+rule('time', `(?<=\\b(?:tomorrow|tonight|today|${WD_FULL})\\s)night\\b`, () => ({ time: PART_OF_DAY.night, approx: true, part: true, partName: 'night' }));
 rule('time', `\\bat\\s+(\\d{1,2})\\b(?!\\s*(?:st|nd|rd|th|:|/|am|pm|\\d))`, (m) => {
   const h = +m[1]; if (h < 1 || h > 12) return null;
-  return { time: `${pad(bareHour(h))}:00`, approx: true };
+  return { time: `${pad(bareHour(h))}:00`, approx: true, amb: { h, min: 0 } };
 });
 rule('time', `\\b(?:at\\s+)?(noon|midday|midnight)\\b`, (m) => ({ time: /midnight/i.test(m[1]) ? '00:00' : '12:00' }));
-rule('time', `\\b(?:in\\s+the\\s+)?(morning|afternoon|evening)\\b`, (m) => ({ time: PART_OF_DAY[m[1].toLowerCase()], approx: true }));
+rule('time', `\\b(?:in\\s+the\\s+)?(morning|afternoon|evening)\\b`, (m) => ({ time: PART_OF_DAY[m[1].toLowerCase()], approx: true, part: true, partName: m[1].toLowerCase() }));
 
 const DANGLING = /(?:\s*,|\s+(?:on|at|by|due|before|until|from|starting|each))+\s*$/i;
 
@@ -269,14 +272,24 @@ export function parse(text, opts = {}) {
   // span that names days ("on fridays") over a generic one ("weekly"); leftover generic ones are cut.
   const recs = picked.filter((f) => f.kind === 'rec');
   const recPick = recs.find((f) => !f.data.anchorless) ?? recs[0];
-  const firstDate = picked.find((f) => f.kind === 'date'), firstTime = picked.find((f) => f.kind === 'time');
-  const used = picked.filter((f) => f === firstDate || f === firstTime || f === recPick || (f.kind === 'rec' && f.data.anchorless));
+  // The first time phrase wins. A clock time beside a day part refines it: "afternoon at 4pm" is 16:00 and "morning at 7" is
+  // 07:00, with only that day part consumed. A later, unrelated time ("tomorrow morning, dinner at 7pm") stays in the text.
+  const times = picked.filter((f) => f.kind === 'time');
+  const firstDate = picked.find((f) => f.kind === 'date');
+  const adjacent = (a, b) => { const [x, y] = a.start < b.start ? [a, b] : [b, a]; return /^[\s,]*$/.test(text.slice(x.end, y.start)); };
+  const head = times[0];
+  const partner = head ? times.find((f) => f !== head && !!f.data.part !== !!head.data.part && adjacent(f, head)) : undefined;
+  const firstTime = partner && head.data.part ? partner : head;
+  const dayPart = partner ? (head.data.part ? head : partner) : undefined;
+  const used = picked.filter((f) => f === firstDate || f === firstTime || f === recPick || (f.kind === 'rec' && f.data.anchorless) || f === dayPart);
   // A generic phrase beside a specific one still counts: "biweekly on mondays" keeps its interval.
   const generic = recs.filter((f) => f !== recPick && f.data.anchorless && f.data.rec.freq === recPick?.data.rec.freq);
   const rec = recPick ? { ...recPick.data.rec, interval: Math.max(recPick.data.rec.interval, ...generic.map((f) => f.data.rec.interval)) } : null;
   let date = firstDate?.data.date ?? null;
-  const time = firstTime?.data.time ?? firstDate?.data.time ?? recPick?.data.time ?? null;
-  const approx = used.some((f) => f.data.approx) || !!recPick?.data.anchorless;
+  let time = firstTime?.data.time ?? firstDate?.data.time ?? recPick?.data.time ?? null;
+  const resolvedByDayPart = !!(dayPart && firstTime.data.amb);
+  if (resolvedByDayPart) time = hhmm((dayPartHour(firstTime.data.amb.h, dayPart.data.partName) * 60 + firstTime.data.amb.min + 1440) % 1440);
+  const approx = [firstDate, resolvedByDayPart ? null : firstTime, recPick].some((f) => f?.data.approx) || !!recPick?.data.anchorless;
 
   const afterNow = (d) => +d > +ctx.today || time == null || +time.slice(0, 2) * 60 + +time.slice(3) > ctx.nowMin;
   if (rec) {

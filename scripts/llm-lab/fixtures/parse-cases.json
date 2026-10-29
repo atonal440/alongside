@@ -144,6 +144,20 @@
     {"in":"party 15 nov 2026","date":"2026-11-15","time":null,"recurrence":null,"rest":"party"},
     {"in":"pay rent every 2nd tuesday","date":"2026-11-10","time":null,"recurrence":"FREQ=MONTHLY;BYDAY=2TU","rest":"pay rent"},
     {"in":"book club every 3rd friday","date":"2026-11-20","time":null,"recurrence":"FREQ=MONTHLY;BYDAY=3FR","rest":"book club"},
-    {"in":"file receipts every 15th","date":"2026-11-15","time":null,"recurrence":"FREQ=MONTHLY;BYMONTHDAY=15","rest":"file receipts"}
+    {"in":"file receipts every 15th","date":"2026-11-15","time":null,"recurrence":"FREQ=MONTHLY;BYMONTHDAY=15","rest":"file receipts"},
+    {"in":"call tomorrow afternoon at 4pm","date":"2026-10-26","time":"16:00","recurrence":null,"rest":"call"},
+    {"in":"tomorrow morning at 10am","date":"2026-10-26","time":"10:00","recurrence":null,"rest":""},
+    {"in":"dinner tomorrow evening at 7","date":"2026-10-26","time":"19:00","recurrence":null,"rest":"dinner"},
+    {"in":"call tomorrow morning at 7","date":"2026-10-26","time":"07:00","recurrence":null,"rest":"call"},
+    {"in":"call tomorrow evening at 10","date":"2026-10-26","time":"22:00","recurrence":null,"rest":"call"},
+    {"in":"call at 4pm, prepare slides tomorrow morning","date":"2026-10-26","time":"16:00","recurrence":null,"rest":"call, prepare slides morning"},
+    {"in":"call tomorrow morning half past 7","date":"2026-10-26","time":"07:30","recurrence":null,"rest":"call"},
+    {"in":"call tomorrow evening quarter to 8","date":"2026-10-26","time":"19:45","recurrence":null,"rest":"call"},
+    {"in":"call tomorrow morning at 12","date":"2026-10-26","time":"00:00","recurrence":null,"rest":"call"},
+    {"in":"call tomorrow morning, dinner at 7pm","date":"2026-10-26","time":"09:00","recurrence":null,"rest":"call, dinner at 7pm"},
+    {"in":"call at 4pm tomorrow afternoon","date":"2026-10-26","time":"16:00","recurrence":null,"rest":"call afternoon"},
+    {"in":"call tomorrow morning, friday at 7pm","date":"2026-10-26","time":"09:00","recurrence":null,"rest":"call, friday at 7pm"},
+    {"in":"call tomorrow night quarter to 6","date":"2026-10-26","time":"17:45","recurrence":null,"rest":"call"},
+    {"in":"call tomorrow morning quarter to 1","date":"2026-10-26","time":"00:45","recurrence":null,"rest":"call"}
   ]
 }
