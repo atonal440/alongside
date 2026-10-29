@@ -1,6 +1,7 @@
 package com.atonal440.alongside.data.sync
 
 import com.atonal440.alongside.data.Task
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -48,10 +49,18 @@ fun buildEnvelope(op: QueuedOp, ctx: BuildContext): JsonObject {
             put("values", buildJsonObject {
                 put("title", intent.title)
                 put("notes", intent.notes.json())
-                put("kickoffNote", JsonNull)
+                put("kickoffNote", intent.kickoffNote.json())
                 put("taskType", intent.taskType)
                 put("project", JsonNull)
             })
+        })
+    }
+    if (intent is Intent.Block) {
+        // A link has no row of its own; a base of null means the link has never existed.
+        return wrap(buildJsonObject {
+            put("kind", "link.add"); put("from", intent.blockerId); put("to", intent.taskId); put("linkType", "blocks")
+            put("expectedRevision", op.base)
+            put("expectedStructuralRevision", structural)
         })
     }
     val base = op.base ?: throw EnvelopeRefused("This change has no base revision to guard against.")
@@ -75,6 +84,17 @@ fun buildEnvelope(op: QueuedOp, ctx: BuildContext): JsonObject {
                     put("recurrence", (if (intent.setsRecurrence) intent.recurrence else row.recurrence).json())
                 })
             }
+            is Intent.SetAvailableFrom -> buildJsonObject {
+                put("kind", "task.dates.set"); put("id", id); put("expectedRevision", base)
+                put("values", buildJsonObject {
+                    put("availableFrom", intent.date?.let { d -> buildJsonObject { put("kind", "date"); put("date", d); put("timezone", intent.timezone) } } ?: JsonNull)
+                    // The command replaces both dates; the deadline goes back as the server holds it (JSON text).
+                    put("deadline", row.deadline?.let { text ->
+                        runCatching { Json.parseToJsonElement(text) }.getOrNull() ?: throw EnvelopeRefused("The task's deadline couldn't be read, so its opening day wasn't changed.")
+                    } ?: JsonNull)
+                })
+            }
+            is Intent.Block -> error("handled above")
             is Intent.Defer -> buildJsonObject {
                 put("kind", "task.defer.set"); put("id", id); put("expectedRevision", base)
                 put("defer", buildJsonObject {

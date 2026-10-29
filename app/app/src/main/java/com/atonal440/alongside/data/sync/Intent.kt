@@ -27,7 +27,13 @@ sealed interface Intent {
     fun describe(): String
 
     @Serializable @SerialName("task.create")
-    data class Create(override val taskId: String, val title: String, val notes: String?, val taskType: String) : Intent {
+    data class Create(
+        override val taskId: String,
+        val title: String,
+        val notes: String?,
+        val taskType: String,
+        val kickoffNote: String? = null,
+    ) : Intent {
         override fun describe() = "Create “$title”"
     }
 
@@ -54,6 +60,30 @@ sealed interface Intent {
             recurrence = if (setsRecurrence) recurrence else task.recurrence,
         )
         override fun describe() = "Change due date"
+    }
+
+    /**
+     * Sets (or clears, when [date] is null) the day the task opens: a local calendar date in [timezone], the
+     * worker's `task.dates.set`. That command replaces availability and deadline together, so the envelope
+     * carries the server's current deadline through unchanged.
+     */
+    @Serializable @SerialName("task.availability")
+    data class SetAvailableFrom(override val taskId: String, val date: String?, val timezone: String) : Intent {
+        override fun apply(task: Task, at: String) = task.copy(
+            available_from = date?.let { """{"kind":"date","date":"$it","timezone":"$timezone"}""" }, updated_at = at,
+        )
+        override fun describe() = "Change when a task opens"
+    }
+
+    /**
+     * Makes [blockerId] a prerequisite of [taskId] (`blocks` runs from the blocker to the task it holds back).
+     * It writes the link's own identity, so its base is the link's revision: null for a link never seen, a
+     * tombstone's revision for one that was removed.
+     */
+    @Serializable @SerialName("link.block")
+    data class Block(override val taskId: String, val blockerId: String) : Intent {
+        override val writes get() = listOf(identity("link", linkKey(blockerId, taskId, "blocks")))
+        override fun describe() = "Mark a task as waiting on another"
     }
 
     /** [kind] is `none`, `someday` or `until`; deferring clears focus on the server, so it does here. */
@@ -110,7 +140,8 @@ sealed interface Intent {
 }
 
 /** Does this intent touch [taskId] (as its target, or as the successor it will create)? */
-fun Intent.references(taskId: String): Boolean = this.taskId == taskId || (this is Intent.Complete && successorId == taskId)
+fun Intent.references(taskId: String): Boolean =
+    this.taskId == taskId || (this is Intent.Complete && successorId == taskId) || (this is Intent.Block && blockerId == taskId)
 
 private val random = SecureRandom()
 private const val ID_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"

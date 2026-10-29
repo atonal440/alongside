@@ -161,6 +161,9 @@ class Repository private constructor(private val context: Context) {
         due: LocalDate?,
         dueTime: LocalTime? = null,
         recurrence: String? = null,
+        kickoffNote: String? = null,
+        availableFrom: LocalDate? = null,
+        waitingOn: List<String> = emptyList(),
     ) {
         val id = mintId("t")
         // Project and due date are their own commands, each guarded by the revision the create gives the task.
@@ -168,12 +171,14 @@ class Repository private constructor(private val context: Context) {
         // and, being date-only, drops the time (see dueSchedule).
         write(
             *listOfNotNull<Intent>(
-                Intent.Create(id, title, notes, if (plan) "plan" else "action"),
+                Intent.Create(id, title, notes, if (plan) "plan" else "action", kickoffNote),
                 projectId?.let { Intent.SetProject(id, it) },
                 due?.let {
                     val s = dueSchedule(it, dueTime, recurrence, Clock.zone)
                     Intent.SetDue(id, s.dueDate, dueAllDay = s.allDay, recurrence = s.recurrence, setsRecurrence = s.recurrence != null)
                 },
+                availableFrom?.let { Intent.SetAvailableFrom(id, it.toString(), Clock.zone.id) },
+                *waitingOn.distinct().map { Intent.Block(id, it) }.toTypedArray(),
             ).toTypedArray(),
         )
     }

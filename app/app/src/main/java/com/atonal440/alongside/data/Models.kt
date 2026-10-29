@@ -76,6 +76,7 @@ data class TaskLink(
 object TaskLimits {
     const val TITLE_MAX = 200
     const val NOTES_MAX = 10_000
+    const val KICKOFF_MAX = 2_000
 }
 
 /** Everything the app shows, as last read from the worker (or the sample set). */
