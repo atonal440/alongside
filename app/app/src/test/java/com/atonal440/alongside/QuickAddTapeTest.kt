@@ -109,4 +109,38 @@ class QuickAddTapeTest {
         assertFalse(TapeDraft(title = "x".repeat(201)).canTear)
         assertFalse(TapeDraft(title = "x", notes = "n".repeat(10_001)).canTear)
     }
+
+    @Test fun `optional sections are never asked for`() {
+        var d = TapeDraft().printWhat(parse("buy stamps")).skip(TapeLine.When).skip(TapeLine.Notes).skip(TapeLine.Project)
+        assertNull(d.pending(true))
+        d = d.printKickoff("start with the post office hours")
+        assertEquals("start with the post office hours", d.kickoff)
+        assertTrue(TapeLine.Kickoff in d.printed)
+        assertEquals(d, d.printKickoff("   "))
+    }
+
+    @Test fun `an answer to not before needs a day`() {
+        val d = TapeDraft().printWhat(parse("buy stamps"))
+        assertEquals(d, d.printNotBefore(parse("whenever")))
+        val set = d.printNotBefore(parse("next monday"))
+        assertEquals(LocalDate.parse("2026-11-02"), set.availableFrom)
+        assertTrue(TapeLine.NotBefore in set.printed)
+        assertNull(set.remove(TapeLine.NotBefore).availableFrom)
+    }
+
+    @Test fun `waiting on collects tasks and the last one removed takes the line away`() {
+        var d = TapeDraft().printWhat(parse("buy stamps")).printWaiting("t_a").printWaiting("t_b").printWaiting("t_a")
+        assertEquals(listOf("t_a", "t_b"), d.waitingOn)
+        d = d.stopWaitingOn("t_a")
+        assertEquals(listOf("t_b"), d.waitingOn)
+        assertTrue(TapeLine.Waiting in d.printed)
+        d = d.stopWaitingOn("t_b")
+        assertTrue(d.waitingOn.isEmpty())
+        assertFalse(TapeLine.Waiting in d.printed)
+    }
+
+    @Test fun `a kickoff note over the limit cannot be torn off`() {
+        assertTrue(TapeDraft(title = "x", kickoff = "k".repeat(2_000)).canTear)
+        assertFalse(TapeDraft(title = "x", kickoff = "k".repeat(2_001)).canTear)
+    }
 }

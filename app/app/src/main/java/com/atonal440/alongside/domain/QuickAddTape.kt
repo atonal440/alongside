@@ -6,7 +6,15 @@ import java.time.LocalDate
 import java.time.LocalTime
 
 /** One printed element of the quick-add sheet. Each is a small piece of ordinary UI the person can edit. */
-enum class TapeLine { What, When, Notes, Project }
+enum class TapeLine {
+    What, When, Notes, Project,
+
+    /** Optional sections the person adds when they want them; they are never asked for. */
+    Kickoff, NotBefore, Waiting,
+}
+
+/** The sections offered as "add" chips rather than asked for. */
+val OptionalLines = listOf(TapeLine.Kickoff, TapeLine.NotBefore, TapeLine.Waiting)
 
 /**
  * The task being built on the quick-add sheet. Lines are printed in the order they were answered; a line that
@@ -26,13 +34,20 @@ data class TapeDraft(
     /** A time the sentence gave alongside a repeat, left out because the worker's repeat is date-only. */
     val droppedTime: LocalTime? = null,
     val projectId: String? = null,
+    /** What future-you needs when picking the task up; the most prominent field on the detail screen. */
+    val kickoff: String = "",
+    /** The day the task opens. */
+    val availableFrom: LocalDate? = null,
+    /** Ids of existing tasks this one waits on, in the order they were picked. */
+    val waitingOn: List<String> = emptyList(),
     val printed: List<TapeLine> = emptyList(),
     /** Questions the person passed on, so they are not asked again. */
     val skipped: Set<TapeLine> = emptySet(),
 ) {
     val titleTooLong get() = title.trim().length > TaskLimits.TITLE_MAX
     val notesTooLong get() = notes.trim().length > TaskLimits.NOTES_MAX
-    val canTear get() = title.isNotBlank() && !titleTooLong && !notesTooLong
+    val kickoffTooLong get() = kickoff.trim().length > TaskLimits.KICKOFF_MAX
+    val canTear get() = title.isNotBlank() && !titleTooLong && !notesTooLong && !kickoffTooLong
 
     /** The next question to ask, or null when everything has been answered or passed on. */
     fun pending(hasProjects: Boolean): TapeLine? = when {
@@ -67,6 +82,22 @@ data class TapeDraft(
 
     fun printNotes(text: String): TapeDraft = if (text.isBlank()) this else copy(notes = text.trim()).print(TapeLine.Notes)
 
+    fun printKickoff(text: String): TapeDraft = if (text.isBlank()) this else copy(kickoff = text.trim()).print(TapeLine.Kickoff)
+
+    /** An answer to "not before?": prints the line only if a day was found, like [printWhen]. */
+    fun printNotBefore(parsed: QuickAddParser.Parsed): TapeDraft =
+        if (parsed.date == null) this else copy(availableFrom = parsed.date).print(TapeLine.NotBefore)
+
+    fun withAvailableFrom(day: LocalDate): TapeDraft = copy(availableFrom = day)
+
+    /** Adds [id] to what the task waits on (a task already listed is left where it was). */
+    fun printWaiting(id: String): TapeDraft = copy(waitingOn = if (id in waitingOn) waitingOn else waitingOn + id).print(TapeLine.Waiting)
+
+    fun stopWaitingOn(id: String): TapeDraft {
+        val rest = waitingOn - id
+        return if (rest.isEmpty()) remove(TapeLine.Waiting) else copy(waitingOn = rest)
+    }
+
     fun printProject(id: String?): TapeDraft = copy(projectId = id).print(TapeLine.Project)
 
     fun skip(line: TapeLine): TapeDraft = copy(skipped = skipped + line)
@@ -78,6 +109,9 @@ data class TapeDraft(
             TapeLine.When -> copy(date = null, time = null, recurrence = null, approx = false, droppedTime = null)
             TapeLine.Notes -> copy(notes = "")
             TapeLine.Project -> copy(projectId = null)
+            TapeLine.Kickoff -> copy(kickoff = "")
+            TapeLine.NotBefore -> copy(availableFrom = null)
+            TapeLine.Waiting -> copy(waitingOn = emptyList())
         }
         return cleared.copy(printed = printed - line, skipped = skipped + line)
     }

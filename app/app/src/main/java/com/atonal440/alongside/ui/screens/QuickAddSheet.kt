@@ -56,11 +56,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -71,6 +74,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.atonal440.alongside.data.TaskLimits
+import com.atonal440.alongside.data.Task
 import com.atonal440.alongside.data.ai.ModelAvailability
 import com.atonal440.alongside.data.ai.OnDeviceQuickAdd
 import com.atonal440.alongside.domain.Board
@@ -78,6 +82,7 @@ import com.atonal440.alongside.domain.Clock
 import com.atonal440.alongside.domain.INBOX
 import com.atonal440.alongside.domain.QuickAddParser
 import com.atonal440.alongside.domain.TapeDraft
+import com.atonal440.alongside.domain.OptionalLines
 import com.atonal440.alongside.domain.TapeLine
 import com.atonal440.alongside.domain.friendlyDay
 import com.atonal440.alongside.domain.recurrenceLabel
@@ -127,11 +132,17 @@ private fun question(line: TapeLine) = when (line) {
     TapeLine.When -> "When? A day, a time or a repeat."
     TapeLine.Notes -> "Anything to remember about it?"
     TapeLine.Project -> "Which project does it belong to?"
+    TapeLine.Kickoff -> "What will future-you need to get going?"
+    TapeLine.NotBefore -> "Not before when? A day it opens."
+    TapeLine.Waiting -> "What is it waiting on? Pick a task."
 }
 
 private fun example(line: TapeLine) = when (line) {
     TapeLine.What -> "water plants every sunday at 9am"
     TapeLine.When -> "friday at 5pm"
+    TapeLine.Kickoff -> "where I left off, what to open first"
+    TapeLine.NotBefore -> "next monday"
+    TapeLine.Waiting -> "search your tasks"
     else -> "a note to future you"
 }
 
@@ -148,7 +159,7 @@ fun QuickAddSheet(
     board: Board,
     initialProject: String?,
     quickAdd: OnDeviceQuickAdd,
-    onCreate: (title: String, notes: String?, projectId: String?, plan: Boolean, due: LocalDate?, dueTime: LocalTime?, recurrence: String?) -> Unit,
+    onCreate: (TapeDraft) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val c = LocalColors.current
@@ -159,6 +170,8 @@ fun QuickAddSheet(
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var whenMissed by remember { mutableStateOf(false) }
+    // An optional section the person asked to add; it takes the composer until answered or dropped.
+    var asking by remember { mutableStateOf<TapeLine?>(null) }
     var availability by remember { mutableStateOf<Pair<ModelAvailability, String?>?>(null) }
     var downloadLine by remember { mutableStateOf<String?>(null) }
     var debug by remember { mutableStateOf(false) }
@@ -181,7 +194,7 @@ fun QuickAddSheet(
         tapeScroll.animateScrollTo(tapeScroll.maxValue)
     }
 
-    val pending = draft.pending(hasProjects = projects.isNotEmpty())
+    val active = asking ?: draft.pending(hasProjects = projects.isNotEmpty())
 
     // The parser answers at once; the model then fills in title, notes and kind from what is left of the sentence.
     fun sayWhat(text: String) {
@@ -215,8 +228,14 @@ fun QuickAddSheet(
     fun submit() {
         val text = input.trim()
         if (text.isEmpty() || busy) return
-        when (pending) {
+        when (active) {
             TapeLine.What -> sayWhat(text)
+            TapeLine.Kickoff -> { draft = draft.printKickoff(text); input = ""; asking = null }
+            TapeLine.NotBefore -> {
+                val next = draft.printNotBefore(QuickAddParser.parse(text))
+                whenMissed = next == draft
+                if (!whenMissed) { draft = next; input = ""; asking = null }
+            }
             TapeLine.When -> {
                 val next = draft.printWhen(QuickAddParser.parse(text))
                 whenMissed = next == draft
@@ -233,11 +252,16 @@ fun QuickAddSheet(
         tearing = true
         scope.launch {
             tear.animateTo(1400f, tween(240))
-            val d = draft
-            val due = d.date
-            onCreate(d.title, d.notes, d.projectId, d.plan, due, d.time.takeIf { due != null }, d.recurrence.takeIf { due != null })
+            onCreate(draft)
             onDismiss()
         }
+    }
+
+    // Open tasks the new one could wait on, filtered by what has been typed while that section is open.
+    val candidates = remember(board, input, active, draft.waitingOn) {
+        if (active != TapeLine.Waiting) emptyList()
+        else board.ws.tasks.filter { it.status == "pending" && it.id !in draft.waitingOn && it.title.contains(input.trim(), ignoreCase = true) }
+            .sortedByDescending { it.updated_at }.take(12)
     }
 
     fun springBack() { scope.launch { tear.animateTo(0f, spring(stiffness = Spring.StiffnessMedium)) } }
@@ -271,6 +295,9 @@ fun QuickAddSheet(
                                     TapeLine.When -> WhenCard(draft, onChange = { draft = it }, onRemove = { draft = draft.remove(TapeLine.When) })
                                     TapeLine.Notes -> NotesCard(draft, onChange = { draft = it }, onRemove = { draft = draft.remove(TapeLine.Notes) })
                                     TapeLine.Project -> ProjectCard(draft, board, onPick = { draft = draft.printProject(it) }, onRemove = { draft = draft.remove(TapeLine.Project) })
+                                    TapeLine.Kickoff -> KickoffCard(draft, onChange = { draft = it }, onRemove = { draft = draft.remove(TapeLine.Kickoff) })
+                                    TapeLine.NotBefore -> NotBeforeCard(draft, onChange = { draft = it }, onRemove = { draft = draft.remove(TapeLine.NotBefore) })
+                                    TapeLine.Waiting -> WaitingCard(draft, board, onStop = { draft = draft.stopWaitingOn(it) }, onAddAnother = { if (input.isBlank()) asking = TapeLine.Waiting }, onRemove = { draft = draft.remove(TapeLine.Waiting) })
                                 }
                             }
                         }
@@ -280,10 +307,13 @@ fun QuickAddSheet(
                 if (draft.canTear) TearLine(tear, onRelease = { if (tear.value > 90f) tearOff() else springBack() }, onCancel = ::springBack, onTearByAction = ::tearOff)
             }
             Composer(
-                pending = pending, draft = draft, input = input, onInput = { input = it; whenMissed = false },
-                onSubmit = ::submit, onSkip = { pending?.let { draft = draft.skip(it); input = ""; whenMissed = false } },
+                active = active, draft = draft, input = input, onInput = { input = it; whenMissed = false },
+                onSubmit = ::submit,
+                onSkip = { active?.let { if (asking != null) asking = null else draft = draft.skip(it); input = ""; whenMissed = false } },
                 projects = board.ws.projects.filter { it.isActive }, onProject = { draft = draft.printProject(it) },
-                whenMissed = whenMissed, busy = busy,
+                candidates = candidates, onWaiting = { id -> draft = draft.printWaiting(id); asking = null; input = "" },
+                onAsk = { line -> asking = line; input = ""; whenMissed = false },
+                missed = whenMissed, busy = busy,
                 availability = availability, downloadLine = downloadLine,
                 onDownload = {
                     scope.launch {
@@ -428,6 +458,55 @@ private fun ProjectCard(draft: TapeDraft, board: Board, onPick: (String?) -> Uni
 }
 
 @Composable
+private fun KickoffCard(draft: TapeDraft, onChange: (TapeDraft) -> Unit, onRemove: () -> Unit) {
+    TapeCard("Kickoff note", onRemove) {
+        Field(draft.kickoff, { onChange(draft.copy(kickoff = it)) }, "Kickoff note", Type.body, singleLine = false)
+        if (draft.kickoffTooLong) LimitNote("Kickoff notes can be up to ${TaskLimits.KICKOFF_MAX} characters (this one is ${draft.kickoff.trim().length}).")
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun NotBeforeCard(draft: TapeDraft, onChange: (TapeDraft) -> Unit, onRemove: () -> Unit) {
+    var picker by remember { mutableStateOf(false) }
+    val day = draft.availableFrom
+    TapeCard("Not before", onRemove) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(day?.let { friendlyDay(it, withDayNumber = true) } ?: "Pick a day", selected = true, height = 40.dp, sheetStyle = true, onClick = { picker = true })
+            quickDays().forEach { (label, date) -> FilterChip(label, selected = day == date, height = 36.dp, onClick = { onChange(draft.withAvailableFrom(date)) }) }
+        }
+    }
+    if (picker) {
+        val state = rememberDatePickerState(initialSelectedDateMillis = (day ?: Clock.today()).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
+        DatePickerDialog(
+            onDismissRequest = { picker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { ms -> onChange(draft.withAvailableFrom(Instant.ofEpochMilli(ms).atZone(ZoneOffset.UTC).toLocalDate())) }
+                    picker = false
+                }) { Text("Set day") }
+            },
+            dismissButton = { TextButton(onClick = { picker = false }) { Text("Cancel") } },
+        ) { DatePicker(state) }
+    }
+}
+
+@Composable
+private fun WaitingCard(draft: TapeDraft, board: Board, onStop: (String) -> Unit, onAddAnother: () -> Unit, onRemove: () -> Unit) {
+    val c = LocalColors.current
+    TapeCard("Waiting on", onRemove) {
+        draft.waitingOn.forEach { id ->
+            val title = board.ws.task(id)?.title ?: "A task that is no longer here"
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = Type.rowTitle, color = c.ink, modifier = Modifier.weight(1f), maxLines = 2)
+                IconBtn(AppIcons.Close, "Stop waiting on $title", { onStop(id) }, size = 16.dp, tint = c.muted)
+            }
+        }
+        FilterChip("Another task", selected = false, height = 36.dp, onClick = onAddAnother)
+    }
+}
+
+@Composable
 private fun DebugCard(run: QuickAddRun) {
     TapeCard("Under the hood") {
         Text(
@@ -479,7 +558,7 @@ private fun TearLine(tear: Animatable<Float, *>, onRelease: () -> Unit, onCancel
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Composer(
-    pending: TapeLine?,
+    active: TapeLine?,
     draft: TapeDraft,
     input: String,
     onInput: (String) -> Unit,
@@ -487,7 +566,10 @@ private fun Composer(
     onSkip: () -> Unit,
     projects: List<com.atonal440.alongside.data.Project>,
     onProject: (String?) -> Unit,
-    whenMissed: Boolean,
+    candidates: List<Task>,
+    onWaiting: (String) -> Unit,
+    onAsk: (TapeLine) -> Unit,
+    missed: Boolean,
     busy: Boolean,
     availability: Pair<ModelAvailability, String?>?,
     downloadLine: String?,
@@ -500,23 +582,23 @@ private fun Composer(
             Text("Reading what you said…", style = Type.body, color = c.muted)
             return@Column
         }
-        if (pending == null) {
+        if (active == null) {
             Text(
                 if (draft.canTear) "That's everything. Pull the sheet to add the task." else "Give it a title to add it.",
                 style = Type.body, color = c.muted,
             )
-            return@Column
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(question(pending), style = Type.label, color = c.ink, modifier = Modifier.weight(1f))
-            if (pending != TapeLine.What) {
-                Text(
-                    "Skip", style = Type.label, color = c.muted,
-                    modifier = Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onSkip).padding(horizontal = 12.dp, vertical = 16.dp),
-                )
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(question(active), style = Type.label, color = c.ink, modifier = Modifier.weight(1f))
+                if (active != TapeLine.What) {
+                    Text(
+                        "Skip", style = Type.label, color = c.muted,
+                        modifier = Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onSkip).padding(horizontal = 12.dp, vertical = 16.dp),
+                    )
+                }
             }
         }
-        if (pending == TapeLine.Project) {
+        if (active == TapeLine.Project) {
             FlowRow(
                 Modifier.heightIn(max = 168.dp).verticalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -524,33 +606,66 @@ private fun Composer(
                 FilterChip("Inbox", selected = false, height = 40.dp, sheetStyle = true, onClick = { onProject(null) })
                 projects.forEach { p -> FilterChip(p.title, selected = false, height = 40.dp, sheetStyle = true, leading = { ProjectDot(p.id, 9.dp) }, onClick = { onProject(p.id) }) }
             }
-            return@Column
-        }
-        val focus = remember { FocusRequester() }
-        LaunchedEffect(pending) { focus.requestFocus() }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) {
-                Field(input, onInput, example(pending), Type.body, Modifier.focusRequester(focus), imeAction = ImeAction.Send, onImeAction = onSubmit)
-            }
-            Box(
-                Modifier.size(52.dp).clip(CircleShape).background(c.peach)
-                    .clickable(enabled = input.isNotBlank() && !busy, role = Role.Button, onClick = onSubmit)
-                    .semantics { contentDescription = "Print" },
-                contentAlignment = Alignment.Center,
-            ) { Icon(AppIcons.Back, null, Modifier.size(22.dp).rotate(90f), tint = c.onPeach) }
-        }
-        if (whenMissed) Text("I couldn't find a day in that. Try \"friday\" or \"in 3 days\".", style = Type.meta, color = c.muted)
-        if (pending == TapeLine.What) {
-            when (availability?.first) {
-                null -> Text("Checking the on-device model…", style = Type.meta, color = c.muted)
-                ModelAvailability.Available -> Text("Gemini Nano ready", style = Type.meta, color = c.muted)
-                ModelAvailability.Downloadable -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip("Download model", selected = false, height = 40.dp, sheetStyle = true, onClick = onDownload)
-                    downloadLine?.let { Text(it, style = Type.meta, color = c.muted) }
+        } else if (active != null) {
+            val focus = remember { FocusRequester() }
+            LaunchedEffect(active) { focus.requestFocus() }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    Field(input, onInput, example(active), Type.body, Modifier.focusRequester(focus), imeAction = if (active == TapeLine.Waiting) ImeAction.Done else ImeAction.Send, onImeAction = onSubmit)
                 }
-                ModelAvailability.Downloading -> Text("Model is downloading…", style = Type.meta, color = c.muted)
-                ModelAvailability.Unavailable -> Text("No on-device model (${availability.second ?: "unsupported"}). Dates and repeats still work.", style = Type.meta, color = c.muted)
+                if (active != TapeLine.Waiting) {
+                    Box(
+                        Modifier.size(52.dp).clip(CircleShape).background(c.peach)
+                            .clickable(enabled = input.isNotBlank(), role = Role.Button, onClick = onSubmit)
+                            .semantics { contentDescription = "Print" },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(AppIcons.Back, null, Modifier.size(22.dp).rotate(90f), tint = c.onPeach) }
+                }
+            }
+            if (active == TapeLine.Waiting) {
+                if (candidates.isEmpty()) Text("No open tasks match.", style = Type.meta, color = c.muted)
+                FlowRow(Modifier.heightIn(max = 168.dp).verticalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    candidates.forEach { t -> FilterChip(t.title, selected = false, height = 40.dp, sheetStyle = true, onClick = { onWaiting(t.id) }) }
+                }
+            }
+            if (missed) Text("I couldn't find a day in that. Try \"friday\" or \"in 3 days\".", style = Type.meta, color = c.muted)
+            if (active == TapeLine.What) {
+                when (availability?.first) {
+                    null -> Text("Checking the on-device model…", style = Type.meta, color = c.muted)
+                    ModelAvailability.Available -> Text("Gemini Nano ready", style = Type.meta, color = c.muted)
+                    ModelAvailability.Downloadable -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        FilterChip("Download model", selected = false, height = 40.dp, sheetStyle = true, onClick = onDownload)
+                        downloadLine?.let { Text(it, style = Type.meta, color = c.muted) }
+                    }
+                    ModelAvailability.Downloading -> Text("Model is downloading…", style = Type.meta, color = c.muted)
+                    ModelAvailability.Unavailable -> Text("No on-device model (${availability.second ?: "unsupported"}). Dates and repeats still work.", style = Type.meta, color = c.muted)
+                }
+            }
+        }
+        // Sections nobody asks for: offered once there is a task to add them to.
+        val offered = OptionalLines.filter { it !in draft.printed && it != active }
+        if (TapeLine.What in draft.printed && offered.isNotEmpty() && input.isBlank()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                offered.forEach { line -> DashedChip("+ ${optionalLabel(line)}") { onAsk(line) } }
             }
         }
     }
+}
+
+private fun optionalLabel(line: TapeLine) = when (line) {
+    TapeLine.Kickoff -> "Kickoff note"
+    TapeLine.NotBefore -> "Not before"
+    else -> "Waiting on"
+}
+
+/** An empty section the sheet can print: dashed, so it reads as not there yet. */
+@Composable
+private fun DashedChip(text: String, onClick: () -> Unit) {
+    val c = LocalColors.current
+    Box(
+        Modifier.height(40.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onClick).drawBehind {
+            drawRoundRect(c.muted, style = Stroke(width = 3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f))), cornerRadius = CornerRadius(12.dp.toPx()))
+        }.padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) { Text(text, style = Type.label, color = c.ink, maxLines = 1) }
 }
