@@ -117,12 +117,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         kickoffNote: String? = null,
         availableFrom: LocalDate? = null,
         waitingOn: List<String> = emptyList(),
+        repeat: String? = null,
     ) = viewModelScope.launch {
         repo.create(
             title.trim(), notes?.trim()?.takeIf { it.isNotEmpty() }, projectId, plan, due, dueTime,
-            kickoffNote?.trim()?.takeIf { it.isNotEmpty() }, availableFrom, waitingOn,
+            kickoffNote?.trim()?.takeIf { it.isNotEmpty() }, availableFrom, waitingOn, repeat,
         )
     }
+
+    fun editSeries(id: String, title: String, notes: String?, plan: Boolean, catchUpAll: Boolean) = viewModelScope.launch {
+        repo.editSeries(id, title.trim(), notes?.trim()?.takeIf { it.isNotEmpty() }, plan, catchUpAll)
+    }
+
+    fun setSeriesStatus(id: String, status: String) = viewModelScope.launch { repo.setSeriesStatus(id, status) }
 
     /** The on-device model behind the "Say it your way" field on the new-task sheet. */
     val quickAdd = OnDeviceQuickAdd()

@@ -436,9 +436,9 @@ private fun WhenCard(draft: TapeDraft, onChange: (TapeDraft) -> Unit, onRemove: 
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(day?.let { friendlyDay(it, withDayNumber = true) } ?: "Pick a day", selected = true, height = 36.dp, sheetStyle = true, showCheck = false, onClick = { daysOpen = !daysOpen })
             FilterChip(draft.time?.format(timeLabel) ?: "Add a time", selected = draft.time != null, height = 36.dp, sheetStyle = true, showCheck = false, onClick = { timePicker = true })
-            // Read-only: the sentence's repeat is shown, but a series cannot be saved from here yet.
+            // Read-only: the sentence's repeat is saved as a series; removing the When card drops it.
             draft.recurrence?.let { rule ->
-                ReadOnlyChip(recurrenceLabel(rule) ?: "Repeats", "Repeats ${recurrenceLabel(rule) ?: ""}, not saved yet") {
+                ReadOnlyChip(recurrenceLabel(rule) ?: "Repeats", "Repeats ${recurrenceLabel(rule) ?: ""}") {
                     Icon(AppIcons.Repeat, null, Modifier.size(18.dp), tint = c.ink)
                 }
             }
@@ -450,7 +450,10 @@ private fun WhenCard(draft: TapeDraft, onChange: (TapeDraft) -> Unit, onRemove: 
                 FilterChip("Pick a date…", selected = false, height = 32.dp, onClick = { datePicker = true; daysOpen = false })
             }
         }
-        if (draft.recurrence != null) Text("Repeats aren't saved yet, so this makes one task for the first date.", style = Type.meta, color = c.muted)
+        if (draft.recurrence != null) {
+            Text("Starts ${day?.let { friendlyDay(it, withDayNumber = true) } ?: "today"}, then repeats. Each one shows up when it's due; find the series in Routines.", style = Type.meta, color = c.muted)
+            if (draft.availableFrom != null || draft.waitingOn.isNotEmpty()) Text("Not before and Waiting on belong to one task, so they're left out of a repeat.", style = Type.meta, color = c.muted)
+        }
         if (draft.approx) Text("Guessed from a vague phrase; check it.", style = Type.meta, color = c.muted)
     }
 

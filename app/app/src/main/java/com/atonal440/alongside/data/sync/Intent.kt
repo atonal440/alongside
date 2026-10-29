@@ -15,11 +15,20 @@ import java.security.SecureRandom
  */
 @Serializable
 sealed interface Intent {
-    /** The task whose row, and the workspace's structural revision, the envelope is built from. */
+    /**
+     * The id of the entity whose row, and the workspace's structural revision, the envelope is built from: a task's, or
+     * a duty's for the intents whose [entity] is `duty`. (The name is kept: it is stored in queued commands.)
+     */
     val taskId: String
 
+    /** What kind of entity [taskId] names. */
+    val entity: String get() = "task"
+
+    /** Does this intent create [taskId]? A create has no base revision. */
+    val creates: Boolean get() = false
+
     /** Identities this intent writes, the first being the one its `base` guards. */
-    val writes: List<String> get() = listOf(taskIdentity(taskId))
+    val writes: List<String> get() = listOf(identity(entity, taskId))
 
     /** The task as the server leaves it after this intent, for the optimistic view. */
     fun apply(task: Task, at: String): Task = task
@@ -34,7 +43,57 @@ sealed interface Intent {
         val taskType: String,
         val kickoffNote: String? = null,
     ) : Intent {
+        override val creates get() = true
         override fun describe() = "Create “$title”"
+    }
+
+    /**
+     * Starts a repeating series (`duty.create`). [taskId] is the new duty's id. [dtstart] is the first occurrence (the
+     * series anchor) and [timezone] null for an all-day series, which the worker anchors at noon UTC.
+     */
+    @Serializable @SerialName("duty.create")
+    data class CreateDuty(
+        override val taskId: String,
+        val title: String,
+        val notes: String?,
+        val taskType: String,
+        val projectId: String?,
+        val catchUp: String,
+        val rrule: String,
+        val dtstart: String,
+        val timezone: String?,
+        val kickoffNote: String? = null,
+    ) : Intent {
+        override val entity get() = "duty"
+        override val creates get() = true
+        override fun describe() = "Repeat “$title”"
+    }
+
+    /**
+     * Rewrites a series' template (`duty.content.set`): future occurrences only; the schedule, project and kickoff note
+     * are kept as the server has them. [taskId] is the duty's id.
+     */
+    @Serializable @SerialName("duty.content")
+    data class SetDutyContent(
+        override val taskId: String,
+        val title: String,
+        val notes: String?,
+        val taskType: String,
+        val catchUp: String,
+    ) : Intent {
+        override val entity get() = "duty"
+        override fun describe() = "Edit a repeat"
+    }
+
+    /** Pauses, resumes or ends a series (`duty.status.set`). [status] is `active`, `paused` or `ended`; ended is final. */
+    @Serializable @SerialName("duty.status")
+    data class SetDutyStatus(override val taskId: String, val status: String) : Intent {
+        override val entity get() = "duty"
+        override fun describe() = when (status) {
+            "paused" -> "Pause a repeat"
+            "ended" -> "End a repeat"
+            else -> "Resume a repeat"
+        }
     }
 
     @Serializable @SerialName("task.project")

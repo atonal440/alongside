@@ -1,5 +1,6 @@
 package com.atonal440.alongside.data.sync
 
+import com.atonal440.alongside.data.Duty
 import com.atonal440.alongside.data.Task
 import com.atonal440.alongside.data.TaskLink
 import com.atonal440.alongside.data.Workspace
@@ -98,6 +99,9 @@ fun overlay(base: CanonicalView?, ops: List<QueuedOp>, syncedAtMillis: Long?): O
     val links = LinkedHashMap<String, TaskLink>()
     base?.links?.forEach { links[linkKey(it.from_task_id, it.to_task_id, it.link_type)] = it }
 
+    val duties = LinkedHashMap<String, Duty>()
+    base?.duties?.forEach { duties[it.id] = it }
+
     fun hasSubtasks(id: String) = tasks.values.any { it.parent_id == id }
     fun hasOpenSubtasks(id: String) = tasks.values.any { it.parent_id == id && it.status == "pending" }
 
@@ -110,6 +114,32 @@ fun overlay(base: CanonicalView?, ops: List<QueuedOp>, syncedAtMillis: Long?): O
                 tasks[intent.taskId] = Task(
                     id = intent.taskId, title = intent.title, notes = intent.notes, task_type = intent.taskType, kickoff_note = intent.kickoffNote,
                     created_at = at, updated_at = at,
+                )
+                null
+            }
+            is Intent.CreateDuty -> {
+                if (intent.taskId in duties) return@map SkipReason.TaskExists
+                // The first occurrence is not a task until the worker makes it, so only the series shows (in Routines).
+                duties[intent.taskId] = Duty(
+                    id = intent.taskId, title = intent.title, notes = intent.notes, task_type = intent.taskType,
+                    project_id = intent.projectId, rrule = intent.rrule, dtstart = intent.dtstart, timezone = intent.timezone,
+                    catch_up = intent.catchUp, next_occurrence_at = intent.dtstart, created_at = at, updated_at = at,
+                )
+                null
+            }
+            is Intent.SetDutyContent -> {
+                val duty = duties[intent.taskId] ?: return@map SkipReason.TaskMissing
+                duties[intent.taskId] = duty.copy(title = intent.title, notes = intent.notes, task_type = intent.taskType, catch_up = intent.catchUp, updated_at = at)
+                null
+            }
+            is Intent.SetDutyStatus -> {
+                val duty = duties[intent.taskId] ?: return@map SkipReason.TaskMissing
+                // The worker refuses to change an ended series or to set the status it already has.
+                if (duty.isEnded || duty.status == intent.status) return@map SkipReason.Invalid
+                duties[intent.taskId] = duty.copy(
+                    status = intent.status,
+                    next_occurrence_at = if (intent.status == "ended") null else duty.next_occurrence_at,
+                    updated_at = at,
                 )
                 null
             }
@@ -133,5 +163,5 @@ fun overlay(base: CanonicalView?, ops: List<QueuedOp>, syncedAtMillis: Long?): O
             }
         }
     }
-    return OverlayView(Workspace(tasks.values.toList(), base?.projects.orEmpty(), links.values.toList(), syncedAtMillis), outcomes)
+    return OverlayView(Workspace(tasks.values.toList(), base?.projects.orEmpty(), links.values.toList(), syncedAtMillis, duties.values.toList()), outcomes)
 }

@@ -49,13 +49,26 @@ class FakeServer : SyncApi {
         put("duty_id", JsonNull); put("parent_id", JsonNull); put("position", JsonNull)
     }
 
-    private fun record(id: String, row: JsonObject?) {
-        val e = entries.getOrPut("task:$id") { Entry(0, null) }
+    private fun record(id: String, row: JsonObject?, entity: String = "task") {
+        val e = entries.getOrPut("$entity:$id") { Entry(0, null) }
         e.revision += 1
         e.row = row
         seq += 1
-        log += seq to image("task", id, e)
+        log += seq to image(entity, id, e)
     }
+
+    fun dutyRow(id: String, title: String = id, rrule: String = "FREQ=DAILY", status: String = "active") = buildJsonObject {
+        put("id", id); put("title", title); put("notes", JsonNull); put("kickoff_note", JsonNull); put("task_type", "action")
+        put("project_id", JsonNull); put("rrule", rrule); put("dtstart", "2026-10-25T12:00:00Z"); put("timezone", JsonNull)
+        put("status", status); put("catch_up", "next"); put("last_spawned_at", JsonNull)
+        put("next_occurrence_at", if (status == "ended") JsonNull else JsonPrimitive("2026-10-25T12:00:00Z"))
+        put("created_at", "2026-10-01T00:00:00Z"); put("updated_at", "2026-10-01T00:00:00Z")
+    }
+
+    /** Another device creates a series. */
+    fun putDuty(id: String, title: String = id, rrule: String = "FREQ=DAILY", status: String = "active") = record(id, dutyRow(id, title, rrule, status), "duty")
+    fun dutyRowOf(id: String) = entries["duty:$id"]?.row
+    fun dutyRevision(id: String) = entries["duty:$id"]?.revision
 
     private fun image(entity: String, key: String, e: Entry) = buildJsonObject {
         put("entity", entity); put("key", key); put("revision", e.revision)
@@ -90,7 +103,7 @@ class FakeServer : SyncApi {
         snapshotRequests++
         return buildJsonObject {
             put("contractVersion", 2); put("cursor", cursor(seq)); put("structuralRevision", structural)
-            put("entities", JsonArray(entries.entries.map { (k, e) -> image("task", k.removePrefix("task:"), e) }))
+            put("entities", JsonArray(entries.entries.map { (k, e) -> image(k.substringBefore(':'), k.substringAfter(':'), e) }))
         }
     }
 
@@ -133,7 +146,35 @@ class FakeServer : SyncApi {
         }
         val e = entries["task:$id"]
         val expected = cmd["expectedRevision"]?.jsonPrimitive?.longOrNull
-        if (kind == "task.create") {
+        if (kind.startsWith("duty.")) {
+            val d = entries["duty:$id"]
+            if (kind == "duty.create") {
+                if (d != null) throw ApiException(409, "exists", "revision_conflict", d.revision)
+                val v = cmd["values"]!!.jsonObject
+                val schedule = v["schedule"]!!.jsonObject
+                record(id, JsonObject(dutyRow(id, v["title"]!!.jsonPrimitive.content, schedule["rrule"]!!.jsonPrimitive.content) + mapOf(
+                    "dtstart" to schedule["dtstart"]!!, "timezone" to schedule["timezone"]!!, "catch_up" to v["catchUp"]!!,
+                    "task_type" to v["taskType"]!!, "notes" to v["notes"]!!,
+                )), "duty")
+            } else {
+                val row = d?.row ?: throw ApiException(404, "That duty doesn't exist.", "not_found")
+                if (expected != d.revision) throw ApiException(409, "changed", "revision_conflict", d.revision)
+                if (kind == "duty.content.set") {
+                    val v = cmd["values"]!!.jsonObject
+                    record(id, JsonObject(row + mapOf(
+                        "title" to v["title"]!!, "notes" to v["notes"]!!, "kickoff_note" to v["kickoffNote"]!!,
+                        "task_type" to v["taskType"]!!, "catch_up" to v["catchUp"]!!,
+                    )), "duty")
+                } else {
+                    val status = cmd["status"]!!.jsonPrimitive.content
+                    if (row["status"]!!.jsonPrimitive.content == "ended" || row["status"]!!.jsonPrimitive.content == status) {
+                        throw ApiException(409, "invalid transition", "invalid_transition")
+                    }
+                    record(id, JsonObject(row + mapOf("status" to JsonPrimitive(status),
+                        "next_occurrence_at" to if (status == "ended") JsonNull else row["next_occurrence_at"]!!)), "duty")
+                }
+            }
+        } else if (kind == "task.create") {
             if (e != null) throw ApiException(409, "exists", "revision_conflict", e.revision)
             record(id, taskRow(id, cmd["values"]!!.jsonObject["title"]!!.jsonPrimitive.content))
         } else {

@@ -2,6 +2,7 @@ package com.atonal440.alongside.data.sync
 
 import com.atonal440.alongside.data.AlongsideApi
 import com.atonal440.alongside.data.ApiException
+import com.atonal440.alongside.data.Duty
 import com.atonal440.alongside.data.Task
 import com.atonal440.alongside.data.Workspace
 import com.atonal440.alongside.domain.toWire
@@ -154,7 +155,7 @@ class SyncEngine(
                 val at = now().toWire()
                 var next = state
                 for (intent in intents) {
-                    val base = if (intent is Intent.Create) null else predictBase(canonical, next.landed + next.queue, intent.writes[0])
+                    val base = if (intent.creates) null else predictBase(canonical, next.landed + next.queue, intent.writes[0])
                     next = next.copy(nextId = next.nextId + 1, queue = next.queue + QueuedOp(next.nextId, mintId("c"), intent, base, at))
                 }
                 state = next
@@ -190,7 +191,7 @@ class SyncEngine(
             }
             var next = state
             for (intent in intents) {
-                val base = if (intent is Intent.Create) null else predictBase(canonical, next.landed + next.queue, intent.writes[0])
+                val base = if (intent.creates) null else predictBase(canonical, next.landed + next.queue, intent.writes[0])
                 next = next.copy(nextId = next.nextId + 1, queue = next.queue + QueuedOp(next.nextId, mintId("c"), intent, base, at))
             }
             state = next.copy(retained = next.retained.filterNot { it.id in ids })
@@ -328,10 +329,17 @@ class SyncEngine(
     }
 
     private suspend fun buildFresh(api: SyncApi, op: QueuedOp): JsonObject {
-        val target = EntityRead.parse(api.entity("task", op.intent.taskId))
         val intent = op.intent
-        val projectRevision = if (intent is Intent.SetProject && intent.projectId != null) EntityRead.parse(api.entity("project", intent.projectId)).revision else null
-        return buildEnvelope(op, BuildContext(target.row, target.structuralRevision, projectRevision))
+        val target = EntityRead.parse(api.entity(intent.entity, intent.taskId))
+        // A series names its project too: the worker checks the revision the sender saw.
+        val projectId = when (intent) {
+            is Intent.SetProject -> intent.projectId
+            is Intent.CreateDuty -> intent.projectId
+            is Intent.SetDutyContent -> target.duty?.project_id
+            else -> null
+        }
+        val projectRevision = projectId?.let { EntityRead.parse(api.entity("project", it)).revision }
+        return buildEnvelope(op, BuildContext(target.row, target.structuralRevision, projectRevision, target.duty))
     }
 
     /** Move a refused command, and for a refused create the commands queued on its task, out of the queue. */
@@ -343,7 +351,7 @@ class SyncEngine(
             val retained = ArrayList(s.retained)
             retained += RetainedOp(id++, op, reason)
             var queue = s.queue.filterNot { it.id == op.id }
-            val created = (op.intent as? Intent.Create)?.taskId
+            val created = op.intent.taskId.takeIf { op.intent.creates }
             if (created != null) {
                 // The task will never exist on the server, so everything aimed at it would fail too.
                 val (dependents, rest) = queue.partition { it.intent.references(created) }
@@ -488,19 +496,20 @@ class SyncEngine(
 }
 
 /** What `POST /api/v2/entity` says about one entity. */
-class EntityRead(val row: Task?, val revision: Long?, val structuralRevision: Long) {
+class EntityRead(val row: Task?, val revision: Long?, val structuralRevision: Long, val duty: Duty? = null) {
     companion object {
         fun parse(json: JsonObject): EntityRead {
             val structural = json.long("structuralRevision") ?: throw SyncContractException("An entity read has no structural revision.")
             val revision = (json["version"] as? JsonObject)?.long("revision")
-            val row = (json["row"] as? JsonObject)?.let {
-                try {
-                    AlongsideApi.json.decodeFromJsonElement(Task.serializer(), it)
-                } catch (e: SerializationException) {
-                    throw SyncContractException("An entity read has an unreadable row.")
+            val raw = json["row"] as? JsonObject
+            return try {
+                when (json.str("entity")) {
+                    "duty" -> EntityRead(null, revision, structural, raw?.let { AlongsideApi.json.decodeFromJsonElement(Duty.serializer(), it) })
+                    else -> EntityRead(raw?.let { AlongsideApi.json.decodeFromJsonElement(Task.serializer(), it) }, revision, structural)
                 }
+            } catch (e: SerializationException) {
+                throw SyncContractException("An entity read has an unreadable row.")
             }
-            return EntityRead(row, revision, structural)
         }
     }
 }

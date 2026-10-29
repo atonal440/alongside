@@ -1,6 +1,7 @@
 package com.atonal440.alongside.data.sync
 
 import com.atonal440.alongside.data.AlongsideApi
+import com.atonal440.alongside.data.Duty
 import com.atonal440.alongside.data.Project
 import com.atonal440.alongside.data.Task
 import com.atonal440.alongside.data.TaskLink
@@ -48,7 +49,7 @@ fun linkKey(from: String, to: String, type: String) = JsonArray(listOf(JsonPrimi
 private val KEPT = setOf("task", "project", "link", "duty")
 
 /** The typed rows of a canonical workspace, decoded once per pull. */
-class CanonicalView(val tasks: List<Task>, val projects: List<Project>, val links: List<TaskLink>)
+class CanonicalView(val tasks: List<Task>, val projects: List<Project>, val links: List<TaskLink>, val duties: List<Duty> = emptyList())
 
 /**
  * The server's last committed workspace as the phone knows it: one image per identity plus the
@@ -63,15 +64,17 @@ class CanonicalWorkspace(val cursor: SyncCursor, val images: Map<String, SyncIma
         val tasks = ArrayList<Task>()
         val projects = ArrayList<Project>()
         val links = ArrayList<TaskLink>()
+        val duties = ArrayList<Duty>()
         for (image in images.values) {
             val row = image.row ?: continue
             when (image.entity) {
                 "task" -> tasks += AlongsideApi.json.decodeFromJsonElement(Task.serializer(), row)
                 "project" -> projects += AlongsideApi.json.decodeFromJsonElement(Project.serializer(), row)
+                "duty" -> duties += AlongsideApi.json.decodeFromJsonElement(Duty.serializer(), row)
                 "link" -> links += AlongsideApi.json.decodeFromJsonElement(TaskLink.serializer(), row)
             }
         }
-        CanonicalView(tasks, projects, links)
+        CanonicalView(tasks, projects, links, duties)
     }
 
     fun revision(identity: String): Long? = images[identity]?.revision
@@ -119,7 +122,7 @@ object SyncWire {
             when (entity) {
                 "task" -> AlongsideApi.json.decodeFromJsonElement(Task.serializer(), row).id == key
                 "project" -> AlongsideApi.json.decodeFromJsonElement(Project.serializer(), row).id == key
-                "duty" -> row.str("id") == key
+                "duty" -> AlongsideApi.json.decodeFromJsonElement(Duty.serializer(), row).id == key
                 else -> AlongsideApi.json.decodeFromJsonElement(TaskLink.serializer(), row).let { linkKey(it.from_task_id, it.to_task_id, it.link_type) == key }
             }
         } catch (e: kotlinx.serialization.SerializationException) {

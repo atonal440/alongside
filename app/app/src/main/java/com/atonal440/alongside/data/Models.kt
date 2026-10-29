@@ -61,6 +61,34 @@ data class Project(
     val isActive get() = status == "active"
 }
 
+/**
+ * A recurring series (`DutyRowSchema` in shared/wire/rows.ts). [rrule], [dtstart] and [timezone] are its calendar and never
+ * change after creation. The worker turns an occurrence into a task only once it is due, so a series can exist with no task yet.
+ */
+@Serializable
+data class Duty(
+    val id: String,
+    val title: String,
+    val notes: String? = null,
+    val kickoff_note: String? = null,
+    val task_type: String = "action",
+    val project_id: String? = null,
+    val rrule: String,
+    val dtstart: String,
+    val timezone: String? = null,
+    val status: String = "active",
+    val catch_up: String = "next",
+    val last_spawned_at: String? = null,
+    val next_occurrence_at: String? = null,
+    val created_at: String = "",
+    val updated_at: String = "",
+) {
+    /** The worker's test for an all-day occurrence (`allDay` in ops/duty.ts): no zone and noon UTC. Other occurrences of a zoneless series are timed. */
+    val isAllDay get() = timezone == null && (next_occurrence_at ?: dtstart).endsWith("T12:00:00Z")
+    val isEnded get() = status == "ended"
+    val isPaused get() = status == "paused"
+}
+
 @Serializable
 data class TaskLink(
     val from_task_id: String,
@@ -86,8 +114,10 @@ data class Workspace(
     val projects: List<Project> = emptyList(),
     val links: List<TaskLink> = emptyList(),
     val syncedAtMillis: Long? = null,
+    val duties: List<Duty> = emptyList(),
 ) {
     fun task(id: String) = tasks.firstOrNull { it.id == id }
+    fun duty(id: String?) = id?.let { did -> duties.firstOrNull { it.id == did } }
     fun project(id: String?) = id?.let { pid -> projects.firstOrNull { it.id == pid } }
     fun children(parentId: String) = tasks.filter { it.parent_id == parentId }
         .sortedWith(compareBy<Task, Double?>(nullsLast()) { it.position }.thenBy { it.created_at })
