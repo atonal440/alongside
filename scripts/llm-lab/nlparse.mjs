@@ -89,7 +89,23 @@ function buildRule(r) {
     .filter(Boolean).join(';');
 }
 
-function matchesRule(r, d) {
+// With an explicit start ("every 2 days starting today") the interval counts from it, so a day that matches the rule
+// but falls between the steps does not count. Weeks run Monday to Sunday, as everywhere else in this file.
+const epochDay = (d) => Math.round(+d / 86400000);
+const weekIdx = (d) => Math.floor((epochDay(d) + 3) / 7);
+function alignedWithStart(r, d, a) {
+  const n = r.interval;
+  if (r.freq === 'DAILY') return (epochDay(d) - epochDay(a)) % n === 0;
+  if (r.freq === 'WEEKLY') return (weekIdx(d) - weekIdx(a)) % n === 0 && (!!r.byday || dow(d) === dow(a));
+  if (r.freq === 'MONTHLY') {
+    const months = d.getUTCFullYear() * 12 + d.getUTCMonth() - (a.getUTCFullYear() * 12 + a.getUTCMonth());
+    return months % n === 0 && (!!r.bymonthday || !!r.nth || d.getUTCDate() === a.getUTCDate());
+  }
+  return (d.getUTCFullYear() - a.getUTCFullYear()) % n === 0 && d.getUTCMonth() === a.getUTCMonth() && d.getUTCDate() === a.getUTCDate();
+}
+
+function matchesRule(r, d, anchor) {
+  if (anchor && !alignedWithStart(r, d, anchor)) return false;
   if (r.freq === 'WEEKLY' && r.byday) return r.byday.includes(RR_DAY[dow(d)]);
   if (r.freq === 'MONTHLY' && r.bymonthday)
     return r.bymonthday.some((n) => (n === -1 ? d.getUTCDate() === daysInMonth(d.getUTCFullYear(), d.getUTCMonth()) : d.getUTCDate() === n));
@@ -128,7 +144,10 @@ rule('rec', `(?:every|each)\\s+other\\s+(${WD_ANY})\\b`,
 rule('rec', `(?:every|each)\\s+(\\d+|other|two|three|four)\\s+(day|week|month|year)s?(?:\\s+on\\s+(${wdList}(?:(?:\\s*,\\s*|\\s+and\\s+)${wdList})*))?\\b`, (m) => {
   const freq = { day: 'DAILY', week: 'WEEKLY', month: 'MONTHLY', year: 'YEARLY' }[m[2].toLowerCase()];
   const byday = freq === 'WEEKLY' && m[3] ? [...new Set([...m[3].matchAll(new RegExp(`\\b(${WD_ANY})`, 'gi'))].map((x) => RR_DAY[wdIndex(x[1])]))] : undefined;
-  return { rec: { freq, byday, interval: m[1].toLowerCase() === 'other' ? 2 : +m[1] || NUM_WORD[m[1].toLowerCase()] } };
+  const interval = m[1].toLowerCase() === 'other' ? 2 : +m[1] || NUM_WORD[m[1].toLowerCase()];
+  // The worker allows up to 999; nothing a person says needs more than 99, and it keeps the first-occurrence search short.
+  if (!(interval >= 1 && interval <= 99)) return null;
+  return { rec: { freq, byday, interval } };
 });
 rule('rec', `\\b(weekday|weekend)s\\b`,
   (m) => ({ rec: { freq: 'WEEKLY', interval: 1, byday: m[1].toLowerCase() === 'weekday' ? ['MO', 'TU', 'WE', 'TH', 'FR'] : ['SA', 'SU'] } }));
@@ -226,6 +245,12 @@ rule('time', `\\b(at\\s+)?([01]?\\d|2[0-3]):([0-5]\\d)\\b(?!\\s*(?:am|pm|a\\.m|p
   // "at 5:30" is the afternoon; "17:30", "09:00" and a bare "5:30" are taken literally.
   return m[1] && h >= 1 && h <= 11 && m[2].length === (h < 10 ? 1 : 2) ? { time: `${pad(bareHour(h))}:${m[3]}`, approx: true, amb: { h, min: +m[3] } } : { time: `${pad(h)}:${m[3]}` };
 });
+// "half past 7 in the morning", "quarter to 8 in the evening": the offset and the day part settle one hour together.
+rule('time', `\\b(half\\s+past|quarter\\s+past|quarter\\s+to)\\s+(\\d{1,2})\\s+(?:in\\s+the\\s+)?(morning|afternoon|evening|night)\\b`, (m) => {
+  const h = +m[2]; if (h < 1 || h > 12) return null;
+  const offset = /^half/i.test(m[1]) ? 30 : /past/i.test(m[1]) ? 15 : -15;
+  return { time: hhmm((dayPartHour(h, m[3].toLowerCase()) * 60 + offset + 1440) % 1440) };
+});
 // A clock and its day part as one phrase: "6 in the morning", "at 7:05 in the evening", "at 12:30 in the morning" (00:30).
 // The lookbehind keeps it from matching the minutes of "7:05" on their own.
 rule('time', `\\b(?:at\\s+)?(?<![:\\d])(\\d{1,2})(?::([0-5]\\d))?\\s+(?:in\\s+the\\s+)?(morning|afternoon|evening|night)\\b`, (m) => {
@@ -302,11 +327,16 @@ export function parse(text, opts = {}) {
   if (rec) {
     // The first occurrence is the first day the rule allows on or after the start: an explicit "starting
     // tomorrow" is the lower bound, otherwise today (which only counts while its time is still ahead).
+    const anchor = date;
     const from = date ?? ctx.today;
-    for (let i = 0; i < 800; i++) {
+    // Long enough to reach the next aligned step of any interval ("every 3 years starting today").
+    const searchDays = Math.max(800, ({ DAILY: 2, WEEKLY: 8, MONTHLY: 32, YEARLY: 1500 }[rec.freq] ?? 400) * (rec.interval + 1) + 400);
+    let found = false;
+    for (let i = 0; i < searchDays; i++) {
       const d = addDays(from, i);
-      if (matchesRule(rec, d) && (+d !== +ctx.today || afterNow(d))) { date = d; break; }
+      if (matchesRule(rec, d, anchor) && (+d !== +ctx.today || afterNow(d))) { date = d; found = true; break; }
     }
+    if (!found && anchor) date = null; // no aligned day in reach (a leap day eight years out): leave the date to the person
   } else if (!date && time) {
     date = afterNow(ctx.today) ? ctx.today : addDays(ctx.today, 1);
   }

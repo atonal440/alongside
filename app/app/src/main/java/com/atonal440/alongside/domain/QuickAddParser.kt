@@ -89,11 +89,17 @@ object QuickAddParser {
         if (rec != null) {
             // The first occurrence is the first day the rule allows on or after the start: an explicit "starting
             // tomorrow" is the lower bound, otherwise today (which only counts while its time is still ahead).
+            val anchor = date
             val from = date ?: ctx.today
-            for (i in 0 until 800) {
+            // Long enough to reach the next aligned step of any interval ("every 3 years starting today").
+            val perStep = when (rec.freq) { "DAILY" -> 2; "WEEKLY" -> 8; "MONTHLY" -> 32; "YEARLY" -> 1500; else -> 400 }
+            val searchDays = maxOf(800, perStep * (rec.interval + 1) + 400)
+            var found = false
+            for (i in 0 until searchDays) {
                 val d = from.plusDays(i.toLong())
-                if (matches(rec, d) && (d != ctx.today || afterNow(d))) { date = d; break }
+                if (matches(rec, d, anchor) && (d != ctx.today || afterNow(d))) { date = d; found = true; break }
             }
+            if (!found && anchor != null) date = null // no aligned day in reach (a leap day eight years out): leave the date to the person
         } else if (date == null && time != null) {
             date = if (afterNow(ctx.today)) ctx.today else ctx.today.plusDays(1)
         }
@@ -235,7 +241,25 @@ object QuickAddParser {
         r.bymonthday?.let { "BYMONTHDAY=${it.joinToString(",")}" },
     ).joinToString(";")
 
-    private fun matches(r: Rec, d: LocalDate): Boolean {
+    // With an explicit start ("every 2 days starting today") the interval counts from it, so a day that matches the rule
+    // but falls between the steps does not count. Weeks run Monday to Sunday, as everywhere else in this file.
+    private fun weekIdx(d: LocalDate) = Math.floorDiv(d.toEpochDay() + 3, 7L)
+
+    private fun alignedWithStart(r: Rec, d: LocalDate, a: LocalDate): Boolean {
+        val n = r.interval
+        return when (r.freq) {
+            "DAILY" -> (d.toEpochDay() - a.toEpochDay()) % n == 0L
+            "WEEKLY" -> (weekIdx(d) - weekIdx(a)) % n == 0L && (r.byday != null || dow(d) == dow(a))
+            "MONTHLY" -> {
+                val months = d.year * 12L + d.monthValue - (a.year * 12L + a.monthValue)
+                months % n == 0L && (r.bymonthday != null || r.nth != null || d.dayOfMonth == a.dayOfMonth)
+            }
+            else -> (d.year - a.year) % n == 0 && d.monthValue == a.monthValue && d.dayOfMonth == a.dayOfMonth
+        }
+    }
+
+    private fun matches(r: Rec, d: LocalDate, anchor: LocalDate?): Boolean {
+        if (anchor != null && !alignedWithStart(r, d, anchor)) return false
         if (r.freq == "WEEKLY" && r.byday != null) return RR_DAY[dow(d)] in r.byday
         if (r.freq == "MONTHLY" && r.bymonthday != null)
             return r.bymonthday.any { n -> if (n == -1) d.dayOfMonth == daysInMonth(d.year, d.monthValue - 1) else d.dayOfMonth == n }
@@ -292,7 +316,8 @@ object QuickAddParser {
             val freq = FREQ_OF_UNIT.getValue(m.g(2)!!.lowercase())
             val word = m.g(1)!!.lowercase()
             val interval = if (word == "other") 2 else word.toIntOrNull() ?: NUM_WORD[word]
-            if (interval == null || interval < 1) null
+            // The worker allows up to 999; nothing a person says needs more than 99, and it keeps the first-occurrence search short.
+            if (interval == null || interval < 1 || interval > 99) null
             else Hit(rec = Rec(freq, interval, byday = if (freq == "WEEKLY") m.g(3)?.let { bydayOf(it, WD_ANY) } else null))
         }
         rec("""\b(weekday|weekend)s\b""") { m ->
@@ -428,6 +453,15 @@ object QuickAddParser {
             // "at 5:30" is the afternoon; "17:30", "09:00" and a bare "5:30" are taken literally.
             if (m.g(1) != null && h in 1..11 && m.g(2)!!.length == (if (h < 10) 1 else 2)) Hit(time = "${pad(bareHour(h))}:${m.g(3)}", approx = true, amb = h to m.g(3)!!.toInt())
             else Hit(time = "${pad(h)}:${m.g(3)}")
+        }
+        // "half past 7 in the morning", "quarter to 8 in the evening": the offset and the day part settle one hour together.
+        time("""\b(half\s+past|quarter\s+past|quarter\s+to)\s+(\d{1,2})\s+(?:in\s+the\s+)?(morning|afternoon|evening|night)\b""") { m ->
+            val h = m.g(2)!!.toInt()
+            if (h < 1 || h > 12) null
+            else {
+                val offset = if (m.g(1)!!.startsWith("half", true)) 30 else if (m.g(1)!!.contains("past", true)) 15 else -15
+                Hit(time = hhmm((dayPartHour(h, m.g(3)!!.lowercase()) * 60 + offset + 1440) % 1440))
+            }
         }
         // A clock and its day part as one phrase: "6 in the morning", "at 7:05 in the evening", "at 12:30 in the morning" (00:30).
         // The lookbehind keeps it from matching the minutes of "7:05" on their own.

@@ -166,6 +166,13 @@
     {"in":"call tomorrow at 7:05 in the evening","date":"2026-10-26","time":"19:05","recurrence":null,"rest":"call"},
     {"in":"call tomorrow 7:30 in the evening","date":"2026-10-26","time":"19:30","recurrence":null,"rest":"call"},
     {"in":"call tomorrow at 12:30 in the morning","date":"2026-10-26","time":"00:30","recurrence":null,"rest":"call"},
-    {"in":"call tomorrow at 9:10 in the morning","date":"2026-10-26","time":"09:10","recurrence":null,"rest":"call"}
+    {"in":"call tomorrow at 9:10 in the morning","date":"2026-10-26","time":"09:10","recurrence":null,"rest":"call"},
+    {"in":"call tomorrow at half past 7 in the morning","date":"2026-10-26","time":"07:30","recurrence":null,"rest":"call"},
+    {"in":"call tomorrow quarter to 8 in the evening","date":"2026-10-26","time":"19:45","recurrence":null,"rest":"call"},
+    {"in":"water plants every 2 days starting today at 9am","date":"2026-10-30","time":"09:00","recurrence":"FREQ=DAILY;INTERVAL=2","rest":"water plants","now":"2026-10-28T10:00"},
+    {"in":"meet every 2 weeks on wednesdays starting today at 9am","date":"2026-11-11","time":"09:00","recurrence":"FREQ=WEEKLY;INTERVAL=2;BYDAY=WE","rest":"meet","now":"2026-10-28T10:00"},
+    {"in":"renew every 3 years starting today at 9am","date":"2029-10-28","time":"09:00","recurrence":"FREQ=YEARLY;INTERVAL=3","rest":"renew","now":"2026-10-28T10:00"},
+    {"in":"renew every year starting today at 9am","date":"2032-02-29","time":"09:00","recurrence":"FREQ=YEARLY","rest":"renew","now":"2028-02-29T10:00"},
+    {"in":"renew every 1000000 years starting today at 9am","date":"2026-10-28","time":"09:00","recurrence":null,"rest":"renew every 1000000 years","now":"2026-10-28T10:00"}
   ]
 }
