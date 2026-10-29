@@ -45,6 +45,8 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -61,6 +63,15 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -274,12 +285,12 @@ fun QuickAddSheet(
                     translationY = tear.value
                     rotationZ = (tear.value / 70f).coerceAtMost(5f)
                     alpha = 1f - (tear.value / 900f).coerceIn(0f, 0.9f)
-                },
+                }.clip(RoundedCornerShape(20.dp)).background(c.soft),
             ) {
+                // Each section is a ticket: stacked edge to edge, with a half-circle bitten out of each side where
+                // two meet, and the tear-off stub as the last one.
                 Column(
-                    Modifier.weight(1f, fill = false).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(c.soft)
-                        .verticalScroll(tapeScroll).padding(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(tapeScroll).padding(start = 8.dp, end = 8.dp, top = 8.dp),
                 ) {
                     if (draft.printed.isEmpty()) {
                         Text(
@@ -287,9 +298,9 @@ fun QuickAddSheet(
                             style = Type.body, color = c.muted, modifier = Modifier.padding(4.dp),
                         )
                     }
-                    draft.printed.forEach { line ->
+                    draft.printed.forEachIndexed { index, line ->
                         key(line) {
-                            Printed {
+                            Printed(first = index == 0) {
                                 when (line) {
                                     TapeLine.What -> WhatCard(draft, busy, onChange = { draft = it })
                                     TapeLine.When -> WhenCard(draft, onChange = { draft = it }, onRemove = { draft = draft.remove(TapeLine.When) })
@@ -302,7 +313,7 @@ fun QuickAddSheet(
                             }
                         }
                     }
-                    if (debug) run?.let { DebugCard(it) }
+                    if (debug) run?.let { CompositionLocalProvider(LocalFirstTicket provides false) { DebugCard(it) } }
                 }
                 if (draft.canTear) TearLine(tear, onRelease = { if (tear.value > 90f) tearOff() else springBack() }, onCancel = ::springBack, onTearByAction = ::tearOff)
             }
@@ -339,16 +350,51 @@ private fun QuickAddHeader(debug: Boolean, onToggleDebug: () -> Unit) {
 
 /** A new element slides up out of the text box when it is first printed. */
 @Composable
-private fun Printed(content: @Composable () -> Unit) {
+private fun Printed(first: Boolean, content: @Composable () -> Unit) {
     val state = remember { MutableTransitionState(false).apply { targetState = true } }
-    AnimatedVisibility(state, enter = fadeIn(tween(180)) + slideInVertically(tween(260)) { it / 3 } + expandVertically(tween(260))) { content() }
+    AnimatedVisibility(state, enter = fadeIn(tween(180)) + slideInVertically(tween(260)) { it / 3 } + expandVertically(tween(260))) {
+        CompositionLocalProvider(LocalFirstTicket provides first) { content() }
+    }
 }
+
+private val LocalFirstTicket = compositionLocalOf { true }
+
+/**
+ * A ticket: a rectangle whose corners are bitten out by quarter circles where it meets its neighbour, so two
+ * stacked tickets show one half-circle notch on each side. An end of the stack ([notchTop] / [notchBottom] false)
+ * has ordinary rounded corners instead.
+ */
+private class TicketShape(private val notch: Dp, private val notchTop: Boolean, private val notchBottom: Boolean, private val corner: Dp = 16.dp) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val w = size.width
+        val h = size.height
+        val r = with(density) { notch.toPx() }
+        val cr = with(density) { corner.toPx() }
+        val path = Path().apply {
+            if (notchTop) { moveTo(0f, r); arcTo(Rect(-r, -r, r, r), 90f, -90f, false) } else { moveTo(0f, cr); arcTo(Rect(0f, 0f, 2 * cr, 2 * cr), 180f, 90f, false) }
+            if (notchTop) { lineTo(w - r, 0f); arcTo(Rect(w - r, -r, w + r, r), 180f, -90f, false) } else { lineTo(w - cr, 0f); arcTo(Rect(w - 2 * cr, 0f, w, 2 * cr), 270f, 90f, false) }
+            if (notchBottom) { lineTo(w, h - r); arcTo(Rect(w - r, h - r, w + r, h + r), 270f, -90f, false) } else { lineTo(w, h - cr); arcTo(Rect(w - 2 * cr, h - 2 * cr, w, h), 0f, 90f, false) }
+            if (notchBottom) { lineTo(r, h); arcTo(Rect(-r, h - r, r, h + r), 0f, -90f, false) } else { lineTo(cr, h); arcTo(Rect(0f, h - 2 * cr, 2 * cr, h), 90f, 90f, false) }
+            close()
+        }
+        return Outline.Generic(path)
+    }
+}
+
+/** The perforation along a ticket's top edge, between the two notches. */
+private fun Modifier.perforatedTop(color: Color, notch: Dp): Modifier = drawBehind {
+    val r = notch.toPx()
+    drawLine(color, Offset(r + 4.dp.toPx(), 0f), Offset(size.width - r - 4.dp.toPx(), 0f), strokeWidth = 3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 12f)))
+}
+
+private val NotchRadius = 10.dp
 
 @Composable
 private fun TapeCard(label: String, onRemove: (() -> Unit)? = null, content: @Composable () -> Unit) {
     val c = LocalColors.current
-    val shape = RoundedCornerShape(16.dp)
-    Column(Modifier.fillMaxWidth().clip(shape).background(c.card).border(1.dp, c.line, shape).padding(start = 14.dp, end = 4.dp, top = 2.dp, bottom = 10.dp)) {
+    val first = LocalFirstTicket.current
+    val shape = TicketShape(NotchRadius, notchTop = !first, notchBottom = true)
+    Column(Modifier.fillMaxWidth().clip(shape).background(c.card).border(1.dp, c.line, shape).then(if (first) Modifier else Modifier.perforatedTop(c.line, NotchRadius)).padding(start = 14.dp, end = 4.dp, top = 2.dp, bottom = 10.dp)) {
         Row(Modifier.height(36.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label.uppercase(), style = Type.section, color = c.muted, modifier = Modifier.weight(1f))
             if (onRemove != null) {
@@ -539,8 +585,10 @@ private fun DebugCard(run: QuickAddRun) {
 private fun TearLine(tear: Animatable<Float, *>, onRelease: () -> Unit, onCancel: () -> Unit, onTearByAction: () -> Unit) {
     val c = LocalColors.current
     val scope = rememberCoroutineScope()
+    val stub = TicketShape(NotchRadius, notchTop = true, notchBottom = false)
     Box(
-        Modifier.fillMaxWidth().height(44.dp)
+        Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp).fillMaxWidth().height(48.dp)
+            .clip(stub).background(c.lavender).perforatedTop(c.muted, NotchRadius)
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onVerticalDrag = { change, dy -> change.consume(); scope.launch { tear.snapTo((tear.value + dy).coerceAtLeast(0f)) } },
@@ -551,11 +599,8 @@ private fun TearLine(tear: Animatable<Float, *>, onRelease: () -> Unit, onCancel
             .semantics(mergeDescendants = true) { contentDescription = "Tear off and add the task"; onClick("Add the task") { onTearByAction(); true } },
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.fillMaxWidth().height(2.dp)) {
-            drawLine(c.muted, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), strokeWidth = 3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 12f)))
-        }
         Row(
-            Modifier.clip(RoundedCornerShape(12.dp)).background(c.lavender).padding(horizontal = 12.dp, vertical = 6.dp),
+            Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Icon(AppIcons.ChevronRight, null, Modifier.size(16.dp).rotate(90f), tint = c.ink)
