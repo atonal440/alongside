@@ -429,10 +429,12 @@ object QuickAddParser {
             if (m.g(1) != null && h in 1..11 && m.g(2)!!.length == (if (h < 10) 1 else 2)) Hit(time = "${pad(bareHour(h))}:${m.g(3)}", approx = true, amb = h to m.g(3)!!.toInt())
             else Hit(time = "${pad(h)}:${m.g(3)}")
         }
-        time("""\b(\d{1,2})\s+(?:in\s+the\s+)?(morning|afternoon|evening)\b""") { m ->
+        // A clock and its day part as one phrase: "6 in the morning", "at 7:05 in the evening", "at 12:30 in the morning" (00:30).
+        // The lookbehind keeps it from matching the minutes of "7:05" on their own.
+        time("""\b(?:at\s+)?(?<![:\d])(\d{1,2})(?::([0-5]\d))?\s+(?:in\s+the\s+)?(morning|afternoon|evening|night)\b""") { m ->
             val h = m.g(1)!!.toInt()
             if (h < 1 || h > 12) null
-            else Hit(time = "${pad(if (m.g(2)!!.lowercase() == "morning") h % 12 else h % 12 + 12)}:00")
+            else Hit(time = hhmm(dayPartHour(h, m.g(3)!!.lowercase()) * 60 + (m.g(2)?.toInt() ?: 0)))
         }
         time("""\b(?:at\s+)?(\d{1,2})\s*o['’]?clock\b""") { m ->
             m.g(1)!!.toInt().takeIf { it in 1..12 }?.let { Hit(time = "${pad(bareHour(it))}:00", approx = true, amb = it to 0) }

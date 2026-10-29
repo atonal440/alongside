@@ -226,9 +226,11 @@ rule('time', `\\b(at\\s+)?([01]?\\d|2[0-3]):([0-5]\\d)\\b(?!\\s*(?:am|pm|a\\.m|p
   // "at 5:30" is the afternoon; "17:30", "09:00" and a bare "5:30" are taken literally.
   return m[1] && h >= 1 && h <= 11 && m[2].length === (h < 10 ? 1 : 2) ? { time: `${pad(bareHour(h))}:${m[3]}`, approx: true, amb: { h, min: +m[3] } } : { time: `${pad(h)}:${m[3]}` };
 });
-rule('time', `\\b(\\d{1,2})\\s+(?:in\\s+the\\s+)?(morning|afternoon|evening)\\b`, (m) => {
+// A clock and its day part as one phrase: "6 in the morning", "at 7:05 in the evening", "at 12:30 in the morning" (00:30).
+// The lookbehind keeps it from matching the minutes of "7:05" on their own.
+rule('time', `\\b(?:at\\s+)?(?<![:\\d])(\\d{1,2})(?::([0-5]\\d))?\\s+(?:in\\s+the\\s+)?(morning|afternoon|evening|night)\\b`, (m) => {
   const h = +m[1]; if (h < 1 || h > 12) return null;
-  return { time: `${pad(m[2].toLowerCase() === 'morning' ? h % 12 : (h % 12) + 12)}:00` };
+  return { time: hhmm(dayPartHour(h, m[3].toLowerCase()) * 60 + +(m[2] ?? 0)) };
 });
 rule('time', `\\b(?:at\\s+)?(\\d{1,2})\\s*o['\u2019]?clock\\b`, (m) => (+m[1] >= 1 && +m[1] <= 12 ? { time: `${pad(bareHour(+m[1]))}:00`, approx: true, amb: { h: +m[1], min: 0 } } : null));
 rule('time', `\\bhalf\\s+past\\s+(\\d{1,2})\\b`, (m) => (+m[1] >= 1 && +m[1] <= 12 ? { time: `${pad(bareHour(+m[1]))}:30`, approx: true, amb: { h: +m[1], min: 30 } } : null));
