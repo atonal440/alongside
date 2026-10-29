@@ -54,7 +54,7 @@ import com.atonal440.alongside.ui.screens.DetailScreen
 import com.atonal440.alongside.ui.screens.FiltersSheet
 import com.atonal440.alongside.ui.screens.ListScreen
 import com.atonal440.alongside.ui.screens.NapSheet
-import com.atonal440.alongside.ui.screens.NewTaskSheet
+import com.atonal440.alongside.ui.screens.QuickAddSheet
 import com.atonal440.alongside.ui.screens.ProjectsScreen
 import com.atonal440.alongside.ui.screens.RoutinesScreen
 import com.atonal440.alongside.ui.screens.SettingsScreen
@@ -156,10 +156,12 @@ fun AlongsideApp(vm: AppViewModel) {
     }
 
     if (filtersOpen) FiltersSheet(board, filters, onApply = { vm.setFilters(it); filtersOpen = false }, onDismiss = { filtersOpen = false })
-    if (newTaskOpen) NewTaskSheet(
+    if (newTaskOpen) QuickAddSheet(
         board, initialProject = filters.projects.singleOrNull(),
         quickAdd = vm.quickAdd,
-        onCreate = { title, notes, project, plan, due, dueTime -> vm.create(title, notes, project, plan, due, dueTime) },
+        onCreate = { d ->
+            vm.create(d.title, d.notes, d.projectId, d.plan, d.date, d.time.takeIf { d.date != null }, d.kickoff, d.availableFrom, d.waitingOn)
+        },
         onDismiss = { newTaskOpen = false },
     )
     napFor?.let { id ->

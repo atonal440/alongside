@@ -114,8 +114,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         plan: Boolean,
         due: LocalDate?,
         dueTime: LocalTime? = null,
+        kickoffNote: String? = null,
+        availableFrom: LocalDate? = null,
+        waitingOn: List<String> = emptyList(),
     ) = viewModelScope.launch {
-        repo.create(title.trim(), notes?.trim()?.takeIf { it.isNotEmpty() }, projectId, plan, due, dueTime)
+        repo.create(
+            title.trim(), notes?.trim()?.takeIf { it.isNotEmpty() }, projectId, plan, due, dueTime,
+            kickoffNote?.trim()?.takeIf { it.isNotEmpty() }, availableFrom, waitingOn,
+        )
     }
 
     /** The on-device model behind the "Say it your way" field on the new-task sheet. */

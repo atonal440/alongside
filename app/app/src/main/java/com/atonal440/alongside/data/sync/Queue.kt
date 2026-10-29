@@ -108,7 +108,7 @@ fun overlay(base: CanonicalView?, ops: List<QueuedOp>, syncedAtMillis: Long?): O
             is Intent.Create -> {
                 if (intent.taskId in tasks) return@map SkipReason.TaskExists
                 tasks[intent.taskId] = Task(
-                    id = intent.taskId, title = intent.title, notes = intent.notes, task_type = intent.taskType,
+                    id = intent.taskId, title = intent.title, notes = intent.notes, task_type = intent.taskType, kickoff_note = intent.kickoffNote,
                     created_at = at, updated_at = at,
                 )
                 null
@@ -118,6 +118,11 @@ fun overlay(base: CanonicalView?, ops: List<QueuedOp>, syncedAtMillis: Long?): O
                 if (hasSubtasks(intent.taskId)) return@map SkipReason.Invalid
                 tasks.remove(intent.taskId)
                 links.values.removeAll { it.from_task_id == intent.taskId || it.to_task_id == intent.taskId }
+                null
+            }
+            is Intent.Block -> {
+                if (intent.taskId !in tasks || intent.blockerId !in tasks) return@map SkipReason.TaskMissing
+                links[linkKey(intent.blockerId, intent.taskId, "blocks")] = TaskLink(intent.blockerId, intent.taskId, "blocks")
                 null
             }
             else -> {

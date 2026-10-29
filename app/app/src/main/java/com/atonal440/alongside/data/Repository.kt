@@ -160,6 +160,9 @@ class Repository private constructor(private val context: Context) {
         plan: Boolean,
         due: LocalDate?,
         dueTime: LocalTime? = null,
+        kickoffNote: String? = null,
+        availableFrom: LocalDate? = null,
+        waitingOn: List<String> = emptyList(),
     ) {
         val id = mintId("t")
         // Project and due date are their own commands, each guarded by the revision the create gives the task.
@@ -167,12 +170,14 @@ class Repository private constructor(private val context: Context) {
         // new series belong to duties (`duty.create`), which the app cannot create yet.
         write(
             *listOfNotNull<Intent>(
-                Intent.Create(id, title, notes, if (plan) "plan" else "action"),
+                Intent.Create(id, title, notes, if (plan) "plan" else "action", kickoffNote),
                 projectId?.let { Intent.SetProject(id, it) },
                 due?.let {
                     val s = dueSchedule(it, dueTime, Clock.zone)
                     Intent.SetDue(id, s.dueDate, dueAllDay = s.allDay)
                 },
+                availableFrom?.let { Intent.SetAvailableFrom(id, it.toString(), Clock.zone.id) },
+                *waitingOn.distinct().map { Intent.Block(id, it) }.toTypedArray(),
             ).toTypedArray(),
         )
     }

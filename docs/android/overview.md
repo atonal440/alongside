@@ -80,12 +80,28 @@ Files are written through a temp file and rename.
 
 ## Quick add with the on-device model (experiment)
 
-The New task sheet has a "Say it your way" field. **Fill in** runs two stages on the phone:
+The New task sheet (`ui/screens/QuickAddSheet.kt`) is a sheet that grows one element at a time. Saying the task in the text box runs two stages on the phone:
 
 1. `domain/QuickAddParser.kt` is a deterministic parser for dates, times of day and repeats ("tomorrow at 5pm", "every other thursday", "the 1st and 15th of every month"). It resolves against the phone's local clock into a local date, an optional local time and an RRULE, and cuts those phrases out of the text. A small model is unreliable at calendar arithmetic, so it never does any. Vague phrases ("morning", "next week", "at 5") set `approx` and the sheet says it guessed. Its spec is the table of cases in `app/app/src/test/resources/quickadd-parse-cases.json`; every fixed phrasing gets a row.
 2. `data/ai/OnDeviceQuickAdd.kt` sends what is left to Gemini Nano through the ML Kit GenAI Prompt API (beta, AICore) and reads title, notes and kind (action or plan) from a JSON reply. It retries once if the reply does not parse. The model can be missing, downloading or unsupported; the sheet reports that and the parser still fills date, time and repeat.
 
-The sheet shows the parser and model timings, the phrases that were cut, and the raw model reply, so a misread can be judged on a real device. A time makes the due date a local instant (not all-day). Repeats are parsed and shown, but not saved: new series belong to duties (`duty.create`, see `docs/worker/duties.md`), which the app cannot create yet, so a sentence with a repeat makes one task for its first occurrence and the sheet says so. Wiring `duty.create` into the sync layer is the next step; it keeps times and can carry COUNT and UNTIL, which the legacy date-only repeat cannot. The prompt lab that picked this design is in `scripts/llm-lab/` (see its README).
+### The sheet
+
+What the stages find prints as ordinary app UI, already filled in, and each piece is tappable:
+
+- **What** prints first: the title (the parser's leftover text, then Nano's rewording once it answers) with Action/Plan chips. Anything the person edits while the model is still thinking is kept (`TapeDraft.withModel`).
+- **When** prints if a day was found: day and time chips (date and time pickers, quick days behind a tap on the day), and a read-only repeat chip when the sentence had one, with a note that repeats aren't saved yet. A note also says when the reading was a guess (`approx`).
+- **Notes** prints if the model returned any. **Project** prints if the sheet was opened inside a project.
+- After the first answer the text box asks the questions that are still open, in order: When (when no day was found; the answer goes through the same parser), Notes, Project (chips). Each can be skipped, and a skipped or removed element is not asked again. While the model runs the box waits, so a late reply cannot move the question under a half-typed answer.
+- A perforated line under the newest element tears the sheet off: dragging it down creates the task and closes the sheet, and releasing early or cancelling springs it back. A task needs a title within the length limits before the line appears. Accessibility services get the same action without a drag.
+
+The element order and rules (what is asked next, how the model result merges) are `domain/QuickAddTape.kt`, covered by `QuickAddTapeTest`. Long-press the "New task" title to print an "Under the hood" element with the parser and model timings, the phrases that were cut and the raw model reply, so a misread can be judged on a real device.
+
+Three more sections are never asked for. Once the task has a title the text box offers dashed **+ Kickoff note**, **+ Not before** and **+ Waiting on** chips (hidden while an answer is half typed); each prints a card when answered. Waiting on is a search over open tasks and each pick adds a row, and a row's X stops waiting on it.
+
+They are written through three sync intents (`data/sync/Intent.kt`): the kickoff note rides in `task.create`; **not before** is `Intent.SetAvailableFrom`, a `task.dates.set` that replaces availability and deadline together, so the envelope sends the server's current deadline back unchanged (and refuses if it cannot read it); **waiting on** is `Intent.Block`, a `link.add` of type `blocks` from the blocker to the new task, guarded by the link's own revision (null for a link never seen). All three show in the optimistic view at once. Deadline and subtasks are still not on the sheet.
+
+A time makes the due date a local instant (not all-day). Repeats are parsed and shown, but not saved: new series belong to duties (`duty.create`, see `docs/worker/duties.md`), which the app cannot create yet, so a sentence with a repeat makes one task for its first occurrence and the sheet says so. Wiring `duty.create` into the sync layer is the next step; it keeps times and can carry COUNT and UNTIL, which the legacy date-only repeat cannot. The prompt lab that picked this design is in `scripts/llm-lab/` (see its README).
 
 ## Out of scope for now
 
