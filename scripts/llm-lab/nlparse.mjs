@@ -245,6 +245,12 @@ rule('time', `\\b(at\\s+)?([01]?\\d|2[0-3]):([0-5]\\d)\\b(?!\\s*(?:am|pm|a\\.m|p
   // "at 5:30" is the afternoon; "17:30", "09:00" and a bare "5:30" are taken literally.
   return m[1] && h >= 1 && h <= 11 && m[2].length === (h < 10 ? 1 : 2) ? { time: `${pad(bareHour(h))}:${m[3]}`, approx: true, amb: { h, min: +m[3] } } : { time: `${pad(h)}:${m[3]}` };
 });
+// "half past 8pm", "quarter to 8pm": an offset on a clock that already says am or pm.
+rule('time', `\\b(half\\s+past|quarter\\s+past|quarter\\s+to)\\s+(\\d{1,2})\\s*(a\\.?m\\.?|p\\.?m\\.?)(?![a-z])`, (m) => {
+  const h = +m[2]; if (h < 1 || h > 12) return null;
+  const offset = /^half/i.test(m[1]) ? 30 : /past/i.test(m[1]) ? 15 : -15;
+  return { time: hhmm(((h % 12) * 60 + (/^p/i.test(m[3]) ? 720 : 0) + offset + 1440) % 1440) };
+});
 // "half past 7 in the morning", "quarter to 8 in the evening": the offset and the day part settle one hour together.
 rule('time', `\\b(half\\s+past|quarter\\s+past|quarter\\s+to)\\s+(\\d{1,2})\\s+(?:in\\s+the\\s+)?(morning|afternoon|evening|night)\\b`, (m) => {
   const h = +m[2]; if (h < 1 || h > 12) return null;

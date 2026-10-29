@@ -173,6 +173,9 @@
     {"in":"meet every 2 weeks on wednesdays starting today at 9am","date":"2026-11-11","time":"09:00","recurrence":"FREQ=WEEKLY;INTERVAL=2;BYDAY=WE","rest":"meet","now":"2026-10-28T10:00"},
     {"in":"renew every 3 years starting today at 9am","date":"2029-10-28","time":"09:00","recurrence":"FREQ=YEARLY;INTERVAL=3","rest":"renew","now":"2026-10-28T10:00"},
     {"in":"renew every year starting today at 9am","date":"2032-02-29","time":"09:00","recurrence":"FREQ=YEARLY","rest":"renew","now":"2028-02-29T10:00"},
-    {"in":"renew every 1000000 years starting today at 9am","date":"2026-10-28","time":"09:00","recurrence":null,"rest":"renew every 1000000 years","now":"2026-10-28T10:00"}
+    {"in":"renew every 1000000 years starting today at 9am","date":"2026-10-28","time":"09:00","recurrence":null,"rest":"renew every 1000000 years","now":"2026-10-28T10:00"},
+    {"in":"call tomorrow at half past 8pm","date":"2026-10-26","time":"20:30","recurrence":null,"rest":"call"},
+    {"in":"call tomorrow quarter to 8pm","date":"2026-10-26","time":"19:45","recurrence":null,"rest":"call"},
+    {"in":"call tomorrow quarter past 12am","date":"2026-10-26","time":"00:15","recurrence":null,"rest":"call"}
   ]
 }
