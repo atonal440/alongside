@@ -128,6 +128,20 @@ class QuickAddTapeTest {
         assertFalse(TapeLine.Waiting in d.printed)
     }
 
+    @Test fun `a skipped or removed section can be added back, and nothing is offered before the title`() {
+        assertTrue(TapeDraft().offered(true).isEmpty())
+        var d = TapeDraft().printWhat(parse("buy stamps"))
+        assertEquals(listOf(TapeLine.Kickoff, TapeLine.NotBefore, TapeLine.Waiting), d.offered(true))
+        d = d.skip(TapeLine.When).skip(TapeLine.Project)
+        assertEquals(listOf(TapeLine.When, TapeLine.Project, TapeLine.Kickoff, TapeLine.NotBefore, TapeLine.Waiting), d.offered(true))
+        assertFalse(TapeLine.Project in d.offered(hasProjects = false))
+        // Answering it prints it and takes it off the list.
+        d = d.printWhen(parse("friday"))
+        assertFalse(TapeLine.When in d.offered(true))
+        // A removed section goes to the list too.
+        assertTrue(TapeLine.When in d.remove(TapeLine.When).offered(true))
+    }
+
     @Test fun `a kickoff note over the limit cannot be torn off`() {
         assertTrue(TapeDraft(title = "x", kickoff = "k".repeat(2_000)).canTear)
         assertFalse(TapeDraft(title = "x", kickoff = "k".repeat(2_001)).canTear)

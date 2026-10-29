@@ -78,6 +78,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -248,9 +249,9 @@ fun QuickAddSheet(
             TapeLine.When -> {
                 val next = draft.printWhen(QuickAddParser.parse(text))
                 whenMissed = next == draft
-                if (!whenMissed) { draft = next; input = "" }
+                if (!whenMissed) { draft = next; input = ""; asking = null }
             }
-            TapeLine.Notes -> { draft = draft.printNotes(text); input = "" }
+            TapeLine.Notes -> { draft = draft.printNotes(text); input = ""; asking = null }
             else -> Unit
         }
     }
@@ -319,9 +320,10 @@ fun QuickAddSheet(
                 active = active, draft = draft, input = input, onInput = { input = it; whenMissed = false },
                 onSubmit = ::submit,
                 onSkip = { active?.let { if (asking != null) asking = null else draft = draft.skip(it); input = ""; whenMissed = false } },
-                projects = board.ws.projects.filter { it.isActive }, onProject = { draft = draft.printProject(it) },
+                projects = projects, onProject = { draft = draft.printProject(it); asking = null },
                 candidates = candidates, onWaiting = { id -> draft = draft.printWaiting(id); asking = null; input = "" },
                 onAsk = { line -> asking = line; input = ""; whenMissed = false },
+                offered = draft.offered(hasProjects = projects.isNotEmpty()).filter { it != active },
                 missed = whenMissed, busy = busy,
                 availability = availability, downloadLine = downloadLine,
                 onDownload = {
@@ -436,11 +438,9 @@ private fun WhenCard(draft: TapeDraft, onChange: (TapeDraft) -> Unit, onRemove: 
             FilterChip(draft.time?.format(timeLabel) ?: "Add a time", selected = draft.time != null, height = 36.dp, sheetStyle = true, showCheck = false, onClick = { timePicker = true })
             // Read-only: the sentence's repeat is shown, but a series cannot be saved from here yet.
             draft.recurrence?.let { rule ->
-                FilterChip(
-                    recurrenceLabel(rule) ?: "Repeats", selected = false, height = 36.dp,
-                    leading = { Icon(AppIcons.Repeat, null, Modifier.size(18.dp), tint = c.ink) },
-                    onClick = {},
-                )
+                ReadOnlyChip(recurrenceLabel(rule) ?: "Repeats", "Repeats ${recurrenceLabel(rule) ?: ""}, not saved yet") {
+                    Icon(AppIcons.Repeat, null, Modifier.size(18.dp), tint = c.ink)
+                }
             }
         }
         // Tapping the day opens the shortcuts, with the full calendar as the last of them.
@@ -616,6 +616,7 @@ private fun Composer(
     candidates: List<Task>,
     onWaiting: (String) -> Unit,
     onAsk: (TapeLine) -> Unit,
+    offered: List<TapeLine>,
     missed: Boolean,
     busy: Boolean,
     availability: Pair<ModelAvailability, String?>?,
@@ -628,6 +629,9 @@ private fun Composer(
         if (busy) {
             Text("Reading what you said…", style = Type.body, color = c.muted)
             return@Column
+        }
+        if (TapeLine.What in draft.printed && draft.title.isBlank()) {
+            Text("Give it a title in the first card to add it.", style = Type.meta, color = c.muted)
         }
         if (active == null) {
             Text(
@@ -655,10 +659,11 @@ private fun Composer(
             }
         } else if (active != null) {
             val focus = remember { FocusRequester() }
+            val focusManager = LocalFocusManager.current
             LaunchedEffect(active) { focus.requestFocus() }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
-                    Field(input, onInput, example(active), Type.body, Modifier.focusRequester(focus), imeAction = if (active == TapeLine.Waiting) ImeAction.Done else ImeAction.Send, onImeAction = onSubmit)
+                    Field(input, onInput, example(active), Type.body, Modifier.focusRequester(focus), imeAction = if (active == TapeLine.Waiting) ImeAction.Done else ImeAction.Send, onImeAction = if (active == TapeLine.Waiting) ({ focusManager.clearFocus() }) else onSubmit)
                 }
                 if (active != TapeLine.Waiting) {
                     Box(
@@ -690,8 +695,7 @@ private fun Composer(
             }
         }
         // Sections nobody asks for: offered once there is a task to add them to.
-        val offered = OptionalLines.filter { it !in draft.printed && it != active }
-        if (TapeLine.What in draft.printed && offered.isNotEmpty() && input.isBlank()) {
+        if (offered.isNotEmpty() && input.isBlank()) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 offered.forEach { line -> DashedChip("+ ${optionalLabel(line)}") { onAsk(line) } }
             }
@@ -700,9 +704,27 @@ private fun Composer(
 }
 
 private fun optionalLabel(line: TapeLine) = when (line) {
+    TapeLine.When -> "When"
+    TapeLine.Notes -> "Notes"
+    TapeLine.Project -> "Project"
     TapeLine.Kickoff -> "Kickoff"
     TapeLine.NotBefore -> "Not before"
-    else -> "Waiting on"
+    TapeLine.Waiting -> "Waiting on"
+    TapeLine.What -> "Title"
+}
+
+/** A value the person can read but not change: the chip look without the button behaviour. */
+@Composable
+private fun ReadOnlyChip(text: String, description: String, leading: @Composable () -> Unit) {
+    val c = LocalColors.current
+    Row(
+        Modifier.height(36.dp).clip(RoundedCornerShape(12.dp)).border(1.5.dp, c.line, RoundedCornerShape(12.dp)).padding(horizontal = 14.dp)
+            .semantics(mergeDescendants = true) { contentDescription = description },
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        leading()
+        Text(text, style = Type.label, color = c.ink, maxLines = 1)
+    }
 }
 
 /** An empty section the sheet can print: dashed, so it reads as not there yet. */

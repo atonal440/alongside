@@ -13,8 +13,10 @@ enum class TapeLine {
     Kickoff, NotBefore, Waiting,
 }
 
-/** The sections offered as "add" chips rather than asked for. */
+/** The sections that are offered as "add" chips from the start rather than asked for. */
 val OptionalLines = listOf(TapeLine.Kickoff, TapeLine.NotBefore, TapeLine.Waiting)
+
+private val AskedLines = listOf(TapeLine.When, TapeLine.Notes, TapeLine.Project)
 
 /**
  * The task being built on the quick-add sheet. Lines are printed in the order they were answered; a line that
@@ -53,6 +55,16 @@ data class TapeDraft(
         else -> listOf(TapeLine.When, TapeLine.Notes, TapeLine.Project).firstOrNull { line ->
             line !in printed && line !in skipped && (line != TapeLine.Project || hasProjects)
         }
+    }
+
+    /**
+     * Sections the person can still add: the optional ones, plus any asked-for one they passed on or took off,
+     * so a skip is never a dead end. Nothing is offered before the title is printed.
+     */
+    fun offered(hasProjects: Boolean): List<TapeLine> {
+        if (TapeLine.What !in printed) return emptyList()
+        val asked = AskedLines.filter { it in skipped && it !in printed && (it != TapeLine.Project || hasProjects) }
+        return asked + OptionalLines.filter { it !in printed }
     }
 
     /** The first answer: the parser's reading of the sentence, with the model's still to come. */
