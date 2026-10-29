@@ -142,7 +142,7 @@ rule('rec', `(?:every|each)\\s+${wdList}(?:(?:\\s*,\\s*|\\s+and\\s+|\\s*&\\s*)(?
 rule('rec', `\\b(?:on\\s+)?(?:${WD_FULL})s(?:(?:\\s*,\\s*|\\s+and\\s+|\\s*&\\s*)(?:${WD_FULL})s)*\\b`,
   (m) => ({ rec: { freq: 'WEEKLY', interval: 1, byday: [...new Set([...m[0].matchAll(new RegExp(`\\b(${WD_FULL})`, 'gi'))].map((x) => RR_DAY[wdIndex(x[1])]))] } }));
 rule('rec', `(?:every|each)\\s+(morning|afternoon|evening|night)\\b`,
-  (m) => ({ rec: { freq: 'DAILY', interval: 1 }, time: PART_OF_DAY[m[1].toLowerCase()], approx: true }));
+  (m) => ({ rec: { freq: 'DAILY', interval: 1 }, time: PART_OF_DAY[m[1].toLowerCase()], approx: true, partName: m[1].toLowerCase() }));
 rule('rec', `(?:every|each)\\s+(day|week|month|year)\\b`,
   (m) => ({ rec: { freq: { day: 'DAILY', week: 'WEEKLY', month: 'MONTHLY', year: 'YEARLY' }[m[1].toLowerCase()], interval: 1 }, anchorless: true }));
 rule('rec', `\\b(daily|weekly|monthly|yearly|annually|biweekly|fortnightly)\\b`,
@@ -287,9 +287,13 @@ export function parse(text, opts = {}) {
   const rec = recPick ? { ...recPick.data.rec, interval: Math.max(recPick.data.rec.interval, ...generic.map((f) => f.data.rec.interval)) } : null;
   let date = firstDate?.data.date ?? null;
   let time = firstTime?.data.time ?? firstDate?.data.time ?? recPick?.data.time ?? null;
-  const resolvedByDayPart = !!(dayPart && firstTime.data.amb);
-  if (resolvedByDayPart) time = hhmm((dayPartHour(firstTime.data.amb.h, dayPart.data.partName) * 60 + firstTime.data.amb.min + 1440) % 1440);
-  const approx = [firstDate, resolvedByDayPart ? null : firstTime, recPick].some((f) => f?.data.approx) || !!recPick?.data.anchorless;
+  // "every morning at 7": the day part sits inside the repeat span and settles the hour the same way.
+  const partName = dayPart?.data.partName
+    ?? (recPick?.data.partName && firstTime && !firstTime.data.part && adjacent(recPick, firstTime) ? recPick.data.partName : undefined);
+  const resolvedByDayPart = !!(partName && firstTime?.data.amb);
+  if (resolvedByDayPart) time = hhmm((dayPartHour(firstTime.data.amb.h, partName) * 60 + firstTime.data.amb.min + 1440) % 1440);
+  // A repeat's own default time ("every morning" is 09:00) is only a guess when no clock time was given.
+  const approx = [firstDate, resolvedByDayPart ? null : firstTime, firstTime ? null : recPick].some((f) => f?.data.approx) || !!recPick?.data.anchorless;
 
   const afterNow = (d) => +d > +ctx.today || time == null || +time.slice(0, 2) * 60 + +time.slice(3) > ctx.nowMin;
   if (rec) {

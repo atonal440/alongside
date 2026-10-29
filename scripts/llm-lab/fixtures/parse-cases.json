@@ -158,6 +158,8 @@
     {"in":"call at 4pm tomorrow afternoon","date":"2026-10-26","time":"16:00","recurrence":null,"rest":"call afternoon"},
     {"in":"call tomorrow morning, friday at 7pm","date":"2026-10-26","time":"09:00","recurrence":null,"rest":"call, friday at 7pm"},
     {"in":"call tomorrow night quarter to 6","date":"2026-10-26","time":"17:45","recurrence":null,"rest":"call"},
-    {"in":"call tomorrow morning quarter to 1","date":"2026-10-26","time":"00:45","recurrence":null,"rest":"call"}
+    {"in":"call tomorrow morning quarter to 1","date":"2026-10-26","time":"00:45","recurrence":null,"rest":"call"},
+    {"in":"water plants every morning at 7","date":"2026-10-26","time":"07:00","recurrence":"FREQ=DAILY","rest":"water plants"},
+    {"in":"read every evening at 10","date":"2026-10-25","time":"22:00","recurrence":"FREQ=DAILY","rest":"read"}
   ]
 }

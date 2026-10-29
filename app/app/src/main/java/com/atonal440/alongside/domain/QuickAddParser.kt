@@ -73,9 +73,14 @@ object QuickAddParser {
         var date = firstDate?.hit?.date
         var time = firstTime?.hit?.time ?: firstDate?.hit?.time ?: recPick?.hit?.time
         val amb = firstTime?.hit?.amb
-        val resolvedByDayPart = dayPart != null && amb != null
-        if (dayPart != null && amb != null) time = hhmm((dayPartHour(amb.first, dayPart.hit.partName) * 60 + amb.second + 1440) % 1440)
-        val approx = listOfNotNull(firstDate, if (resolvedByDayPart) null else firstTime, recPick).any { it.hit.approx } || recPick?.hit?.anchorless == true
+        // "every morning at 7": the day part sits inside the repeat span and settles the hour the same way.
+        val partName = dayPart?.hit?.partName
+            ?: if (recPick?.hit?.partName != null && firstTime != null && !firstTime.hit.part && adjacent(recPick, firstTime)) recPick.hit.partName else null
+        val resolvedByDayPart = partName != null && amb != null
+        if (partName != null && amb != null) time = hhmm((dayPartHour(amb.first, partName) * 60 + amb.second + 1440) % 1440)
+        // A repeat's own default time ("every morning" is 09:00) is only a guess when no clock time was given.
+        val approx = listOfNotNull(firstDate, if (resolvedByDayPart) null else firstTime, if (firstTime != null) null else recPick)
+            .any { it.hit.approx } || recPick?.hit?.anchorless == true
 
         val timeMin = time?.let { it.substring(0, 2).toInt() * 60 + it.substring(3).toInt() }
         fun afterNow(d: LocalDate) = d.isAfter(ctx.today) || timeMin == null || timeMin > ctx.nowMin
@@ -303,7 +308,7 @@ object QuickAddParser {
             Hit(rec = Rec("WEEKLY", byday = bydayOf(m.value, WD_FULL)))
         }
         rec("""(?:every|each)\s+(morning|afternoon|evening|night)\b""") { m ->
-            Hit(rec = Rec("DAILY"), time = PART_OF_DAY.getValue(m.g(1)!!.lowercase()), approx = true)
+            Hit(rec = Rec("DAILY"), time = PART_OF_DAY.getValue(m.g(1)!!.lowercase()), approx = true, partName = m.g(1)!!.lowercase())
         }
         rec("""(?:every|each)\s+(day|week|month|year)\b""") { m ->
             Hit(rec = Rec(FREQ_OF_UNIT.getValue(m.g(1)!!.lowercase())), anchorless = true)
