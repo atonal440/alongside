@@ -85,6 +85,7 @@ fun canonicalFromWorkspace(ws: Workspace): CanonicalWorkspace {
     val json = AlongsideApi.json
     val images = ArrayList<SyncImage>()
     ws.projects.mapTo(images) { SyncImage("project", it.id, 1, row = json.encodeToJsonElement(it).jsonObject) }
+    ws.duties.mapTo(images) { SyncImage("duty", it.id, 1, row = json.encodeToJsonElement(it).jsonObject) }
     ws.tasks.mapTo(images) { SyncImage("task", it.id, 1, row = json.encodeToJsonElement(it).jsonObject) }
     ws.links.mapTo(images) { SyncImage("link", linkKey(it.from_task_id, it.to_task_id, it.link_type), 1, row = json.encodeToJsonElement(it).jsonObject) }
     return CanonicalWorkspace(SyncCursor(1, 1), images.associateBy { it.id })

@@ -9,6 +9,7 @@ import com.atonal440.alongside.data.sync.SyncStatus
 import com.atonal440.alongside.data.sync.mintId
 import com.atonal440.alongside.domain.Clock
 import com.atonal440.alongside.domain.dueSchedule
+import com.atonal440.alongside.domain.dutySchedule
 import com.atonal440.alongside.domain.toWire
 import com.atonal440.alongside.widget.AlongsideWidgets
 import kotlinx.coroutines.CoroutineScope
@@ -163,11 +164,18 @@ class Repository private constructor(private val context: Context) {
         kickoffNote: String? = null,
         availableFrom: LocalDate? = null,
         waitingOn: List<String> = emptyList(),
+        repeat: String? = null,
     ) {
+        if (repeat != null) {
+            // A repeat is a series (`duty.create`), starting at the first occurrence; the worker makes each task when it is due.
+            // With no date the series starts today (or at the next matching day, which the rule decides).
+            val s = dutySchedule(repeat, due ?: Clock.today(), dueTime, Clock.zone)
+            write(Intent.CreateDuty(mintId("d"), title, notes, if (plan) "plan" else "action", projectId, "next", s.rrule, s.dtstart, s.timezone, kickoffNote))
+            return
+        }
         val id = mintId("t")
         // Project and due date are their own commands, each guarded by the revision the create gives the task.
-        // A time makes the due date a local instant instead of an all-day date. Repeats are not written here:
-        // new series belong to duties (`duty.create`), which the app cannot create yet.
+        // A time makes the due date a local instant instead of an all-day date.
         write(
             *listOfNotNull<Intent>(
                 Intent.Create(id, title, notes, if (plan) "plan" else "action", kickoffNote),
@@ -181,6 +189,14 @@ class Repository private constructor(private val context: Context) {
             ).toTypedArray(),
         )
     }
+
+    /** Rewrites a series' title, notes, kind and catch-up for the occurrences still to come (`duty.content.set`). */
+    suspend fun editSeries(id: String, title: String, notes: String?, plan: Boolean, catchUpAll: Boolean) {
+        write(Intent.SetDutyContent(id, title, notes, if (plan) "plan" else "action", if (catchUpAll) "all" else "next"))
+    }
+
+    /** Pauses, resumes or ends a series. Ending is final. */
+    suspend fun setSeriesStatus(id: String, status: String) = write(Intent.SetDutyStatus(id, status))
 
     /** Put every refused change back at the end of the queue as a new command, and send it. */
     suspend fun retryNeedsAttention() {

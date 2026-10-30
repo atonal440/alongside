@@ -1,5 +1,6 @@
 package com.atonal440.alongside.data.sync
 
+import com.atonal440.alongside.data.Duty
 import com.atonal440.alongside.data.Task
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
@@ -15,8 +16,10 @@ class BuildContext(
     /** Current server row of the task the intent writes (null when it does not exist, as before a create). */
     val row: Task?,
     val structuralRevision: Long,
-    /** Current revision of the project a task is being moved into, when relevant. */
+    /** Current revision of the project a task is being moved into (or a series names), when relevant. */
     val projectRevision: Long?,
+    /** Current server row of the duty the intent writes, for the intents whose target is a duty. */
+    val duty: Duty? = null,
 )
 
 /** The change cannot be expressed as a command; it is retained as rejected rather than sent. */
@@ -63,12 +66,58 @@ fun buildEnvelope(op: QueuedOp, ctx: BuildContext): JsonObject {
             put("expectedStructuralRevision", structural)
         })
     }
+    if (intent is Intent.CreateDuty) {
+        // Standalone: its structural guard rides on the command, not the envelope.
+        return wrap(buildJsonObject {
+            put("kind", "duty.create")
+            put("id", intent.taskId)
+            put("expectedRevision", JsonNull)
+            put("expectedStructuralRevision", structural)
+            put("values", buildJsonObject {
+                put("title", intent.title)
+                put("notes", intent.notes.json())
+                put("kickoffNote", intent.kickoffNote.json())
+                put("taskType", intent.taskType)
+                put("project", intent.projectId?.let { pid -> buildJsonObject { put("id", pid); put("expectedRevision", ctx.projectRevision ?: 0) } } ?: JsonNull)
+                put("catchUp", intent.catchUp)
+                put("schedule", buildJsonObject {
+                    put("rrule", intent.rrule)
+                    put("dtstart", intent.dtstart)
+                    put("timezone", intent.timezone.json())
+                })
+            })
+        })
+    }
     val base = op.base ?: throw EnvelopeRefused("This change has no base revision to guard against.")
+    if (intent is Intent.SetDutyContent || intent is Intent.SetDutyStatus) {
+        val duty = ctx.duty ?: throw EnvelopeRefused("That repeat no longer exists on the server.")
+        return wrap(
+            when (intent) {
+                is Intent.SetDutyStatus -> buildJsonObject {
+                    put("kind", "duty.status.set"); put("id", intent.taskId); put("expectedRevision", base)
+                    put("status", intent.status)
+                }
+                is Intent.SetDutyContent -> buildJsonObject {
+                    put("kind", "duty.content.set"); put("id", intent.taskId); put("expectedRevision", base)
+                    // The command replaces the whole template, so what this edit does not touch is sent as the server has it.
+                    put("values", buildJsonObject {
+                        put("title", intent.title)
+                        put("notes", intent.notes.json())
+                        put("kickoffNote", duty.kickoff_note.json())
+                        put("taskType", intent.taskType)
+                        put("project", duty.project_id?.let { pid -> buildJsonObject { put("id", pid); put("expectedRevision", ctx.projectRevision ?: 0) } } ?: JsonNull)
+                        put("catchUp", intent.catchUp)
+                    })
+                }
+                else -> error("handled above")
+            },
+        )
+    }
     val row = ctx.row ?: throw EnvelopeRefused("That task no longer exists on the server.")
     val id = intent.taskId
     return wrap(
         when (intent) {
-            is Intent.Create -> error("handled above")
+            is Intent.Create, is Intent.CreateDuty, is Intent.SetDutyContent, is Intent.SetDutyStatus -> error("handled above")
             is Intent.SetProject -> buildJsonObject {
                 put("kind", "task.project.set"); put("id", id); put("expectedRevision", base)
                 put("expectedStructuralRevision", structural)

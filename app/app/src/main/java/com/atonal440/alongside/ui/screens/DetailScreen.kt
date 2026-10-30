@@ -70,6 +70,7 @@ fun DetailScreen(
     onWake: () -> Unit,
     onSomeday: () -> Unit,
     onDelete: () -> Unit,
+    onEditSeries: (String) -> Unit = {},
 ) {
     val c = LocalColors.current
     val facts = board.facts(taskId)
@@ -101,6 +102,9 @@ fun DetailScreen(
                 IconBtn(AppIcons.More, "More options", onClick = { menu = true })
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     if (!facts.isSomeday && !facts.isDone) DropdownMenuItem(text = { Text("Move to someday") }, leadingIcon = { Icon(AppIcons.Moon, null, Modifier.size(18.dp)) }, onClick = { menu = false; onSomeday() })
+                    board.ws.duty(task.duty_id)?.let { series ->
+                        DropdownMenuItem(text = { Text("Edit repeat") }, leadingIcon = { Icon(AppIcons.Repeat, null, Modifier.size(18.dp)) }, onClick = { menu = false; onEditSeries(series.id) })
+                    }
                     DropdownMenuItem(text = { Text("Delete task") }, leadingIcon = { Icon(AppIcons.Trash, null, Modifier.size(18.dp)) }, onClick = { menu = false; onDelete() })
                 }
             }

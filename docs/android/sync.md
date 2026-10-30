@@ -80,7 +80,9 @@ any in-flight work from the old source give up.
 ## Differences from the PWA
 
 - Intents cover what the screens can do today: create, project, due date, defer, focus, reopen,
-  complete, delete. Content, type and link intents come with the screens that make them.
+  complete, delete, and for series `duty.create`, `duty.content.set` and `duty.status.set`. A series intent
+  names a duty in its `taskId` field (kept because queued commands store it) and says so in `entity`; its
+  create is a standalone command carrying its own structural revision, and the queued edits wait behind it. Content, type and link intents come with the screens that make them.
 - Retained commands are reviewed as a group (Try again / Discard), not field by field, so there is
   no rebase *review*; retrying already rebases onto the current revision.
 - One process owns the files, so there is no cross-tab stale-commit handling.

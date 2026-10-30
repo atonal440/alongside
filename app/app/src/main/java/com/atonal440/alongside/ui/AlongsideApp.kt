@@ -57,6 +57,7 @@ import com.atonal440.alongside.ui.screens.NapSheet
 import com.atonal440.alongside.ui.screens.QuickAddSheet
 import com.atonal440.alongside.ui.screens.ProjectsScreen
 import com.atonal440.alongside.ui.screens.RoutinesScreen
+import com.atonal440.alongside.ui.screens.SeriesSheet
 import com.atonal440.alongside.ui.screens.SettingsScreen
 import com.atonal440.alongside.ui.theme.LocalColors
 import com.atonal440.alongside.ui.theme.Type
@@ -78,6 +79,7 @@ fun AlongsideApp(vm: AppViewModel) {
     var filtersOpen by remember { mutableStateOf(false) }
     var newTaskOpen by remember { mutableStateOf(false) }
     var napFor by remember { mutableStateOf<String?>(null) }
+    var seriesFor by remember { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -115,7 +117,7 @@ fun AlongsideApp(vm: AppViewModel) {
                         onOpenSettings = { vm.openSettings(true) },
                     )
                     Tab.Projects -> ProjectsScreen(board, onOpenProject = vm::showProject)
-                    Tab.Routines -> RoutinesScreen(board, onOpenTask = vm::open)
+                    Tab.Routines -> RoutinesScreen(board, onOpenTask = vm::open, onOpenSeries = { seriesFor = it })
                 }
                 if (tab == Tab.Tasks) NewTaskButton(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 16.dp)) { newTaskOpen = true }
             }
@@ -139,6 +141,7 @@ fun AlongsideApp(vm: AppViewModel) {
                     onWake = { vm.wake(taskId) },
                     onSomeday = { vm.nap(taskId, NapChoice.Someday); vm.back() },
                     onDelete = { vm.delete(taskId) },
+                    onEditSeries = { seriesFor = it },
                 )
             }
         }
@@ -160,10 +163,18 @@ fun AlongsideApp(vm: AppViewModel) {
         board, initialProject = filters.projects.singleOrNull(),
         quickAdd = vm.quickAdd,
         onCreate = { d ->
-            vm.create(d.title, d.notes, d.projectId, d.plan, d.date, d.time.takeIf { d.date != null }, d.kickoff, d.availableFrom, d.waitingOn)
+            vm.create(d.title, d.notes, d.projectId, d.plan, d.date, d.time.takeIf { d.date != null || d.recurrence != null }, d.kickoff, d.availableFrom, d.waitingOn, d.recurrence)
         },
         onDismiss = { newTaskOpen = false },
     )
+    board.ws.duty(seriesFor)?.let { duty ->
+        SeriesSheet(
+            duty,
+            onSave = { title, notes, plan, catchUpAll -> vm.editSeries(duty.id, title, notes, plan, catchUpAll) },
+            onStatus = { vm.setSeriesStatus(duty.id, it) },
+            onDismiss = { seriesFor = null },
+        )
+    }
     napFor?.let { id ->
         NapSheet(onPick = { choice -> vm.nap(id, choice); napFor = null; vm.back() }, onDismiss = { napFor = null })
     }

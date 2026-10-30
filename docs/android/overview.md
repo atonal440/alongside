@@ -38,7 +38,7 @@ and device transfer.
   sheet adds When, Project, Kind and Order by.
 - **Task detail**: kickoff note with the next subtask, subtasks, dates, recurrence, and Mark done /
   Nap until / Wake.
-- **Projects** and **Routines** (tasks with `recurrence` or a `duty_id`).
+- **Projects** and **Routines**: repeating series (duties) soonest first, then older repeating tasks that are not in a series. Tapping a series opens its sheet: title, notes, kind and catch-up, Pause / Resume, End. A task made from a series has the same sheet under "Edit repeat".
 - **Widgets**: *Ready now* (resizable; a 4×2 shows the top three, taller sizes split into Today
   and Up next with an Add button), *Focus* (2×2, one task with a check) and *Today* (2×2 progress
   ring). Rows complete tasks in place; tapping elsewhere opens the app. Widgets follow the system
@@ -90,7 +90,7 @@ The New task sheet (`ui/screens/QuickAddSheet.kt`) is a sheet that grows one ele
 What the stages find prints as ordinary app UI, already filled in, and each piece is tappable:
 
 - **What** prints first: the title (the parser's leftover text, then Nano's rewording once it answers) with Action/Plan chips. Anything the person edits while the model is still thinking is kept (`TapeDraft.withModel`).
-- **When** prints if a day was found: day and time chips (date and time pickers, quick days behind a tap on the day), and a read-only repeat chip when the sentence had one, with a note that repeats aren't saved yet. A note also says when the reading was a guess (`approx`).
+- **When** prints if a day was found: day and time chips (date and time pickers, quick days behind a tap on the day), and a read-only repeat chip when the sentence had one, with a note that it starts on that day and that each one shows up when it's due. A note also says when the reading was a guess (`approx`).
 - **Notes** prints if the model returned any. **Project** prints if the sheet was opened inside a project.
 - After the first answer the text box asks the questions that are still open, in order: When (when no day was found; the answer goes through the same parser), Notes, Project (chips). Each can be skipped, and a skipped or removed element is not asked again. While the model runs the box waits, so a late reply cannot move the question under a half-typed answer.
 - A perforated line under the newest element tears the sheet off: dragging it down creates the task and closes the sheet, and releasing early or cancelling springs it back. A task needs a title within the length limits before the line appears. Accessibility services get the same action without a drag.
@@ -101,10 +101,10 @@ Three more sections are never asked for. Once the task has a title the text box 
 
 They are written through three sync intents (`data/sync/Intent.kt`): the kickoff note rides in `task.create`; **not before** is `Intent.SetAvailableFrom`, a `task.dates.set` that replaces availability and deadline together, so the envelope sends the server's current deadline back unchanged (and refuses if it cannot read it); **waiting on** is `Intent.Block`, a `link.add` of type `blocks` from the blocker to the new task, guarded by the link's own revision (null for a link never seen). All three show in the optimistic view at once. Deadline and subtasks are still not on the sheet.
 
-A time makes the due date a local instant (not all-day). Repeats are parsed and shown, but not saved: new series belong to duties (`duty.create`, see `docs/worker/duties.md`), which the app cannot create yet, so a sentence with a repeat makes one task for its first occurrence and the sheet says so. Wiring `duty.create` into the sync layer is the next step; it keeps times and can carry COUNT and UNTIL, which the legacy date-only repeat cannot. The prompt lab that picked this design is in `scripts/llm-lab/` (see its README).
+A time makes the due date a local instant (not all-day). A sentence with a repeat makes a series with `duty.create` (see `docs/worker/duties.md`) instead of a task: the parsed date and time are the series' first occurrence, a time repeats at that clock time in the phone's zone, and no time makes an all-day series. The kickoff note goes on the series; Not before and Waiting on belong to one task, so a repeat leaves them out and the sheet says so. The worker makes each occurrence as a task only once it is due, so a new series shows in Routines straight away and its first task appears on the day. End dates (`UNTIL`, `COUNT`) are not parsed yet: "until november 1" stays in the title and the series has no end. The prompt lab that picked this design is in `scripts/llm-lab/` (see its README).
 
 ## Out of scope for now
 
-- Routines lists repeating tasks; duties themselves aren't shown or edited.
+- A series' schedule and project can't be edited (the worker fixes the schedule; end the series and start another). Series made on other devices appear, and can be paused, resumed, ended and have their template edited.
 - No editing of titles, notes, links or subtasks yet; no project management.
 - The Ready now widget has no chips: Glance can't scroll horizontally.

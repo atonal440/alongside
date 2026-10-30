@@ -41,6 +41,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.atonal440.alongside.data.Duty
 import com.atonal440.alongside.data.Settings
 import com.atonal440.alongside.data.sync.RetainedOp
 import com.atonal440.alongside.domain.Board
@@ -48,6 +49,8 @@ import com.atonal440.alongside.domain.Clock
 import com.atonal440.alongside.domain.INBOX
 import com.atonal440.alongside.domain.TaskFacts
 import com.atonal440.alongside.domain.friendlyDay
+import com.atonal440.alongside.domain.liveSeries
+import com.atonal440.alongside.domain.nextOccurrenceLabel
 import com.atonal440.alongside.domain.recurrenceLabel
 import com.atonal440.alongside.ui.components.AlongsideMark
 import com.atonal440.alongside.ui.components.AppIcons
@@ -112,15 +115,41 @@ private fun ProjectRow(id: String?, title: String, ready: Int, open: Int, onClic
     }
 }
 
-/** Repeating work: legacy recurring tasks and duty instances, soonest first. */
+/**
+ * Repeating work. A series (duty) is listed once, whether or not it has made a task yet: the worker makes each occurrence
+ * only when it is due, so the list is the only place an upcoming one shows. Older repeating tasks that are not in a series follow.
+ */
 @Composable
-fun RoutinesScreen(board: Board, onOpenTask: (String) -> Unit, modifier: Modifier = Modifier) {
-    val c = LocalColors.current
-    val routines = board.facts.filter { it.isRepeating && !it.isDone }.sortedWith(compareBy(nullsLast()) { it.soonest })
+fun RoutinesScreen(board: Board, onOpenTask: (String) -> Unit, onOpenSeries: (String) -> Unit, modifier: Modifier = Modifier) {
+    val series = liveSeries(board.ws.duties)
+    val legacy = board.facts.filter { it.isRepeating && it.task.duty_id == null && !it.isDone }.sortedWith(compareBy(nullsLast()) { it.soonest })
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item { ScreenTitle("Routines", "Things that come back around. Finishing one schedules the next.") }
-        if (routines.isEmpty()) item { EmptyNote("No repeating tasks yet.") }
-        items(routines, key = { it.task.id }) { f -> RoutineRow(f, board.ws.project(f.task.project_id)?.title) { onOpenTask(f.task.id) } }
+        item { ScreenTitle("Routines", "Things that come back around.") }
+        if (series.isEmpty() && legacy.isEmpty()) item { EmptyNote("No repeating tasks yet.") }
+        items(series, key = { "series:" + it.id }) { d -> SeriesRow(d, board.ws.project(d.project_id)?.title) { onOpenSeries(d.id) } }
+        items(legacy, key = { it.task.id }) { f -> RoutineRow(f, board.ws.project(f.task.project_id)?.title) { onOpenTask(f.task.id) } }
+    }
+}
+
+@Composable
+private fun SeriesRow(duty: Duty, projectTitle: String?, onClick: () -> Unit) {
+    val c = LocalColors.current
+    Row(
+        Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().heightIn(min = 68.dp)
+            .clip(RoundedCornerShape(18.dp)).background(c.card).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Icon(AppIcons.Repeat, null, Modifier.size(20.dp), tint = c.ink)
+        Column(Modifier.weight(1f)) {
+            Text(duty.title, style = Type.rowTitle, color = c.ink)
+            Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(recurrenceLabel(duty.rrule) ?: "Repeats", style = Type.meta, color = c.muted)
+                if (duty.isPaused) Text("Paused", style = Type.meta, color = c.muted)
+                else nextOccurrenceLabel(duty)?.let { Text("Next $it", style = Type.meta, color = c.muted) }
+                ProjectMeta(duty.project_id, projectTitle)
+            }
+        }
     }
 }
 

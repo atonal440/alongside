@@ -421,6 +421,70 @@ class SyncEngineTest {
         }
     }
 
+    private fun createDuty(id: String = "d_series1", title: String = "Water the plants") =
+        Intent.CreateDuty(id, title, null, "action", null, "next", "FREQ=WEEKLY;BYDAY=MO", "2026-11-02T12:00:00Z", null)
+
+    @Test
+    fun `a new series shows in the workspace at once and is created once online`() = runBlocking {
+        val e = loaded()
+        e.commit(listOf(createDuty()))
+        assertEquals("Water the plants", e.workspace.value.duty("d_series1")?.title)
+        assertTrue("no task exists until the worker makes one", e.workspace.value.tasks.isEmpty())
+        e.sync()
+        val cmd = server.applied.single()["commands"]!!.jsonArray.single().jsonObject
+        assertEquals("duty.create", cmd["kind"]!!.jsonPrimitive.content)
+        assertEquals(server.structural.toString(), cmd["expectedStructuralRevision"]!!.jsonPrimitive.content)
+        assertEquals("FREQ=WEEKLY;BYDAY=MO", cmd["values"]!!.jsonObject["schedule"]!!.jsonObject["rrule"]!!.jsonPrimitive.content)
+        assertEquals(JsonNull, cmd["values"]!!.jsonObject["schedule"]!!.jsonObject["timezone"])
+        assertEquals(1L, server.dutyRevision("d_series1"))
+        assertEquals("Water the plants", e.workspace.value.duty("d_series1")?.title)
+        assertFalse(e.hasPendingWrites)
+    }
+
+    @Test
+    fun `editing and pausing a series are guarded by the revision it was made against`() = runBlocking {
+        server.putDuty("d_series1", "Water the plants")
+        val e = loaded()
+        e.sync()
+        e.commit(listOf(Intent.SetDutyContent("d_series1", "Water the ferns", "Mist them too", "plan", "all"), Intent.SetDutyStatus("d_series1", "paused")))
+        assertEquals("Water the ferns", e.workspace.value.duty("d_series1")?.title)
+        assertEquals("paused", e.workspace.value.duty("d_series1")?.status)
+        e.sync()
+        val kinds = server.applied.map { it["commands"]!!.jsonArray.single().jsonObject["kind"]!!.jsonPrimitive.content }
+        assertEquals(listOf("duty.content.set", "duty.status.set"), kinds)
+        val row = server.dutyRowOf("d_series1")!!
+        assertEquals("Water the ferns", row["title"]!!.jsonPrimitive.content)
+        assertEquals("plan", row["task_type"]!!.jsonPrimitive.content)
+        assertEquals("all", row["catch_up"]!!.jsonPrimitive.content)
+        assertEquals("paused", row["status"]!!.jsonPrimitive.content)
+        assertEquals(3L, server.dutyRevision("d_series1"))
+    }
+
+    @Test
+    fun `an ended series cannot be changed, and the refusal is kept`() = runBlocking {
+        server.putDuty("d_series1", status = "ended")
+        val e = loaded()
+        e.sync()
+        e.commit(listOf(Intent.SetDutyStatus("d_series1", "active")))
+        assertEquals("ended", e.workspace.value.duty("d_series1")?.status)
+        e.sync()
+        val kept = e.retained.value.single()
+        assertTrue(kept.reason is RetainedReason.Rejected)
+        assertEquals("ended", e.workspace.value.duty("d_series1")?.status)
+    }
+
+    @Test
+    fun `a refused series keeps the edits queued behind it`() = runBlocking {
+        server.putDuty("d_series1")
+        val e = loaded()
+        e.sync()
+        e.commit(listOf(createDuty("d_series1"), Intent.SetDutyStatus("d_series1", "paused")))
+        e.sync()
+        assertEquals(2, e.retained.value.size)
+        assertTrue(e.retained.value.last().reason is RetainedReason.Dependency)
+        assertEquals("active", server.dutyRowOf("d_series1")!!["status"]!!.jsonPrimitive.content)
+    }
+
     @Test
     fun `envelopes carry the guards the worker expects`() {
         val row = com.atonal440.alongside.data.AlongsideApi.json.decodeFromJsonElement(com.atonal440.alongside.data.Task.serializer(), server.taskRow("t_aaaaa", recurrence = "FREQ=DAILY"))
@@ -434,5 +498,25 @@ class SyncEngineTest {
         val move = env(Intent.SetProject("t_aaaaa", "p_1"), 2)["commands"]!!.jsonArray.single().jsonObject
         assertEquals("3", move["project"]!!.jsonObject["expectedRevision"]!!.jsonPrimitive.content)
         try { env(Intent.Reopen("t_aaaaa"), null); fail("a command with no base is refused") } catch (_: com.atonal440.alongside.data.sync.EnvelopeRefused) {}
+
+        val series = Intent.CreateDuty("d_aaaaa", "Rent", "Pay it", "action", "p_1", "next", "FREQ=MONTHLY;BYMONTHDAY=1", "2026-11-01T17:00:00Z", "America/Los_Angeles")
+        val create = env(series, null)["commands"]!!.jsonArray.single().jsonObject
+        assertEquals("duty.create", create["kind"]!!.jsonPrimitive.content)
+        assertEquals(JsonNull, create["expectedRevision"])
+        assertEquals("7", create["expectedStructuralRevision"]!!.jsonPrimitive.content)
+        val values = create["values"]!!.jsonObject
+        assertEquals("3", values["project"]!!.jsonObject["expectedRevision"]!!.jsonPrimitive.content)
+        assertEquals("America/Los_Angeles", values["schedule"]!!.jsonObject["timezone"]!!.jsonPrimitive.content)
+        assertEquals("2026-11-01T17:00:00Z", values["schedule"]!!.jsonObject["dtstart"]!!.jsonPrimitive.content)
+
+        val dutyRow = com.atonal440.alongside.data.AlongsideApi.json.decodeFromJsonElement(com.atonal440.alongside.data.Duty.serializer(), server.dutyRow("d_aaaaa"))
+        val dutyCtx = com.atonal440.alongside.data.sync.BuildContext(null, structuralRevision = 7, projectRevision = null, duty = dutyRow)
+        val edit = com.atonal440.alongside.data.sync.buildEnvelope(QueuedOp(1, "c_abcde", Intent.SetDutyContent("d_aaaaa", "Rent", null, "action", "all"), 4, "t"), dutyCtx)["commands"]!!.jsonArray.single().jsonObject
+        assertEquals("duty.content.set", edit["kind"]!!.jsonPrimitive.content)
+        assertEquals("4", edit["expectedRevision"]!!.jsonPrimitive.content)
+        assertEquals("all", edit["values"]!!.jsonObject["catchUp"]!!.jsonPrimitive.content)
+        assertEquals(JsonNull, edit["values"]!!.jsonObject["project"])
+        assertFalse("duty commands are standalone", "expectedStructuralRevision" in edit)
+        try { com.atonal440.alongside.data.sync.buildEnvelope(QueuedOp(1, "c_abcde", Intent.SetDutyStatus("d_aaaaa", "paused"), 4, "t"), ctx); fail("a missing duty row is refused") } catch (_: com.atonal440.alongside.data.sync.EnvelopeRefused) {}
     }
 }
