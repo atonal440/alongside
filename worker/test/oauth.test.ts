@@ -171,6 +171,22 @@ describe('scopes', () => {
     expect((await ask([{ ...entry, scopes: ['mcp', 'mcp:admin'] }], 'mcp:admin')).location!.searchParams.get('code')).toBeTruthy();
     expect((await ask([entry], 'mcp')).location!.searchParams.get('code')).toBeTruthy();
   });
+
+  it('takes admin back from a pre-registered client the moment its entry is narrowed, including on refresh', async () => {
+    const entry = { ...JSON.parse(geminiClients())[0], scopes: ['mcp', 'mcp:admin'] };
+    const { call, env } = setup({ OAUTH_CLIENTS: JSON.stringify([entry]) });
+    const code = (await authorize(call, { client_id: 'gemini', redirect_uri: GEMINI_REDIRECT, scope: 'mcp mcp:admin' })).location!.searchParams.get('code')!;
+    const tokens = await (await call('/oauth/token', form({ grant_type: 'authorization_code', code, redirect_uri: GEMINI_REDIRECT, client_id: 'gemini', client_secret: GEMINI_SECRET }))).json<any>();
+    const admin = (token: string) => call('/mcp/admin', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+    expect((await admin(tokens.access_token)).status).toBe(200);
+
+    env.OAUTH_CLIENTS = JSON.stringify([{ ...entry, scopes: ['mcp'] }]);
+    expect((await admin(tokens.access_token)).status).toBe(403);
+    expect((await mcpList(call, tokens.access_token)).status).toBe(200);
+    const refresh = await call('/oauth/token', form({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: 'gemini', client_secret: GEMINI_SECRET }));
+    expect(refresh.status).toBe(400);
+    expect((await refresh.json<any>()).error).toBe('invalid_grant');
+  });
 });
 
 describe('registration limits', () => {

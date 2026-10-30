@@ -61,7 +61,7 @@ Authorization URL `https://<worker>/oauth/authorize`, Token URL `https://<worker
 - `mcp` opens `/mcp`. This is what a client gets when it asks for nothing, or only for scopes the server doesn't know (such as `offline_access`).
 - `mcp:admin` opens `/mcp/admin` and also `/mcp`.
 
-A token that lacks the scope for the path gets `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="mcp:admin", resource_metadata=...`. Every `401` also names the scope the path needs, and each protected-resource document lists its own `scopes_supported`, so a connector pointed at `/mcp/admin` asks for `mcp:admin` by itself. The authorize page says when admin tools are being requested. The granted scope is stored on the code and every token, and a refresh keeps it.
+A token that lacks the scope for the path (or whose pre-registered client has since been narrowed in `OAUTH_CLIENTS`) gets `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="mcp:admin", resource_metadata=...`. Every `401` also names the scope the path needs, and each protected-resource document lists its own `scopes_supported`, so a connector pointed at `/mcp/admin` asks for `mcp:admin` by itself. The authorize page says when admin tools are being requested. The granted scope is stored on the code and every token, and a refresh keeps it.
 
 What a client may be granted: dynamic clients can ask for either (the owner sees and approves it on the authorize page); pre-registered clients get `mcp` only unless their `OAUTH_CLIENTS` entry lists `"scopes": ["mcp", "mcp:admin"]` (`npm run oauth:client -- ... --admin`). Asking for a scope a client isn't allowed returns `invalid_scope`. `AUTH_TOKEN` itself still opens everything.
 

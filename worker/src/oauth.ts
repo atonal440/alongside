@@ -439,6 +439,7 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
     return oauthError('invalid_grant', 'Refresh token was already used');
   }
   if (Date.now() > row.expires_at) return oauthError('invalid_grant', 'Refresh token expired');
+  if (!row.scope.split(' ').every(scope => client.scopes.includes(scope))) return oauthError('invalid_grant', 'This client is no longer allowed the scope it was granted');
   const issued = await issueTokens(env, client.clientId, row.family_id, row.scope, hash);
   if (issued) return issued;
   // Lost the race for this refresh token: someone else redeemed or revoked it first.
@@ -477,8 +478,10 @@ export async function checkAccessToken(env: Env, token: string, requiredScope: s
     "SELECT t.client_id, t.scope, c.client_id AS dynamic_client FROM oauth_tokens t LEFT JOIN oauth_clients c ON c.client_id = t.client_id WHERE t.token_hash = ? AND t.kind = 'access' AND t.expires_at > ?",
   ).bind(await sha256Hex(token), Date.now()).first<{ client_id: string; scope: string; dynamic_client: string | null }>();
   if (!row) return 'invalid';
-  if (row.dynamic_client === null && !staticClients(env).some(c => c.clientId === row.client_id)) return 'invalid';
-  const held = row.scope.split(' ');
+  const fixed = staticClients(env).find(c => c.clientId === row.client_id);
+  if (row.dynamic_client === null && !fixed) return 'invalid';
+  // A pre-registered client that was later narrowed in OAUTH_CLIENTS loses the extra scope on tokens it already holds.
+  const held = row.scope.split(' ').filter(scope => !fixed || fixed.scopes.includes(scope));
   return held.includes(requiredScope) || (requiredScope === SCOPE_MCP && held.includes(SCOPE_ADMIN)) ? 'ok' : 'insufficient_scope';
 }
 
