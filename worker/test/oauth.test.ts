@@ -56,11 +56,11 @@ async function authorize(call: Call, params: Record<string, string>, token = OWN
   return { response, location: location ? new URL(location) : null };
 }
 
-async function connect(call: Call) {
+async function connect(call: Call, scope?: string) {
   const { body: client } = await register(call);
   const { verifier, challenge } = pkce();
   const clientId = client.client_id as string;
-  const { location } = await authorize(call, { client_id: clientId, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: 'S256' });
+  const { location } = await authorize(call, { client_id: clientId, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: 'S256', ...(scope ? { scope } : {}) });
   const response = await call('/oauth/token', form({
     grant_type: 'authorization_code', code: location!.searchParams.get('code')!, redirect_uri: REDIRECT, client_id: clientId, code_verifier: verifier,
   }));
@@ -110,6 +110,82 @@ describe('dynamic registration', () => {
 
   it('allows loopback http for native apps', async () => {
     expect((await register(setup().call, 'http://127.0.0.1:8123/cb')).response.status).toBe(201);
+  });
+});
+
+describe('scopes', () => {
+  it('grants mcp by default and ignores scopes it does not know', async () => {
+    const { call } = setup();
+    expect((await connect(call)).tokens.scope).toBe('mcp');
+    expect((await connect(call, 'offline_access something')).tokens.scope).toBe('mcp');
+  });
+
+  it('keeps the admin endpoint behind mcp:admin and answers a plain token with insufficient_scope', async () => {
+    const { call } = setup();
+    const plain = (await connect(call)).tokens;
+    const admin = (await connect(call, 'mcp:admin')).tokens;
+    expect(admin.scope).toBe('mcp:admin');
+
+    const refused = await call('/mcp/admin', { method: 'POST', headers: { Authorization: `Bearer ${plain.access_token}`, 'Content-Type': 'application/json' }, body: '{}' });
+    expect(refused.status).toBe(403);
+    const challenge = refused.headers.get('www-authenticate')!;
+    expect(challenge).toContain('error="insufficient_scope"');
+    expect(challenge).toContain('scope="mcp:admin"');
+
+    expect((await mcpList(call, admin.access_token)).status).toBe(200); // mcp:admin also opens /mcp
+    const adminList = await call('/mcp/admin', { method: 'POST', headers: { Authorization: `Bearer ${admin.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+    expect(adminList.status).toBe(200);
+  });
+
+  it('asks for the right scope in each 401 and advertises it per resource', async () => {
+    const { call } = setup();
+    expect((await call('/mcp', { method: 'POST' })).headers.get('www-authenticate')).toContain('scope="mcp"');
+    expect((await call('/mcp/admin', { method: 'POST' })).headers.get('www-authenticate')).toContain('scope="mcp:admin"');
+    expect((await (await call('/.well-known/oauth-protected-resource/mcp/admin')).json<any>()).scopes_supported).toEqual(['mcp:admin']);
+    expect((await (await call('/.well-known/oauth-protected-resource/mcp')).json<any>()).scopes_supported).toEqual(['mcp']);
+  });
+
+  it('carries the scope through a refresh', async () => {
+    const { call } = setup();
+    const { clientId, tokens } = await connect(call, 'mcp:admin');
+    const next = await (await call('/oauth/token', form({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: clientId }))).json<any>();
+    expect(next.scope).toBe('mcp:admin');
+  });
+
+  it('tells the owner when admin tools are being requested', async () => {
+    const { call } = setup();
+    const { body } = await register(call);
+    const { challenge } = pkce();
+    const page = async (scope: string) => (await call(`/oauth/authorize?${new URLSearchParams({ response_type: 'code', client_id: body.client_id as string, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: 'S256', scope })}`)).text();
+    expect(await page('mcp:admin')).toContain('with the admin tools');
+    expect(await page('mcp')).not.toContain('admin tools');
+  });
+
+  it('limits a pre-registered client to the scopes configured for it', async () => {
+    const entry = JSON.parse(geminiClients())[0];
+    const ask = async (clients: object[], scope: string) => {
+      const { call } = setup({ OAUTH_CLIENTS: JSON.stringify(clients) });
+      return authorize(call, { client_id: 'gemini', redirect_uri: GEMINI_REDIRECT, scope });
+    };
+    expect((await ask([entry], 'mcp:admin')).location!.searchParams.get('error')).toBe('invalid_scope');
+    expect((await ask([{ ...entry, scopes: ['mcp', 'mcp:admin'] }], 'mcp:admin')).location!.searchParams.get('code')).toBeTruthy();
+    expect((await ask([entry], 'mcp')).location!.searchParams.get('code')).toBeTruthy();
+  });
+
+  it('takes admin back from a pre-registered client the moment its entry is narrowed, including on refresh', async () => {
+    const entry = { ...JSON.parse(geminiClients())[0], scopes: ['mcp', 'mcp:admin'] };
+    const { call, env } = setup({ OAUTH_CLIENTS: JSON.stringify([entry]) });
+    const code = (await authorize(call, { client_id: 'gemini', redirect_uri: GEMINI_REDIRECT, scope: 'mcp mcp:admin' })).location!.searchParams.get('code')!;
+    const tokens = await (await call('/oauth/token', form({ grant_type: 'authorization_code', code, redirect_uri: GEMINI_REDIRECT, client_id: 'gemini', client_secret: GEMINI_SECRET }))).json<any>();
+    const admin = (token: string) => call('/mcp/admin', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+    expect((await admin(tokens.access_token)).status).toBe(200);
+
+    env.OAUTH_CLIENTS = JSON.stringify([{ ...entry, scopes: ['mcp'] }]);
+    expect((await admin(tokens.access_token)).status).toBe(403);
+    expect((await mcpList(call, tokens.access_token)).status).toBe(200);
+    const refresh = await call('/oauth/token', form({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: 'gemini', client_secret: GEMINI_SECRET }));
+    expect(refresh.status).toBe(400);
+    expect((await refresh.json<any>()).error).toBe('invalid_grant');
   });
 });
 

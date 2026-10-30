@@ -3,18 +3,21 @@
  * Makes one entry for the OAUTH_CLIENTS Worker secret.
  *
  * Usage:
- *   node scripts/oauth-client.mjs <name> <redirect-uri> [client-id]
+ *   node scripts/oauth-client.mjs <name> <redirect-uri> [client-id] [--admin]
  *   node scripts/oauth-client.mjs gemini https://vertexaisearch.cloud.google.com/oauth-redirect
  *
  * Prints the client id and secret to paste into the connecting app (the secret
  * is shown once and never stored), and the JSON entry to add to the secret.
- * Only the SHA-256 hash of the secret goes in the entry.
+ * Only the SHA-256 hash of the secret goes in the entry. The client may be
+ * granted the `mcp` scope only, unless --admin also allows `mcp:admin`.
  */
 import { createHash, randomBytes } from 'node:crypto';
 
-const [name, redirectUri, givenId] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const admin = args.includes('--admin');
+const [name, redirectUri, givenId] = args.filter(arg => !arg.startsWith('--'));
 if (!name || !redirectUri) {
-  console.error('Usage: node scripts/oauth-client.mjs <name> <redirect-uri> [client-id]');
+  console.error('Usage: node scripts/oauth-client.mjs <name> <redirect-uri> [client-id] [--admin]');
   process.exit(1);
 }
 
@@ -25,6 +28,7 @@ const entry = {
   name,
   secret_sha256: createHash('sha256').update(secret).digest('hex'),
   redirect_uris: [redirectUri],
+  ...(admin ? { scopes: ['mcp', 'mcp:admin'] } : {}),
 };
 
 console.log(`Client ID:     ${clientId}`);
