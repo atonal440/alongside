@@ -4,7 +4,7 @@ import { checkClientGate, checkSyncReadGate } from './clientGate';
 import { handleMcpRequest } from './mcp';
 import { handleUiRequest } from './ui';
 import { verifySignature } from './sign';
-import { handleOAuthRequest, isOwnerToken, protectedResourceMetadataUrl, verifyAccessToken } from './oauth';
+import { bearerChallenge, checkAccessToken, handleOAuthRequest, isOwnerToken, requiredScopeFor } from './oauth';
 import { getHarnessHtml } from './dev-harness';
 import { getAppHtml } from './app-ui';
 import { handleScheduled } from './scheduled';
@@ -50,9 +50,14 @@ export default {
     // Auth check
     const authHeader = request.headers.get('Authorization');
     const token = authHeader?.replace('Bearer ', '');
-    // AUTH_TOKEN opens everything. Tokens issued through OAuth only open /mcp.
-    const authorized = await isOwnerToken(env, token)
-      || (!!token && url.pathname.startsWith('/mcp') && await verifyAccessToken(env, token));
+    // AUTH_TOKEN opens everything. Tokens issued through OAuth only open /mcp, and /mcp/admin needs the admin scope.
+    let authorized = await isOwnerToken(env, token);
+    let insufficientScope = false;
+    if (!authorized && token && url.pathname.startsWith('/mcp')) {
+      const check = await checkAccessToken(env, token, requiredScopeFor(url.pathname));
+      authorized = check === 'ok';
+      insufficientScope = check === 'insufficient_scope';
+    }
     if (!authorized) {
       if (url.pathname.startsWith('/ui')) {
         // UI routes use signature-based auth
@@ -64,12 +69,11 @@ export default {
           });
         }
       } else {
-        const resourceMetadataUrl = protectedResourceMetadataUrl(url);
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
+        return new Response(JSON.stringify({ error: insufficientScope ? 'insufficient_scope' : 'Unauthorized' }), {
+          status: insufficientScope ? 403 : 401,
           headers: {
             'Content-Type': 'application/json',
-            'WWW-Authenticate': `Bearer resource_metadata="${resourceMetadataUrl}"`,
+            'WWW-Authenticate': bearerChallenge(url, insufficientScope),
           },
         });
       }

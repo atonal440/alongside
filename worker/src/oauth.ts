@@ -19,7 +19,9 @@ const ACCESS_TOKEN_TTL_S = 3600;
 const REFRESH_TOKEN_TTL_S = 90 * 24 * 3600;
 const USED_REFRESH_RETENTION_MS = 7 * 24 * 3600 * 1000; // kept so a replayed token is detected
 const MAX_DYNAMIC_CLIENTS = 200;
-const SCOPE = 'mcp';
+const SCOPE_MCP = 'mcp';
+const SCOPE_ADMIN = 'mcp:admin';
+const SUPPORTED_SCOPES = [SCOPE_MCP, SCOPE_ADMIN] as const;
 const encoder = new TextEncoder();
 
 interface OAuthClient {
@@ -28,6 +30,8 @@ interface OAuthClient {
   redirectUris: string[];
   /** SHA-256 hex of the client secret; null for public clients. */
   secretSha256: string | null;
+  /** The most this client may ever be granted. */
+  scopes: string[];
 }
 
 const StaticClientsSchema = v.array(v.object({
@@ -35,6 +39,7 @@ const StaticClientsSchema = v.array(v.object({
   name: v.optional(v.string()),
   secret_sha256: v.pipe(v.string(), v.regex(/^[0-9a-f]{64}$/)),
   redirect_uris: v.pipe(v.array(v.string()), v.minLength(1)),
+  scopes: v.optional(v.array(v.picklist(SUPPORTED_SCOPES))),
 }));
 
 function randomString(len: number): string {
@@ -92,7 +97,7 @@ function staticClients(env: Env): OAuthClient[] {
       console.warn('OAUTH_CLIENTS ignored: does not match the expected shape');
       return [];
     }
-    return parsed.output.map(c => ({ clientId: c.client_id, name: c.name || c.client_id, redirectUris: c.redirect_uris, secretSha256: c.secret_sha256 }));
+    return parsed.output.map(c => ({ clientId: c.client_id, name: c.name || c.client_id, redirectUris: c.redirect_uris, secretSha256: c.secret_sha256, scopes: c.scopes ?? [SCOPE_MCP] }));
   } catch {
     console.warn('OAUTH_CLIENTS ignored: not valid JSON');
     return [];
@@ -106,7 +111,7 @@ async function findClient(env: Env, clientId: string): Promise<OAuthClient | nul
   const row = await env.DB.prepare('SELECT client_id, client_name, redirect_uris FROM oauth_clients WHERE client_id = ?')
     .bind(clientId).first<{ client_id: string; client_name: string; redirect_uris: string }>();
   if (!row) return null;
-  return { clientId: row.client_id, name: row.client_name, redirectUris: JSON.parse(row.redirect_uris) as string[], secretSha256: null };
+  return { clientId: row.client_id, name: row.client_name, redirectUris: JSON.parse(row.redirect_uris) as string[], secretSha256: null, scopes: [...SUPPORTED_SCOPES] };
 }
 
 /** Dynamic clients may only redirect to https, or to a loopback address (native apps). */
@@ -170,7 +175,7 @@ function protectedResourceMetadata(url: URL, resourcePath: string): Response {
     resource: `${url.origin}${resourcePath}`,
     authorization_servers: [url.origin],
     bearer_methods_supported: ['header'],
-    scopes_supported: [SCOPE],
+    scopes_supported: [requiredScopeFor(resourcePath)],
   });
 }
 
@@ -182,7 +187,7 @@ function authorizationServerMetadata(url: URL): Response {
     token_endpoint: `${issuer}/oauth/token`,
     registration_endpoint: `${issuer}/oauth/register`,
     revocation_endpoint: `${issuer}/oauth/revoke`,
-    scopes_supported: [SCOPE],
+    scopes_supported: [...SUPPORTED_SCOPES],
     response_types_supported: ['code'],
     grant_types_supported: ['authorization_code', 'refresh_token'],
     code_challenge_methods_supported: ['S256'],
@@ -194,6 +199,7 @@ function authorizationServerMetadata(url: URL): Response {
 
 interface AuthorizeRequest {
   client: OAuthClient;
+  scope: string;
   redirectUri: string;
   state: string;
   codeChallenge: string;
@@ -226,6 +232,13 @@ function redirectWithError(redirectUri: string, state: string, error: string, de
   return redirectResponse(target.toString());
 }
 
+/** What to grant for a request: unknown scopes (e.g. `offline_access`) are ignored, none means plain `mcp`. Null when the client may not have what it asked for. */
+function resolveScope(client: OAuthClient, requested: string): string | null {
+  const asked = requested.split(/\s+/).filter(scope => (SUPPORTED_SCOPES as readonly string[]).includes(scope));
+  const granted = [...new Set(asked.length ? asked : [SCOPE_MCP])];
+  return granted.every(scope => client.scopes.includes(scope)) ? granted.join(' ') : null;
+}
+
 async function validateAuthorize(env: Env, get: (name: string) => string): Promise<Validated> {
   const client = await findClient(env, get('client_id'));
   const redirectUri = get('redirect_uri');
@@ -235,6 +248,8 @@ async function validateAuthorize(env: Env, get: (name: string) => string): Promi
   }
   const state = get('state');
   if (get('response_type') !== 'code') return { ok: false, response: redirectWithError(redirectUri, state, 'unsupported_response_type', 'Only response_type=code is supported.') };
+  const scope = resolveScope(client, get('scope'));
+  if (!scope) return { ok: false, response: redirectWithError(redirectUri, state, 'invalid_scope', 'This client is not allowed that scope.') };
   const codeChallenge = get('code_challenge');
   if (codeChallenge) {
     if (get('code_challenge_method') !== 'S256' || !/^[A-Za-z0-9_-]{43,128}$/.test(codeChallenge)) {
@@ -243,7 +258,7 @@ async function validateAuthorize(env: Env, get: (name: string) => string): Promi
   } else if (!client.secretSha256) {
     return { ok: false, response: redirectWithError(redirectUri, state, 'invalid_request', 'PKCE (S256) is required for this client.') };
   }
-  return { ok: true, request: { client, redirectUri, state, codeChallenge } };
+  return { ok: true, request: { client, scope, redirectUri, state, codeChallenge } };
 }
 
 function page(body: string): string {
@@ -273,11 +288,12 @@ function authorizePage(req: AuthorizeRequest, error = ''): string {
   const returnsTo = new URL(req.redirectUri).host;
   return page(`
   <h1>Alongside</h1>
-  <p><strong>${escapeAttr(req.client.name)}</strong> wants to connect, then return to ${escapeAttr(returnsTo)}. Enter your auth token to allow it.</p>
+  <p><strong>${escapeAttr(req.client.name)}</strong> wants to connect${req.scope.split(' ').includes(SCOPE_ADMIN) ? ' <strong>with the admin tools</strong>' : ''}, then return to ${escapeAttr(returnsTo)}. Enter your auth token to allow it.</p>
   <form method="POST">
     ${hidden('response_type', 'code')}
     ${hidden('client_id', req.client.clientId)}
     ${hidden('redirect_uri', req.redirectUri)}
+    ${hidden('scope', req.scope)}
     ${hidden('state', req.state)}
     ${req.codeChallenge ? hidden('code_challenge', req.codeChallenge) + hidden('code_challenge_method', 'S256') : ''}
     <label>Auth Token</label>
@@ -307,7 +323,7 @@ async function handleAuthorize(request: Request, url: URL, env: Env): Promise<Re
 
   const code = randomString(16);
   await env.DB.prepare('INSERT INTO oauth_codes (code, client_id, redirect_uri, code_challenge, expires_at, scope) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(code, req.client.clientId, req.redirectUri, req.codeChallenge, Date.now() + CODE_EXPIRY_MS, SCOPE).run();
+    .bind(code, req.client.clientId, req.redirectUri, req.codeChallenge, Date.now() + CODE_EXPIRY_MS, req.scope).run();
 
   const target = new URL(req.redirectUri);
   target.searchParams.set('code', code);
@@ -357,7 +373,7 @@ async function authenticateClient(request: Request, env: Env, params: Record<str
  * transaction, and the new pair is only inserted if that claim took effect, so a concurrent replay or revoke cannot
  * be undone by a request that was already in flight. Returns null when the claim failed.
  */
-async function issueTokens(env: Env, clientId: string, familyId: string, claimHash?: string): Promise<Response | null> {
+async function issueTokens(env: Env, clientId: string, familyId: string, scope: string, claimHash?: string): Promise<Response | null> {
   const access = `alo_at_${randomString(32)}`;
   const refresh = `alo_rt_${randomString(32)}`;
   const accessHash = await sha256Hex(access);
@@ -365,8 +381,8 @@ async function issueTokens(env: Env, clientId: string, familyId: string, claimHa
   // changes() is the claim's row count for the first insert, then the first insert's for the second.
   const insert = `INSERT INTO oauth_tokens (token_hash, kind, client_id, scope, family_id, expires_at) SELECT ?, ?, ?, ?, ?, ?${claimHash ? ' WHERE changes() > 0' : ''}`;
   const statements = [
-    env.DB.prepare(insert).bind(accessHash, 'access', clientId, SCOPE, familyId, now + ACCESS_TOKEN_TTL_S * 1000),
-    env.DB.prepare(insert).bind(await sha256Hex(refresh), 'refresh', clientId, SCOPE, familyId, now + REFRESH_TOKEN_TTL_S * 1000),
+    env.DB.prepare(insert).bind(accessHash, 'access', clientId, scope, familyId, now + ACCESS_TOKEN_TTL_S * 1000),
+    env.DB.prepare(insert).bind(await sha256Hex(refresh), 'refresh', clientId, scope, familyId, now + REFRESH_TOKEN_TTL_S * 1000),
   ];
   if (claimHash) {
     statements.unshift(env.DB.prepare('UPDATE oauth_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL').bind(now, claimHash));
@@ -379,7 +395,7 @@ async function issueTokens(env: Env, clientId: string, familyId: string, claimHa
     token_type: 'Bearer',
     expires_in: ACCESS_TOKEN_TTL_S,
     refresh_token: refresh,
-    scope: SCOPE,
+    scope,
   });
 }
 
@@ -399,8 +415,8 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
 
   if (grant.grant_type === 'authorization_code') {
     // Deleting returns the row, so a code can be redeemed exactly once.
-    const stored = await env.DB.prepare('DELETE FROM oauth_codes WHERE code = ? RETURNING client_id, redirect_uri, code_challenge, expires_at')
-      .bind(grant.code).first<{ client_id: string; redirect_uri: string; code_challenge: string; expires_at: number }>();
+    const stored = await env.DB.prepare('DELETE FROM oauth_codes WHERE code = ? RETURNING client_id, redirect_uri, code_challenge, expires_at, scope')
+      .bind(grant.code).first<{ client_id: string; redirect_uri: string; code_challenge: string; expires_at: number; scope: string }>();
     const invalid = (description: string) => oauthError('invalid_grant', description);
     if (!stored || stored.client_id !== client.clientId) return invalid('Unknown or expired code');
     if (Date.now() > stored.expires_at) return invalid('Code expired');
@@ -409,13 +425,13 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
       const expected = base64Url(await sha256(grant.code_verifier ?? ''));
       if (!grant.code_verifier || !await timingSafeEqual(expected, stored.code_challenge)) return invalid('PKCE verification failed');
     }
-    return (await issueTokens(env, client.clientId, randomString(8)))!;
+    return (await issueTokens(env, client.clientId, randomString(8), stored.scope))!;
   }
 
   // refresh_token: single use. Presenting a used one means it leaked, so end the whole chain.
   const hash = await sha256Hex(grant.refresh_token);
-  const row = await env.DB.prepare("SELECT client_id, family_id, expires_at, used_at FROM oauth_tokens WHERE token_hash = ? AND kind = 'refresh'")
-    .bind(hash).first<{ client_id: string; family_id: string; expires_at: number; used_at: number | null }>();
+  const row = await env.DB.prepare("SELECT client_id, family_id, scope, expires_at, used_at FROM oauth_tokens WHERE token_hash = ? AND kind = 'refresh'")
+    .bind(hash).first<{ client_id: string; family_id: string; scope: string; expires_at: number; used_at: number | null }>();
   if (!row || row.client_id !== client.clientId) return oauthError('invalid_grant', 'Unknown refresh token');
   const revokeFamily = () => env.DB.prepare('DELETE FROM oauth_tokens WHERE family_id = ?').bind(row.family_id).run();
   if (row.used_at !== null) {
@@ -423,7 +439,7 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
     return oauthError('invalid_grant', 'Refresh token was already used');
   }
   if (Date.now() > row.expires_at) return oauthError('invalid_grant', 'Refresh token expired');
-  const issued = await issueTokens(env, client.clientId, row.family_id, hash);
+  const issued = await issueTokens(env, client.clientId, row.family_id, row.scope, hash);
   if (issued) return issued;
   // Lost the race for this refresh token: someone else redeemed or revoked it first.
   await revokeFamily();
@@ -445,13 +461,33 @@ async function handleRevoke(request: Request, env: Env): Promise<Response> {
 
 // ── Resource side ──
 
-/** True when `token` is a live access token whose client is still registered. Revoking a client (removing it from OAUTH_CLIENTS or D1) cuts it off at once. */
-export async function verifyAccessToken(env: Env, token: string): Promise<boolean> {
+/** `mcp:admin` for the admin endpoint, `mcp` for everything else under /mcp. */
+export function requiredScopeFor(pathname: string): string {
+  return pathname.replace(/\/+$/, '') === '/mcp/admin' ? SCOPE_ADMIN : SCOPE_MCP;
+}
+
+export type AccessCheck = 'ok' | 'invalid' | 'insufficient_scope';
+
+/**
+ * Checks an OAuth access token for a path under /mcp: live, its client still registered, and carrying `requiredScope`
+ * (`mcp:admin` also satisfies `mcp`). Revoking a client (removing it from OAUTH_CLIENTS or D1) cuts it off at once.
+ */
+export async function checkAccessToken(env: Env, token: string, requiredScope: string): Promise<AccessCheck> {
   const row = await env.DB.prepare(
-    "SELECT t.client_id, c.client_id AS dynamic_client FROM oauth_tokens t LEFT JOIN oauth_clients c ON c.client_id = t.client_id WHERE t.token_hash = ? AND t.kind = 'access' AND t.expires_at > ?",
-  ).bind(await sha256Hex(token), Date.now()).first<{ client_id: string; dynamic_client: string | null }>();
-  if (!row) return false;
-  return row.dynamic_client !== null || staticClients(env).some(c => c.clientId === row.client_id);
+    "SELECT t.client_id, t.scope, c.client_id AS dynamic_client FROM oauth_tokens t LEFT JOIN oauth_clients c ON c.client_id = t.client_id WHERE t.token_hash = ? AND t.kind = 'access' AND t.expires_at > ?",
+  ).bind(await sha256Hex(token), Date.now()).first<{ client_id: string; scope: string; dynamic_client: string | null }>();
+  if (!row) return 'invalid';
+  if (row.dynamic_client === null && !staticClients(env).some(c => c.clientId === row.client_id)) return 'invalid';
+  const held = row.scope.split(' ');
+  return held.includes(requiredScope) || (requiredScope === SCOPE_MCP && held.includes(SCOPE_ADMIN)) ? 'ok' : 'insufficient_scope';
+}
+
+/** The `WWW-Authenticate` value for a refused /mcp request: where to learn how to authorize, and which scope it needs. */
+export function bearerChallenge(url: URL, insufficientScope = false): string {
+  const parts = [`resource_metadata="${protectedResourceMetadataUrl(url)}"`];
+  if (url.pathname.startsWith('/mcp')) parts.push(`scope="${requiredScopeFor(url.pathname)}"`);
+  if (insufficientScope) parts.unshift('error="insufficient_scope"');
+  return `Bearer ${parts.join(', ')}`;
 }
 
 /** Compares the presented AUTH_TOKEN without leaking timing. */
