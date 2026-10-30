@@ -20,3 +20,6 @@ ds-bundle/
 .design-sync/.cache/
 .design-sync/learnings/
 e2e-failure.png
+
+# local list behind the OAUTH_CLIENTS secret (worker/scripts/oauth-client.mjs)
+.oauth-clients.json

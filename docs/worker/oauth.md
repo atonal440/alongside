@@ -34,14 +34,17 @@ All token and discovery responses carry `Access-Control-Allow-Origin: *`; token 
 
 They are confidential: the token endpoint requires the secret. PKCE is optional for them (Gemini's toggle is off by default) but is verified whenever the client sent a challenge.
 
-To add one:
+A Worker secret can only be replaced whole and never read back, so `worker/scripts/oauth-client.mjs` keeps the list in `worker/.oauth-clients.json` (gitignored; it holds secret hashes, never secrets) and sets the secret from that file in one step, over stdin, so no JSON is ever pasted:
 
 ```sh
 cd worker
-npm run oauth:client -- gemini https://vertexaisearch.cloud.google.com/oauth-redirect
+npm run oauth:client -- add gemini https://vertexaisearch.cloud.google.com/oauth-redirect   # add --admin to allow mcp:admin
+npm run oauth:client -- list
+npm run oauth:client -- remove <client-id>
+npm run oauth:client -- push      # re-set the secret from the file
 ```
 
-The script prints the client id and secret (paste both into the connecting app; the secret is shown once and is not stored) and the JSON entry containing only the secret's SHA-256. Add that entry to the array and set the whole secret with `npx wrangler secret put OAUTH_CLIENTS` or in the Cloudflare dashboard (Worker > Settings > Variables and Secrets). A secret can only be replaced as a whole, not appended to or read back. An unreadable value is ignored with a warning, which leaves only dynamic clients and `AUTH_TOKEN` working.
+`add` prints the client id and secret once (paste both into the connecting app; the secret is not stored) and then pushes. Every command takes `--dry-run`, and `add` and `remove` take `--no-push`. The file is the source of truth, so `push` overwrites the deployed secret with it; if clients were ever set another way, add them to the file first. The secret can also be set by hand in the Cloudflare dashboard (Worker > Settings > Variables and Secrets). An unusable value is ignored, with the reason in the Worker log (`wrangler tail`), which leaves only dynamic clients and `AUTH_TOKEN` working.
 
 **Revoking a client** is removing it from `OAUTH_CLIENTS` (or its row from `oauth_clients`). Its tokens stop working on the next request, because the client is looked up every time an access token is used.
 
