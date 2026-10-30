@@ -11,6 +11,7 @@ import com.atonal440.alongside.domain.Clock
 import com.atonal440.alongside.domain.dueSchedule
 import com.atonal440.alongside.domain.dutySchedule
 import com.atonal440.alongside.domain.toWire
+import com.atonal440.alongside.domain.workerZoneId
 import com.atonal440.alongside.widget.AlongsideWidgets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -184,7 +185,7 @@ class Repository private constructor(private val context: Context) {
                     val s = dueSchedule(it, dueTime, Clock.zone)
                     Intent.SetDue(id, s.dueDate, dueAllDay = s.allDay)
                 },
-                availableFrom?.let { Intent.SetAvailableFrom(id, it.toString(), Clock.zone.id) },
+                availableFrom?.let { Intent.SetAvailableFrom(id, it.toString(), workerZoneId(Clock.zone, Instant.now())) },
                 *waitingOn.distinct().map { Intent.Block(id, it) }.toTypedArray(),
             ).toTypedArray(),
         )

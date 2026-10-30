@@ -21,7 +21,23 @@ fun dutySchedule(rrule: String, day: LocalDate, time: LocalTime?, zone: ZoneId):
     // interval or weekday filter that shifts its cadence by a day, in the one hour a year this can happen.)
     var start = day
     repeat(2) { if (zone.rules.getValidOffsets(start.atTime(time)).isEmpty()) start = start.plusDays(1) }
-    return DutySchedule(rrule, start.atTime(time).atZone(zone).toInstant().toWire(), zone.id)
+    val instant = start.atTime(time).atZone(zone).toInstant()
+    return DutySchedule(rrule, instant.toWire(), workerZoneId(zone, instant))
+}
+
+/**
+ * The worker accepts `UTC` and Area/City names only. A phone can report `GMT`, `Z` or a fixed offset (`GMT+05:30`); those have
+ * no daylight saving, so a series at the same instant repeats at the same local time in an equivalent zone: `UTC` for zero,
+ * `Etc/GMT∓h` for whole hours, `UTC` otherwise (the clock time is right, though weekday and month-day rules then follow UTC's date).
+ */
+fun workerZoneId(zone: ZoneId, at: java.time.Instant): String {
+    val id = zone.id
+    if (id == "UTC" || '/' in id) return id
+    val hours = zone.rules.getOffset(at).totalSeconds / 3600.0
+    if (hours == 0.0 || hours != Math.rint(hours)) return "UTC"
+    val whole = hours.toInt()
+    // POSIX-style signs: Etc/GMT-5 is five hours *ahead* of UTC.
+    return "Etc/GMT${if (whole > 0) "-" else "+"}${Math.abs(whole)}"
 }
 
 /**

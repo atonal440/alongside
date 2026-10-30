@@ -41,4 +41,14 @@ class DueScheduleTest {
             dutySchedule("FREQ=DAILY", LocalDate.parse("2027-03-14"), LocalTime.of(2, 30), pacific),
         )
     }
+
+    @Test fun `a phone zone the worker would refuse is replaced by an equivalent it accepts`() {
+        val at = java.time.Instant.parse("2026-11-01T17:00:00Z")
+        assertEquals("UTC", com.atonal440.alongside.domain.workerZoneId(ZoneId.of("GMT"), at))
+        assertEquals("UTC", com.atonal440.alongside.domain.workerZoneId(ZoneId.of("GMT+05:30"), at))
+        assertEquals("Etc/GMT-2", com.atonal440.alongside.domain.workerZoneId(ZoneId.of("UTC+02:00"), at))
+        assertEquals("Etc/GMT+5", com.atonal440.alongside.domain.workerZoneId(ZoneId.of("GMT-05:00"), at))
+        assertEquals("America/Los_Angeles", com.atonal440.alongside.domain.workerZoneId(pacific, at))
+        assertEquals(DutySchedule("FREQ=DAILY", "2026-11-01T07:00:00Z", "Etc/GMT-2"), dutySchedule("FREQ=DAILY", day, LocalTime.of(9, 0), ZoneId.of("UTC+02:00")))
+    }
 }
