@@ -94,12 +94,13 @@ function staticClients(env: Env): OAuthClient[] {
   try {
     const parsed = v.safeParse(StaticClientsSchema, JSON.parse(env.OAUTH_CLIENTS));
     if (!parsed.success) {
-      console.warn('OAUTH_CLIENTS ignored: does not match the expected shape');
+      const issue = parsed.issues[0];
+      console.warn(`OAUTH_CLIENTS ignored: ${issue?.message ?? 'unexpected shape'} at ${(issue?.path ?? []).map(part => String(part.key)).join('.') || 'the top level'}`);
       return [];
     }
     return parsed.output.map(c => ({ clientId: c.client_id, name: c.name || c.client_id, redirectUris: c.redirect_uris, secretSha256: c.secret_sha256, scopes: c.scopes ?? [SCOPE_MCP] }));
   } catch {
-    console.warn('OAUTH_CLIENTS ignored: not valid JSON');
+    console.warn('OAUTH_CLIENTS ignored: not valid JSON (re-set it with `npm run oauth:client -- push`)');
     return [];
   }
 }
