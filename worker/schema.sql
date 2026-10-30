@@ -96,8 +96,30 @@ CREATE TABLE IF NOT EXISTS oauth_codes (
   client_id      TEXT NOT NULL,
   redirect_uri   TEXT NOT NULL,
   code_challenge TEXT NOT NULL,
-  expires_at     INTEGER NOT NULL
+  expires_at     INTEGER NOT NULL,
+  scope          TEXT NOT NULL DEFAULT 'mcp'
 );
+
+CREATE TABLE IF NOT EXISTS oauth_clients (
+  client_id     TEXT PRIMARY KEY,
+  client_name   TEXT NOT NULL,
+  redirect_uris TEXT NOT NULL,
+  created_at    INTEGER NOT NULL,
+  CONSTRAINT oauth_clients_redirect_uris_json CHECK (json_valid(redirect_uris))
+);
+
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+  token_hash TEXT PRIMARY KEY,
+  kind       TEXT NOT NULL,
+  client_id  TEXT NOT NULL,
+  scope      TEXT NOT NULL,
+  family_id  TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  used_at    INTEGER,
+  CONSTRAINT oauth_tokens_kind CHECK (kind IN ('access','refresh'))
+);
+CREATE INDEX IF NOT EXISTS oauth_tokens_family ON oauth_tokens(family_id);
+CREATE INDEX IF NOT EXISTS oauth_tokens_expires ON oauth_tokens(expires_at);
 
 -- Additive foundation only. Do not reinterpret legacy task due values here.
 -- No settings are inferred from the deployer's host timezone.

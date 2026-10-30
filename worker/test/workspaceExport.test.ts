@@ -22,7 +22,7 @@ describe.each(['fresh','upgrade'] as const)('portable workspace export (%s)',mod
     INSERT INTO user_preferences VALUES('sort_by','manual');
     INSERT INTO action_log(tool_name,task_id,title,created_at) VALUES('snooze_task','t_deleted','Historical log','${now}');
     INSERT INTO planning_settings VALUES(1,'UTC',15,1,'${now}','${now}'); INSERT INTO planning_working_hours VALUES(1,1,'09:00','17:00');
-    INSERT INTO oauth_codes VALUES('private-code','client','https://example.org','private-secret',123);`);
+    INSERT INTO oauth_codes (code, client_id, redirect_uri, code_challenge, expires_at) VALUES('private-code','client','https://example.org','private-secret',123);`);
    const before=sql.prepare('SELECT * FROM sync_metadata').get();const beforeReads=reads();const beforeBatches=[...batches];
    const exported=await db.exportWorkspace();expect(reads()-beforeReads).toBe(1);expect(batches).toEqual(beforeBatches);expect(sql.prepare('SELECT * FROM sync_metadata').get()).toEqual(before);
    expect(parseWorkspaceExport(exported).ok).toBe(true);expect(exported).toMatchObject({version:2,exported_at:expect.any(String),tasks:[{id:'t_first1',title:'Exported',duty_id:'d_first1'},{id:'t_other1'}],projects:[{id:'p_first1'}],links:[{from_task_id:'t_first1',to_task_id:'t_other1'}],duties:[{id:'d_first1'}],preferences:[{key:'sort_by',value:'manual'}],action_log:[{tool_name:'snooze_task',task_id:'t_deleted'}],command_audit:[{command_id:'c_export1'}],planning_settings:{timezone:'UTC',bufferMinutes:15,workingHours:[{weekday:1,start:'09:00',end:'17:00'}]}});

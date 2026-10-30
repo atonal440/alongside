@@ -4,7 +4,7 @@ import { checkClientGate, checkSyncReadGate } from './clientGate';
 import { handleMcpRequest } from './mcp';
 import { handleUiRequest } from './ui';
 import { verifySignature } from './sign';
-import { handleOAuthRequest } from './oauth';
+import { handleOAuthRequest, isOwnerToken, protectedResourceMetadataUrl, verifyAccessToken } from './oauth';
 import { getHarnessHtml } from './dev-harness';
 import { getAppHtml } from './app-ui';
 import { handleScheduled } from './scheduled';
@@ -12,6 +12,8 @@ import { handleScheduled } from './scheduled';
 export interface Env {
   DB: D1Database;
   AUTH_TOKEN: string;
+  /** JSON list of pre-registered OAuth clients (see docs/worker/oauth.md). Optional. */
+  OAUTH_CLIENTS?: string;
 }
 
 export default {
@@ -48,7 +50,10 @@ export default {
     // Auth check
     const authHeader = request.headers.get('Authorization');
     const token = authHeader?.replace('Bearer ', '');
-    if (token !== env.AUTH_TOKEN) {
+    // AUTH_TOKEN opens everything. Tokens issued through OAuth only open /mcp.
+    const authorized = await isOwnerToken(env, token)
+      || (!!token && url.pathname.startsWith('/mcp') && await verifyAccessToken(env, token));
+    if (!authorized) {
       if (url.pathname.startsWith('/ui')) {
         // UI routes use signature-based auth
         const valid = await verifySignature(url.pathname, url.searchParams, env.AUTH_TOKEN);
@@ -59,7 +64,7 @@ export default {
           });
         }
       } else {
-        const resourceMetadataUrl = `${url.origin}/.well-known/oauth-protected-resource`;
+        const resourceMetadataUrl = protectedResourceMetadataUrl(url);
         return new Response(JSON.stringify({ error: 'Unauthorized' }), {
           status: 401,
           headers: {

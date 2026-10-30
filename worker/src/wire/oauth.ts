@@ -54,10 +54,22 @@ export const CodeChallengeMethodSchema = v.pipe(
   v.transform(value => value as CodeChallengeMethod),
 );
 
-export const OAuthTokenBodySchema = v.object({
+const OptionalSecret = v.optional(v.pipe(v.string(), v.maxLength(500)));
+
+export const AuthorizationCodeGrantSchema = v.object({
   grant_type: v.literal('authorization_code'),
   code: OAuthCodeSchema,
-  code_verifier: CodeVerifierSchema,
-  client_id: OAuthClientIdSchema,
+  code_verifier: v.optional(CodeVerifierSchema),
   redirect_uri: RedirectUriSchema,
+  client_id: v.optional(OAuthClientIdSchema),
+  client_secret: OptionalSecret,
 });
+
+export const RefreshTokenGrantSchema = v.object({
+  grant_type: v.literal('refresh_token'),
+  refresh_token: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  client_id: v.optional(OAuthClientIdSchema),
+  client_secret: OptionalSecret,
+});
+
+export const OAuthTokenBodySchema = v.variant('grant_type', [AuthorizationCodeGrantSchema, RefreshTokenGrantSchema]);
