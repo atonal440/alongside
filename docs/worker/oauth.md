@@ -8,14 +8,14 @@ A single-owner OAuth 2.1 authorization server, so external MCP connectors (Claud
 2. The owner enters `AUTH_TOKEN` (compared in constant time). The server stores a one-minute, single-use code in D1 and redirects to `redirect_uri` with `code` and `state`.
 3. The client calls `POST /oauth/token` with the code, the redirect URI, its PKCE verifier and its client credentials, and gets a one-hour access token plus a 90-day refresh token.
 4. The client sends `Authorization: Bearer <access token>` to `/mcp` (or `/mcp/admin`).
-5. When the access token expires the client posts the refresh token to `/oauth/token` (`grant_type=refresh_token`) and gets a new pair. Refresh tokens are single use; presenting a used one ends the whole chain.
+5. When the access token expires the client posts the refresh token to `/oauth/token` (`grant_type=refresh_token`) and gets a new pair. Refresh tokens are single use; presenting a used one ends the whole chain. Claiming the old token and inserting the new pair happen in one batch, so a concurrent replay or revoke cannot be undone by a request already in flight.
 6. `POST /oauth/revoke` ends a chain from either of its tokens.
 
 ## Routes
 
 - `GET /.well-known/oauth-protected-resource` (also `/mcp` and `/mcp/admin` suffixes) — RFC 9728 document naming the real resource URL.
 - `GET /.well-known/oauth-authorization-server` — RFC 8414 metadata.
-- `POST /oauth/register` — RFC 7591 registration. Requires 1-10 `redirect_uris`, each https or loopback http. Creates a public client. Keeps at most 200 dynamic clients.
+- `POST /oauth/register` — RFC 7591 registration. Requires 1-10 `redirect_uris`, each https or loopback http. Creates a public client. At most 200 dynamic clients: room is made by dropping the oldest ones that never received a token, approved clients are never evicted, and registration returns 429 if every slot is approved.
 - `GET|POST /oauth/authorize` — consent page. An unknown client or unregistered redirect URI gets an error page, never a redirect. Public clients must send PKCE; `plain` is refused.
 - `POST /oauth/token` — `authorization_code` and `refresh_token` grants. Client authentication by HTTP Basic or body (`client_secret_basic` / `client_secret_post`). Form or JSON bodies; parsed with `OAuthTokenBodySchema`.
 - `POST /oauth/revoke` — RFC 7009.

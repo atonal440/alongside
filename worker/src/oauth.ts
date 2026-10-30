@@ -134,15 +134,17 @@ async function registerClient(request: Request, env: Env): Promise<Response> {
     return oauthError('invalid_redirect_uri', 'redirect_uris must be 1-10 https URLs (or loopback http URLs).');
   }
   const name = (typeof body.client_name === 'string' ? body.client_name : '').slice(0, 100) || 'Unnamed client';
+  // Registration is unauthenticated, so the table is bounded. Room is made by dropping the oldest clients
+  // nobody ever got a token with; an approved client is never evicted, or anyone could disconnect the owner.
+  await env.DB.prepare(
+    'DELETE FROM oauth_clients WHERE client_id IN (SELECT client_id FROM oauth_clients WHERE client_id NOT IN (SELECT client_id FROM oauth_tokens) ORDER BY created_at, rowid LIMIT MAX(0, (SELECT COUNT(*) FROM oauth_clients) - ? + 1))',
+  ).bind(MAX_DYNAMIC_CLIENTS).run();
+  const { n } = (await env.DB.prepare('SELECT COUNT(*) AS n FROM oauth_clients').first<{ n: number }>())!;
+  if (n >= MAX_DYNAMIC_CLIENTS) return oauthError('temporarily_unavailable', 'Too many registered clients.', 429);
   const clientId = `c_${randomString(12)}`;
   const issuedAt = Date.now();
-  await env.DB.batch([
-    env.DB.prepare('INSERT INTO oauth_clients (client_id, client_name, redirect_uris, created_at) VALUES (?, ?, ?, ?)')
-      .bind(clientId, name, JSON.stringify(uris), issuedAt),
-    // Registration is unauthenticated, so keep the table bounded.
-    env.DB.prepare('DELETE FROM oauth_clients WHERE client_id NOT IN (SELECT client_id FROM oauth_clients ORDER BY created_at DESC, rowid DESC LIMIT ?)')
-      .bind(MAX_DYNAMIC_CLIENTS),
-  ]);
+  await env.DB.prepare('INSERT INTO oauth_clients (client_id, client_name, redirect_uris, created_at) VALUES (?, ?, ?, ?)')
+    .bind(clientId, name, JSON.stringify(uris), issuedAt).run();
   return tokenJson({
     client_id: clientId,
     client_id_issued_at: Math.floor(issuedAt / 1000),
@@ -350,15 +352,28 @@ async function authenticateClient(request: Request, env: Env, params: Record<str
   return { client };
 }
 
-async function issueTokens(env: Env, clientId: string, familyId: string): Promise<Response> {
+/**
+ * Mints an access and refresh token. With `claimHash` the refresh token being redeemed is marked used in the same
+ * transaction, and the new pair is only inserted if that claim took effect, so a concurrent replay or revoke cannot
+ * be undone by a request that was already in flight. Returns null when the claim failed.
+ */
+async function issueTokens(env: Env, clientId: string, familyId: string, claimHash?: string): Promise<Response | null> {
   const access = `alo_at_${randomString(32)}`;
   const refresh = `alo_rt_${randomString(32)}`;
+  const accessHash = await sha256Hex(access);
   const now = Date.now();
-  const insert = 'INSERT INTO oauth_tokens (token_hash, kind, client_id, scope, family_id, expires_at) VALUES (?, ?, ?, ?, ?, ?)';
-  await env.DB.batch([
-    env.DB.prepare(insert).bind(await sha256Hex(access), 'access', clientId, SCOPE, familyId, now + ACCESS_TOKEN_TTL_S * 1000),
+  // changes() is the claim's row count for the first insert, then the first insert's for the second.
+  const insert = `INSERT INTO oauth_tokens (token_hash, kind, client_id, scope, family_id, expires_at) SELECT ?, ?, ?, ?, ?, ?${claimHash ? ' WHERE changes() > 0' : ''}`;
+  const statements = [
+    env.DB.prepare(insert).bind(accessHash, 'access', clientId, SCOPE, familyId, now + ACCESS_TOKEN_TTL_S * 1000),
     env.DB.prepare(insert).bind(await sha256Hex(refresh), 'refresh', clientId, SCOPE, familyId, now + REFRESH_TOKEN_TTL_S * 1000),
-  ]);
+  ];
+  if (claimHash) {
+    statements.unshift(env.DB.prepare('UPDATE oauth_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL').bind(now, claimHash));
+    statements.push(env.DB.prepare("DELETE FROM oauth_tokens WHERE family_id = ? AND kind = 'access' AND token_hash != ?").bind(familyId, accessHash));
+  }
+  const results = await env.DB.batch(statements);
+  if (claimHash && results[0]!.meta.changes !== 1) return null;
   return tokenJson({
     access_token: access,
     token_type: 'Bearer',
@@ -394,7 +409,7 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
       const expected = base64Url(await sha256(grant.code_verifier ?? ''));
       if (!grant.code_verifier || !await timingSafeEqual(expected, stored.code_challenge)) return invalid('PKCE verification failed');
     }
-    return issueTokens(env, client.clientId, randomString(8));
+    return (await issueTokens(env, client.clientId, randomString(8)))!;
   }
 
   // refresh_token: single use. Presenting a used one means it leaked, so end the whole chain.
@@ -408,13 +423,11 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
     return oauthError('invalid_grant', 'Refresh token was already used');
   }
   if (Date.now() > row.expires_at) return oauthError('invalid_grant', 'Refresh token expired');
-  const claimed = await env.DB.prepare('UPDATE oauth_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL').bind(Date.now(), hash).run();
-  if (claimed.meta.changes !== 1) {
-    await revokeFamily();
-    return oauthError('invalid_grant', 'Refresh token was already used');
-  }
-  await env.DB.prepare("DELETE FROM oauth_tokens WHERE family_id = ? AND kind = 'access'").bind(row.family_id).run();
-  return issueTokens(env, client.clientId, row.family_id);
+  const issued = await issueTokens(env, client.clientId, row.family_id, hash);
+  if (issued) return issued;
+  // Lost the race for this refresh token: someone else redeemed or revoked it first.
+  await revokeFamily();
+  return oauthError('invalid_grant', 'Refresh token was already used');
 }
 
 /** RFC 7009: revoking either token of a pair ends the whole chain. Always answers 200. */

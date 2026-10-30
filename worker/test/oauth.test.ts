@@ -113,6 +113,27 @@ describe('dynamic registration', () => {
   });
 });
 
+describe('registration limits', () => {
+  it('never evicts a client that has been approved, however many anonymous registrations arrive', async () => {
+    const { call, sql } = setup();
+    const { clientId, tokens } = await connect(call);
+    for (let i = 0; i < 205; i++) await register(call);
+    expect(sql.prepare('SELECT COUNT(*) AS n FROM oauth_clients').get()).toEqual({ n: 200 });
+    expect((await mcpList(call, tokens.access_token)).status).toBe(200);
+    const refresh = await call('/oauth/token', form({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: clientId }));
+    expect(refresh.status).toBe(200);
+  });
+
+  it('refuses new registrations once every slot belongs to an approved client', async () => {
+    const { call, sql } = setup();
+    for (let i = 0; i < 200; i++) {
+      sql.prepare('INSERT INTO oauth_clients VALUES (?, ?, ?, ?)').run(`c_${i}`, 'app', '[]', i);
+      sql.prepare('INSERT INTO oauth_tokens VALUES (?, ?, ?, ?, ?, ?, NULL)').run(`h${i}`, 'refresh', `c_${i}`, 'mcp', `f${i}`, Date.now() + 1e6);
+    }
+    expect((await register(call)).response.status).toBe(429);
+  });
+});
+
 describe('authorize', () => {
   it('shows an error page, never a redirect, for an unknown client or unregistered redirect', async () => {
     const { call } = setup();
@@ -218,6 +239,31 @@ describe('token endpoint', () => {
     expect((await refresh(tokens.refresh_token)).status).toBe(400);
     expect((await mcpList(call, next.access_token)).status).toBe(401);
     expect((await refresh(next.refresh_token)).status).toBe(400);
+    expect(sql.prepare('SELECT COUNT(*) AS n FROM oauth_tokens').get()).toEqual({ n: 0 });
+  });
+
+  it('leaves nothing behind when the same refresh token is redeemed twice at once', async () => {
+    const { call, sql } = setup();
+    const { clientId, tokens } = await connect(call);
+    const refresh = () => call('/oauth/token', form({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: clientId }));
+    const responses = await Promise.all([refresh(), refresh()]);
+    expect(responses.map(r => r.status).sort()).toEqual([200, 400]);
+    // The replay revoked the chain, so the winner's tokens must not survive either.
+    expect(sql.prepare('SELECT COUNT(*) AS n FROM oauth_tokens').get()).toEqual({ n: 0 });
+  });
+
+  it('does not recreate tokens for a chain revoked while a refresh was in flight', async () => {
+    const { call, sql, env } = setup();
+    const { clientId, tokens } = await connect(call);
+    // Revoke lands between the lookup and the issuance batch.
+    const realBatch = env.DB.batch.bind(env.DB);
+    env.DB.batch = (async (statements: any) => {
+      env.DB.batch = realBatch;
+      await call('/oauth/revoke', form({ token: tokens.refresh_token, client_id: clientId }));
+      return realBatch(statements);
+    }) as typeof env.DB.batch;
+    const response = await call('/oauth/token', form({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: clientId }));
+    expect(response.status).toBe(400);
     expect(sql.prepare('SELECT COUNT(*) AS n FROM oauth_tokens').get()).toEqual({ n: 0 });
   });
 
