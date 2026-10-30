@@ -120,7 +120,7 @@ describe.each(['fresh','upgrade'] as const)('all-writer workspace sync (%s)',mod
  it('keeps watermarks/retention monotonic while purging history and excludes operational credentials',async()=>{
   const {sql,d1}=sqliteD1(mode);
   try {
-   sql.exec(`${taskInsert()}; UPDATE tasks SET title='Changed'; DELETE FROM tasks; INSERT INTO oauth_codes VALUES('private-code','client','https://example.org','secret',123);`);
+   sql.exec(`${taskInsert()}; UPDATE tasks SET title='Changed'; DELETE FROM tasks; INSERT INTO oauth_codes (code, client_id, redirect_uri, code_challenge, expires_at) VALUES('private-code','client','https://example.org','secret',123);`);
    const retained=sql.prepare('SELECT * FROM entity_versions').all();
    sql.exec('DELETE FROM sync_feed WHERE seq=2');expect(metadata(sql)).toMatchObject({watermark:3,retention_floor:2});
    sql.exec('DELETE FROM sync_feed');expect(metadata(sql)).toMatchObject({watermark:3,retention_floor:3});

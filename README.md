@@ -15,7 +15,7 @@ A lightweight task manager built around conversational workflow. Tasks live in a
 - **Recurrence** — infinite date-only iCal RRULE on any task; completing it spawns the next occurrence automatically
 - **Import / export** — full JSON snapshot backup and restore (with optional `dry_run`)
 - **MCP integration** — 20 tools over JSON-RPC for Claude and other MCP clients
-- **OAuth 2.1 / PKCE** — external MCP clients (e.g. Claude.ai) authenticate via a proper authorization code flow; no static token sharing required
+- **OAuth 2.1 / PKCE** — external MCP clients (Claude.ai, Gemini) connect through a single-owner authorization server with their own expiring, revocable tokens; no static token sharing required (see `docs/worker/oauth.md`)
 - **User preferences** — per-user settings for sort order, urgency display, kickoff nudges, and session behavior
 
 ## Architecture

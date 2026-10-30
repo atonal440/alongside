@@ -105,7 +105,33 @@ export const oauthCodes = sqliteTable('oauth_codes', {
   redirect_uri:   text('redirect_uri').notNull(),
   code_challenge: text('code_challenge').notNull(),
   expires_at:     integer('expires_at').notNull(),
+  scope:          text('scope').notNull().default('mcp'),
 });
+
+// Clients that registered themselves (RFC 7591). Pre-registered clients live in the OAUTH_CLIENTS secret instead.
+export const oauthClients = sqliteTable('oauth_clients', {
+  client_id:     text('client_id').primaryKey(),
+  client_name:   text('client_name').notNull(),
+  redirect_uris: text('redirect_uris').notNull(),
+  created_at:    integer('created_at').notNull(),
+}, t => [
+  check('oauth_clients_redirect_uris_json', sql`json_valid(${t.redirect_uris})`),
+]);
+
+// Only SHA-256 hashes of issued tokens are stored. A refresh token is single use; family_id ties a rotation chain together.
+export const oauthTokens = sqliteTable('oauth_tokens', {
+  token_hash: text('token_hash').primaryKey(),
+  kind:       text('kind', { enum: ['access', 'refresh'] }).notNull(),
+  client_id:  text('client_id').notNull(),
+  scope:      text('scope').notNull(),
+  family_id:  text('family_id').notNull(),
+  expires_at: integer('expires_at').notNull(),
+  used_at:    integer('used_at'),
+}, t => [
+  index('oauth_tokens_family').on(t.family_id),
+  index('oauth_tokens_expires').on(t.expires_at),
+  check('oauth_tokens_kind', sql`${t.kind} IN ('access','refresh')`),
+]);
 
 export type Task      = typeof tasks.$inferSelect;
 export type Project   = typeof projects.$inferSelect;

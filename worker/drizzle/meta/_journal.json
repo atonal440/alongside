@@ -64,6 +64,13 @@
       "when": 1791185262437,
       "tag": "0008_quiet_preak",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1793397270624,
+      "tag": "0009_fearless_marten_broadcloak",
+      "breakpoints": true
     }
   ]
 }

@@ -24,7 +24,11 @@ Imported in the worker via the `@shared/schema` path alias. The PWA never import
 
 **`actionLog`** — Append-only audit log. Columns: `id` (integer autoincrement PK), `tool_name`, `task_id`, `duty_id` (nullable — not yet written; lands with duty mutations), `title`, `detail`, `created_at`.
 
-**`oauthCodes`** — OAuth authorization codes for the PKCE flow. Columns: `code` (text PK), `client_id`, `redirect_uri`, `code_challenge`, `expires_at` (integer Unix timestamp).
+**`oauthCodes`** — Pending OAuth authorization codes (one minute, single use). Columns: `code` (text PK), `client_id`, `redirect_uri`, `code_challenge` (empty for confidential clients that skipped PKCE), `expires_at` (integer Unix ms), `scope` (default `mcp`).
+
+**`oauthClients`** — Clients that registered themselves through `/oauth/register`. Columns: `client_id` (text PK), `client_name`, `redirect_uris` (JSON array of strings), `created_at` (Unix ms). Pre-registered clients are not stored here; they come from the `OAUTH_CLIENTS` secret.
+
+**`oauthTokens`** — Issued access and refresh tokens, stored only as SHA-256 hashes. Columns: `token_hash` (text PK), `kind` (`access` | `refresh`), `client_id`, `scope`, `family_id` (ties a refresh chain together), `expires_at` (Unix ms), `used_at` (set when a refresh token has been redeemed). Indexed on `family_id` and `expires_at`.
 
 ## Exported types
 

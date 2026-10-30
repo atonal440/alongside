@@ -39,6 +39,7 @@ const applied = [
   '016_task_hierarchy.sql',
   '017_duty_commands.sql',
   '018_legacy_recurrence_index.sql',
+  '019_oauth_clients_tokens.sql',
 ];
 
 const inserts = applied
