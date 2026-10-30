@@ -442,6 +442,18 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `a series edited in the same session it was created is created first and then changed at revision 1`() = runBlocking {
+        val e = loaded()
+        e.commit(listOf(createDuty(), Intent.SetDutyContent("d_series1", "Water the ferns", null, "action", "next"), Intent.SetDutyStatus("d_series1", "paused")))
+        e.sync()
+        val kinds = server.applied.map { it["commands"]!!.jsonArray.single().jsonObject["kind"]!!.jsonPrimitive.content }
+        assertEquals(listOf("duty.create", "duty.content.set", "duty.status.set"), kinds)
+        assertEquals(3L, server.dutyRevision("d_series1"))
+        assertEquals("paused", e.workspace.value.duty("d_series1")?.status)
+        assertTrue(e.retained.value.isEmpty())
+    }
+
+    @Test
     fun `editing and pausing a series are guarded by the revision it was made against`() = runBlocking {
         server.putDuty("d_series1", "Water the plants")
         val e = loaded()
