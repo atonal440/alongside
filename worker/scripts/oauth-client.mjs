@@ -107,6 +107,8 @@ switch (command) {
     break;
   }
   case 'push':
+    // A missing file is not an empty list: pushing [] would disconnect every pre-registered client.
+    if (!existsSync(file)) fail(`${file} does not exist, so there is nothing to push. Use \`add\` to create a client (this creates the file).`);
     push(load());
     break;
   default:
