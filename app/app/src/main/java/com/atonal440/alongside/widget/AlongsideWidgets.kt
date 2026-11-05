@@ -158,6 +158,15 @@ private suspend fun loadedRepo(context: Context) = Repository.get(context).also 
 // ---------------------------------------------------------------------------------------------
 // Ready now: 4x2 shows the top three; taller sizes split into Today / This week with a footer.
 
+// Heights in dp, used to work out how many rows fit. They match the modifiers in ReadyContent.
+private val TALL_MIN_HEIGHT = 300.dp
+private val NARROW_MAX_WIDTH = 220.dp
+private val HEADER_HEIGHT = 56.dp
+private val FOOTER_HEIGHT = 68.dp
+private val SECTION_HEIGHT = 28.dp
+private val COMPACT_ROW = 44.dp
+private val TALL_ROW = 56.dp
+
 class ReadyWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
@@ -178,11 +187,9 @@ class ReadyWidgetReceiver : GlanceAppWidgetReceiver() {
 private fun ReadyContent(board: Board) {
     val context = LocalContext.current
     val size = LocalSize.current
-    val tall = size.height >= 240.dp
+    val tall = size.height >= TALL_MIN_HEIGHT
+    val narrow = size.width < NARROW_MAX_WIDTH
     val ready = board.facts.filter { it.isReady }.sortedWith(Board.comparator(Order.Soonest, false))
-    val rowHeight = if (tall) 56.dp else 44.dp
-    val footer = if (tall) 68.dp else 0.dp
-    val capacity = ((size.height - 60.dp - footer - (if (tall) 40.dp else 0.dp)) / rowHeight).toInt().coerceAtLeast(1)
 
     Column(
         GlanceModifier.fillMaxSize().appWidgetBackground().background(W.bg).cornerRadius(28.dp),
@@ -192,11 +199,18 @@ private fun ReadyContent(board: Board) {
                 .clickable(openApp(context)),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(if (tall) "Alongside" else "Ready now", style = style(20.sp, W.ink, bold = true))
+            // The title takes whatever width the badge and + button leave, and shortens with an
+            // ellipsis rather than pushing them off the edge of a narrow widget.
+            Text(
+                if (tall) "Alongside" else "Ready now", style = style(20.sp, W.ink, bold = true),
+                maxLines = 1, modifier = GlanceModifier.defaultWeight(),
+            )
             Spacer(GlanceModifier.width(8.dp))
             Text("${ready.size}", style = style(12.sp, W.ink, bold = true), modifier = GlanceModifier.background(W.badge).cornerRadius(8.dp).padding(horizontal = 8.dp, vertical = 4.dp))
-            Spacer(GlanceModifier.defaultWeight())
-            if (!tall) AddButton(context, compact = true)
+            if (!tall) {
+                Spacer(GlanceModifier.width(8.dp))
+                AddButton(context, compact = true)
+            }
         }
 
         if (ready.isEmpty()) {
@@ -205,32 +219,46 @@ private fun ReadyContent(board: Board) {
                 modifier = GlanceModifier.padding(horizontal = 18.dp, vertical = 12.dp),
             )
         } else if (!tall) {
-            ready.take(capacity).forEach { CompactRow(it, context) }
+            val capacity = ((size.height - HEADER_HEIGHT) / COMPACT_ROW).toInt().coerceAtLeast(1)
+            // Share any leftover height between the rows so there's no empty band under them.
+            val rowHeight = ((size.height - HEADER_HEIGHT) / capacity).coerceIn(COMPACT_ROW, COMPACT_ROW * 1.4f)
+            ready.take(capacity).forEach { CompactRow(it, context, rowHeight) }
         } else {
             val today = Clock.today()
             val (now, later) = ready.partition { f ->
                 f.isFocused || f.isOverdue || f.targetDay?.let { !it.isAfter(today) } == true ||
                     f.deadlinePoint?.let { ChronoUnit.DAYS.between(today, f.deadline!!.atZone(Clock.zone).toLocalDate()) <= 1 } == true
             }
-            var room = capacity
+            // Spend the height left after the header and footer on section labels and rows, in
+            // order, so the number of rows shown is what actually fits rather than a guess.
+            var budget = size.height - HEADER_HEIGHT - FOOTER_HEIGHT
+            fun rowsThatFit(available: Int) = ((budget - SECTION_HEIGHT) / TALL_ROW).toInt().coerceIn(0, available)
+            // A lone task is better than an empty widget, so the first section always gets a row.
+            val nowRows = if (now.isEmpty()) 0 else rowsThatFit(now.size).coerceAtLeast(1)
+            if (nowRows > 0) budget -= SECTION_HEIGHT + TALL_ROW * nowRows
+            val laterRows = if (later.isEmpty()) 0 else rowsThatFit(later.size).coerceAtLeast(if (nowRows == 0) 1 else 0)
+            val shown = nowRows + laterRows
             Column(GlanceModifier.defaultWeight().fillMaxWidth()) {
-                if (now.isNotEmpty()) {
+                if (nowRows > 0) {
                     Section("Today")
-                    now.take(room).forEach { TallRow(it, board, context) }
-                    room -= now.size.coerceAtMost(room)
+                    now.take(nowRows).forEach { TallRow(it, board, context) }
                 }
-                if (later.isNotEmpty() && room > 0) {
+                if (laterRows > 0) {
                     Section(if (now.isEmpty()) "Ready" else "Up next")
-                    later.take(room).forEach { TallRow(it, board, context) }
+                    later.take(laterRows).forEach { TallRow(it, board, context) }
                 }
             }
-            val hidden = (ready.size - capacity).coerceAtLeast(0) + board.counts.napping + board.counts.waiting
+            val hidden = (ready.size - shown).coerceAtLeast(0) + board.counts.napping + board.counts.waiting
             Row(
                 GlanceModifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, top = 6.dp, bottom = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    if (hidden > 0) "$hidden more napping, waiting or later" else "That's everything",
+                    when {
+                        hidden == 0 -> "That's everything"
+                        narrow -> "$hidden more"
+                        else -> "$hidden more napping, waiting or later"
+                    },
                     style = style(13.sp, W.muted, bold = true), modifier = GlanceModifier.defaultWeight(), maxLines = 1,
                 )
                 AddButton(context, compact = false)
@@ -269,9 +297,9 @@ private fun AddButton(context: Context, compact: Boolean) {
 }
 
 @Composable
-private fun CompactRow(f: TaskFacts, context: Context) {
+private fun CompactRow(f: TaskFacts, context: Context, height: Dp) {
     Row(
-        GlanceModifier.fillMaxWidth().height(44.dp).padding(start = 4.dp, end = 16.dp).clickable(openApp(context, taskId = f.task.id)),
+        GlanceModifier.fillMaxWidth().height(height).padding(start = 4.dp, end = 16.dp).clickable(openApp(context, taskId = f.task.id)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Pebble(f)
@@ -318,7 +346,7 @@ private fun TallRow(f: TaskFacts, board: Board, context: Context) {
 // Focus: one task, big, with a check.
 
 class FocusWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Single
+    override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val repo = loadedRepo(context)
@@ -337,6 +365,10 @@ class FocusWidgetReceiver : GlanceAppWidgetReceiver() {
 private fun FocusContent(board: Board) {
     val context = LocalContext.current
     val f = board.headline()
+    // The home screen clips text that overflows its box mid-word instead of adding an ellipsis, so
+    // only ask for as many lines as the widget's real height leaves room for: padding 28, label 18,
+    // gap 8, and the bottom row 44, with about 26dp per 19sp line.
+    val titleLines = ((LocalSize.current.height - 98.dp) / 26.dp).toInt().coerceIn(1, 4)
     Column(
         GlanceModifier.fillMaxSize().appWidgetBackground().background(W.focusBg).cornerRadius(28.dp).padding(14.dp)
             .clickable(openApp(context, taskId = f?.task?.id)),
@@ -347,7 +379,7 @@ private fun FocusContent(board: Board) {
             Text(if (f?.isFocused == true) "FOCUS" else "UP NEXT", style = style(12.sp, W.ink, bold = true))
         }
         Spacer(GlanceModifier.height(8.dp))
-        Text(f?.task?.title ?: "Nothing to focus on", style = style(19.sp, W.ink, bold = true), maxLines = 3)
+        Text(f?.task?.title ?: "Nothing to focus on", style = style(19.sp, W.ink, bold = true), maxLines = titleLines)
         Spacer(GlanceModifier.defaultWeight())
         if (f != null) {
             Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
