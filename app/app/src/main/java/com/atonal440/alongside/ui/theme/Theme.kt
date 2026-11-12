@@ -1,10 +1,7 @@
 package com.atonal440.alongside.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -149,17 +146,8 @@ object Type {
     val button = TextStyle(fontFamily = Figtree, fontWeight = FontWeight.Bold, fontSize = 16.sp, lineHeight = 16.sp)
 }
 
-/**
- * [expressive] is for experiments (see docs/android/m3-expressive.md): it swaps in
- * MaterialExpressiveTheme with the expressive motion scheme. The app itself leaves it false.
- */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun AlongsideTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    expressive: Boolean = false,
-    content: @Composable () -> Unit,
-) {
+fun AlongsideTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val palette = if (darkTheme) DarkPalette else LightPalette
     val scheme = if (darkTheme) {
         darkColorScheme(
@@ -184,13 +172,6 @@ fun AlongsideTheme(
         titleLarge = base.titleLarge.copy(fontFamily = Bricolage),
     )
     CompositionLocalProvider(LocalColors provides palette) {
-        if (expressive) {
-            MaterialExpressiveTheme(
-                colorScheme = scheme, typography = typography,
-                motionScheme = MotionScheme.expressive(), content = content,
-            )
-        } else {
-            MaterialTheme(colorScheme = scheme, typography = typography, content = content)
-        }
+        MaterialTheme(colorScheme = scheme, typography = typography, content = content)
     }
 }
