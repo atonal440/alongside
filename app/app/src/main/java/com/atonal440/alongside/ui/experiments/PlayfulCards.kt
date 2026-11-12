@@ -6,7 +6,29 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -18,6 +40,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.unit.Dp
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -169,3 +193,120 @@ private fun PlayfulListPreview() = AlongsideTheme(darkTheme = false, expressive 
 @Preview(name = "Playful list, dark", widthDp = 380, showBackground = true)
 @Composable
 private fun PlayfulListDarkPreview() = AlongsideTheme(darkTheme = true, expressive = true) { PlayfulList() }
+
+/* ---------------------------------------------------------------------------------------------
+ * Carnival-ticket variant (adapted from the "Ticket stacks" artboard on the design canvas).
+ * A ticket has half-circle notches at its corners and at both ends of a perforation, a dashed
+ * perforation line, a stub on the right (date + how many "folds" - subtasks - are left), and
+ * paper folds peeking out below, one per remaining subtask. Completing stamps it DONE.
+ * ------------------------------------------------------------------------------------------- */
+
+/** Rectangle with rounded notch cut-outs at the four corners and at [perfFromEnd] on top and bottom. */
+private class TicketShape(private val cornerNotch: Dp, private val perfNotch: Dp, private val perfFromEnd: Dp) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val cr = with(density) { cornerNotch.toPx() }
+        val pr = with(density) { perfNotch.toPx() }
+        val px = size.width - with(density) { perfFromEnd.toPx() }
+        var path = Path().apply { addRect(Rect(0f, 0f, size.width, size.height)) }
+        fun cut(x: Float, y: Float, r: Float) {
+            val hole = Path().apply { addOval(Rect(Offset(x, y), r)) }
+            path = Path.combine(PathOperation.Difference, path, hole)
+        }
+        listOf(0f to 0f, size.width to 0f, 0f to size.height, size.width to size.height).forEach { (x, y) -> cut(x, y, cr) }
+        cut(px, 0f, pr); cut(px, size.height, pr)
+        return Outline.Generic(path)
+    }
+}
+
+private val StubMono = TextStyle(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 14.sp, letterSpacing = 0.5.sp)
+
+@Composable
+private fun TicketCard(facts: TaskFacts, index: Int, modifier: Modifier = Modifier) {
+    val c = LocalColors.current
+    val task = facts.task
+    var done by remember { mutableStateOf(facts.isDone) }
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val squish by animateFloatAsState(if (pressed) 0.97f else 1f, MaterialTheme.motionScheme.fastSpatialSpec(), label = "squish")
+    val tint = Color(projectColor(task.project_id))
+    val folds = (facts.subtasks.size - facts.subtasksDone).coerceIn(0, 3)
+    val shape = remember { TicketShape(cornerNotch = 11.dp, perfNotch = 9.dp, perfFromEnd = 80.dp) }
+    val label = facts.dateLabel()
+    Column(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp).scale(squish)) {
+        Box(Modifier.zIndex(1f)) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .shadow(3.dp, shape)
+                    .clip(shape)
+                    .background(c.card)
+                    .clickable(interactionSource = source, indication = null, role = Role.Button) { done = !done }
+                    .height(IntrinsicSize.Min),
+            ) {
+                Column(Modifier.weight(1f).padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        task.title, style = Type.rowTitle,
+                        color = if (done) c.muted else c.ink,
+                        textDecoration = if (done) TextDecoration.LineThrough else null,
+                        maxLines = 3, overflow = TextOverflow.Ellipsis,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(tint))
+                        Text(if (task.isPlan) "Plan" else "Task", style = Type.tag, color = c.muted)
+                        recurrenceLabel(task)?.let { Text("· $it", style = Type.tag, color = c.muted) }
+                    }
+                }
+                Column(
+                    Modifier
+                        .width(80.dp)
+                        .fillMaxHeight()
+                        .background(tint.copy(alpha = if (c.isDark) 0.30f else 0.26f))
+                        .drawBehind {
+                            drawLine(c.line, Offset(0f, 12.dp.toPx()), Offset(0f, size.height - 12.dp.toPx()), strokeWidth = 2.dp.toPx(),
+                                cap = StrokeCap.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx())))
+                        }
+                        .padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text((label?.text ?: "Any day").uppercase(), style = StubMono, color = if (label?.urgent == true) c.urgentFg else c.ink, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Text(if (facts.subtasks.isEmpty()) "" else "${facts.subtasks.size - facts.subtasksDone} folds", style = StubMono.copy(fontSize = 11.sp), color = c.muted)
+                }
+            }
+            if (done) {
+                Text(
+                    "DONE", style = StubMono.copy(fontSize = 15.sp, letterSpacing = 2.sp), color = Color(0xFF2E7D32),
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 96.dp).rotate(-9f)
+                        .background(c.card.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+                        .border(2.5.dp, Color(0xFF2E7D32), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
+                )
+            }
+        }
+        // Folds peeking out beneath the ticket: one per subtask left (max 3).
+        repeat(if (done) 0 else folds) { k ->
+            Box(
+                Modifier.fillMaxWidth().padding(horizontal = (8 * (k + 1)).dp).height(8.dp).offset(y = (-2 - k).dp)
+                    .clip(RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp))
+                    .background(c.card.copy(alpha = 0.85f - 0.2f * k)).border(1.dp, c.line, RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp)),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TicketList() {
+    val c = LocalColors.current
+    val board = remember { Board(SampleData.workspace()) }
+    Column(Modifier.background(c.ground).padding(vertical = 12.dp)) {
+        Text("YOUR STACK", style = Type.section, color = c.muted, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+        board.facts.take(5).forEachIndexed { i, f -> TicketCard(f, i) }
+    }
+}
+
+@Preview(name = "Ticket list", widthDp = 380, showBackground = true)
+@Composable
+private fun TicketListPreview() = AlongsideTheme(darkTheme = false, expressive = true) { TicketList() }
+
+@Preview(name = "Ticket list, dark", widthDp = 380, showBackground = true)
+@Composable
+private fun TicketListDarkPreview() = AlongsideTheme(darkTheme = true, expressive = true) { TicketList() }
