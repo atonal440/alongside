@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.Morph
+import androidx.graphics.shapes.toPath
 import com.atonal440.alongside.data.SampleData
 import com.atonal440.alongside.domain.Board
 import com.atonal440.alongside.domain.TaskFacts
