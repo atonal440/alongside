@@ -91,7 +91,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'complete_task',
-    description: 'Marks a task done. Subtasks must be done first. Completing a task never creates the next one: repeating work is a duty, and its occurrences are created on the calendar independently of completion.',
+    description: 'Marks a task done. Subtasks must be done first. Repeating work is a duty: its occurrences are created on the calendar independently of completion, so completing one does not create the next.',
     inputSchema: {
       type: 'object',
       properties: {
