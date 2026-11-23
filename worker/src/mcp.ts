@@ -68,7 +68,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'add_task',
-    description: 'Creates a task in pending status. Set due_date + recurrence for repeating tasks. Set task_type "plan" for tasks needing a planning conversation.',
+    description: 'Creates a one-off task in pending status. For repeating work, create a duty with preview_changes / apply_changes (command duty.create; see describe_commands family "duty") instead of a task. Set task_type "plan" for tasks needing a planning conversation.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -76,7 +76,6 @@ const TOOL_DEFS = [
         title: { type: 'string', description: 'Short, actionable title.' },
         notes: { type: 'string', description: 'Additional context or links.' },
         due_date: { type: 'string', description: 'The target: when to aim to finish. ISO 8601 date or datetime. A bare date is all-day (stored at noon UTC); a full datetime is a timed target. Use deadline for a hard boundary. Omit for undated.' },
-        recurrence: { type: 'string', description: 'Infinite date-only RRULE (e.g. FREQ=WEEKLY;INTERVAL=2 or FREQ=MONTHLY;BYDAY=3FR). Requires due_date.' },
         task_type: { type: 'string', enum: ['action', 'plan'], description: '"action" (default) or "plan".' },
         project_id: { type: 'string', description: 'Associate with a project.' },
         kickoff_note: { type: 'string', description: 'Where to start next time.' },
@@ -92,7 +91,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'complete_task',
-    description: 'Marks a task done. Recurring tasks automatically get their next occurrence created.',
+    description: 'Marks a task done. Subtasks must be done first. Completing a task never creates the next one: repeating work is a duty, and its occurrences are created on the calendar independently of completion.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -133,7 +132,6 @@ const TOOL_DEFS = [
         notes: { type: 'string', description: 'Replaces existing notes.' },
         status: { type: 'string', enum: ['pending'], description: 'Use complete_task for "done", defer_task to defer, focus_task to put front-of-mind. Only valid value is "pending" (to reset a task).' },
         due_date: { type: 'string', description: 'The target: when to aim to finish. ISO 8601 date or datetime. A bare date is all-day (stored at noon UTC); a full datetime is a timed target. Use deadline for a hard boundary.' },
-        recurrence: { type: 'string', description: 'Infinite date-only RRULE.' },
         task_type: { type: 'string', enum: ['action', 'plan'] },
         project_id: { type: ['string', 'null'], description: 'Move to project, or null to remove.' },
         kickoff_note: { type: 'string', description: 'Where to start next time.' },

@@ -106,7 +106,7 @@ const taskFieldSchemas = [
   stateCommandSchema('task.legacy-schedule.set', 'values', { type: 'object', additionalProperties: false, properties: {
     dueDate: { type: ['string', 'null'], description: 'Legacy calendar date or offset instant, normalized to minute UTC in years 0100–9999; not a hard deadline.' },
     dueAllDay: { type: ['boolean', 'null'], description: 'Explicit classification. Null preserves legacy ambiguity; clearing dueDate requires null.' },
-    recurrence: { type: ['string', 'null'], description: 'Legacy date-only RRULE; requires all-day/ambiguous dueDate. Clearing dueDate requires null.' },
+    recurrence: { type: ['string', 'null'], description: 'Legacy field: send null. Repeating work is a duty (duty.create), not a task recurrence. Clearing dueDate requires null.' },
   }, required: ['dueDate', 'dueAllDay', 'recurrence'] }),
   taskDatesSchema,
 ];
