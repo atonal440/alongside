@@ -57,7 +57,8 @@ jobs:
   # check itself (not the Worker/PWA jobs) is as slow as it is.
   e2e:
     name: E2E sync
-    runs-on: ubuntu-latest
+    # Playwright 1.56.1 cannot install Chromium on the ubuntu-latest image (now 26.04); pin until Playwright supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     env:
       PLAYWRIGHT_VERSION: '1.56.1'
