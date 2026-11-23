@@ -87,12 +87,14 @@ export type RebaseView =
  * except that an op aimed at a task that no longer exists cannot be retried at all.
  */
 // The task fields an intent sets, as [task field, intended value] pairs. Only edit intents have any.
+// A schedule intent from an older build may still name a recurrence: it is listed so the refused edit stays
+// reviewable, but restrictIntent never keeps it, so it can't be resubmitted (repeating work is a duty now).
 export function intentFields(intent: Intent): [string, unknown][] {
   switch (intent.kind) {
     case 'task.content': return [['title', intent.title], ['notes', intent.notes], ['kickoff_note', intent.kickoffNote], ['session_log', intent.sessionLog]].filter(([, v]) => v !== undefined) as [string, unknown][];
     case 'task.type': return [['task_type', intent.taskType]];
     case 'task.project': return [['project_id', intent.projectId]];
-    case 'task.schedule': return [['due_date', intent.dueDate], ['due_all_day', intent.dueAllDay]].filter(([, v]) => v !== undefined) as [string, unknown][];
+    case 'task.schedule': return [['due_date', intent.dueDate], ['due_all_day', intent.dueAllDay], ['recurrence', intent.recurrence]].filter(([, v]) => v !== undefined) as [string, unknown][];
     case 'task.defer': return [['defer_kind', intent.defer.kind], ['defer_until', intent.defer.kind === 'until' ? intent.defer.until : null]];
     case 'task.focus': return [['focused_until', intent.focusedUntil]];
     default: return [];

@@ -5,7 +5,7 @@ import { closeDb } from '../../src/idb/db';
 import { idbRetainOp, idbGetRetainedOps } from '../../src/idb/retainedOps';
 import { idbGetPendingOps } from '../../src/idb/pendingOps';
 import { makeTask } from '../helpers/fixtures';
-import { describeRetainedOp, discardRetainedOp, rebaseView, retryRebased, retryRetainedOp } from '../../src/sync/retained';
+import { describeRetainedOp, discardRetainedOp, rebaseView, restrictIntent, retryRebased, retryRetainedOp } from '../../src/sync/retained';
 import type { PendingOp } from '../../src/api/pendingOps';
 
 const at = '2026-10-02T09:00:00.000Z';
@@ -97,6 +97,13 @@ describe('retained reliable commands', () => {
       { field: 'notes', intended: 'same', current: 'same', differs: false },
     ] });
     expect(rebaseView(r!, [])).toMatchObject({ kind: 'missing' });
+  });
+
+  test('keeps a retired recurrence edit from an older build visible for review, but never resubmittable', async () => {
+    await idbRetainOp(command({ kind: 'task.schedule', id: 't_abc001', recurrence: 'FREQ=WEEKLY' }), { kind: 'rejected', status: 422, message: 'Task recurrence is no longer editable.' });
+    const [r] = await idbGetRetainedOps();
+    expect(rebaseView(r!, [makeTask({ id: 't_abc001' })])).toMatchObject({ kind: 'fields', fields: [{ field: 'recurrence', intended: 'FREQ=WEEKLY' }] });
+    expect(restrictIntent((r!.op as unknown as { intent: Parameters<typeof restrictIntent>[0] }).intent, ['recurrence'])).toBeNull();
   });
 
   test('retrying a conflicted command re-queues it as a new command guarded by the current revision', async () => {
