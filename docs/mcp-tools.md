@@ -65,8 +65,7 @@ Create a new task.
 | `timezone` | `string` | no | IANA zone for `deadline` and `available_from`; defaults to the workspace timezone (`planning.set`). With neither the call is refused. |
 | `parent_id` | `string` | no | Make the task a subtask of that task (same project, no loops, at most 32 deep). |
 | `position` | `number` | no | Sort key among siblings, ascending. Only used with `parent_id`. |
-| `recurrence` | `string` | no | Infinite date-only RRULE (e.g. `FREQ=WEEKLY;INTERVAL=1`, `FREQ=MONTHLY;BYDAY=3FR`). |
-| `task_type` | `'action'\|'plan'\|'recurring'` | no | Defaults to `'action'`. |
+| `task_type` | `'action'\|'plan'` | no | Defaults to `'action'`. |
 | `project_id` | `string` | no | Associate with a project. |
 | `kickoff_note` | `string` | no | Re-entry ramp — what to do next time. |
 
@@ -91,7 +90,6 @@ Update one or more fields on an existing task. Only provided fields are changed.
 | `parent_id` | `string \| null` | no | Move under another task, or `null` for top level. Changing only `parent_id` keeps `position`; `null` clears both. |
 | `position` | `number \| null` | no | Sibling sort key; kept when only `parent_id` changes. |
 | `timezone` | `string` | no | IANA zone for the two roles; defaults to the workspace timezone. |
-| `recurrence` | `string` | no | |
 | `task_type` | `string` | no | |
 | `project_id` | `string` | no | |
 | `kickoff_note` | `string` | no | Overwrites existing kickoff_note. |
@@ -103,7 +101,7 @@ Update one or more fields on an existing task. Only provided fields are changed.
 
 ### `complete_task`
 
-Mark a task done. If the task has both `recurrence` and `due_date`, a new task is automatically created for the next occurrence. The completed task's `session_log` is carried forward as the new task's `kickoff_note`.
+Mark a task done. Refused while any subtask is still pending. Completing a task does not create a next occurrence: repeating work is a duty (`duty.create`, see `docs/worker/duties.md`), and its tasks are created on the calendar independently of completion.
 
 **Parameters:**
 
@@ -113,9 +111,9 @@ Mark a task done. If the task has both `recurrence` and `due_date`, a new task i
 
 **Returns:** `{ completed: Task, next?: Task, action_log_entry }`
 
-`next` is present only when a recurrence was spawned.
+`next` appears only when a legacy recurring task (one that predates duties and could not be converted) is completed.
 
-**Supported RRULE subset:** infinite date-only `DAILY`, `WEEKLY`, `MONTHLY`, and `YEARLY` rules with optional `INTERVAL=N`, plus date-level filters (`BYDAY`, `BYMONTHDAY`, `BYYEARDAY`, `BYWEEKNO`, `BYMONTH`, `BYSETPOS`, `WKST`). `COUNT`, `UNTIL`, time parts, recurrence sets, and exception dates are not supported. RRULE calendar semantics are used: invalid target dates are skipped rather than clipped, and the rule must produce a next occurrence after the task's current `due_date`.
+**Repeating work.** Use `duty.create` (standalone command through `preview_changes` / `apply_changes`; schema via `describe_commands({ family: 'duty' })`). Do not set a recurrence on a task: the `recurrence` field is a legacy column kept only for old records and is not advertised by `add_task` or `update_task`, and new work must not use it.
 
 ---
 
@@ -181,7 +179,7 @@ Give exactly one of the two.
   status:        'pending' | 'done',
   due_date:      string | null,   // ISO 8601 datetime, minute resolution
   due_all_day:   boolean | null,  // all-day vs. timed; null (predates field) reads as all-day
-  recurrence:    string | null,   // iCal RRULE
+  recurrence:    string | null,   // legacy; do not write. Repeating work is a duty (duty_id, occurrence_at)
   task_type:     'action' | 'plan',
   project_id:    string | null,
   kickoff_note:  string | null,

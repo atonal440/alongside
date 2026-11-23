@@ -19,7 +19,7 @@ Model Context Protocol (MCP) handler. Exposes Alongside task data and operations
 | `find`, `get_context`, `get_history`, `describe_commands` | Phase B reads (`reads.ts`); see `docs/mcp-tools.md` |
 | `show_tasks` | Renders tasks (`task_ids`) or a project and its pending tasks (`project_id`) in the inline widget |
 | `add_task` | Creates a task in pending status |
-| `complete_task` | Marks a task done, handles recurrence |
+| `complete_task` | Marks a task done (requires subtasks done; never spawns a next task for duty instances) |
 | `defer_task` | Hides a pending task. `kind: 'until'` requires an ISO timestamp; `kind: 'someday'` rejects `until` |
 | `update_task` | Updates fields on a task (including `status` and `focused_until`) |
 | `focus_task` | Sets `focused_until` on a non-deferred pending task; `hours` defaults to 3 and must be greater than 0 and no more than 24 |
