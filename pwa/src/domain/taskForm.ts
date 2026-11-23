@@ -4,11 +4,9 @@ import {
   parseBounded,
   parseDueDateTime,
   parseIsoDate,
-  parseRrule,
   type IsoDateTime,
   type NonEmptyString,
   type BoundedString,
-  type Rrule,
 } from '@shared/parse';
 import {
   TASK_TITLE_MAX,
@@ -24,7 +22,6 @@ export interface TaskFormInput {
   notes: string;
   kickoffNote: string;
   dueDate: string;
-  recurrence: string;
   sessionLog: string;
   deferKind: 'none' | 'until' | 'someday';
   deferUntil: string;
@@ -117,30 +114,6 @@ export function parseTaskForm(input: TaskFormInput): Result<TaskUpdatePatch, Fie
     }
   }
 
-  // recurrence — empty → null, non-empty → Rrule + cross-field check.
-  // Mirrors worker/src/domain/task.ts recurrenceFromRow: a genuinely timed
-  // due_date (due_all_day: false, only reachable here via the
-  // existingDueAllDay preservation above — the picker itself can only
-  // produce all-day dates) can't carry recurrence. Rejecting client-side
-  // avoids queuing a PATCH the worker will 4xx on, which would otherwise
-  // strand an offline edit in an unsyncable optimistic state indefinitely.
-  let recurrence: Rrule | null = null;
-  if (input.recurrence !== '') {
-    const r = parseRrule(input.recurrence);
-    if (r.ok) {
-      recurrence = r.value.rrule;
-      if (!dueDate && !errors.dueDate) {
-        errors.recurrence = 'Recurrence requires a due date.';
-        recurrence = null;
-      } else if (dueAllDay === false) {
-        errors.recurrence = 'Recurring tasks must have an all-day due date; timed recurrence is not supported yet.';
-        recurrence = null;
-      }
-    } else {
-      errors.recurrence = r.error[0]?.message ?? 'Invalid recurrence.';
-    }
-  }
-
   // deferUntil — required when deferKind === 'until', forbidden otherwise
   let deferUntil: IsoDateTime | null = null;
   if (input.deferKind === 'until') {
@@ -174,7 +147,6 @@ export function parseTaskForm(input: TaskFormInput): Result<TaskUpdatePatch, Fie
     kickoff_note: kickoffNote,
     due_date: dueDate,
     due_all_day: dueAllDay,
-    recurrence,
     session_log: sessionLog,
     defer_kind: input.deferKind,
     defer_until: deferUntil,

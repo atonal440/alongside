@@ -1,4 +1,40 @@
 {
+ "add_task.date-and-recurrence": {
+  "result": {
+   "ok": false,
+   "channel": "tool_error",
+   "message": "Tasks no longer take a recurrence. Create a repeating series with the duty.create command (preview_changes / apply_changes; see describe_commands family \"duty\").",
+   "code": "invalid_input"
+  },
+  "diff": {}
+ },
+ "update_task.recurrence-only-keeps-due": {
+  "result": {
+   "ok": false,
+   "channel": "tool_error",
+   "message": "Tasks no longer take a recurrence. Create a repeating series with the duty.create command (preview_changes / apply_changes; see describe_commands family \"duty\").",
+   "code": "invalid_input"
+  },
+  "diff": {}
+ },
+ "update_task.due-null-and-recurrence-null": {
+  "result": {
+   "ok": false,
+   "channel": "tool_error",
+   "message": "Tasks no longer take a recurrence. Create a repeating series with the duty.create command (preview_changes / apply_changes; see describe_commands family \"duty\").",
+   "code": "invalid_input"
+  },
+  "diff": {}
+ },
+ "update_task.recurrence-null": {
+  "result": {
+   "ok": false,
+   "channel": "tool_error",
+   "message": "Tasks no longer take a recurrence. Create a repeating series with the duty.create command (preview_changes / apply_changes; see describe_commands family \"duty\").",
+   "code": "invalid_input"
+  },
+  "diff": {}
+ },
  "update_task.status-pending-on-pending": {
   "result": {
    "ok": true,
@@ -21,10 +57,10 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
-    "parent_id": null,
-    "position": null,
     "available_from": null,
     "deadline": null,
+    "parent_id": null,
+    "position": null,
     "action_log_entry": {
      "tool_name": "update_task",
      "title": "Pending",
@@ -71,10 +107,10 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
-    "parent_id": null,
-    "position": null,
     "available_from": null,
     "deadline": null,
+    "parent_id": null,
+    "position": null,
     "action_log_entry": {
      "tool_name": "update_task",
      "title": "To be deferred",
@@ -121,10 +157,10 @@
     "focused_until": null,
     "duty_id": null,
     "occurrence_at": null,
-    "parent_id": null,
-    "position": null,
     "available_from": null,
     "deadline": null,
+    "parent_id": null,
+    "position": null,
     "action_log_entry": {
      "tool_name": "update_task",
      "title": "To be done",
@@ -153,7 +189,7 @@
   "result": {
    "ok": false,
    "channel": "tool_error",
-   "message": "Clearing dueDate requires dueAllDay and recurrence to be null.",
+   "message": "Clearing dueDate requires dueAllDay to be null.",
    "code": "invalid_input"
   },
   "diff": {}

@@ -236,7 +236,7 @@ current values and require an explicit rebase with a new ID. Tool errors expose
 `isError: true` and versioned `structuredContent.error`.
 
 Settings, single task/project creation/content, task focus/deferral/reopen and
-project archive/reopen, reliable completion and task membership/type/legacy-schedule
+project archive/reopen, reliable completion and task membership/type/due-date
 and link add/remove/deletion commands use this protocol. Offline command overlays and full delta sync remain subsequent increments. Settings export is a
 preferences document, not a full backup; restore non-null values through
 `planning.set` using `actor: import` and the destination's expected revision.
@@ -300,9 +300,10 @@ and compatibility boundaries.
 
 `task.project.set` guards task, structural and selected-project revisions;
 required `project` is null to detach or `{id,expectedRevision}` to assign.
-`task.type.set` replaces action/plan. `task.legacy-schedule.set` replaces required
-`values: {dueDate,dueAllDay,recurrence}` under the existing date/recurrence
-contract, with explicit classification and no new hard-deadline meaning.
+`task.type.set` replaces action/plan. `task.due.set` replaces the target with required
+`values: {dueDate,dueAllDay}`, with explicit classification and no hard-deadline meaning; it never
+touches recurrence (repeating work is a duty, `duty.create`). `task.legacy-schedule.set` still exists
+for old records and also carries `recurrence`, but new work should not use it.
 `task.dates.set` replaces `values: {availableFrom, deadline}`, each a point
 (`{kind:'date',date,timezone}` or `{kind:'instant',at,timezone}`) or null. A
 date deadline allows completion throughout that local day, a timed one until the

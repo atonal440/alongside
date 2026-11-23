@@ -107,3 +107,25 @@ it.each([
 ])('rejects incomplete/inconsistent legacy schedule at boundary',values=>{
  expect(parseCommandEnvelope({contractVersion:2,commandId:'c_fields01',actor:'user',commands:[{kind:'task.legacy-schedule.set',id:'t_first1',expectedRevision:1,values}]}).ok).toBe(false);
 });
+
+describe('task.due.set', () => {
+ it('writes only the target date, leaving recurrence and everything else alone', async () => {
+  const {sql,db,task}=await setup();
+  try {
+   const set=await db.applyChanges(input('task.due.set',task.id,1,{values:{dueDate:'2026-10-12',dueAllDay:true}},'c_due0001'));
+   expect(parseChangesResult(set).ok).toBe(true);
+   expect(set).toMatchObject({changes:[{after:{revision:2,row:{due_date:'2026-10-12T12:00:00Z',due_all_day:true,recurrence:'FREQ=WEEKLY',notes:'Context'}}}]});
+   const plain=await db.addTask({title:'Plain'});
+   const timed=await db.applyChanges(input('task.due.set',plain.id,1,{values:{dueDate:'2026-10-12T15:30:00Z',dueAllDay:false}},'c_due0002'));
+   expect(timed).toMatchObject({changes:[{after:{row:{due_date:'2026-10-12T15:30:00Z',due_all_day:false}}}]});
+   const cleared=await db.applyChanges(input('task.due.set',plain.id,2,{values:{dueDate:null,dueAllDay:null}},'c_due0003'));
+   expect(cleared).toMatchObject({changes:[{after:{row:{due_date:null,due_all_day:null}}}]});
+  } finally { sql.close(); }
+ });
+ it('rejects a recurrence field and a half-cleared date', () => {
+  const bad=(values:object)=>parseCommandEnvelope({contractVersion:2,commandId:'c_due0004',actor:'user',commands:[{kind:'task.due.set',id:'t_first1',expectedRevision:1,values}]}).ok;
+  expect(bad({dueDate:'2026-10-12',dueAllDay:true,recurrence:null})).toBe(false);
+  expect(bad({dueDate:null,dueAllDay:true})).toBe(false);
+  expect(bad({dueDate:'2026-10-12',dueAllDay:true})).toBe(true);
+ });
+});

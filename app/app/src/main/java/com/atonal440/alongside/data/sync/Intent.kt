@@ -102,7 +102,7 @@ sealed interface Intent {
         override fun describe() = "Move task to a project"
     }
 
-    /** Sets the due date; the task's repeat rule is kept as the server has it. */
+    /** Sets the due date (the soft target). Repeating work is a duty, so this never touches a repeat rule. */
     @Serializable @SerialName("task.schedule")
     data class SetDue(override val taskId: String, val dueDate: String, val dueAllDay: Boolean) : Intent {
         override fun apply(task: Task, at: String) = task.copy(due_date = dueDate, due_all_day = dueAllDay, updated_at = at)

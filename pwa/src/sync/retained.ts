@@ -87,6 +87,8 @@ export type RebaseView =
  * except that an op aimed at a task that no longer exists cannot be retried at all.
  */
 // The task fields an intent sets, as [task field, intended value] pairs. Only edit intents have any.
+// A schedule intent from an older build may still name a recurrence: it is listed so the refused edit stays
+// reviewable, but restrictIntent never keeps it, so it can't be resubmitted (repeating work is a duty now).
 export function intentFields(intent: Intent): [string, unknown][] {
   switch (intent.kind) {
     case 'task.content': return [['title', intent.title], ['notes', intent.notes], ['kickoff_note', intent.kickoffNote], ['session_log', intent.sessionLog]].filter(([, v]) => v !== undefined) as [string, unknown][];
@@ -115,7 +117,6 @@ export function restrictIntent(intent: Intent, fields: readonly string[]): Inten
       const out: Extract<Intent, { kind: 'task.schedule' }> = { kind: 'task.schedule', id: intent.id };
       if (intent.dueDate !== undefined && keep('due_date')) out.dueDate = intent.dueDate;
       if (intent.dueAllDay !== undefined && keep('due_all_day')) out.dueAllDay = intent.dueAllDay;
-      if (intent.recurrence !== undefined && keep('recurrence')) out.recurrence = intent.recurrence;
       return Object.keys(out).length > 2 ? out : null;
     }
     default:

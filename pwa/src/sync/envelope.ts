@@ -57,10 +57,12 @@ export function buildEnvelope(op: CommandOp, ctx: BuildContext): Result<CommandE
       return wrap({ kind: 'task.project.set', id, expectedRevision: base, expectedStructuralRevision: S,
         project: intent.projectId === null ? null : { id: intent.projectId, expectedRevision: ctx.projectRevision ?? 0 } });
     case 'task.schedule':
-      return wrap({ kind: 'task.legacy-schedule.set', id, expectedRevision: base, values: {
+      // An op queued by an older build may still carry a recurrence edit. It can no longer be sent, and
+      // dropping it would acknowledge a different edit, so refuse it and let it be retained for review.
+      if (intent.recurrence !== undefined) return err([{ path: ['intent', 'recurrence'], code: 'recurrence_retired', message: 'Task recurrence is no longer editable. Create a repeating series (duty) instead.' }]);
+      return wrap({ kind: 'task.due.set', id, expectedRevision: base, values: {
         dueDate: intent.dueDate !== undefined ? intent.dueDate : row.due_date,
-        dueAllDay: intent.dueAllDay !== undefined ? intent.dueAllDay : row.due_all_day,
-        recurrence: intent.recurrence !== undefined ? intent.recurrence : row.recurrence } });
+        dueAllDay: intent.dueAllDay !== undefined ? intent.dueAllDay : row.due_all_day } });
     case 'task.defer': return wrap({ kind: 'task.defer.set', id, expectedRevision: base, defer: intent.defer });
     case 'task.focus': return wrap({ kind: 'task.focus.set', id, expectedRevision: base, focusedUntil: intent.focusedUntil });
     case 'task.reopen': return wrap({ kind: 'task.reopen', id, expectedRevision: base });

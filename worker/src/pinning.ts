@@ -210,6 +210,16 @@ async function pinOnce(args: Json, db: DB): Promise<Json> {
       case 'task.reopen': { keys('id'); const id = idOf('task'); commands.push({ kind: command.kind, id, expectedRevision: await edit('task', id) }); break; }
       case 'project.archive':
       case 'project.reopen': { keys('id'); const id = idOf('project'); commands.push({ kind: command.kind, id, expectedRevision: await edit('project', id) }); break; }
+      case 'task.due.set': {
+        keys('id', 'values');
+        const id = idOf('task');
+        const input = values(); only(input, ['dueDate', 'dueAllDay'], [...at, 'values']);
+        const row = await liveRow('task', id, [...at, 'id']);
+        const merged = { dueDate: row.due_date, dueAllDay: row.due_all_day, ...input };
+        commands.push({ kind: command.kind, id, expectedRevision: await edit('task', id), values: merged });
+        remember('task', id, { due_date: merged.dueDate, due_all_day: merged.dueAllDay });
+        break;
+      }
       case 'task.legacy-schedule.set': {
         keys('id', 'values');
         const id = idOf('task');

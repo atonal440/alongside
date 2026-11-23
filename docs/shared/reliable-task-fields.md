@@ -1,6 +1,6 @@
 # Guarded task membership, type and legacy schedule
 
-`task.project.set`, `task.type.set` and `task.legacy-schedule.set` extend the
+`task.project.set`, `task.type.set` and `task.due.set` (plus the older `task.legacy-schedule.set`) extend the
 v2 protocol to the remaining editable fields used by the current
 task UI. They replace specific semantic values, not arbitrary managed patches.
 Read the task with `get_entity` and retain its numeric revision before planning.
@@ -40,7 +40,18 @@ extend this planner when hierarchy lands in Slice 3.
 `action` or `plan`. It changes only task type/update time and needs no structural
 precondition. It can edit a done task while preserving done status.
 
+## Due date (`task.due.set`)
+
+`task.due.set` replaces the target: `values: { dueDate, dueAllDay }`, both required, with the
+same date, classification and year-range rules as below. Clearing `dueDate` requires `dueAllDay: null`. It writes
+only `due_date`, `due_all_day` and update time, never `recurrence`, and counts the same statements as
+a legacy schedule write. This is the command the PWA, the Android app and the task verbs use.
+
 ## Legacy schedule compatibility
+
+`task.legacy-schedule.set` is the older command that also writes the legacy `recurrence` column. It
+stays so existing records and old clients keep working, but new code must not build on it: repeating
+work is a duty (`duty.create`).
 
 ```json
 {
@@ -151,7 +162,7 @@ window must be non-empty: availability must open strictly before the deadline
 boundary. Failures are `invalid_input` with a path under `values`; nothing is
 written. The command changes only `available_from`, `deadline` and update time,
 may edit a done task, and needs no structural precondition. The target
-(`due_date`) is untouched and stays in `task.legacy-schedule.set`; a deadline
+(`due_date`) is untouched and stays in `task.due.set`; a deadline
 earlier or later than the target is kept as entered. It counts six prepared SQL
 statements. Loose-intent previews and `update_task` merge a one-role patch into
 the stored points. A completion successor of a legacy recurring task starts with

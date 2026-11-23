@@ -22,8 +22,8 @@ describe('intentsFromPatch', () => {
   });
 
   it('keeps schedule fields together and normalises defer/focus instants to the minute', () => {
-    const s = intentsFromPatch(task, patch({ due_date: '2026-10-05T12:00:00Z', due_all_day: true, recurrence: 'FREQ=DAILY' }));
-    expect(s).toEqual([{ kind: 'task.schedule', id: 't_abc001', dueDate: '2026-10-05T12:00:00Z', dueAllDay: true, recurrence: 'FREQ=DAILY' }]);
+    const s = intentsFromPatch(task, patch({ due_date: '2026-10-05T12:00:00Z', due_all_day: true }));
+    expect(s).toEqual([{ kind: 'task.schedule', id: 't_abc001', dueDate: '2026-10-05T12:00:00Z', dueAllDay: true }]);
     expect(intentsFromPatch(task, patch({ defer_kind: 'until', defer_until: '2026-10-05T09:30:45.123Z' })))
       .toEqual([{ kind: 'task.defer', id: 't_abc001', defer: { kind: 'until', until: '2026-10-05T09:30:00Z' } }]);
     expect(intentsFromPatch(task, patch({ defer_kind: 'someday', defer_until: null }))).toEqual([{ kind: 'task.defer', id: 't_abc001', defer: { kind: 'someday' } }]);

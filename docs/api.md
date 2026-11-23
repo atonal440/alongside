@@ -375,11 +375,12 @@ validation and atomic capacity. Supported families:
 - `task.complete` with required structural revision and `successor` (null for
   one-off tasks, a stable ID for legacy recurrence); see
   [reliable completion](shared/reliable-completion.md).
-- `task.project.set`, `task.type.set` and `task.legacy-schedule.set` for
-  membership, task type and the existing due-date/recurrence contract; see
+- `task.project.set`, `task.type.set` and `task.due.set` for
+  membership, task type and the due-date target (`task.legacy-schedule.set` remains for old
+  records that also carry a recurrence); see
   [guarded task fields](shared/reliable-task-fields.md). Membership requires
-  a structural revision and selected-project revision. Legacy schedule values
-  explicitly include due-date classification; they never create a hard deadline.
+  a structural revision and selected-project revision. Due-date values
+  explicitly include classification; they never create a hard deadline.
 - `task.dates.set` replaces a task's `availableFrom` and `deadline` roles (each a
   `{kind:'date',date,timezone}` or `{kind:'instant',at,timezone}` point, or null);
   see [guarded task fields](shared/reliable-task-fields.md#date-roles).

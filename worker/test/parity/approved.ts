@@ -8,6 +8,10 @@ import type { Outcome } from './harness';
  * further drift fails the row. Add a row here only after the difference is approved.
  */
 export const APPROVAL_REASONS: Record<string, string> = {
+  'add_task.date-and-recurrence': 'Approved 2026-11-23: add_task no longer writes a task recurrence. Repeating work is a duty (duty.create); the verb refuses the argument.',
+  'update_task.recurrence-only-keeps-due': 'Approved 2026-11-23: update_task no longer writes a task recurrence; it refuses the argument and points at duty.create.',
+  'update_task.due-null-and-recurrence-null': 'Approved 2026-11-23: update_task no longer accepts a recurrence argument at all, including null, so the call is refused.',
+  'update_task.recurrence-null': 'Approved 2026-11-23: update_task no longer accepts a recurrence argument at all, including null, so the call is refused.',
   'update_task.status-pending-on-pending': 'Finding 2 (approved): a call whose patch compiles to no command writes no row, so updated_at no longer moves. It still logs and returns the task.',
   'update_task.status-pending-on-deferred': 'Finding 2 (approved): status pending on a pending task compiles to nothing, so updated_at no longer moves and the deferral is still not cleared.',
   'update_task.focus-clear-on-done': 'Finding 2 (approved): clearing focus on a done task is a no-op because completion already cleared it, so updated_at no longer moves.',

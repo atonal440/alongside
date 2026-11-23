@@ -8,7 +8,6 @@ function baseInput(overrides: Partial<TaskFormInput> = {}): TaskFormInput {
     notes: '',
     kickoffNote: '',
     dueDate: '',
-    recurrence: '',
     sessionLog: '',
     deferKind: 'none',
     deferUntil: '',
@@ -172,59 +171,6 @@ describe('parseTaskForm — dueDate', () => {
   });
 });
 
-describe('parseTaskForm — recurrence', () => {
-  test('empty → null recurrence', () => {
-    const result = parseTaskForm(baseInput({ recurrence: '' }));
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.recurrence).toBeNull();
-  });
-
-  test('valid RRULE with due date → included in patch', () => {
-    const result = parseTaskForm(baseInput({ recurrence: 'FREQ=WEEKLY;INTERVAL=1', dueDate: '2026-07-01' }));
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.recurrence).toBe('FREQ=WEEKLY;INTERVAL=1');
-  });
-
-  test('invalid RRULE → error on recurrence', () => {
-    const result = parseTaskForm(baseInput({ recurrence: 'FREQ=WEEKL', dueDate: '2026-07-01' }));
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.recurrence).toBeDefined();
-  });
-
-  test('cross-field: recurrence without due date → error on recurrence', () => {
-    const result = parseTaskForm(baseInput({ recurrence: 'FREQ=DAILY;INTERVAL=1', dueDate: '' }));
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.recurrence).toMatch(/due date/i);
-  });
-
-  test('cross-field: recurrence with valid due date → ok', () => {
-    const result = parseTaskForm(baseInput({
-      recurrence: 'FREQ=DAILY;INTERVAL=1',
-      dueDate: '2026-07-04',
-    }));
-    expect(result.ok).toBe(true);
-  });
-
-  // Codex-flagged (PR #40): mirrors the worker's recurrenceFromRow rejection
-  // of recurrence on a timed due_date, so an offline edit can't queue a
-  // PATCH the worker will reject.
-  test('cross-field: recurrence with a preserved timed due date → error on recurrence', () => {
-    const result = parseTaskForm(baseInput({
-      recurrence: 'FREQ=DAILY;INTERVAL=1',
-      dueDate: '2026-07-01',
-      existingDueDate: '2026-07-01T09:30:00Z',
-      existingDueAllDay: false,
-    }));
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.recurrence).toMatch(/all-day/i);
-  });
-});
-
 describe('parseTaskForm — defer', () => {
   test('deferKind=none → defer_until null in patch', () => {
     const result = parseTaskForm(baseInput({ deferKind: 'none', deferUntil: '' }));
@@ -286,12 +232,12 @@ describe('parseTaskForm — defer', () => {
 });
 
 describe('parseTaskForm — multiple errors', () => {
-  test('title + recurrence errors both reported', () => {
-    const result = parseTaskForm(baseInput({ title: '', recurrence: 'FREQ=WEEKL' }));
+  test('title + due date errors both reported', () => {
+    const result = parseTaskForm(baseInput({ title: '', dueDate: 'not a date' }));
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.title).toBeDefined();
-    expect(result.error.recurrence).toBeDefined();
+    expect(result.error.dueDate).toBeDefined();
   });
 });
 
