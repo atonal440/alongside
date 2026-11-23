@@ -31,6 +31,12 @@ describe('buildEnvelope', () => {
     expect(command({ kind: 'task.schedule', id: 't_abc001', dueDate: null, dueAllDay: null }, 3, c)).toMatchObject({ kind: 'task.due.set', values: { dueDate: null, dueAllDay: null } });
   });
 
+  it('refuses a queued schedule edit that still carries a retired recurrence instead of sending a different edit', () => {
+    const result = build({ kind: 'task.schedule', id: 't_abc001', recurrence: 'FREQ=WEEKLY' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error[0]).toMatchObject({ code: 'recurrence_retired' });
+  });
+
   it('maps type, project (with the project revision), defer, reopen, delete and complete', () => {
     expect(command({ kind: 'task.type', id: 't_abc001', taskType: 'plan' })).toMatchObject({ kind: 'task.type.set', taskType: 'plan' });
     expect(command({ kind: 'task.project', id: 't_abc001', projectId: 'p_proj01' })).toMatchObject({ kind: 'task.project.set', expectedStructuralRevision: 12, project: { id: 'p_proj01', expectedRevision: 5 } });
