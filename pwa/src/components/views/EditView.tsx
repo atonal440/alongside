@@ -29,7 +29,6 @@ export function EditView() {
         kickoff_note: task.kickoff_note,
         due_date: task.due_date,
         due_all_day: task.due_all_day,
-        recurrence: task.recurrence,
         session_log: task.session_log,
         defer_kind: task.defer_kind,
         defer_until: task.defer_until,
@@ -67,7 +66,6 @@ interface EditFormProps {
     kickoff_note: string | null;
     due_date: string | null;
     due_all_day: boolean | null;
-    recurrence: string | null;
     session_log: string | null;
     defer_kind: 'none' | 'until' | 'someday';
     defer_until: string | null;
@@ -92,7 +90,6 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
   // part in the viewer's local zone so a noon-UTC all-day value round-trips
   // to the calendar date it was meant to represent.
   const [dueDate, setDueDate] = useState(task.due_date ? localDateOf(task.due_date) : '');
-  const [recurrence, setRecurrence] = useState(task.recurrence ?? '');
   const [sessionLog, setSessionLog] = useState(task.session_log ?? '');
   const [deferKind, setDeferKind] = useState(task.defer_kind);
   const [deferUntil, setDeferUntil] = useState(task.defer_until?.split('T')[0] ?? '');
@@ -106,7 +103,6 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
       notes,
       kickoffNote: kickoff,
       dueDate,
-      recurrence,
       sessionLog,
       deferKind,
       deferUntil,
@@ -171,22 +167,6 @@ function EditForm({ task, taskLinks, otherTasks, taskMap, onSave, onCancel, onDe
       />
       {fieldErrors.dueDate && (
         <span id="edit-due-error" className="field-error" role="alert">{fieldErrors.dueDate}</span>
-      )}
-
-      <label htmlFor="edit-recurrence">Recurrence</label>
-      <select
-        id="edit-recurrence"
-        value={recurrence}
-        onChange={e => setRecurrence(e.target.value)}
-        aria-describedby={fieldErrors.recurrence ? 'edit-recurrence-error' : undefined}
-      >
-        <option value="">None</option>
-        <option value="FREQ=DAILY;INTERVAL=1">Daily</option>
-        <option value="FREQ=WEEKLY;INTERVAL=1">Weekly</option>
-        <option value="FREQ=MONTHLY;INTERVAL=1">Monthly</option>
-      </select>
-      {fieldErrors.recurrence && (
-        <span id="edit-recurrence-error" className="field-error" role="alert">{fieldErrors.recurrence}</span>
       )}
 
       <label htmlFor="edit-defer">Defer</label>

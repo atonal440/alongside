@@ -23,9 +23,9 @@ single SQL guard on the first command's expected revision, and a single revision
 step. A later command on that identity names the revision after the first write:
 current + 1 for an existing entity, 1 for one created in the batch, however many
 commands precede it. So a dated task is `task.create` followed by
-`task.legacy-schedule.set` with `expectedRevision: 1`, and a title-and-due-date
+`task.due.set` with `expectedRevision: 1`, and a title-and-due-date
 edit of an existing task at revision 4 is `task.content.set` at 4 followed by
-`task.legacy-schedule.set` at 5. Their SQL merges into one statement per
+`task.due.set` at 5. Their SQL merges into one statement per
 identity, with projects inserted before tasks that name them whatever the
 declared order.
 

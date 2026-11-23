@@ -57,10 +57,9 @@ export function buildEnvelope(op: CommandOp, ctx: BuildContext): Result<CommandE
       return wrap({ kind: 'task.project.set', id, expectedRevision: base, expectedStructuralRevision: S,
         project: intent.projectId === null ? null : { id: intent.projectId, expectedRevision: ctx.projectRevision ?? 0 } });
     case 'task.schedule':
-      return wrap({ kind: 'task.legacy-schedule.set', id, expectedRevision: base, values: {
+      return wrap({ kind: 'task.due.set', id, expectedRevision: base, values: {
         dueDate: intent.dueDate !== undefined ? intent.dueDate : row.due_date,
-        dueAllDay: intent.dueAllDay !== undefined ? intent.dueAllDay : row.due_all_day,
-        recurrence: intent.recurrence !== undefined ? intent.recurrence : row.recurrence } });
+        dueAllDay: intent.dueAllDay !== undefined ? intent.dueAllDay : row.due_all_day } });
     case 'task.defer': return wrap({ kind: 'task.defer.set', id, expectedRevision: base, defer: intent.defer });
     case 'task.focus': return wrap({ kind: 'task.focus.set', id, expectedRevision: base, focusedUntil: intent.focusedUntil });
     case 'task.reopen': return wrap({ kind: 'task.reopen', id, expectedRevision: base });

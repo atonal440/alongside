@@ -56,7 +56,7 @@ The plan's table of known gaps holds up (see the rows). Recording the legacy beh
 | `bare-date` | `{"title":"New","due_date":"2026-11-01"}` | Bare date is all-day at noon UTC | ok — tasks +1; logs `add_task` | must match |
 | `datetime` | `{"title":"New","due_date":"2026-11-01T15:30:00Z"}` | Timed due date | ok — tasks +1; logs `add_task` | must match |
 | `offset-datetime` | `{"title":"New","due_date":"2026-11-01T10:30:00-05:00"}` | Offset datetime is normalized to UTC | ok — tasks +1; logs `add_task` | must match |
-| `date-and-recurrence` | `{"title":"New","due_date":"2026-11-01","recurrence":"FREQ=WEEKLY"}` | Recurring all-day task | ok — tasks +1; logs `add_task` | must match |
+| `date-and-recurrence` | `{"title":"New","due_date":"2026-11-01","recurrence":"FREQ=WEEKLY"}` | Recurring all-day task | ok — tasks +1; logs `add_task` | approved difference |
 | `recurrence-without-date` | `{"title":"New","recurrence":"FREQ=WEEKLY"}` | Recurrence requires a due date | refused (JSON-RPC error): due_date is required when recurrence is set. | must match |
 | `recurrence-on-timed` | `{"title":"New","due_date":"2026-11-01T15:30:00Z","recurrence":"FREQ=WEEKLY"}` | Recurrence cannot sit on a timed due date | refused (JSON-RPC error): Recurring tasks must have an all-day due date; timed recurrence is not supported yet. | must match |
 | `bad-recurrence` | `{"title":"New","due_date":"2026-11-01","recurrence":"FREQ=SECONDLY"}` | Unsupported recurrence rule | refused (JSON-RPC error): Expected an infinite date-only RRULE. | must match |
@@ -111,14 +111,14 @@ The plan's table of known gaps holds up (see the rows). Recording the legacy beh
 | `task-type` | `{"task_id":"$pend","task_type":"plan"}` | Task type only | ok — tasks ~1: task_type (+updated_at); logs `update_task` | must match |
 | `empty-title` | `{"task_id":"$pend","title":""}` | Empty title | refused (JSON-RPC error): Expected a non-empty string. | must match |
 | `due-only-keeps-recurrence` | `{"task_id":"$weekly","due_date":"2026-10-12"}` | New due date keeps recurrence | ok — tasks ~1: due_date (+updated_at); logs `update_task` | must match |
-| `recurrence-only-keeps-due` | `{"task_id":"$weekly","recurrence":"FREQ=MONTHLY"}` | New recurrence keeps due date and all-day flag | ok — tasks ~1: recurrence (+updated_at); logs `update_task` | must match |
+| `recurrence-only-keeps-due` | `{"task_id":"$weekly","recurrence":"FREQ=MONTHLY"}` | New recurrence keeps due date and all-day flag | ok — tasks ~1: recurrence (+updated_at); logs `update_task` | approved difference |
 | `recurrence-only-no-due` | `{"task_id":"$pend","recurrence":"FREQ=WEEKLY"}` | Recurrence on an undated task | refused (JSON-RPC error): due_date is required when recurrence is set. | must match |
 | `recurrence-onto-timed` | `{"task_id":"$timed","recurrence":"FREQ=WEEKLY"}` | Recurrence on a timed due date | refused (JSON-RPC error): Recurring tasks must have an all-day due date; timed recurrence is not supported yet. | must match |
 | `due-timed-with-recurrence` | `{"task_id":"$weekly","due_date":"2026-10-12T15:00:00Z"}` | Timed due date on a recurring task | refused (JSON-RPC error): Recurring tasks must have an all-day due date; timed recurrence is not supported yet. | must match |
 | `due-null` | `{"task_id":"$dueonly","due_date":null}` | Clear the due date | ok — tasks ~1: due_date, due_all_day (+updated_at); logs `update_task` | must match |
 | `due-null-with-recurrence` | `{"task_id":"$weekly","due_date":null}` | Clear the due date but keep recurrence | refused (JSON-RPC error): due_date is required when recurrence is set. | must match |
-| `due-null-and-recurrence-null` | `{"task_id":"$weekly","due_date":null,"recurrence":null}` | Clear both | ok — tasks ~1: due_date, due_all_day, recurrence (+updated_at); logs `update_task` | must match |
-| `recurrence-null` | `{"task_id":"$weekly","recurrence":null}` | Clear recurrence, keep due date | ok — tasks ~1: recurrence (+updated_at); logs `update_task` | must match |
+| `due-null-and-recurrence-null` | `{"task_id":"$weekly","due_date":null,"recurrence":null}` | Clear both | ok — tasks ~1: due_date, due_all_day, recurrence (+updated_at); logs `update_task` | approved difference |
+| `recurrence-null` | `{"task_id":"$weekly","recurrence":null}` | Clear recurrence, keep due date | ok — tasks ~1: recurrence (+updated_at); logs `update_task` | approved difference |
 | `all-day-only` | `{"task_id":"$timed","due_all_day":true}` | Reclassify an existing due date | ok — tasks ~1: due_all_day (+updated_at); logs `update_task` | must match |
 | `all-day-only-no-due` | `{"task_id":"$pend","due_all_day":true}` | All-day flag on an undated task | ok — tasks ~1: due_all_day (+updated_at); logs `update_task` | approved difference |
 | `all-day-null` | `{"task_id":"$dueonly","due_all_day":null}` | Back to ambiguous | ok — tasks ~1: due_all_day (+updated_at); logs `update_task` | must match |

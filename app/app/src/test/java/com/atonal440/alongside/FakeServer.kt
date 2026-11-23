@@ -191,7 +191,7 @@ class FakeServer : SyncApi {
                 "task.focus.set" -> record(id, with("focused_until" to cmd["focusedUntil"]!!))
                 "task.defer.set" -> record(id, with("defer_kind" to cmd["defer"]!!.jsonObject["kind"]!!, "focused_until" to JsonNull))
                 "task.project.set" -> record(id, with("project_id" to cmd["project"]!!.let { if (it is JsonNull) it else it.jsonObject["id"]!! }))
-                "task.legacy-schedule.set" -> record(id, with("due_date" to cmd["values"]!!.jsonObject["dueDate"]!!))
+                "task.due.set", "task.legacy-schedule.set" -> record(id, with("due_date" to cmd["values"]!!.jsonObject["dueDate"]!!))
                 "task.delete" -> record(id, null)
                 else -> error("fake server does not know $kind")
             }

@@ -92,7 +92,7 @@ export function intentFields(intent: Intent): [string, unknown][] {
     case 'task.content': return [['title', intent.title], ['notes', intent.notes], ['kickoff_note', intent.kickoffNote], ['session_log', intent.sessionLog]].filter(([, v]) => v !== undefined) as [string, unknown][];
     case 'task.type': return [['task_type', intent.taskType]];
     case 'task.project': return [['project_id', intent.projectId]];
-    case 'task.schedule': return [['due_date', intent.dueDate], ['due_all_day', intent.dueAllDay], ['recurrence', intent.recurrence]].filter(([, v]) => v !== undefined) as [string, unknown][];
+    case 'task.schedule': return [['due_date', intent.dueDate], ['due_all_day', intent.dueAllDay]].filter(([, v]) => v !== undefined) as [string, unknown][];
     case 'task.defer': return [['defer_kind', intent.defer.kind], ['defer_until', intent.defer.kind === 'until' ? intent.defer.until : null]];
     case 'task.focus': return [['focused_until', intent.focusedUntil]];
     default: return [];
@@ -115,7 +115,6 @@ export function restrictIntent(intent: Intent, fields: readonly string[]): Inten
       const out: Extract<Intent, { kind: 'task.schedule' }> = { kind: 'task.schedule', id: intent.id };
       if (intent.dueDate !== undefined && keep('due_date')) out.dueDate = intent.dueDate;
       if (intent.dueAllDay !== undefined && keep('due_all_day')) out.dueAllDay = intent.dueAllDay;
-      if (intent.recurrence !== undefined && keep('recurrence')) out.recurrence = intent.recurrence;
       return Object.keys(out).length > 2 ? out : null;
     }
     default:

@@ -67,36 +67,8 @@ describe('EditView — validation errors', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
-  test('recurrence without due date shows inline error and does NOT call updateTaskAction', async () => {
-    const task = makeTask({ id: 't_edit02', recurrence: 'FREQ=WEEKLY;INTERVAL=1', due_date: null });
-    renderWithState(<EditView />, {
-      tasks: [task],
-      editingTaskId: task.id,
-    });
-    // The form initially has recurrence set — clearing due date should block save
-    // Alternatively select recurrence while no due date is set
-    // In the current form, recurrence is a <select>. Picking a value without due date should error.
-    const recurrenceSelect = screen.getByLabelText(/recurrence/i);
-    fireEvent.change(recurrenceSelect, { target: { value: 'FREQ=DAILY;INTERVAL=1' } });
-    // Ensure due date is empty (default is '' for task with due_date: null)
-    await userEvent.click(screen.getByRole('button', { name: /save/i }));
-    expect(updateTaskAction).not.toHaveBeenCalled();
-    const alerts = screen.getAllByRole('alert');
-    const recurrenceError = alerts.find(el => el.textContent?.match(/due date/i));
-    expect(recurrenceError).toBeDefined();
-  });
-
-  test('fixing a recurrence error then saving calls updateTaskAction', async () => {
+  test('has no recurrence field: repeating work is a duty, not a task field', () => {
     renderEditView();
-    const recurrenceSelect = screen.getByLabelText(/recurrence/i);
-    fireEvent.change(recurrenceSelect, { target: { value: 'FREQ=WEEKLY;INTERVAL=1' } });
-    // Save without due date → error
-    await userEvent.click(screen.getByRole('button', { name: /save/i }));
-    expect(updateTaskAction).not.toHaveBeenCalled();
-    // Now add a due date
-    const dueDateInput = screen.getByLabelText(/due date/i);
-    fireEvent.change(dueDateInput, { target: { value: '2026-07-15' } });
-    await userEvent.click(screen.getByRole('button', { name: /save/i }));
-    expect(updateTaskAction).toHaveBeenCalledOnce();
+    expect(screen.queryByLabelText(/recurrence/i)).toBeNull();
   });
 });

@@ -41,8 +41,8 @@ describe('receipt-first replay', () => {
     expect(logs(w)).toBe(1);
   }));
 
-  it('replays a recurring completion with the same successor and one log row, whatever changed since', async () => withWorld(async w => {
-    const task = await call(w, 'add_task', { title: 'Weekly', due_date: '2026-10-05', recurrence: 'FREQ=WEEKLY' });
+  it('replays a recurring completion with the same successor and one log row, whatever changed since', async () => withWorld(async (w, db) => {
+    const task = await db.addTask({ title: 'Weekly', due_date: '2026-10-05', recurrence: 'FREQ=WEEKLY' });   // a legacy record: the verbs no longer create these
     const first = await call(w, 'complete_task', { task_id: task.id, commandId: 'c_recur001' });
     expect(first.next.id).toMatch(/^t_[0-9a-f]{12}$/);
     await call(w, 'update_task', { task_id: first.next.id, title: 'Renamed successor' });
@@ -161,10 +161,11 @@ describe('update_task field groups', () => {
     await expect(call(w, 'update_task', { task_id: task.id, defer_until: '2026-12-01T09:00:00Z' })).rejects.toMatchObject({ detail: { code: 'invalid_input' } });
   }));
 
-  it('keeps the other schedule fields when only one changes', async () => withWorld(async w => {
-    const task = await call(w, 'add_task', { title: 'Weekly', due_date: '2026-10-05', recurrence: 'FREQ=WEEKLY' });
+  it('changing the due date leaves a legacy recurrence alone, and the verbs refuse to write one', async () => withWorld(async (w, db) => {
+    const task = await db.addTask({ title: 'Weekly', due_date: '2026-10-05', recurrence: 'FREQ=WEEKLY' });
     expect(await call(w, 'update_task', { task_id: task.id, due_date: '2026-10-12' })).toMatchObject({ due_date: '2026-10-12T12:00:00Z', recurrence: 'FREQ=WEEKLY', due_all_day: true });
-    expect(await call(w, 'update_task', { task_id: task.id, recurrence: 'FREQ=MONTHLY' })).toMatchObject({ due_date: '2026-10-12T12:00:00Z', recurrence: 'FREQ=MONTHLY', due_all_day: true });
+    await expect(call(w, 'update_task', { task_id: task.id, recurrence: 'FREQ=MONTHLY' })).rejects.toMatchObject({ detail: { code: 'invalid_input' } });
+    await expect(call(w, 'add_task', { title: 'New', due_date: '2026-10-12', recurrence: 'FREQ=WEEKLY' })).rejects.toMatchObject({ detail: { code: 'invalid_input' } });
   }));
 
   it('reopens a done task for status pending, alone or with other fields, without touching a deferral', async () => withWorld(async w => {

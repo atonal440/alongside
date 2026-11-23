@@ -30,7 +30,11 @@ async function projectRef(ctx: Ctx, id: unknown, path: string[]) {
   if (snapshot.row === null || snapshot.version === null) throw notFound('Project not found');
   return { id, expectedRevision: snapshot.version.revision as number };
 }
-/** Legacy due-date resolution: a bare date is all-day at noon UTC, an instant is a timed due date. */
+/** Repeating work is a duty (duty.create). The task verbs no longer write the legacy recurrence field. */
+function refuseRecurrence(args: Json): void {
+  if (args.recurrence !== undefined) throw refuse('Tasks no longer take a recurrence. Create a repeating series with the duty.create command (preview_changes / apply_changes; see describe_commands family "duty").', ['recurrence']);
+}
+/** Due-date resolution: a bare date is all-day at noon UTC, an instant is a timed due date. */
 function dueParts(input: unknown, explicitAllDay?: boolean | null) {
   const parsed = parseDueDateParts(input);
   if (!parsed.ok) throw refuse(parsed.error[0]?.message ?? 'Invalid due date.', ['due_date']);
@@ -81,11 +85,8 @@ export const addTask: Compiler = async (ctx, args) => {
   const project = args.project_id === undefined ? null : await projectRef(ctx, args.project_id, ['project_id']);
   const commands: Json[] = [{ kind: 'task.create', id, expectedRevision: null, expectedStructuralRevision: ctx.structural,
     values: { title: args.title, notes: args.notes ?? null, kickoffNote: args.kickoff_note ?? null, taskType: args.task_type ?? 'action', project } }];
-  const recurrence = args.recurrence ?? null;
-  if ((args.due_date ?? null) !== null || recurrence !== null) {
-    const due = args.due_date === undefined || args.due_date === null ? { dueDate: null, dueAllDay: null } : dueParts(args.due_date);
-    commands.push({ kind: 'task.legacy-schedule.set', id, expectedRevision: 1, values: { ...due, recurrence } });
-  }
+  refuseRecurrence(args);
+  if ((args.due_date ?? null) !== null) commands.push({ kind: 'task.due.set', id, expectedRevision: 1, values: dueParts(args.due_date) });
   const dates = await dateRoleCommand(ctx, args, id, { available_from: null, deadline: null }, 1);
   const parent = args.parent_id === undefined ? null : await parentRef(ctx, args.parent_id, ['parent_id']);
   if (dates) commands.push(dates);
@@ -163,7 +164,8 @@ export const updateTask: Compiler = async (ctx, args) => {
     commands.push({ kind: 'task.content.set', id, expectedRevision: guard(), values: { title: pick('title'), notes: pick('notes'), kickoffNote: pick('kickoff_note'), sessionLog: pick('session_log') } });
   }
 
-  if (patch.due_date !== undefined || patch.due_all_day !== undefined || patch.recurrence !== undefined) {
+  refuseRecurrence(patch);
+  if (patch.due_date !== undefined || patch.due_all_day !== undefined) {
     let dueDate: string | null, dueAllDay: boolean | null;
     if (patch.due_date !== undefined) {
       ({ dueDate, dueAllDay } = patch.due_date === null ? { dueDate: null, dueAllDay: null } : dueParts(patch.due_date, patch.due_all_day as boolean | null | undefined));
@@ -171,7 +173,7 @@ export const updateTask: Compiler = async (ctx, args) => {
       dueDate = row.due_date;
       dueAllDay = patch.due_all_day !== undefined ? patch.due_all_day as boolean | null : row.due_all_day;
     }
-    commands.push({ kind: 'task.legacy-schedule.set', id, expectedRevision: guard(), values: { dueDate, dueAllDay, recurrence: patch.recurrence !== undefined ? patch.recurrence : row.recurrence } });
+    commands.push({ kind: 'task.due.set', id, expectedRevision: guard(), values: { dueDate, dueAllDay } });
   }
 
   const dates = await dateRoleCommand(ctx, patch, id, row, guard());

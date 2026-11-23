@@ -90,7 +90,7 @@ const temporalPointSchema = { oneOf: [
 ] };
 const taskDatesSchema = stateCommandSchema('task.dates.set', 'values', { type: 'object', additionalProperties: false, properties: {
   availableFrom: { oneOf: [{ type: 'null' }, temporalPointSchema], description: 'Earliest permitted start, independent of deferral. A date opens at the start of that local day. Null clears it.' },
-  deadline: { oneOf: [{ type: 'null' }, temporalPointSchema], description: 'Hard completion boundary, distinct from the target (dueDate in task.legacy-schedule.set). A date deadline allows completion throughout that local day; a timed one until that instant. Null clears it.' },
+  deadline: { oneOf: [{ type: 'null' }, temporalPointSchema], description: 'Hard completion boundary, distinct from the target (dueDate in task.due.set). A date deadline allows completion throughout that local day; a timed one until that instant. Null clears it.' },
 }, required: ['availableFrom', 'deadline'] });
 const taskFieldSchemas = [
   { ...stateCommandSchema('task.project.set'), properties: { ...stateCommandSchema('task.project.set').properties,
@@ -103,6 +103,10 @@ const taskFieldSchemas = [
     position: { type: ['number', 'null'], description: 'Sort key among siblings, ascending; null sorts after positioned siblings, oldest first.' },
   }, required: ['kind', 'id', 'expectedRevision', 'expectedStructuralRevision', 'parent', 'position'] },
   stateCommandSchema('task.type.set', 'taskType', { enum: ['action', 'plan'] }),
+  stateCommandSchema('task.due.set', 'values', { type: 'object', additionalProperties: false, properties: {
+    dueDate: { type: ['string', 'null'], description: 'The target: when to aim to finish. Calendar date (all-day) or offset instant, normalized to minute UTC in years 0100–9999. Not a hard deadline: use task.dates.set for that. Null clears it.' },
+    dueAllDay: { type: ['boolean', 'null'], description: 'Whether dueDate is all-day (a bare date, stored at noon UTC) or a timed target. Null when clearing dueDate.' },
+  }, required: ['dueDate', 'dueAllDay'] }),
   stateCommandSchema('task.legacy-schedule.set', 'values', { type: 'object', additionalProperties: false, properties: {
     dueDate: { type: ['string', 'null'], description: 'Legacy calendar date or offset instant, normalized to minute UTC in years 0100–9999; not a hard deadline.' },
     dueAllDay: { type: ['boolean', 'null'], description: 'Explicit classification. Null preserves legacy ambiguity; clearing dueDate requires null.' },

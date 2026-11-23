@@ -44,7 +44,7 @@ Completion-driven recurrence (`tasks.recurrence`) has one spawner per record: a 
 - **Not adopted.** Tasks with no due date, a timed due date, a rule the series parser rejects, or `COUNT` (its origin is lost) stay on the legacy completion path and are logged each run. Done tasks are ignored.
 - **Behavior change to expect.** Legacy rules advanced from the previous due date when a task was completed. Calendar generation is independent of completion: an overdue adopted task stays open while the engine creates the newest due occurrence alongside it, and completing a task creates no successor.
 
-Writing a recurrence through the legacy verbs (`add_task`/`update_task` with `recurrence`, `task.legacy-schedule.set`) still works; the next run adopts the task. New series should use `duty.create`.
+`add_task` and `update_task` refuse a `recurrence` argument (invalid_input, pointing at `duty.create`). `task.legacy-schedule.set` can still write a recurrence on old records and the next run adopts the task, but nothing in the apps or verbs uses it. New series use `duty.create`.
 
 ## Not here yet
 

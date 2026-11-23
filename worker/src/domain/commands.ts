@@ -162,7 +162,7 @@ export function planCreateCommand(input: CommandEnvelope, current: EntitySnapsho
 
 export function commandEntityKey(command: Exclude<CommandEnvelope['commands'][number], { kind: 'planning.set' | 'preference.set' | 'link.add' | 'link.remove' }>): EntityReadKey {
   switch (command.kind) {
-    case 'task.delete': case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': case 'task.complete': case 'task.project.set': case 'task.parent.set': case 'task.type.set': case 'task.legacy-schedule.set': case 'task.dates.set': return { entity: 'task', id: command.id };
+    case 'task.delete': case 'task.create': case 'task.content.set': case 'task.focus.set': case 'task.defer.set': case 'task.reopen': case 'task.complete': case 'task.project.set': case 'task.parent.set': case 'task.type.set': case 'task.legacy-schedule.set': case 'task.due.set': case 'task.dates.set': return { entity: 'task', id: command.id };
     case 'project.delete': case 'project.create': case 'project.content.set': case 'project.archive': case 'project.reopen': return { entity: 'project', id: command.id };
     case 'duty.create': case 'duty.content.set': case 'duty.status.set': return { entity: 'duty', id: command.id };
   }
@@ -245,6 +245,9 @@ export function planStateCommand(input: CommandEnvelope, current: EntitySnapshot
         break;
       case 'task.legacy-schedule.set':
         patch = { ...patch, due_date: command.values.dueDate, due_all_day: command.values.dueAllDay, recurrence: command.values.recurrence };
+        break;
+      case 'task.due.set':
+        patch = { ...patch, due_date: command.values.dueDate, due_all_day: command.values.dueAllDay };
         break;
       case 'task.dates.set': {
         const problem = taskDateRoleProblem(command.values);

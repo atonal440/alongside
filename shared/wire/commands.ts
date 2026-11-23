@@ -114,7 +114,14 @@ v.check(value => value.recurrence === null || value.dueAllDay !== false, 'Legacy
 export const TaskLegacyScheduleCommandSchema = v.strictObject({
   kind: v.literal('task.legacy-schedule.set'), id: TaskIdSchema, expectedRevision: RevisionSchema, values: LegacyScheduleValuesSchema,
 });
-/** Replaces the availability and deadline roles together; the target stays in task.legacy-schedule.set. */
+/** The soft target only: due_date and due_all_day. It never touches recurrence (repeating work is a duty). Clearing the date needs dueAllDay null. */
+export const TaskDueValuesSchema = v.pipe(v.strictObject({
+  dueDate: v.nullable(LegacyDueInstantSchema), dueAllDay: v.nullable(v.boolean()),
+}), v.check(value => value.dueDate !== null || value.dueAllDay === null, 'Clearing dueDate requires dueAllDay to be null.'));
+export const TaskDueCommandSchema = v.strictObject({
+  kind: v.literal('task.due.set'), id: TaskIdSchema, expectedRevision: RevisionSchema, values: TaskDueValuesSchema,
+});
+/** Replaces the availability and deadline roles together; the target stays in task.due.set. */
 export const TaskDatesValuesSchema = v.strictObject({ availableFrom: v.nullable(TemporalPointSchema), deadline: v.nullable(TemporalPointSchema) });
 export const TaskDatesCommandSchema = v.strictObject({
   kind: v.literal('task.dates.set'), id: TaskIdSchema, expectedRevision: RevisionSchema, values: TaskDatesValuesSchema,
@@ -132,7 +139,7 @@ export const CommandEnvelopeSchema = v.pipe(v.strictObject({
   actor: v.picklist(['user', 'llm', 'import']),
   reason: v.optional(v.pipe(v.string(), v.maxLength(1_000))),
   expectedStructuralRevision: v.optional(RevisionSchema),
-  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, PreferenceSetCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, DutyCreateCommandSchema, DutyContentCommandSchema, DutyStatusCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskParentCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, TaskDatesCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(MAX_BATCH_COMMANDS)),
+  commands: v.pipe(v.array(v.variant('kind', [PlanningCommandSchema, PreferenceSetCommandSchema, ProjectCreateCommandSchema, TaskCreateCommandSchema, DutyCreateCommandSchema, DutyContentCommandSchema, DutyStatusCommandSchema, ProjectContentCommandSchema, TaskContentCommandSchema, TaskFocusCommandSchema, TaskDeferCommandSchema, TaskReopenCommandSchema, ProjectArchiveCommandSchema, ProjectReopenCommandSchema, TaskCompleteCommandSchema, TaskProjectCommandSchema, TaskParentCommandSchema, TaskTypeCommandSchema, TaskLegacyScheduleCommandSchema, TaskDueCommandSchema, TaskDatesCommandSchema, LinkAddCommandSchema, LinkRemoveCommandSchema, TaskDeleteCommandSchema, ProjectDeleteCommandSchema])), v.minLength(1), v.maxLength(MAX_BATCH_COMMANDS)),
 }), v.check(value => value.commands.length === 1 ? value.expectedStructuralRevision === undefined
   : value.expectedStructuralRevision !== undefined && value.commands.every(command => command.kind !== 'planning.set' && command.kind !== 'preference.set' && !command.kind.startsWith('duty.')),
 'Mixed batches require an envelope structural revision; settings and duties remain standalone.'),

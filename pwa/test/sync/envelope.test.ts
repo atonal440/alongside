@@ -27,7 +27,8 @@ describe('buildEnvelope', () => {
 
   it('schedule edits merge with the current schedule', () => {
     const c = ctx({ row: parsedRow({ due_date: '2026-10-05T12:00:00Z', due_all_day: true, recurrence: null }) });
-    expect(command({ kind: 'task.schedule', id: 't_abc001', recurrence: 'FREQ=WEEKLY' }, 3, c)).toMatchObject({ kind: 'task.legacy-schedule.set', values: { dueDate: '2026-10-05T12:00:00Z', dueAllDay: true, recurrence: 'FREQ=WEEKLY' } });
+    expect(command({ kind: 'task.schedule', id: 't_abc001', dueAllDay: false }, 3, c)).toEqual(expect.objectContaining({ kind: 'task.due.set', values: { dueDate: '2026-10-05T12:00:00Z', dueAllDay: false } }));
+    expect(command({ kind: 'task.schedule', id: 't_abc001', dueDate: null, dueAllDay: null }, 3, c)).toMatchObject({ kind: 'task.due.set', values: { dueDate: null, dueAllDay: null } });
   });
 
   it('maps type, project (with the project revision), defer, reopen, delete and complete', () => {

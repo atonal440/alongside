@@ -13,7 +13,7 @@ export type Intent =
   | { kind: 'task.content'; id: string; title?: string; notes?: string | null; kickoffNote?: string | null; sessionLog?: string | null }
   | { kind: 'task.type'; id: string; taskType: string }
   | { kind: 'task.project'; id: string; projectId: string | null }
-  | { kind: 'task.schedule'; id: string; dueDate?: string | null; dueAllDay?: boolean | null; recurrence?: string | null }
+  | { kind: 'task.schedule'; id: string; dueDate?: string | null; dueAllDay?: boolean | null }
   | { kind: 'task.defer'; id: string; defer: { kind: 'none' } | { kind: 'someday' } | { kind: 'until'; until: string } }
   | { kind: 'task.focus'; id: string; focusedUntil: string | null }
   | { kind: 'task.reopen'; id: string }
@@ -30,7 +30,7 @@ export const IntentSchema = v.variant('kind', [
   v.object({ kind: v.literal('task.content'), id: str, title: v.optional(str), notes: v.optional(nstr), kickoffNote: v.optional(nstr), sessionLog: v.optional(nstr) }),
   v.object({ kind: v.literal('task.type'), id: str, taskType: str }),
   v.object({ kind: v.literal('task.project'), id: str, projectId: nstr }),
-  v.object({ kind: v.literal('task.schedule'), id: str, dueDate: v.optional(nstr), dueAllDay: v.optional(v.nullable(v.boolean())), recurrence: v.optional(nstr) }),
+  v.object({ kind: v.literal('task.schedule'), id: str, dueDate: v.optional(nstr), dueAllDay: v.optional(v.nullable(v.boolean())) }),
   v.object({ kind: v.literal('task.defer'), id: str, defer: v.variant('kind', [v.object({ kind: v.literal('none') }), v.object({ kind: v.literal('someday') }), v.object({ kind: v.literal('until'), until: str })]) }),
   v.object({ kind: v.literal('task.focus'), id: str, focusedUntil: nstr }),
   v.object({ kind: v.literal('task.reopen'), id: str }),
@@ -74,11 +74,10 @@ export function intentsFromPatch(task: Task, patch: TaskUpdatePatch & { status?:
   if (differs('task_type')) out.push({ kind: 'task.type', id: task.id, taskType: patch.task_type as string });
   if (differs('project_id')) out.push({ kind: 'task.project', id: task.id, projectId: patch.project_id ?? null });
 
-  if (differs('due_date') || differs('due_all_day') || differs('recurrence')) {
+  if (differs('due_date') || differs('due_all_day')) {
     const schedule: Extract<Intent, { kind: 'task.schedule' }> = { kind: 'task.schedule', id: task.id };
     if ('due_date' in patch) schedule.dueDate = patch.due_date ?? null;
     if ('due_all_day' in patch) schedule.dueAllDay = patch.due_all_day ?? null;
-    if ('recurrence' in patch) schedule.recurrence = patch.recurrence ?? null;
     out.push(schedule);
   }
 
@@ -112,8 +111,7 @@ export function applyIntentToTask(task: Task, intent: Intent, at: string): Task 
     case 'task.schedule':
       return { ...touched,
         ...(intent.dueDate !== undefined ? { due_date: intent.dueDate } : {}),
-        ...(intent.dueAllDay !== undefined ? { due_all_day: intent.dueAllDay } : {}),
-        ...(intent.recurrence !== undefined ? { recurrence: intent.recurrence } : {}) } as Task;
+        ...(intent.dueAllDay !== undefined ? { due_all_day: intent.dueAllDay } : {}) } as Task;
     case 'task.defer':
       return { ...touched, defer_kind: intent.defer.kind, defer_until: intent.defer.kind === 'until' ? intent.defer.until : null, focused_until: null } as Task;
     case 'task.focus':

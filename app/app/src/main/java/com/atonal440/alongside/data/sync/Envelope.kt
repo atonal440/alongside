@@ -126,11 +126,10 @@ fun buildEnvelope(op: QueuedOp, ctx: BuildContext): JsonObject {
                 } ?: JsonNull)
             }
             is Intent.SetDue -> buildJsonObject {
-                put("kind", "task.legacy-schedule.set"); put("id", id); put("expectedRevision", base)
+                put("kind", "task.due.set"); put("id", id); put("expectedRevision", base)
                 put("values", buildJsonObject {
                     put("dueDate", intent.dueDate)
                     put("dueAllDay", intent.dueAllDay)
-                    put("recurrence", row.recurrence.json())
                 })
             }
             is Intent.SetAvailableFrom -> buildJsonObject {
